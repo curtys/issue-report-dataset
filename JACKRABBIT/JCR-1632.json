@@ -1,0 +1,53 @@
+{
+    "comments": [
+        {
+            "author": "Frederic Laugier",
+            "body": "A test suite that shows the issue",
+            "date": "2008-05-30T09:54:45.673+0000",
+            "id": 0
+        },
+        {
+            "author": "Frederic Laugier",
+            "body": "A patch to not store the PropertyState in the bundle for the 1.4 branch",
+            "date": "2008-05-30T10:23:24.060+0000",
+            "id": 1
+        },
+        {
+            "author": "Stefan Guggisberg",
+            "body": "fixed in svn r 679389\n\n\n",
+            "date": "2008-07-24T12:33:10.926+0000",
+            "id": 2
+        },
+        {
+            "author": "Gr\u00e9gory Joseph",
+            "body": "Any chance this could be backported to 1.4 ? ",
+            "date": "2008-07-24T14:15:06.389+0000",
+            "id": 3
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "No problem. Merged to the 1.4 branch in revision 679425. Would you like us to make an official jackrabbit-core 1.4.6 release with this fix?",
+            "date": "2008-07-24T14:37:28.183+0000",
+            "id": 4
+        },
+        {
+            "author": "Gr\u00e9gory Joseph",
+            "body": "wow that'd be awesome :)",
+            "date": "2008-07-24T16:54:33.727+0000",
+            "id": 5
+        }
+    ],
+    "component": "jackrabbit-core",
+    "description": "When using a bundle persistence manager, the mixin type information may be corrupted in the lucene index, causing queries like '//element(*, my:mixin)' to fail.\n\n\n\nThe problem is that the 'jcr:mixinTypes' may be stored in the bundle. Here is how this could happen :\n\n\nFirst step: Create a node and add a mixin 'A'.\n\nEverything's fine. The query '//element(*, 'A')' works.\n\n\nSecond step : Select the node and add a second mixin 'B'.\n\nWhen the second mixin is added, the AbstractBundlePersistenceManager#load(PropertyId) is called to get the current mixins for the node. This method will store the PropertyState for 'jcr:mixinTypes' in the bundle (containing only the mixin 'A'). Then the NodeImpl#setMixinTypesProperty() will set the PropertyState for 'jcr:mixinTypes' in the node state (containing the mixins 'A' and 'B').\nWhen the session is saved, the ChangeLog in AbstractBundlePersistenceManager#store() contains a modification for the 'jcr:mixinTypes' but it's being ignored, leaving the bundle with only mixin 'A'. The NodeIndexer looks into the node state to get the mixin types and indexes the node correctly. The queries '//element(*, 'A')' and '//element(*, 'B')' work.\n\n\nThrid step : Select the node and update a property. \n\nWhen the session is saved, the NodeIndexer asks again for the 'jcr:mixinTypes' property, by calling the AbstractBundlePersistenceManager#load(PropertyId) to load it. The bundle contains this property and returns only mixin 'A' (as it was stored in the second step), causing the index to use only mixin 'A'. The query '//element(*, 'A')' still works but '//element(*, 'B') doesn't work anymore.\n\n\n\nA simple solution to this would be to not store the PropertyState for the 'jcr:mixinTypes' (and 'jcr:uuid' and 'jcr:primaryType', as the class description states) in the bundle when the PropertyState is loaded. It would fix the issue but not the contents on existing repositories. One way to allow the repositories to fix themselves is to not read or write these 3 properties in the BundleBinding#readBundle and BundleBinding#writeBundle methods, but I'm not sure wether or not it would have a performance impact.\n\n\n",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "JCR-1632",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "Mixin type loss",
+    "systemSpecification": true,
+    "version": "1.4, 1.5"
+}

@@ -1,0 +1,161 @@
+{
+    "comments": [
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "CVS HEAD already provides support for pluggable cookie policies. Writing and \nplugging in a 'reject-all-damn-cookies' policy should be trivial, in my option. \nI am a bit hesitant, though, to include such a policy into the stock version of \nHttpClient. \n\nDoes anybody have a strong opinion either for or against 'reject all cookies' \npolicy as a standard feature?\n\nOleg",
+            "date": "2003-10-22T23:49:18.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Michael Becke",
+            "body": "I don't have a strong opinion on the matter, but it sounds like a good candidate\nfor contrib.\n\nMike",
+            "date": "2003-10-23T00:23:38.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Roland Weber",
+            "body": "I wonder whether cookie policy is the right place to address this\nparticular issue. I'm using the HTTP Client as an implementation\nof RFC 2616 (HTTP 1.1), and cookies are specified in RFC 2965.\nI'd prefer a way to switch off cookie parsing altogether, like I\ncan switch off automatic authentication or redirect handling.\nPreferably with the cookie parsing logic exposed to the programmer,\nfor cases when the application decides to parse some or all cookies\nanyway.\nCurrently, I'm using a derived HttpState implementation that overrides\nall setters to no-ops. The primary reason for this is that my HttpState\nobject becomes read-only and the same object can be used by various\nthreads simultaneously without interferences.\nBut I guess that's 3.0 talk. For 2.1, the 'reject-all-damn-cookies'\npolicy sounds like an appropriate solution that can be implemented\nwith little effort.",
+            "date": "2003-10-23T13:22:02.000+0000",
+            "id": 2
+        },
+        {
+            "author": "Ortwin Gl\u00fcck",
+            "body": "It's certainly a feature that should be provided by the stock implementation.\nEvery web browser has this feature, so I think we should provide it too.",
+            "date": "2003-10-23T14:36:04.000+0000",
+            "id": 3
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "All right. Democracy wins.",
+            "date": "2003-10-23T15:04:11.000+0000",
+            "id": 4
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Created an attachment (id=8760)\npatch 1\n",
+            "date": "2003-10-28T10:50:47.000+0000",
+            "id": 5
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Roland,\n\nI agree.  I think disabling cookie parsing altogether makes more sense.  Attached above is a patch \nthat does exactly that.  This change involves no API changes so it should be more than reasonable \nfor 2.1.\n\nMike",
+            "date": "2003-10-28T10:52:42.000+0000",
+            "id": 6
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Mike,\nI think there's a little more elegant solution. All it takes is a cookie policy \nthat overrides CookieSpec#parse method and simply returns an empty array of \ncookies without actually parsing the header. That is it. No need for the \nCOOKIE_PARSING_ENABLED.\n\nOleg",
+            "date": "2003-10-28T16:42:58.000+0000",
+            "id": 7
+        },
+        {
+            "author": "Roland Weber",
+            "body": "Hello Oleg,\n\nwhile there is no strict need to have a COOKIE_PARSING_ENABLED flag,\nI still feel it is more elegant to have one. Not because it achieves\na different result than a no-cookies policy, but because it points\nout that cookie parsing is an optional feature that can be switched\n*off*, as opposed to having a pass-through-without-effect mode.\n\ncheers,\n  Roland\n",
+            "date": "2003-10-28T18:37:14.000+0000",
+            "id": 8
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Roland,\nI respectfully disagree. What good does it make to have a cookie policy in \nplace and to not parse cookie headers? One would send a cookie to the target \nserver only to end up ignoring it when it comes back with the response. I can't \nthink of a case where this kind of setup would be of any use.\n\nCheers\n\nOleg",
+            "date": "2003-10-28T19:03:27.000+0000",
+            "id": 9
+        },
+        {
+            "author": "Roland Weber",
+            "body": "Hello Oleg,\n\nyou're right that the cookie policy becomes pointless if cookie parsing\nis disabled. Like the bass and treble knobs on my old amplifier become\nuseless if I enable the \"CD Direct\" mode.\nWhat about cases when you want to disable cookie parsing for some methods,\nbut have a cookie policy in place for those that do parse cookies?\n\nFor my application, it doesn't matter in which way cookie parsing is\ndisabled. It will have to handle cookies anyway, because they need to\nbe stored outside of the HTTP Client's HttpState, and I don't want to\ncreate a new HttpState object for each request. But I still find the\n*off* switch preferable. I may even be able to rely on the HTTP Client's\ncookie parsing manually, without having cookies stored in the state.\n\nregards,\n  Roland\n\n",
+            "date": "2003-10-28T20:03:43.000+0000",
+            "id": 10
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "> What about cases when you want to disable cookie parsing for some methods,\n> but have a cookie policy in place for those that do parse cookies?\n\nRoland, that should not be a problem, as the cookie policy applies on per \nmethod basis. \n\n> But I still find the *off* switch preferable. I may even be able to rely \n> on the HTTP Client's cookie parsing manually, without having cookies \n> stored in the state.\n\nYou can instantiate any cookie spec of your liking and use it to parse cookie \nheaders manually. \n\nTastes differ, of course, but I personally do not see a lot value in having \nCOOKIE_PARSING_ENABLED option. Again, it's just an opinion which may well be \nwrong.\n\nOleg\n",
+            "date": "2003-10-28T20:25:57.000+0000",
+            "id": 11
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Oleg,\n\nUnfortunately I think you are correct:)  A new cookie policy is more appropriate.  Expect a new \npatch later today.\n\nMike",
+            "date": "2003-10-28T21:28:32.000+0000",
+            "id": 12
+        },
+        {
+            "author": "Michael Becke",
+            "body": "I've just started to write a new RejectAllCookiesSpec(or something like that) and I have a question.  \nWhat do we want to do about cookie formatting and matching?  My plan was to extend \nCookieSpecBase and just override parse().  This means that cookies can still be sent, they just won't \nbe parsed.  What about if we need to send cookies in the RFC2109 format?  Other than creating a \ndifferent non-parsing spec for each real spec, I think we may have to use the previous \nCOOKIE_PARSING_ENABLED patch.  What does everyone think?\n\nMike",
+            "date": "2003-10-29T11:56:05.000+0000",
+            "id": 13
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Created an attachment (id=8797)\nPatch 2\n",
+            "date": "2003-10-29T13:03:36.000+0000",
+            "id": 14
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Here's another patch.  This one disables cookie parsing using a new cookie policy.\n\nMike",
+            "date": "2003-10-29T13:06:24.000+0000",
+            "id": 15
+        },
+        {
+            "author": "Roland Weber",
+            "body": "Or else we could have two cookie spec params, one for parsing and one for\nformatting. Then you define a new policy which neither parses nor formats\ncookies, and folks can mix and match different specs at will.\n\nI thought for a few seconds about having a default cookie spec for both\nand defining an optional second parameter for the parsing case, but things\nwould get unnecessarily complicated. Having two parameters treats formatting\nand parsing as two different options that can be configured independently,\nwhich seems more appropriate to me.\n\ncheers,\n  Roland\n",
+            "date": "2003-10-29T14:31:04.000+0000",
+            "id": 16
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Mike,\nI think CookieSpec#match methods should be overridden too. If cookies are not\nparsed authomatically, they should not be sent automatically. One could still\nformat cookies using a cookie policy of his/her liking and manually add the\nresultant 'cookie' headers to the request (provided the HTTPCLIENT-286 is resolved)\n\nOleg",
+            "date": "2003-10-30T04:02:06.000+0000",
+            "id": 17
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Created an attachment (id=8871)\nPatch 3\n",
+            "date": "2003-11-02T11:10:13.000+0000",
+            "id": 18
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Oleg, \n\nAgreed.  Here's a new patch that completely ignores cookies.\n\nMike",
+            "date": "2003-11-02T11:11:42.000+0000",
+            "id": 19
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Looks good to me.\n\nOleg",
+            "date": "2003-11-02T21:00:01.000+0000",
+            "id": 20
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Patch applied to HEAD.\n\nMike",
+            "date": "2003-11-03T02:18:55.000+0000",
+            "id": 21
+        },
+        {
+            "author": "Doug Breaux",
+            "body": "I see this change didn't make it into rc3.  It's going to be in 2.0 full, right?",
+            "date": "2004-01-22T01:36:32.000+0000",
+            "id": 22
+        },
+        {
+            "author": "Doug Breaux",
+            "body": "Nevermind - I just saw the target of 2.1.  Oh well.",
+            "date": "2004-01-22T01:37:43.000+0000",
+            "id": 23
+        }
+    ],
+    "component": "HttpClient (classic)",
+    "description": "I was looking for a way to ignore cookies altogether, but there doesn't appear\nto be one.  I could definitely use this capability right now, and I can see\nothers making use of it at times.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "HTTPCLIENT-285",
+    "issuetypeClassified": "RFE",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Minor",
+    "product": "HTTPCLIENT",
+    "project": "HTTPCLIENT",
+    "summary": "Ability to ignore (reject) cookies altogether",
+    "systemSpecification": true,
+    "version": "2.0 Beta 2"
+}

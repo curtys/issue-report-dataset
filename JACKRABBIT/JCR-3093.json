@@ -1,0 +1,59 @@
+{
+    "comments": [
+        {
+            "author": "angela",
+            "body": "public void testBinaryLength() throws Exception {\n        Node test = testRootNode.addNode(\"test\");\n        Property p = test.setProperty(\"prop\", generateValue());\n        superuser.save();\n\n        Session s = getHelper().getSuperuserSession();\n        try {\n            Node n = s.getNode(Text.getRelativeParent(p.getPath(), 1));\n            Property prop = n.getProperty(\"prop\");\n\n           // alternative call to demonstrate the difference:\n           // Property prop = s.getProperty(p.getPath());\n\n            long l = prop.getLength();\n        } finally {\n            s.logout();\n        }\n    }",
+            "date": "2011-10-05T13:12:44.070+0000",
+            "id": 0
+        },
+        {
+            "author": "Timothee Maret",
+            "body": "The patch JCR-3093.patch implements the solution described by angela.\nIt spools a binary property only if explicitely requested (even with Session.getProperty)\n",
+            "date": "2011-10-07T11:28:26.755+0000",
+            "id": 1
+        },
+        {
+            "author": "angela",
+            "body": "thanks for the patch. there is one thing that is wrong IMO:\n \n- the path parameter for the PropertyInfoImpl constructor should be the path of the item and not\n  only the path part of the propertyID. i will fix that.\n\nand then there is one thing i wasn't aware of: the information if a property is a binary isn't known\nupfront. consequently with the proposed solution an additional GET request is generated for\nnon-binary properties. whether or not that has an impact depends a bit on the frequency of\nproperties being directly accessed... just one thing i noticed.\n\nan alternative solution was to get the json-serialization of the parent node and rearrange the\nresults such that the requested propertyInfo is the first one in the iterator. according to the\napi contract the callers are required to properly deal with additional, \"arbitrary\" infos being\nreturned from getItemInfos. that was suitable if there is a greater chance that the parent \nnode will be read as well (sooner or later)... if that's not the case retrieving the parent and\nthe sibling properties add overhead for item processing on the client side.\n\nyet another possibility was to guess whether a given propertyId refers to a binary property\n(e.g. by adding that short cut for known binary property names (e.g. jcr:data))... don't really\nlike this one, but mentioning here for completeness.\n\n",
+            "date": "2011-10-11T12:43:35.940+0000",
+            "id": 2
+        },
+        {
+            "author": "angela",
+            "body": "played around with the possibilities listed above. retrieving the json-ser of the parent node could\npotentially be cumbersome if a given session is allowed to retrieve the property but not the parent node.\n\nfinally came up with a different solution:\nthe jcr-property resources expose a protected dav property that corresponds to the string representation\nsuch as retrieved by Property.getString(). it is available for single-valued non-binary properties only.\n\nconsequently, getPropertyInfo only results in an additional GET request for non-binary multivalued properties.\nfor any other properties (single-value or binary) a single PROPFIND request is sufficient to retrieve the\ninformation used to build the PropertyInfo object.\n\nrunning the jackrabbit-jcr2dav ConformanceTest with tracing the average amount of time spent with the\ngetPropertyInfo calls (NOTE that the test do not contain huge binary properties):\n\n- original code:     3248\n- patch 2 request: 7529\n- final patch:         4640\n\nfuther improvement could be achieved by addressing JCR-2073 that would avoid redundant calls\nto getPropertyInfo.\n\n",
+            "date": "2011-10-12T15:21:33.261+0000",
+            "id": 3
+        },
+        {
+            "author": "angela",
+            "body": "ooops the fix introduced a regression as it used wrong index to build binary values\nof a single-valued property.",
+            "date": "2011-11-08T10:56:54.822+0000",
+            "id": 4
+        },
+        {
+            "author": "angela",
+            "body": "fixing the regression... failed to commit due to some auth hassle",
+            "date": "2011-11-08T11:20:25.563+0000",
+            "id": 5
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Patch committed in revision 1199312.",
+            "date": "2011-11-08T16:02:39.841+0000",
+            "id": 6
+        }
+    ],
+    "component": "jackrabbit-spi2dav",
+    "description": "there an inconsistency in the binary handling between the batch-reading facility and those cases where a property is directly\naccessed without having accessed the parent node before.\n\nthis issue came up with timothee maret running into performance issues when retrieving the length of a binary property:\n\nif the property-entry has been created in the run of a batch-read operation the corresponding property-data object\ncontains internal values that contain the length of the binary (such as transported with the json response) and only\nread the data from the server if the value stream is explicitly requested.\nhowever, if the property is accessed directly (e.g. Session.getProperty or Node.getProperty with a relative path) \na GET request is made to the corresponding dav resource and the stream is read immediately.\n\npossible solution:\n\nif RepositoryService#getItemInfos(SessionInfo, ItemId) is called with a PropertyId the implementation\nshould not result in a GET request to the corresponding resource by calling super.getPropertyInfo(sessionInfo, (PropertyId) itemId).\ninstead it should be consistent with the batch-read and only make a PROPFIND request for the property\nlength. the returned PropertyInfo object would in that case be identical to the one generated by the batch-read functionality.\n",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "JCR-3093",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "Inconsistency between Session.getProperty and Node.getProperty for binary values",
+    "systemSpecification": true,
+    "version": ""
+}

@@ -1,0 +1,77 @@
+{
+    "comments": [
+        {
+            "author": "Michael McCandless",
+            "body": "Patch.  All tests pass... I think it's ready!",
+            "date": "2011-06-21T22:13:51.848+0000",
+            "id": 0
+        },
+        {
+            "author": "Yonik Seeley",
+            "body": "+1, looks good.",
+            "date": "2011-06-23T02:15:19.704+0000",
+            "id": 1
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "Mike this seems like a good improvement but I think letting a user change the behavior of method X by passing true / false to method Y is no good. I think this is kind of error prone plus its cluttering the seek method though. Once Boolean is enough here. I think we should rather restrict this to allow users to pull an exactMatchOnly TermsEnum which does only support exact matches and throws a clear exception if next is called. I know that makes things slightly harder especially to deal with our ThreadLocal cached TermsEnum instances but I think that is better here. Can we somehow leave the extra CPU work to the term() call and make this entirely lazy?\n",
+            "date": "2011-06-23T07:04:27.693+0000",
+            "id": 2
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "bq. Mike this seems like a good improvement but I think letting a user change the behavior of method X by passing true / false to method Y is no good. I think this is kind of error prone plus its cluttering the seek method though. Once Boolean is enough here. I think we should rather restrict this to allow users to pull an exactMatchOnly TermsEnum which does only support exact matches and throws a clear exception if next is called. I know that makes things slightly harder especially to deal with our ThreadLocal cached TermsEnum instances but I think that is better here.\n\nWell, it only means the enum is unpositioned if you get back\nNOT_FOUND?  Ie, it's just like if you get back null from next(), or\nEND from seek(): in these cases, the enum is unpositioned and you need\nto call seek again.\n\nMy worry if we force an up-front decision here (\"exact only\" enum vs\n\"non-exact only enum\") is we prevent legitimate use cases where the\ncaller wants to mix & match with one enum.\n\nEG, when AutomatonQuery intersects w/ the terms, when it hits are\nregion where terms are denser than what the automaton will accept\n(such as an \"infinite\" part), it should use exact seeking, but then\nwhen it's in a region where terms are less dense (eg a \"finite\" part)\nit should use exact seeking.... I'll open a separate issue for this.\n\nThe TermsEnum impls can be efficient in this case, ie re-using\ninternal seek state for the exat and non-exact cases (MemoryCodec does\nthis).\n\nBut I agree another boolean to seek isn't great; maybe instead we can\nmake a seperate seekExact method?  Default impl would just call seek\n(and get no perf gains).\n\nBTW, similarly, I think we have a missing API in DISI (for\nscoring): advance always does a next() if the target doc doesn't\nmatch.  But we can get substantial performance gains in some cases\n(see LUCENE-1536) if we had an advanceExact that would not do the\nnext and simply tell us if this doc matched or not.\n\nbq. Can we somehow leave the extra CPU work to the term() call and make this entirely lazy?\n\nNot sure what you meant here?\n",
+            "date": "2011-06-23T13:34:32.559+0000",
+            "id": 3
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "This patch gives nice gains for MemoryCodec: I did a quick test w/ my\nNRT stress test (reopen at 2X Twitter's peak indexing rate) and the\nreopen time dropped from ~49 msec to ~43 msec (~12% faster).  This is\nimpressive because resolving deletes is just one part of opening the\nNRT reader, ie we also must write the new segment, open SegmentReader\nagainst it, etc.\n",
+            "date": "2011-06-23T13:35:36.325+0000",
+            "id": 4
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "{quote}\nBTW, similarly, I think we have a missing API in DISI (for\nscoring): advance always does a next() if the target doc doesn't\nmatch. But we can get substantial performance gains in some cases\n(see LUCENE-1536) if we had an advanceExact that would not do the\nnext and simply tell us if this doc matched or not.\n{quote}\n\n+1!!\n{quote}\nBut I agree another boolean to seek isn't great; maybe instead we can\nmake a seperate seekExact method? Default impl would just call seek\n(and get no perf gains).\n{quote}\n\nthats another option and I like that better though. Yet the other should the be seekFloor no?\n\nbq. not sure what you meant here?\n\nnevermind I only looked at the top of the patch and figured that we only safe the loading into bytesref but there is more about it...\n\n",
+            "date": "2011-06-23T14:32:26.746+0000",
+            "id": 5
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "bq. Yet the other should the be seekFloor no?\n\nAhhh right, we had discussed on the dev list.  I agree!\n\nBut, we should do this in another issue.  Though, I think we should rename the current seek to seekCeil; I'll do that here.",
+            "date": "2011-06-23T16:59:55.287+0000",
+            "id": 6
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "OK, new patch: I added a new seekExact method (instead of new boolean to seek); renamed existing seek methods to either seekCeil or seekExact; changed seekExact(long ord) to not return a value (it's an error to pass out-of-bounds ord to this method).  I think it's ready!",
+            "date": "2011-06-24T10:44:50.539+0000",
+            "id": 7
+        },
+        {
+            "author": "Dawid Weiss",
+            "body": "I like this one better. boolean args are cryptic (even if I do use them from time to time).",
+            "date": "2011-06-24T10:53:18.622+0000",
+            "id": 8
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "looks good +1 to commit! thanks for working on that",
+            "date": "2011-06-24T10:57:37.386+0000",
+            "id": 9
+        }
+    ],
+    "component": "",
+    "description": "Some codecs are able to save CPU if the caller is only interested in\nexact matches.  EG, Memory codec and SimpleText can do more efficient\nFSTEnum lookup if they know the caller doesn't need to know the term\nfollowing the seek term.\n\nWe have cases like this in Lucene, eg when IW deletes documents by\nTerm, if the term is not found in a given segment then it doesn't need\nto know the ceiling term.  Likewise when TermQuery looks up the term\nin each segment.\n\nI had done this change as part of LUCENE-3030, which is a new terms\nindex that's able to save seeking for exact-only lookups, but now that\nwe have Memory codec that can also save CPU I think we should commit\nthis today.\n\nThe change adds a \"boolean onlyExact\" param to seek(BytesRef).\n",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-3225",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Major",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "Optimize TermsEnum.seek when caller doesn't need next term",
+    "systemSpecification": true,
+    "version": ""
+}

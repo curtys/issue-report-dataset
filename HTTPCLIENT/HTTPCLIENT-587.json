@@ -1,0 +1,71 @@
+{
+    "comments": [
+        {
+            "author": "Gordon Mohr",
+            "body": "Er, that's RFC3986 that obsoletes RFC2396. ",
+            "date": "2006-06-16T07:53:55.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Gordon,\nURI code in HttpClient is broken beyond redemption and will be removed as of next major version. I would not like to spend a single cycle on trying to fix numerous problems with URI class unless absolutely necessary. Does this problem affect a production system or it is just nit picking?\n\nOleg",
+            "date": "2006-06-16T21:29:01.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Gordon Mohr",
+            "body": "For all of 3.0.1 URI's problems, it's better than the Sun class.\n\nIs the next version's URI class under development and verified to avoid this problem? \n\nWe are still using the 3.x HttpClient in production systems (web crawling) , since no later releases are officially available. This issue showed up in several real crawls -- in the usual case (where the page author made a mistake, for example \"http:www.example.com\") the impact is low but there is a risk of important, compliant HREFs not being followed. \n\nI will try to work up a patch. ",
+            "date": "2006-06-17T00:54:06.000+0000",
+            "id": 2
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "> For all of 3.0.1 URI's problems, it's better than the Sun class. \n\nWhat's wrong with the JDK URI class? I thought it was kind of okay? Actually I was thinking about suggesting that our 'home brewed' URI class be replaced with the JDK URI class, as HttpClient 4.0 will require Java 1.4 anyways.\n\n> We are still using the 3.x HttpClient in production systems (web crawling) , since no later releases are officially available.\n\nHave you looked at HttpCore? I believe its API should be better suited for web crawlers. For one HttpCore does not attempt to validate request-URIs. It will happily execute requests against any arbitrary request URI\n\n> I will try to work up a patch.\n\nPlease do so. If you do not provide a fix for this bug, most likely it will have to wait until 4.0\n\nOleg",
+            "date": "2006-06-17T01:17:05.000+0000",
+            "id": 3
+        },
+        {
+            "author": "Gordon Mohr",
+            "body": "> What's wrong with the JDK URI class?\n\n(a) It still has bugs where it fails to implement the spec at well as httpclient.URI. One recent example, still a problem in current JDK 1.6 betas:\n\nhttp://bugs.sun.com/bugdatabase/view_bug.do?bug_id=4708535\n\njava.net.URI base = new java.net.URI(\"http://www.example.com/some/page\");\njava.net.URI rel = new java.net.URI(\"\");\njava.net.URI derel = base.resolve(rel);\nderel.toString();\n(java.lang.String) http://www.example.com/some/   // INCORRECT\n\norg.apache.commons.httpclient.URI base = new org.apache.commons.httpclient.URI(\"http://www.example.com/some/page\");\norg.apache.commons.httpclient.URI rel = new org.apache.commons.httpclient.URI(\"\");\norg.apache.commons.httpclient.URI derel = new org.apache.commons.httpclient.URI(base,rel);\nderel.toString();\n(java.lang.String) http://www.example.com/some/page  // CORRECT\n\n(b) java.net.URI and its maintainers reject the idea that there should be any facility in the URI class for tolerating the same sorts of formal spec deviations often seen in real URIs and domain names. \n\nAs one example, domain names with '_' are technically illegal but have often been tolerated by DNS-related software and we have run across functioning websites at subdomains with '_' in their name. Browsers browse these sites fine, so we want to be able to crawl them. java.net.URI can't help us.\n\nNow of course, it's legitimate and useful to provide a class which regirously implements all written standards. Not everyone wants a class that also tolerates de facto practices. But that leads us to the ultimate problem with java.net.URI:\n\n(c) java.net.URI licensing and language declarations make it resistant to reuse and adaptation to other legitimate uses\n\nIt's not open source and major portions of its implementation are 'private' or 'final'. So it's impossible to reuse 99% of it (such as its various RFC syntax character-class definitions, fields, and working parsing code) while also either  patching the bugs like in (a) above or overriding the strictness which makes it unsuitable for some purposes like in (b) above. \n\nIn comparison, the org.apache.commons.httpclient.URI class is friendly to subclassing (which we've used to work around bugs and change the behavior to better fit our problem domain) and if that didn't work ith respect to a bug, we'd at least have the option of patching it ourselves and redistributing the fix. \n\nSo our project would very much miss the pretty-good (and at least serviceable when broken) httpclient.URI class if it were dropped in favor of the JDK java.net.URI class. \n\n> Have you looked at HttpCore?\n\nOnly a little. Until it has an official test release, and comes close to matching the HttpClient facilities for cookies, URIs,  etc., it probably won't be suitable to replace our HttpClient 3.x use.\n\n(The ability to issue unvalidated request strings would be useful -- but we've already patched this into HttpClient 3.x to the extent we need it. Also, we still need to perform best-effort, highly-tolerant parsing of URIs into their traditional constituent parts for various decisions and kinds of analysis.)",
+            "date": "2006-06-17T04:46:44.000+0000",
+            "id": 4
+        },
+        {
+            "author": "Gordon Mohr",
+            "body": "Patch with unit test illustrating problem, and patch which resolves unit test without breaking any prior unit tests. \n\nTheory of patch is:\n\n(1) There is a block that previously ran when relative._scheme !=null -- it assumed this meant 'relative' was an absolute URI and copied all its state into the new URI instance. Now, this block only runs if scheme !=null AND either the relative._scheme is different than the 'base' scheme (meaning no derelativization would be appropriate) or relative._authority is non-null (implying it truly is an absolute URI)\n\n(2) There is a block for derelativizing the path that previously ran only when relative._scheme and relative._authority were both null -- assuming that this was the only case where combining the paths was necessary. Now, this block also runs when relative._authority is null and the relative._scheme is identical to the base_scheme. \n\n(3) The early setting of this._authority to base._authority (~line 6 of method) counts on authority being reset later if necessary. It appears the same tack should be taken with _is_net_path; otherwise the later setURI() will not retain the set-up _authority. \n\n",
+            "date": "2006-06-17T06:42:33.000+0000",
+            "id": 5
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Looks good to me. I'll check in the patch in a few days if nobody complains\n\nOleg",
+            "date": "2006-06-17T22:14:10.000+0000",
+            "id": 6
+        },
+        {
+            "author": "Roland Weber",
+            "body": "Patch looks good to me.\n\nI agree with (3), _authority and _is_net_path seem to be partially redundant.\nThe \"net path\" stuff may be an attempt to support Windows-style network paths with the same class.\nI hope this code somehow vanishes from 4.0 :-(\n\ncheers,\n  Roland\n",
+            "date": "2006-06-21T02:56:34.000+0000",
+            "id": 7
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Patch checked in. Many thanks, Gordon\n\nOleg",
+            "date": "2006-06-21T17:54:54.000+0000",
+            "id": 8
+        }
+    ],
+    "component": "HttpClient (classic)",
+    "description": "URI constructor \"public URI(URI base, URI relative) throws URIException\" assumes that if given 'relative' URI has a scheme, it should provide an authority and complete path to the constructed URI. However, a URI can have a scheme but still be relative, requiring the authority and base path of the 'base' URI. \n\nDemonstration code:\n\nURI base = new URI(\"http://www.example.com/some/page\");\nURI rel = new URI(\"http:boo\");\nURI derel = new URI(base,rel);\nderel.toString();\n(java.lang.String) http:boo\n\nIn fact, derel should be \"http://www.example.com/some/boo\". \n\nRFC2396 is a little confused about this; section 3.1 states \"\"Relative URI references are distinguished from absolute URI in that they do not begin with a scheme name.\" But, in section 5, there are several sentences talking about relative URIs that begin with schemes (and how this prevents using relative URIs that have leading path segments that look like scheme identifiers). \n\nRFC3896, which supercedes RFC2396, removes the implication a relative URI cannot begin with a scheme, leaving the other text explcitly discussing relative URIs with schemes. \n\nBoth Firefox (1.5) and IE (6.0) treat \"http:boo\" the same as \"boo\" for purposes of derelativization against an HTTP base URI, which would give the final URI \"http://www.example.com/some/boo\" in the example above. \n\nEven relative URIs like \"http:../../boo\" are explicitly legal. \n\n",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "HTTPCLIENT-587",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "HTTPCLIENT",
+    "project": "HTTPCLIENT",
+    "summary": "derelativizing of relative URIs with a scheme is incorrect",
+    "systemSpecification": true,
+    "version": "3.0.1"
+}

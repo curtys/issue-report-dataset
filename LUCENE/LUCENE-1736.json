@@ -1,0 +1,47 @@
+{
+    "comments": [
+        {
+            "author": "Steve Rowe",
+            "body": "David, I tried to apply your patch, but it failed (using \"patch\") - maybe partly because the patch is in git format?  I don't use git, so it's tough for me to review issues with git formatted patches.\n\nI went and looked at the DateTools.java and compared it to your patch, and things have changed significantly since you wrote the patch, especially as a result of Uwe's changes from LUCENE-1472.  Could you take a look at that issue, see if it resolves (enough of) the problems you addressed in your patch to make this issue now obsolete?  If not, could you regenerate the patch (diff/patch format please)?",
+            "date": "2011-06-06T18:38:13.181+0000",
+            "id": 0
+        },
+        {
+            "author": "David Smiley",
+            "body": "This is an updated patch.\n* The former \"DateFormats\" class was used as a value in a ThreadLocal which isn't a good idea as it hampers class reloading.\n* Improvements to a switch statement to benefit from fall-through.\n* Removed a pointless conversion to Calendar in timeToString()\n* Moved functionality to Resolution enum, and used arrays of Resolutions indexed by format length instead of large if-else or switch blocks for format & parse. The ramification is 48 fewer lines of code.",
+            "date": "2011-06-06T21:11:18.624+0000",
+            "id": 1
+        },
+        {
+            "author": "Steve Rowe",
+            "body": "David, this is your patch with a CHANGES.txt entry and a couple of comments added (\"for javadocs\" next to the two imports that are javadocs-only; and formatLen spelled out over the shared format string).\n\nNice improvements.  All tests pass.\n\nI plan on committing shortly.",
+            "date": "2011-06-06T22:18:20.964+0000",
+            "id": 2
+        },
+        {
+            "author": "Steve Rowe",
+            "body": "Committed:\n- r1132806: trunk\n- r1132812: branch_3x\n\nThanks David!",
+            "date": "2011-06-06T22:36:37.814+0000",
+            "id": 3
+        },
+        {
+            "author": "Robert Muir",
+            "body": "bulk close for 3.3",
+            "date": "2011-07-02T02:40:12.509+0000",
+            "id": 4
+        }
+    ],
+    "component": "core/index",
+    "description": "Applying the attached patch shows the improvements to DateTools.java that I think should be done. All logic that does anything at all is moved to instance methods of the inner class Resolution. I argue this is more object-oriented.\n\n1. In cases where Resolution is an argument to the method, I can simply invoke the appropriate call on the Resolution object. Formerly there was a big branch if/else.\n2. Instead of \"synchronized\" being used seemingly everywhere, synchronized is used to sync on the object that is not threadsafe, be it a DateFormat or Calendar instance.\n3. Since different DateFormat and Calendar instances are created per-Resolution, there is now less lock contention since threads using different resolutions will not use the same locks.\n4. The old implementation of timeToString rounded the time before formatting it. That's unnecessary since the format only includes the resolution desired.\n5. round() now uses a switch statement that benefits from fall-through (no break).\n\nAnother debatable improvement that could be made is putting the resolution instances into an array indexed by format length. This would mean I could remove the switch in lookupResolutionByLength() and avoid the length constants there. Maybe that would be a bit too over-engineered when the switch is fine.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-1736",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Minor",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "DateTools.java general improvements",
+    "systemSpecification": true,
+    "version": "2.9"
+}

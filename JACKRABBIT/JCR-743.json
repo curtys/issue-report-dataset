@@ -1,0 +1,29 @@
+{
+    "comments": [
+        {
+            "author": "Claus K\u00f6ll",
+            "body": "I have tested more with this behaviour.\nFor more information my environment in detail:\nWebsphere 5.1.1 and Jackrabbit as J2C Resource Adapter\nMy Workspace configuration:\n    <PersistenceManager class=\"org.apache.jackrabbit.core.state.db.JNDIDatabasePersistenceManager\">\n       <param name=\"dataSourceLocation\" value=\"jdbc/JCR\"/>\n       <param name=\"schema\" value=\"oracle\"/>\n       <param name=\"schemaObjectPrefix\" value=\"${wsp.name}_\"/>\n       <param name=\"externalBLOBs\" value=\"false\"/>\n    </PersistenceManager>\nThe DataSource jdbc/JCR is a oracle.jdbc.pool.OracleConnectionPoolDataSource. I have also tested a oracle.jdbc.xa.client.OracleXADataSource\nbut then i get a Exception on commit @see JCR-744\nI have a SessionBean where i make some calls to to Jackrabbit within a Transaction.\n\nI made a clean start. (starting my Server and Jackrabbit to a a empty repository). \nIf i add a node to the repository within transaction there are no problems. \nNow i stop the server and restart it and i get  always the Nullpointer Exception. First i thought that is only if a make a Rollback but that is not so.\nI try to find out why Websphere try to recover the transaction ...\n",
+            "date": "2007-02-15T15:53:24.714+0000",
+            "id": 0
+        },
+        {
+            "author": "Dominique Pfister",
+            "body": "WebSphere 5.1.1 tries to recover the connection's associated XAResource on startup, regardless whether it was committed or rolled back. In order to be interoperable, an anonymous, recoverable-only connection is returned, when this situation is detected.\n\nFixed in revision 510465.",
+            "date": "2007-02-22T11:29:30.082+0000",
+            "id": 1
+        }
+    ],
+    "component": "jackrabbit-jca",
+    "description": "If i add a node to the repository i get a XAException because i run into a Timeout ... \nI see the Warn Message: Transaction rolled back because timeout expired.\nThe default Timeout is set to 5 sec and i dont know how to set it to a higher value\nThe Problem is if i restart my server websphere has a RecoveryManager and he try to recover this Transaction\nand then i get a NullpointerException in JCAManagedConnectionFactory. createManagedConnection beacuse the given \nConnectionRequestInfo is null.\nSo i dont know why the RecoveryManager tries to recover the Transaction ? The only solution for me is to delete the Tran-Log Files wich keep Websphere to recvoer\nXA Trasnactions.\n",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "JCR-743",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "XA Transaction Recovery",
+    "systemSpecification": true,
+    "version": "1.2.1, 1.2.2, 1.2.3"
+}

@@ -1,0 +1,23 @@
+{
+    "comments": [
+        {
+            "author": "Stefan Guggisberg",
+            "body": "fixed in svn rev. 454735\n\nmichael, thanks for reporting this issue!\n\nbtw: excellent bug report, it helped me to identify the problem quickly :-)",
+            "date": "2006-10-10T13:40:23.000+0000",
+            "id": 0
+        }
+    ],
+    "component": "jackrabbit-core, nodetype",
+    "description": "Apologies in advance if this has previously been noted in JIRA or on the lists but I couldn't find anything. When removing a mixin that defines a same-name-sibling child an ItemNotFoundException is thrown due to child node indicies not being maintained. A similar method of NodeImpl (onRemove) recongnized this and amended to remove from the tail but the removeMixin also has this issue.\n\nSimple test reproduction:\n\nTypes:\n\n[mix:foo] mixin\n\t+ bar (nt:bar) multiple\n\t\n[nt:bar] > nt:unstructured, mix:referenceable\n\nCode:\n\npublic class RemoveMixinTest extends AbstractServerTest {\n    private static final String MIXIN = \"mix:foo\";\n    private static final String CHILD = \"bar\";\n    private static final String PTYPE = \"nt:bar\";\n    \n    public void testRemoveMixin() throws RepositoryException {\n        Session session = getSession();\n        Node root = session.getRootNode().addNode(\"root\");\n        root.addMixin(MIXIN);\n        \n        root.addNode(CHILD, PTYPE);\n        root.addNode(CHILD, PTYPE);\n        root.addNode(CHILD, PTYPE);\n        \n        session.save();\n        \n        for (NodeIterator it = root.getNodes(); it.hasNext(); ) {\n            Node node = it.nextNode();\n            System.out.println(node.getPath() + \" : \" + node.getUUID());\n        }\n        \n        try {\n            root.removeMixin(MIXIN);\n            root.save();\n        } catch (RepositoryException ex) {\n            ex.printStackTrace();\n        }\n    }\n}\n\nOutput:\n\n/root/bar : 0b09e0b4-0727-4194-978a-4eadfbf93fa8\n/root/bar[2] : 84d5e556-6f12-43fb-98e3-614bcf1f7bb7\n/root/bar[3] : 8db95029-df3b-4e26-affb-438de0206cf5\n\njavax.jcr.ItemNotFoundException: 8db95029-df3b-4e26-affb-438de0206cf5\nat org.apache.jackrabbit.core.ItemManager.createItemInstance(ItemManager.java:463)\n\tat org.apache.jackrabbit.core.ItemManager.getItem(ItemManager.java:319)\n\tat org.apache.jackrabbit.core.NodeImpl.removeMixin(NodeImpl.java:1212)\n\tat org.apache.jackrabbit.core.NodeImpl.removeMixin(NodeImpl.java:2624)\n\tat com.ms.appmw.rcf.server.RemoveMixinTest.testRemoveMixin(RemoveMixinTest.java:48)\n\tat sun.reflect.NativeMethodAccessorImpl.invoke0(Native Method)\n\tat sun.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:39)\n\tat sun.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:25)\n\tat java.lang.reflect.Method.invoke(Method.java:585)\n\tat junit.framework.TestCase.runTest(TestCase.java:154)\n\tat msjava.base.testutils.junit3.MSTestCase.runTest(MSTestCase.java:203)\n\tat msjava.base.testutils.junit3.TestCaseTearDownEvenIfSetUpFails.runBare(TestCaseTearDownEvenIfSetUpFails.java:92)\n\tat msjava.base.testutils.junit3.MSTestCase.runBare(MSTestCase.java:170)\n\tat junit.framework.TestResult$1.protect(TestResult.java:106)\n\nThe missing UUID for the last node is the one not found because upon removal of the second the index [2] is still valid. Thanks!",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "JCR-586",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Minor",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "Removing a mixin that adds a same-name-sibling child node throws an ItemNotFoundException",
+    "systemSpecification": true,
+    "version": "0.9, 1.0, 1.0.1, 1.1"
+}

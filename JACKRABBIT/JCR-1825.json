@@ -1,0 +1,71 @@
+{
+    "comments": [
+        {
+            "author": "Przemo Pakulski",
+            "body": "Without setting copyWhenReading  to true usage of DBDataStore is dangerous, could be a bottleneck depending how long streams are kept open.\nIf streams are not closed DBDataStore hangs/locks.",
+            "date": "2008-10-21T10:23:59.553+0000",
+            "id": 0
+        },
+        {
+            "author": "Przemo Pakulski",
+            "body": "without doing major changes I suggest to change DBDataStore class as follow :\n\nIndex: src/main/java/org/apache/jackrabbit/core/data/db/DbDataStore.java\n===================================================================\n--- src/main/java/org/apache/jackrabbit/core/data/db/DbDataStore.java\t(revision 706573)\n+++ src/main/java/org/apache/jackrabbit/core/data/db/DbDataStore.java\t(working copy)\n@@ -519,6 +519,9 @@\n                 if (copyWhenReading) {\n                     File temp = moveToTempFile(result);\n                     result = new TempFileInputStream(temp);\n+                    DatabaseHelper.closeSilently(rs);\n+                    putBack(conn);\n+                    rs = null;\n                 }\n             }\n\nand DbResources.java close method to do not free db resources twice :\n\n    public void close() {\n        if (!closed) {\n            closed = true;\n            if (rs!=null) {\n              DatabaseHelper.closeSilently(rs);\n              try {\n                store.putBack(conn);\n              } catch (Exception e) {\n                log.info(\"Closing DbResources: \", e);\n              }\n            }\n        }\n    }\n\nIs it ok ?",
+            "date": "2008-10-21T10:42:34.335+0000",
+            "id": 1
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "Hi,\n\nYou are right, this part of the code doesn't do any more what it's supposed to do. There is another problem: it doesn't work if the stream is null. Also some of the DbResources methods are not not used and should be removed.\n\nI am currently working on another patch, I will attach it in an hour or so to this bug.\n\nThanks for finding this problem!\n\nRegards,\nThomas",
+            "date": "2008-10-21T11:59:01.321+0000",
+            "id": 2
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "Here is my first patch. I didn't test it yet; I post it just so that others can have a look at it.",
+            "date": "2008-10-21T13:00:12.440+0000",
+            "id": 3
+        },
+        {
+            "author": "Przemo Pakulski",
+            "body": "Cannot see important 2 lines responsible for freeing resources in 'copyWhenReading' block\n\nif (copyWhenReading) {\n    File temp = moveToTempFile(result);\n    result = new TempFileInputStream(temp);\n  + DatabaseHelper.closeSilently(rs);\n  + putBack(conn); \n    dbResources = new DbResources(result);\n}\n\nI do not follow changes in DbInputStream class, but I assume they are not so important.",
+            "date": "2008-10-21T13:12:56.380+0000",
+            "id": 4
+        },
+        {
+            "author": "Claus K\u00f6ll",
+            "body": "i would also prefer to use the closeSilently Method from the DatabaseHelper instead of ConnectionRecoveryManager\nso we can delete the Method in the ConnectionRecoveryManager",
+            "date": "2008-10-21T13:23:42.972+0000",
+            "id": 5
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "New patch (I still didn't test it however).\n'DbResources' should be renamed to 'DbResource', I will do that later.",
+            "date": "2008-10-21T14:42:22.501+0000",
+            "id": 6
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Instead of tweaking the copyWhenReading workaround (which disables one of the main benefits of the data store, i.e. the ability to access a binary property without intermediate copies being created), I'd simply remove the maxConnections limit from the connection pool.",
+            "date": "2008-10-28T14:24:43.952+0000",
+            "id": 7
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "Committed in revision 708598.",
+            "date": "2008-10-28T15:44:04.352+0000",
+            "id": 8
+        }
+    ],
+    "component": "jackrabbit-core",
+    "description": "My understanding is that setting parameter copyWhenReading to true should allow concurrent reads by spooling binary property to temporary file and free database resources (connection) immediately to make it available for other threads.\n\nAfter applying patch for JCR-1388, DBDataStore doesn't support concurrent reads anymore, resultSet is kept open and db connection is blocked until the stream is read and closed. When copyWhenReading is set to true db connection should be released immediately, this is the reason i guess why temporary file is used.",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "JCR-1825",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "DBDataStore doesn't support concurrent reads",
+    "systemSpecification": true,
+    "version": "1.5"
+}

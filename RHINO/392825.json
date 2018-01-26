@@ -1,0 +1,23 @@
+{
+    "comments": [
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "Fixed:\n\nChecking in src/org/mozilla/javascript/JavaMembers.java;\n/cvsroot/mozilla/js/rhino/src/org/mozilla/javascript/JavaMembers.java,v  <--  Ja\nvaMembers.java\nnew revision: 1.62.2.1.2.1; previous revision: 1.62.2.1\ndone\nChecking in src/org/mozilla/javascript/resources/Messages.properties;\n/cvsroot/mozilla/js/rhino/src/org/mozilla/javascript/resources/Messages.properti\nes,v  <--  Messages.properties\nnew revision: 1.70.2.1.2.1; previous revision: 1.70.2.1\ndone\n\nTest case demonstrating correct behavior with fix:\n\n[rhino] cat testShutter.js\nvar prohibited = arguments[0]; // script argument\nvar shutter = new Packages.org.mozilla.javascript.ClassShutter({\n  visibleToScripts: function(name) {\n    var result = name != prohibited;\n    print(\"visibleToScripts(\"+name+\") = \"+result);\n    return result;\n}});\nshutter.visibleToScripts(\"myTest\");\nvar cx = Packages.org.mozilla.javascript.Context.getCurrentContext();\ncx.setClassShutter(shutter);\n\nvar s = new java.lang.String('hi');\nvar obj = s.getClass().getClass().forName(\"java.lang.SecurityManager\").newInstan\nce();\n[rhino] java -jar build/rhino1_6R7/js.jar testShutter.js\nvisibleToScripts(myTest) = true\nvisibleToScripts(java.lang.String) = true\nvisibleToScripts(java.lang.Class) = true\nvisibleToScripts(java.lang.SecurityManager) = true\n[rhino] java -jar build/rhino1_6R7/js.jar testShutter.js java.lang.SecurityMana\nger\nvisibleToScripts(myTest) = true\nvisibleToScripts(java.lang.String) = true\nvisibleToScripts(java.lang.Class) = true\nvisibleToScripts(java.lang.SecurityManager) = false\njs: Access to Java class \"java.lang.SecurityManager\" is prohibited.\njs: org.mozilla.javascript.EvaluatorException: Access to Java class \"java.lang.S\necurityManager\" is prohibited.",
+            "date": "20070820T00:25:59",
+            "id": 0
+        }
+    ],
+    "component": "Core",
+    "description": "In my application users can write there own scripts for calculation\npurposes. In order to prepare them a set of basic functionality (read\nout of db or something like that) I wrote some java classes. At java\nside, I put an object of these classes to the scope in each case. My\nproblem is, that the user has the possibility to create new objects of\nany class he likes.\n\nTo avoid that the user imports java packages inside a script I did the\nfollowing:\n\nScriptableObject.deleteProperty(scope, \"Packages\");\nScriptableObject.deleteProperty(scope, \"java\");\nScriptableObject.deleteProperty(scope, \"JavaImporter\");\n\nAdditionally, I defined a ClassShutter object, implementing its only\nmethod like\n\npublic boolean visibleToScripts(String fullClassName) {\n        return false;\n\n}\n\nand setting this via\n\nContext cx = Context.enter();\ncx.setClassShutter(new MyClassShutter());\n\nBut there is still one problem remaining.\n\nEverything works fine except when the user uses statements in his\nscript like\n\nmyObj.getClass().getClassLoader().loadClass(\"path.to.some.package.MyClass\").newInstance();\n\nwhere myObj is a object I put in the scope.\nIn that case - unlike statements like \"new\nPackages.some.package.MyClass()\" - MyClassShutter is never asked and\nso, there is a big security leakage!\n\nDoes anyone know how I could avoid that? I simply want the user not to\nbe allowed to load or use any other object unless the ones I put in the\nscope for him.\n\nRegards,\nMatthias",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "392825",
+    "issuetypeClassified": "OTHER",
+    "issuetypeTracker": "BUG",
+    "priority": "-- normal",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "ClassShutter doesn't prevent access through Java reflection APIs",
+    "systemSpecification": true,
+    "version": "1.6R6"
+}

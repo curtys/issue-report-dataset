@@ -1,0 +1,83 @@
+{
+    "comments": [
+        {
+            "author": "Michael D\u00fcrig",
+            "body": "Patch for renaming getAncestor, clarifying javadoc and deprecating getAncestorCount. Also contains a test case",
+            "date": "2008-02-20T13:57:22.415+0000",
+            "id": 0
+        },
+        {
+            "author": "Stefan Guggisberg",
+            "body": "-1 for the proposed change. \n\nthe specified Path methods are IMO adequately named. they're expected to operate on normalized paths. \nthe javadoc warns about unexpected results when called on non-normalized paths (such as \"../..\").\n\nthe real issue at hand is IMO a bug in the PathFactory implementation. \nPathFactoryImpl creates illegal and inconsistent Path objects. see JCR-1409.\n\nPath#isAncestorOf expects normalized paths and throws if that's not the case.   \nhowever, both paths used in your example (i.e. \"../'..\" and \"..\") are non-normailzed\nbut Path#isNormalized returns true for both of them...\n\nit seems like the Path semantics got unfortunately somehow compromised by the\nintroduction of the PathFactory interface and the related refactoring to spi-commons.",
+            "date": "2008-02-22T11:54:35.292+0000",
+            "id": 1
+        },
+        {
+            "author": "Michael D\u00fcrig",
+            "body": "> they're expected to operate on normalized paths. \nThen the documentation of the relevant methods of the Path interface should say so. \n\nI's suggest: remove \"Note that there migth be an unexpected result if this path is not normalized, e.g. the ancestor of degree = 1 of the path \"../..\" would be \"..\" although this is not the parent of \"../..\".\" and add \"IllegalArgumentException if this path is not normalized\" to the javadoc of getAncestor.\n\n> it seems like the Path semantics got unfortunately somehow compromised\nThere are two different things which got mixed up: paths and the hierarchy they denote. Some methods make that separation pretty clear: getDepth refers to the hirarchy and getLength to the path. However with the ancestor/descendant methods this separation is currently not that clear: although one expects them to refer to the hierarchy the current default implementation does suggest otherwise and the documentation is not clear enough (see above).",
+            "date": "2008-02-22T12:45:28.051+0000",
+            "id": 2
+        },
+        {
+            "author": "Stefan Guggisberg",
+            "body": "[...]\n>  > they're expected to operate on normalized paths.\n>  Then the documentation of the relevant methods of the Path interface should say so.\n>  \n>  I's suggest: remove \"Note that there migth be an unexpected result if this path is not normalized, e.g. the ancestor of degree = 1 of the path \"../..\" would be \"..\" although this is not the parent of \"../..\".\" and add \"IllegalArgumentException if this path is not normalized\" to the javadoc of getAncestor.\n\n+1 for javadoc improvement. i am not sure about the IllegalArgumentException...\n \n>  \n> \n>  > it seems like the Path semantics got unfortunately somehow compromised\n>  There are two different things which got mixed up: paths and the hierarchy they denote. Some methods make that separation pretty clear: getDepth refers to the hirarchy and getLength to the path. However with the ancestor/descendant methods this separation is currently not that clear: although one expects them to refer to the hierarchy the current default implementation does suggest otherwise and the documentation is not clear enough (see above).\n\nthe implementation suggesting otherwise is a bug, see JCR-1409 ;)\n\n IMO getAncestor clearly refers to the hierarchical nature of a path.\n\n>  ",
+            "date": "2008-02-22T13:10:29.822+0000",
+            "id": 3
+        },
+        {
+            "author": "Michael D\u00fcrig",
+            "body": "> i am not sure about the IllegalArgumentException\nWe could also leave the behavior undefined for not normalized paths. However I think throwing an exception is more explicit and make it easier to detect cases where some code (inadvertently) relies on such behavior.",
+            "date": "2008-02-22T13:19:10.312+0000",
+            "id": 4
+        },
+        {
+            "author": "angela",
+            "body": "i'm in favor of the IllegalArgumentException. having undefined behaviour with an interface\nlooks strange to me.... and there are quite some other possibilities for illegalargumentexception.\n\n",
+            "date": "2008-02-22T15:49:15.800+0000",
+            "id": 5
+        },
+        {
+            "author": "angela",
+            "body": "i took a closer look at isAncestor, getAncestor and the original/current definition of a normalized path:\n\n- .. and ../.. are normalized according to the definition Path (normalized = no redundant elements)\n- the problem is that getAncestor does not require the Path to be normalized (and nor does any of the\n  implementation normalize it) before retrieving the ancestor. \n- in contrast 'isAncestor' does convert non-normalized path first (and throws if that fails)\n- the problem with normalized paths containing the parent element is, that the parent of .. was ../.. \n  this special case not handled properly neither by isAncestor nor by getAncestor.\n\ni would therefore suggest to:\n\n= require Path.getAncestor to normalize the path before retrieving the ancestor.\n= add RepositoryException to the method signature of Path.getAncestor (RepositoryException if the path\n   cannot be normalized).\n   [ question: would this be a huge backward compat problem?]\n\n= Clarify that 'isAncestor' must treat the parent element properly\n= Clarify that 'getAncestor' must treat the parent element properly\n= Clarify that 'isAncestor' and 'getAncestor' must be symmetric.\n\nwhat do you think?\nangela",
+            "date": "2008-02-28T08:49:22.301+0000",
+            "id": 6
+        },
+        {
+            "author": "Michael D\u00fcrig",
+            "body": "Another idea I recently had:\n\nImplement Path.getAncestor(n) by adding n parent elements to the end of the path. That way the ancestor is defined for any path. normalized or not, relative or absolute. \n\nImplement Path.isAncestorOf as follows: (isDescendant is similar)\n\n- if not both paths are either relative or absolute, throw some exception.\n- If both paths are relative determine their depths n and m. Say n < m. If n < 0, add -n arbitrary elements at the beginning of both paths. \nNormalize the paths and check if this paths elements are a prefix of that paths elements.\n\nWith this approach the interface will not have to change and the implementation will be correct (i.e. isAncestor(getAncestor()) == true) for every path accepted by those methods. There might be a compatibility issue with implementations which rely on the current behavior of getAncestor returning ../ when called with ../../ However, I think this should be fixed in the implementation rather than keeping a core interface with a 'bogus' specification. \n",
+            "date": "2008-02-28T10:09:59.303+0000",
+            "id": 7
+        },
+        {
+            "author": "Stefan Guggisberg",
+            "body": ">  Another idea I recently had:\n>  \n>  Implement Path.getAncestor(n) by adding n parent elements to the end of the path. That way the ancestor is defined for any path. normalized or not, relative or absolute.\n\nwhile i think it's an elegant approach and the result would be certainly correct i don't think it's what the api consumer needs.\n\nPath.getAncestor(int) is heavily used in jackrabbit core. here's a common usage pattern:\n\n                parentPath = targetPath.getAncestor(1);\n                parentId = hierMgr.resolveNodePath(parentPath);\n\nthe suggested approach would probably not improve efficiency ;)\n\ni'm further afraid that the change could break the current CachingHierarchyManager implementation;\nhere's a usage example:\n\n            PathMap.Element parent = pathCache.map(path.getAncestor(1), true);\n\n\ni'd therefore prefer angela's suggestion.\n\n>  \n>  Implement Path.isAncestorOf as follows: (isDescendant is similar)\n>  \n>  - if not both paths are either relative or absolute, throw some exception.\n>  - If both paths are relative determine their depths n and m. Say n < m. If n < 0, add -n arbitrary elements at the beginning of both paths.\n>  Normalize the paths and check if this paths elements are a prefix of that paths elements.\n>  \n>  With this approach the interface will not have to change and the implementation will be correct (i.e. isAncestor(getAncestor()) == true) for every path accepted by those methods. There might be a compatibility issue with implementations which rely on the current behavior of getAncestor returning ../ when called with ../../ However, I think this should be fixed in the implementation rather than keeping a core interface with a 'bogus' specification.",
+            "date": "2008-02-29T10:39:17.650+0000",
+            "id": 8
+        },
+        {
+            "author": "Michael D\u00fcrig",
+            "body": "Ok, I suggest the following for getAncestor (credits due to Angela):\n\n- If the path is absolute, normalize and determine ancestor of given degree. Throw if this would result in a 'negative' path.\n- If the path is relative just add an appropriate number of parent elements.\n\nTogether with my proposal for isAncestorOf and isDescendant this is in accordance with Angela's suggestion while still handling relative paths correctly (i.e. isAncestor(getAncestor()) == true). Moreover there is no problem for above usage patterns.\n\n",
+            "date": "2008-02-29T15:47:43.979+0000",
+            "id": 9
+        },
+        {
+            "author": "angela",
+            "body": "fixed with resolution of JCR-1526.",
+            "date": "2008-04-10T13:41:29.311+0000",
+            "id": 10
+        }
+    ],
+    "component": "jackrabbit-spi, jackrabbit-spi-commons",
+    "description": "Although the method names refer to ancestors they operate on sub-paths. Consider:\n\nPathFactory pf = PathFactoryImpl.getInstance();\nPath.Element p = pf.getParentElement();\n\nPath path = pf.create(new Path.Element[]{p, p});\nPath ancestor = path.getAncestor(1);\n\nassertFalse(ancestor.isAncestorOf(path) )  \n\nThis is not what one would expect from looking an the method signatures. \nI suggest to rename getAncestor to getSubPath, clarify the javadoc, and deprecate getAncestorCount. \n\nA patch follows.\n",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "JCR-1402",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Minor",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "Path.getAncestor and Path.isAncestor are not symmetric",
+    "systemSpecification": true,
+    "version": "1.4"
+}

@@ -1,0 +1,89 @@
+{
+    "comments": [
+        {
+            "author": "Uwe Schindler",
+            "body": "I will look into this.",
+            "date": "2011-11-29T19:26:07.020+0000",
+            "id": 0
+        },
+        {
+            "author": "Robert Muir",
+            "body": "{quote}\nFor example, a single must clause and should clause, with the should clause not matching anything, should not match anything, but, it will match whatever the must clause matches.\n{quote}\n\nWait, this sounds correct.\n\nIf you have a MUST clause and a SHOULD clause, then the SHOULD clause is totally irrelevant (from boolean logic).\n",
+            "date": "2011-11-29T19:38:44.846+0000",
+            "id": 1
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Shay,\n\nthere was no real change caused by LUCENE-3446 or LUCENE-3458, the logic is identical before and after. To be sure I will write a test but if you look at the patch it will not change behaviour. The minShouldMatch logic was never implemented in BooleanFilter.\n\nThere was one small \"bug\" in the filter before. It handled the case that a filter clause returned null different than the case if the clause returned an empty bitset/DocIdSet.EMPTY_DOCIDSET. So the whole thing was broken before as it was not consistent. Now it behaves exactly as Robert told. \n\nThe minShouldMatch logic was caused by different behaviour on clauses returning null instead DocIdSet.EMPTY_DOCIDSET.",
+            "date": "2011-11-29T19:44:44.078+0000",
+            "id": 2
+        },
+        {
+            "author": "Shay Banon",
+            "body": "What I am saying is that BooleanFilter used to act in a way that at least one should clause should match, and it is no longer the case. Here is the logic that was before:\n\n{code}\nif (shouldFilters != null) {\n      for (int i = 0; i < shouldFilters.size(); i++) {\n        if (res == null) {\n          res = new OpenBitSetDISI(getDISI(shouldFilters, i, reader), reader.maxDoc());\n        } else { \n          DocIdSet dis = shouldFilters.get(i).getDocIdSet(reader);\n          if(dis instanceof OpenBitSet) {\n            // optimized case for OpenBitSets\n            res.or((OpenBitSet) dis);\n          } else {\n            res.inPlaceOr(getDISI(shouldFilters, i, reader));\n          }\n        }\n      }\n    }\n{code}\n    \nAssuming the getDISI returns EMTY iterator for a filter that does not match (and not null, as it will fail) for a single should clause, then the result of this will be a \"res\" all \"zeroed\" out (the first check on res==null). Then, if it went ahead and executed a must clause, it would and on a \"zeroed\" out bitset and the result is no matches.\n\nNow, with the change, we have this code:\n\n{code}\nfor (final FilterClause fc : clauses) {\n  if (fc.getOccur() == Occur.SHOULD) {\n    final DocIdSetIterator disi = getDISI(fc.getFilter(), reader);\n    if (disi == null) continue;\n    if (res == null) {\n      res = new FixedBitSet(reader.maxDoc());\n    }\n    res.or(disi);\n  }\n}\n{code}\n\nThe result of a single should clause that does not match anything is a res still set to null, and then, when it gets to the must clause, it will or it with the result of the must clause, and return the docs that match the must clause. You can see this is different compared to the previous behavior and actually, different than the expected behavior.\n\n[Update]: And the fix should be to return null only if res is null and should clauses count is higher than 0 after the check for should clause count.",
+            "date": "2011-11-29T20:20:35.902+0000",
+            "id": 3
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "I agree there is something wrong. The filter logic should change to return DocIdSet.EMPTY_DOCIDSET.iterator() in getDISI. The null check can then go and the behaviour is correct again.\nThe problem here only occurs if a filter returns the emoty instance or null. If it returns an empty BitSet it behaves as before.",
+            "date": "2011-11-29T20:32:35.315+0000",
+            "id": 4
+        },
+        {
+            "author": "Shay Banon",
+            "body": "I don't think this is the best fix, since null values for empty values allows for early exit and less processing (not sure why the bool filter does not return null if it match nothing). Why not just implement the fix I suggested?",
+            "date": "2011-11-29T20:35:28.117+0000",
+            "id": 5
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "This is the easy patch. We still need a test, but it fixes the behaviour change.",
+            "date": "2011-11-29T20:46:36.676+0000",
+            "id": 6
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "bq. not sure why the bool filter does not return null if it match nothing\n\nThis does not matter, processing is the same. DocIdSet.EMPTY_DOCIDSET has same effect like null in Lucene's internals (there are checks handling those special values). In my opinion we should disallow null as return value in filters completely.\n\nThe attached patch is the easy fix that does exactly the same like before, but it's indeed less efficient as it would return an empty FixedBitSet. So a shortcut would be nice.\n\nIt can of course still happen that a clause returns an empty BitSet, but then the code would still work correct (but without short circuit).",
+            "date": "2011-11-29T21:07:47.742+0000",
+            "id": 7
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Here the fix with short-circuit.",
+            "date": "2011-11-29T21:10:27.872+0000",
+            "id": 8
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Path with testcase testing all special cases (all patches for 3.x)",
+            "date": "2011-11-29T22:08:31.871+0000",
+            "id": 9
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Committed 3.x revision: 1208375\n\nNow forward-porting",
+            "date": "2011-11-30T10:55:29.820+0000",
+            "id": 10
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Committed trunk revision: 1208381",
+            "date": "2011-11-30T11:09:15.766+0000",
+            "id": 11
+        }
+    ],
+    "component": "core/search",
+    "description": "The change LUCENE-3446 causes a change in behavior in BooleanFilter. It used to work as if minimum should match clauses is 1 (compared to BQ lingo), but now, if no should clauses match, then the should clauses are ignored, and for example, if there is a must clause, only that one will be used and returned.\n\nFor example, a single must clause and should clause, with the should clause not matching anything, should not match anything, but, it will match whatever the must clause matches.\n\nThe fix is simple, after iterating over the should clauses, if the aggregated bitset is null, return null.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-3609",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "BooleanFilter changed behavior in 3.5, no longer acts as if \"minimum should match\" set to 1",
+    "systemSpecification": true,
+    "version": "3.5"
+}

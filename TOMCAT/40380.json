@@ -1,0 +1,41 @@
+{
+    "comments": [
+        {
+            "author": null,
+            "body": "Have you run into any issues with this, or was it just a random code inspection?",
+            "date": "20061225T05:43:08",
+            "id": 0
+        },
+        {
+            "author": null,
+            "body": "Just to butt in here.  \n\nThe easiest fix is to move or copy the if(expiring) inside the synchronized()\nsection.\n\nDoes such a large block have to be synchronized(this) {} ?  I can't see any\nother code using synchronized(this) in the class (or synchronized(session) in\nthe package), so I guess the only thing being protected is the\nif(expiring==false) { expiring=true; } test and set.\n\n\nAs things stand now is the StandardSession author sure there is no issue of\nneeding to make the JVM perform a memory write barrier ?  To ensure that\nexpiring=true is flushed for other threads see it immediately.  Otherwise the\nJVM maybe free to optimize (and defer) this write to memory (unless you start\ngetting into declaring 'expiring' volatile).\n\n\nSuggestion:\n\nif (expiring)\n    return;\n\nsynchronized (this) {\n    if (expiring)\n        return;\n    if (manager == null)\n        return;\n    expiring = true;\n}\n\n// From here is no need to keep the lock AFAIKS and by closing the\nsynchronized() we will ensure memory write barrier.\n\n// Towards the end of the function it sets expiring=false; I dont think the any\ncode in critical to seeing the expiring==false again, not once isValid==false in\nanycase.",
+            "date": "20061227T01:42:26",
+            "id": 1
+        },
+        {
+            "author": null,
+            "body": "This has been fixed in trunk and proposed for 6.0.x and 5.5.x",
+            "date": "20090714T10:36:52",
+            "id": 2
+        },
+        {
+            "author": null,
+            "body": "This has been fixed in 6.0.x and 5.5.x and will be included in 6.0.21 and 5.5.28 onwards.",
+            "date": "20090717T04:16:21",
+            "id": 3
+        }
+    ],
+    "component": "Servlet & JSP API",
+    "description": "public void expire(boolean notify) {\n\n        // Mark this session as \"being expired\" if needed\n        if (expiring)\n            return;\n\n// No man's land here\n\n        synchronized (this) {\n\n            if (manager == null)\n                return;\n\n            expiring = true;",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "40380",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "P2 normal",
+    "product": "Tomcat 5",
+    "project": "TOMCAT",
+    "summary": "Potential syncro problem in StandardSession.expire(boolean)",
+    "systemSpecification": true,
+    "version": "5.5.5"
+}

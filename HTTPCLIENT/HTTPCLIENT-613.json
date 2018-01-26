@@ -1,0 +1,71 @@
+{
+    "comments": [
+        {
+            "author": "Julius Davies",
+            "body": "patch also includes fix of an NPE when using createSocket( Socket s )  [the method that upgrades pre-existing plain socket to SSLSocket].\n\nNot sure where to put my testing code - sorry I'm such a newb!  Here's the testing code:\n\n    public static void main( String[] args ) throws Exception {\n        String host = args[ 0 ];        \n        SSLSocketFactory f = new SSLSocketFactory();\n        HttpParams params = new DefaultHttpParams();\n        try {\n            Socket s = f.createSocket( args[ 0 ], 443, null, 0, params );\n            exercise( host, s );\n            s.close();\n        } catch ( Exception e ) {\n            System.out.println( \"test1: \" + e );\n        }\n        try {\n            Socket s = new Socket( args[ 0 ], 443 );\n            s = f.createSocket( s, args[ 0 ], 443, true );\n            exercise( host, s );\n            s.close();\n        } catch ( Exception e ) {\n            System.out.println( \"test2: \" + e );\n        }        \n    }\n\n    private static void exercise( String host, Socket s ) throws Exception {\n        InputStream in = s.getInputStream();\n        OutputStream out = s.getOutputStream();\n        out.write( ( \"HEAD / HTTP/1.1\\r\\n\" +\n                     \"host: \" + host + \"\\r\\n\\r\\n\" ).getBytes() );\n        out.flush();\n\n        for ( int i = 0; i < 64; i++ ) {\n            int b = in.read();\n            if ( b == -1 ) {\n                break;\n            }\n            else {\n                System.out.print( (char) b );\n            }\n        }\n        System.out.println();\n    }\n",
+            "date": "2006-12-06T04:29:09.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Julius Davies",
+            "body": "To account for a problem with IBM 1.4.x JVM's, I think we should also test against sslSocket.getSession() being null.  If it is null, we should try to get the socket to blowup by calling socket.getInputStream().available().\n\nSSLSocket ssl = (SSLSocket) s;\nSSLSession session = ssl.getSession();\nif ( session == null ) {\n    // In our experience this only happens under IBM 1.4.x.\n    // hopefully this will unearth the real problem:\n    ssl.getInputStream().available();\n}\n\n[Not sure how to deal with this 2nd patch.  Do I upload a new patch containing both fixes?  Sorry I'm such a newb!]\n\nHere's some background info:\n\nThe IBM 1.4.x JVM, when acting as an SSL client, is quite picky about the certificate chain that the server presents.  If the server includes some stray certificates in the chain, IBM will blowup.\n\nBut it takes a little while to blowup:\n\nSSLSocket s = factory.createSocket( host, port );\n\n// okay, we're still okay\n\nSSLSession session = s.getSession();\n\n// still okay!  No exceptions thrown!   But session is null.  Uh oh.\n\nInputStream in = s.getInputStream();\n\n// Still no exceptions thrown!  Wow, IBM is a survivor.\n\nin.available();\n\n// ! * BOOM * !\n\njavax.net.ssl.SSLHandshakeException: bad certificate\n        at com.ibm.jsse.bv.a(Unknown Source)\n        at com.ibm.jsse.a.a(Unknown Source)\n        at com.ibm.jsse.a.available(Unknown Source)\n\n",
+            "date": "2006-12-07T22:09:03.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "> Not sure how to deal with this 2nd patch. Do I upload a new patch containing both fixes? \n\nYes, you do. That's the easiest way.\n\nOverall the patch looks good to me.  I'll review it a little more thoroughly in the morning and commit the changes to SVN\n\nMany thanks for this contribution, Julius\n\nOleg",
+            "date": "2006-12-07T23:49:22.000+0000",
+            "id": 2
+        },
+        {
+            "author": "Julius Davies",
+            "body": "- Better formatting on the curly braces (e.g. \"} else {\" now on one line).\n\n- A few more comments.\n\n- Hostname verification no longer throws an NPE under IBM 1.4.2 when accessing a server that has spurious certificates in its chain.  Instead it throws the underlying reason that's actually bothering IBM (IBM-1.4.x hates spurious certificates!).\n\n\nHere's some testing:\n=======================================\nAbility to deal with spurious certificates in chain.\n(I only tested on Linux)\n\nSucceeds:\n------------------------\nIBM 1.5.0\nJRockit 1.4.2\nJRockit 1.5.0\nSun 1.4.2\nSun 1.5.0\nSun 1.6.0-rc\n\nFails:\n------------------------\nIBM 1.4.2\n\n",
+            "date": "2006-12-08T01:43:27.000+0000",
+            "id": 3
+        },
+        {
+            "author": "Julius Davies",
+            "body": "- I think this one is the best patch.\n\n- Okay, it's my first substantial patch to an apache project.  I'm excited and I've gone insane.\n\n- Improved comments even more.\n\n- Attempted to deal with the [*.co.uk] wildcard problem.  I think I've taken a decent first stab at the problem.",
+            "date": "2006-12-08T03:13:21.000+0000",
+            "id": 4
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Patch (with some minor tweaks) checked in. Many thanks, Julius\n\nNow, since there appears to be many ways to skin a cat (I mean to check CN of x509 cert), we should provide a means to inject a case specific implementation of the CN verifier instead of trying to cover all possible scenarios with one implementation . I think we should come up with abstract interface to represent the process of CN verification and provide multiple implementations of it (lenient, strict, IBMJSSE specific). This should also allow for better unit testing of the CN verification logic. Speaking of which, some unit tests would be just awesome.\n\nOleg",
+            "date": "2006-12-08T10:58:44.000+0000",
+            "id": 5
+        },
+        {
+            "author": "Martin van den Bemt",
+            "body": "    // The CN better have at least two dots if it wants wildcard action.\n+        // (Hmmm... what about *.co.uk ???  Eeek!  Something to think about\n+        // on a rainy day, I guess.)\n\nAccording to your code.. If I am not mistaken .co.uk contains at least 2 dots...\n\nAnd officially (just had to deal with that issue), you need a wildcard certificate for every subdomain so :\n*.apache.org is a wildcard cerficiate for hostname.apache.org (just that level).\nIf you want to have a valid certifacate for eg subhostname.hostname.apache.org, you need to get a *.subhostname.hostname.apache.org certificate for that seperately (although browsers seem to accept this stuff).\n\nI chose to have an hostname verifier setup that accepts above, but that is just used for staging and test environments (to prevent us from buyin a huge load of certificates)\n\nHTH..\n\nMvgr,\nMartin",
+            "date": "2006-12-08T16:08:01.000+0000",
+            "id": 6
+        },
+        {
+            "author": "Julius Davies",
+            "body": "HTTPCLIENT-614 will try to address Martin's concerns.\n\nThis wiki entry has an interesting catalog of browser behaviour:\n\nhttp://wiki.cacert.org/wiki/WildcardCertificates\n\n- IE6 doesn't allow subdomains (so follows the RFC).   *.apache.org  does not match  \"a.b.apache.org\".\n\n- Firefox/Mozilla allows subdomains (breaks RFC).    *.apache.org  DOES MATCH  \"a.b.apache.org\"!\n\n- New versions of Konqueror (so Safari too?) allows subdomains (breaks RFC).\n\n- Operat allows subdomains (breaks RFC).\n\n\nI think I'll do some experimentation on my own and test some additional clients.  I'll add my findings to cacert's very handy wiki!  Curious about the following (but I'm lazy so I'm just going to stick to Linux):\n\n- wget\n- curl\n- java.net.URL on the following:\n   1.  Sun Java 1.3.1 + JSSE  \n   2.  Sun Java 1.4.2\n   3.  Sun Java 5.0\n   4.  Sun Java 6.0\n   5.  IBM Java 1.4.2\n   6.  IBM Java 5.0\n   7.  JRockit Java 1.4.2\n   8.  JRockit Java 5.0\n\n",
+            "date": "2006-12-08T16:45:27.000+0000",
+            "id": 7
+        },
+        {
+            "author": "Martin van den Bemt",
+            "body": "Sorry for the noise.. Completely missed issue 614..",
+            "date": "2006-12-08T17:01:30.000+0000",
+            "id": 8
+        }
+    ],
+    "component": "HttpClient (classic)",
+    "description": "https should check CN of x509 cert\n\nSince we're essentially rolling our own \"HttpsURLConnection\",  the checking provided by \"javax.net.ssl.HostnameVerifier\" is no longer in place.\n\nI have a patch I'm about to attach which caused both createSocket() methods on o.a.h.conn.ssl.SSLSocketFactory to blowup:\n\ntest1: javax.net.ssl.SSLException: hostname in certificate didn't match: <vancity.com> != <www.vancity.com>\ntest2: javax.net.ssl.SSLException: hostname in certificate didn't match: <vancity.com> != <www.vancity.com>\n\nHopefully people agree that this is desirable.\n",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "HTTPCLIENT-613",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "BUG",
+    "priority": "Critical",
+    "product": "HTTPCLIENT",
+    "project": "HTTPCLIENT",
+    "summary": "https should check CN of x509 cert",
+    "systemSpecification": true,
+    "version": ""
+}

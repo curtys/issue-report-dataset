@@ -1,0 +1,35 @@
+{
+    "comments": [
+        {
+            "author": "Jukka Zitting",
+            "body": "This seems like a more generic problem, as we've seen this problem also in a normal save() call with Jackrabbit 1.4.x:\n\njava.lang.NullPointerException\n\tat org.apache.jackrabbit.core.observation.EventStateCollection.getNodeType(EventStateCollection.java:476)\n\tat org.apache.jackrabbit.core.observation.EventStateCollection.createEventStates(EventStateCollection.java:179)\n\tat org.apache.jackrabbit.core.state.SharedItemStateManager$Update.begin(SharedItemStateManager.java:672)\n\tat org.apache.jackrabbit.core.state.SharedItemStateManager.beginUpdate(SharedItemStateManager.java:843)\n\tat org.apache.jackrabbit.core.state.SharedItemStateManager.update(SharedItemStateManager.java:873)\n\tat org.apache.jackrabbit.core.state.LocalItemStateManager.update(LocalItemStateManager.java:334)\n\tat org.apache.jackrabbit.core.state.XAItemStateManager.update(XAItemStateManager.java:337)\n\tat org.apache.jackrabbit.core.state.LocalItemStateManager.update(LocalItemStateManager.java:310)\n\tat org.apache.jackrabbit.core.state.SessionItemStateManager.update(SessionItemStateManager.java:317)\n\tat org.apache.jackrabbit.core.ItemImpl.save(ItemImpl.java:1251)\n",
+            "date": "2009-12-14T15:05:41.084+0000",
+            "id": 0
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "As a first step I added (r890401) a simple workaround that detects the case when the old parent of a moved node is no longer available and replaced the NPE with an error log message. Note that required REMOVE event is *not* fired in such cases,  so this is not a final solution to this problem. But at least the MOVED and ADDED events now get fired and no NPE is thrown.",
+            "date": "2009-12-14T17:03:27.611+0000",
+            "id": 1
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Resolving as fixed based on the above partial solution. If we need a more complete solution, we can do that in a separate followup issue.",
+            "date": "2010-11-08T22:39:38.883+0000",
+            "id": 2
+        }
+    ],
+    "component": "jackrabbit-core, transactions, versioning",
+    "description": "When removing a Version with a versionlabel and restoring an other Version from the same containing history within 1 transaction, a NPE occured. When debugging I noticed the method createEventStates was entered with an UUID from a versionLabel. The ChangeLog.get(id) returned null.\n\nCaused by: java.lang.NullPointerException\n\tat org.apache.jackrabbit.core.observation.EventStateCollection.getNodeType(EventStateCollection.java:614)\n\tat org.apache.jackrabbit.core.observation.EventStateCollection.createEventStates(EventStateCollection.java:381)\n\tat org.apache.jackrabbit.core.state.SharedItemStateManager$Update.begin(SharedItemStateManager.java:697)\n\tat org.apache.jackrabbit.core.state.SharedItemStateManager.beginUpdate(SharedItemStateManager.java:1085)\n\tat org.apache.jackrabbit.core.state.XAItemStateManager.prepare(XAItemStateManager.java:163)\n\tat org.apache.jackrabbit.core.version.XAVersionManager.prepare(XAVersionManager.java:509)\n\tat org.apache.jackrabbit.core.TransactionContext.prepare(TransactionContext.java:154)\n\tat org.apache.jackrabbit.core.XASessionImpl.prepare(XASessionImpl.java:331)\n\tat org.springmodules.jcr.jackrabbit.support.JackRabbitUserTransaction.commit(JackRabbitUserTransaction.java:100)\n\tat org.springmodules.jcr.jackrabbit.LocalTransactionManager.doCommit(LocalTransactionManager.java:192)",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "JCR-2298",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "NPE in EventStateCollection",
+    "systemSpecification": true,
+    "version": "1.6"
+}

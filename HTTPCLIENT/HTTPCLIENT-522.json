@@ -1,0 +1,101 @@
+{
+    "comments": [
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Folks, \n\nWe have a release blocker and the most serious bug in HttpClient 3.0 to date\n\nOleg",
+            "date": "2005-11-03T22:23:28.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "All right. Things are not as bad as they seemed initially. \n\n(1) The proxy credentials are leaked to the origin server via a secure tunnel\nONLY if the preemptive authentication is being used. The preemptive\nauthentication by itself is a hack and a security risk and should be avoided at\nall costs.\n\n(2) This bug does not affect any of the official releases thanks to the HTTPCLIENT-514\n\nThere is no reason to block the release.\n\nA fix coming shortly.\n\nOleg",
+            "date": "2005-11-04T04:59:47.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Michael Schaefer",
+            "body": "(In reply to comment #2) \n[..] \n> The preemptive authentication by itself is a hack and a security risk and  \n> should be avoided at all costs. \n[..] \n \nIs there a other way than preemptive autentication to work around the problem \nwith Squid 2.4 mentioned in HTTPCLIENT-514 ? \nThe Squid 2.4 problem was the reason why I had to enable preemptive \nauthentication. ",
+            "date": "2005-11-04T05:14:53.000+0000",
+            "id": 2
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "(In reply to comment #3)\n> (In reply to comment #2) \n> [..] \n> > The preemptive authentication by itself is a hack and a security risk and  \n> > should be avoided at all costs. \n> [..] \n>  \n> Is there a other way than preemptive autentication to work around the problem \n> with Squid 2.4 mentioned in HTTPCLIENT-514 ? \n> The Squid 2.4 problem was the reason why I had to enable preemptive \n> authentication. \n\nMichael,\n\nHttpClient 3.0 API has several severe design flaws, one being really broken\ntunneling support (see HTTPCLIENT-136 for details). The problem could have been\nsolved by adding 'Proxy-connection: close' header to the CONNECT request, which\nis, sadly, not possible with the existing API.\n\nOleg",
+            "date": "2005-11-04T05:34:17.000+0000",
+            "id": 3
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Created an attachment (id=16871)\nPatch (take 1)\n\nPlease review and test\n\nOleg",
+            "date": "2005-11-04T05:58:08.000+0000",
+            "id": 4
+        },
+        {
+            "author": "Michael Schaefer",
+            "body": "(In reply to comment #5) \n> Patch (take 1)  \n> Please review and test \n \nLooks good!: \n \n2005/11/03 22:42:17:814 CET [DEBUG] HttpMethodDirector - Preemptively sending \ndefault basic credentials \n2005/11/03 22:42:18:051 CET [DEBUG] HttpMethodDirector - Authenticating with \nBASIC <any realm>@test:443 \n2005/11/03 22:42:18:052 CET [WARN] HttpMethodDirector - Required credentials \nnot \navailable for BASIC <any realm>@test:443 \n2005/11/03 22:42:18:052 CET [WARN] HttpMethodDirector - Preemptive \nauthentication requested but no default credentials available \n2005/11/03 22:42:18:053 CET [DEBUG] HttpConnection - Open connection to \n127.0.0.1:3128 \n2005/11/03 22:42:18:407 CET [DEBUG] HttpMethodDirector - Preemptively sending \ndefault basic credentials \n2005/11/03 22:42:18:408 CET [DEBUG] HttpMethodDirector - Authenticating with \nBASIC <any realm>@127.0.0.1:3128 \n2005/11/03 22:42:18:409 CET [DEBUG] HttpMethodParams - Credential charset not \nconfigured, using HTTP element charset \n2005/11/03 22:42:18:647 CET [DEBUG] header - >> \"CONNECT test:443 \nHTTP/1.1\" \n2005/11/03 22:42:18:648 CET [DEBUG] HttpMethodBase - Adding Host request header \n2005/11/03 22:42:18:649 CET [DEBUG] header - >> \"Proxy-Authorization: Basic \ncHJveHk6dGVzdA==[\\r][\\n]\" \n2005/11/03 22:42:18:651 CET [DEBUG] header - >> \"User-Agent: Jakarta \nCommons-HttpClient/3.0-rc4[\\r][\\n]\" \n2005/11/03 22:42:18:652 CET [DEBUG] header - >> \"Host: test[\\r][\\n]\" \n2005/11/03 22:42:18:652 CET [DEBUG] header - >> \"Proxy-Connection: \nKeep-Alive[\\r][\\n]\" \n2005/11/03 22:42:18:655 CET [DEBUG] header - >> \"[\\r][\\n]\" \n2005/11/03 22:42:18:911 CET [DEBUG] header - << \"HTTP/1.0 200 Connection \nestablished[\\r][\\n]\" \n2005/11/03 22:42:19:141 CET [DEBUG] ConnectMethod - CONNECT status code 200 \n2005/11/03 22:42:19:142 CET [DEBUG] HttpConnection - Secure tunnel to \ntest:443 \n2005/11/03 22:42:19:702 CET [DEBUG] header - >> \"GET / HTTP/1.1[\\r][\\n]\" \n2005/11/03 22:42:19:703 CET [DEBUG] HttpMethodBase - Adding Host request header \n2005/11/03 22:42:20:030 CET [DEBUG] header - >> \"User-Agent: Jakarta \nCommons-HttpClient/3.0-rc4[\\r][\\n]\" \n2005/11/03 22:42:20:031 CET [DEBUG] header - >> \"Host: test[\\r][\\n]\" \n2005/11/03 22:42:20:031 CET [DEBUG] header - >> \"[\\r][\\n]\" \n2005/11/03 22:42:20:555 CET [DEBUG] header - << \"HTTP/1.1 200 OK[\\r][\\n]\" \n2005/11/03 22:42:20:558 CET [DEBUG] header - << \"Date: Thu, 03 Nov 2005 \n21:42:13 \nGMT[\\r][\\n]\" \n2005/11/03 22:42:20:559 CET [DEBUG] header - << \"Server: Apache/1.3.26 (Unix) \n[\\r][\\n]\" \n2005/11/03 22:42:20:559 CET [DEBUG] header - << \"Last-Modified: Tue, 26 Jun \n2001 \n13:13:35 GMT[\\r][\\n]\" \n2005/11/03 22:42:20:559 CET [DEBUG] header - << \"ETag: \n\"3d0077-d1-3b388a7f\"[\\r][\\n]\" \n2005/11/03 22:42:20:560 CET [DEBUG] header - << \"Accept-Ranges: bytes[\\r][\\n]\" \n2005/11/03 22:42:20:560 CET [DEBUG] header - << \"Content-Length: 209[\\r][\\n]\" \n2005/11/03 22:42:20:560 CET [DEBUG] header - << \"Content-Type: \ntext/html[\\r][\\n]\" \nHTTP/1.1 200 OK \n \nProxy authorization is only send to proxy. ",
+            "date": "2005-11-04T06:59:52.000+0000",
+            "id": 5
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Created an attachment (id=16873)\nPatch (take 2)\n\nFix + test case. Please review\n\nOleg",
+            "date": "2005-11-04T22:58:02.000+0000",
+            "id": 6
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Folks, any objections to checking this patch in?\n\nOleg",
+            "date": "2005-11-07T03:24:38.000+0000",
+            "id": 7
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Odi,\nIs it ok to commit this one?\n\nOleg",
+            "date": "2005-11-07T22:10:11.000+0000",
+            "id": 8
+        },
+        {
+            "author": "Ortwin Gl\u00fcck",
+            "body": "I would like to say yes, but honestly I have not had time to really look at the\ncode. Just looking at the patch is not enough in this case...",
+            "date": "2005-11-07T22:18:48.000+0000",
+            "id": 9
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Seems okay to me.  Please correct me if I'm wrong, this only works becase the\nCONNECT method is always HTTP and the tunnel will always be HTTPS.  I haven't\ntested this out, but does this work correctly for non HTTPS proxying?\n\nMike",
+            "date": "2005-11-07T23:12:54.000+0000",
+            "id": 10
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "(In reply to comment #11)\n> Seems okay to me.  Please correct me if I'm wrong, this only works becase the\n> CONNECT method is always HTTP \n\nTrue\n\n> and the tunnel will always be HTTPS.  \n\nNot really. HttpClient can only tunnel HTTPS connections, but ProxyClient can\ntunnel anything\n\n> I haven't\n> tested this out, but does this work correctly for non HTTPS proxying?\n> \n\nI believe so. There's a test case for it. I have also tested it against Squid\nproxy on my PC\n\nOleg\n\n\n> Mike\n\n",
+            "date": "2005-11-08T00:05:43.000+0000",
+            "id": 11
+        },
+        {
+            "author": "Michael Becke",
+            "body": "(In reply to comment #12)\n> Not really. HttpClient can only tunnel HTTPS connections, but ProxyClient can\n> tunnel anything\n\nTrue, but that should not be a problem as ProxyClient is only responsible for\ncreating the tunnel and not the subsequent trasmissions.\n\n> I believe so. There's a test case for it. I have also tested it against Squid\n> proxy on my PC\n\nSounds good.\n\nThanks,\n\nMike",
+            "date": "2005-11-08T01:07:12.000+0000",
+            "id": 12
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Patch checked in\n\nOleg",
+            "date": "2005-11-08T06:37:21.000+0000",
+            "id": 13
+        }
+    ],
+    "component": "HttpClient (classic)",
+    "description": "I'm using httpclient (svn-trunk of today) to connect to a remote SSL-Host \nvia a proxy. The proxy requires authorization (basic) and I want to use \npreemptive authorization. \n \nSince HTTPCLIENT-514 is fixed the preemptive authorization works, but my traces \nshow that the proxy credentials are also transmitted to the remote host \nthrough the CONNECT-tunnel, thus disclosing sensitive information to the \nremote host. \n \nMy code looks like this: \n \nHttpClient client = new HttpClient(); \nHttpMethod method = new GetMethod(\"https://test\"); \n \nclient.getHostConfiguration().setProxy(\"127.0.0.1\",3128); \nclient.getState().setProxyCredentials( \n                new AuthScope(\"127.0.0.1\", 3128), \n                new UsernamePasswordCredentials(\"proxy\", \"test\")); \nclient.getState().setAuthenticationPreemptive(true); \nclient.executeMethod(method); \n \nThe trace: \n \n2005/11/03 13:53:13:244 CET [DEBUG] HttpMethodDirector - Preemptively \nsending default basic credentials \n2005/11/03 13:53:13:261 CET [DEBUG] HttpMethodDirector - Authenticating \nwith BASIC <any realm>@127.0.0.1:3128 \n2005/11/03 13:53:13:262 CET [DEBUG] HttpMethodParams - Credential charset \nnot configured, using HTTP element charset \n2005/11/03 13:53:13:266 CET [DEBUG] HttpMethodDirector - Authenticating \nwith BASIC <any realm>@test:443 \n2005/11/03 13:53:13:267 CET [WARN] HttpMethodDirector - Required \ncredentials not available for BASIC <any realm>@test:443 \n2005/11/03 13:53:13:267 CET [WARN] HttpMethodDirector - Preemptive \nauthentication requested but no default credentials available \n2005/11/03 13:53:13:268 CET [DEBUG] HttpConnection - Open connection to \n127.0.0.1:3128 \n2005/11/03 13:53:13:279 CET [DEBUG] HttpMethodDirector - Preemptively \nsending default basic credentials \n2005/11/03 13:53:13:280 CET [DEBUG] HttpMethodDirector - Authenticating \nwith BASIC <any realm>@127.0.0.1:3128 \n2005/11/03 13:53:13:280 CET [DEBUG] HttpMethodParams - Credential charset \nnot configured, using HTTP element charset \n2005/11/03 13:53:13:283 CET [DEBUG] header - >> \"CONNECT test:443 HTTP/1.1\" \n2005/11/03 13:53:13:284 CET [DEBUG] HttpMethodBase - Adding Host request \nheader \n2005/11/03 13:53:13:284 CET [DEBUG] header - >> \"Proxy-Authorization: \nBasic cHJveHk6dGVzdA==[\\r][\\n]\" \n2005/11/03 13:53:13:285 CET [DEBUG] header - >> \"User-Agent: Jakarta \nCommons-HttpClient/3.0-rc4[\\r][\\n]\" \n2005/11/03 13:53:13:285 CET [DEBUG] header - >> \"Host: test[\\r][\\n]\"       \n                                                                           \n2005/11/03 13:53:13:286 CET [DEBUG] header - >> \"Proxy-Connection: \nKeep-Alive[\\r][\\n]\" \n2005/11/03 13:53:13:286 CET [DEBUG] header - >> \"[\\r][\\n]\"                 \n                                                                         \n2005/11/03 13:53:13:311 CET [DEBUG] header - << \"HTTP/1.0 200 \nConnection established[\\r][\\n]\"                                            \n2005/11/03 13:53:13:326 CET [DEBUG] ConnectMethod - CONNECT status code 200 \n2005/11/03 13:53:13:327 CET [DEBUG] HttpConnection - Secure tunnel to \ntest:443 \n2005/11/03 13:53:13:418 CET [DEBUG] header - >> \"GET / HTTP/1.1[\\r][\\n]\" \n2005/11/03 13:53:13:420 CET [DEBUG] HttpMethodBase - Adding Host request \nheader \n2005/11/03 13:53:13:423 CET [DEBUG] header - >> \"Proxy-Authorization: \nBasic cHJveHk6dGVzdA==[\\r][\\n]\" \n2005/11/03 13:53:13:424 CET [DEBUG] header - >> \"User-Agent: Jakarta \nCommons-HttpClient/3.0-rc4[\\r][\\n]\" \n2005/11/03 13:53:13:425 CET [DEBUG] header - >> \"Host: test[\\r][\\n]\" \n2005/11/03 13:53:13:425 CET [DEBUG] header - >> \"[\\r][\\n]\" \n2005/11/03 13:53:14:391 CET [DEBUG] header - << \"HTTP/1.1 200 OK[\\r][\\n]\" \n \nAs you can see the proxy credentials are also transmitted through the \nSSL-tunnel to the remote host which is a security risk.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "HTTPCLIENT-522",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "HTTPCLIENT",
+    "project": "HTTPCLIENT",
+    "summary": "ProxyCredentials disclosed to remote host",
+    "systemSpecification": true,
+    "version": ""
+}

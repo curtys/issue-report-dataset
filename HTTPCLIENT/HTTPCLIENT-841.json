@@ -1,0 +1,89 @@
+{
+    "comments": [
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Bizarre. Anyone has an idea why this should matter?\n\nOleg",
+            "date": "2009-04-15T18:37:44.800+0000",
+            "id": 0
+        },
+        {
+            "author": "Sebb",
+            "body": "This may be completely off-base, but:\n\nIs it possible that the RefQueueWorker shutdown() method was called directly, rather than using the appropriate pool shutdown() method(s)?\n\n[Maybe the RefQueueWorker shutdown() method should be package scope?]\n\nMight be worth adding some debug code to check whether or not the refHandler resources have all been released.\nNot sure where to put this though, as RefQueueWorker.shutdown() is called first.",
+            "date": "2009-04-16T11:31:37.624+0000",
+            "id": 1
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "This code was originally written by Roland and I suspect he never managed to get around to finishing it completely. I am a bit uneasy about touching component no one seems to have good knowledge of and making changes no one seems to be completely sure about.\n\nI am leaning towards just disabling garbage collection of connections for the 4.0 release and revisiting this problem in the course of 4.1 development.\n\nAny objections to that?\n\nOleg",
+            "date": "2009-04-16T12:51:06.757+0000",
+            "id": 2
+        },
+        {
+            "author": "Sam Berlin",
+            "body": "I have a little familiarity with it. I'll take a look -- I think the garbage collection closing is a useful thing to keep, if possible.  ",
+            "date": "2009-04-16T12:55:30.406+0000",
+            "id": 3
+        },
+        {
+            "author": "Sebb",
+            "body": "The implementation is currently difficult to make thread-safe, so removing it would be good.\n\nIf redesigned, it would be good to remove/rework the enableConnectionGC() method, which can only be called immediately after creating the pool.\nThe method creates additional instance objects (refQueue and refWorker); if these could be optionally created at construction time they could be made final to improve thread-safety. There would still need to be a way to start the RefQueueWorker thread after the AbstractConnPool was created, but this could be done by the concrete subclass constructor (as is done now).",
+            "date": "2009-04-16T13:36:00.843+0000",
+            "id": 4
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Sam,\n\nBy all of means please do take a stab at it. However, personally I would prefer to be on the cautious side and exclude this feature for the 4.0 release anyway.\n\nOleg",
+            "date": "2009-04-16T18:18:34.518+0000",
+            "id": 5
+        },
+        {
+            "author": "Sebb",
+            "body": "If the feature was made optional - e.g. via a parameter as hinted at in the code - then the default could be to not include it.",
+            "date": "2009-04-16T18:22:38.658+0000",
+            "id": 6
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Folks\n\nI took a look at this issue and this is what I have to say. With Roland gone I do not see a way of coming up with a reliable fix for the problem without removing / disabling the connection garbage collection code. Moreover, I can't help thinking this feature causes more harm than good. It basically makes ThreadSafeClientConnManager, well, not thread safe. Personally I am prepared to go as far as breaking the API compatibility to have a better peace of mind about reliability of ThreadSafeClientConnManager and to simplify a fairly complex code, which all this GC magic makes even more complex.\n\nI'll once again try to get in touch with Google folks to find out how they feel about possibility of breaking API / binary compatibility with Android.\n\nI am attaching a patch that completely rips out garbage collection of connections.\n\nOleg",
+            "date": "2009-06-05T15:17:44.994+0000",
+            "id": 7
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Similar patch but retaining 100% API compatibility. If I hear no objections, and no one steps in to fix the connection GC code, I'll commit this patch in a few days and close the issue.\n\nOleg",
+            "date": "2009-06-10T09:16:26.395+0000",
+            "id": 8
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Patch checked in. Please re-test\n\nOleg",
+            "date": "2009-06-13T10:21:12.291+0000",
+            "id": 9
+        },
+        {
+            "author": "Olivier Lamy (*$^\u00a8%`\u00a3)",
+            "body": "So personnaly I have some issues with currently.\nIs it really fixed ?\nI will attached a jvm error pid.",
+            "date": "2009-09-11T14:23:52.426+0000",
+            "id": 10
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Olivier,\n\nYes, I am pretty certain HTTPCLIENT-841as been fixed. I have taken a cursory look at the jvm dump and so far I see no evidence of a memory leak or HttpClient being the cause of the JVM crash. JVM process died unexpectedly, that is for sure, but the reasons appears to be an internal JVM bug\n\n---\n#  Internal Error (sharedRuntime.cpp:461), pid=21886, tid=20\n#  Error: guarantee(false,\"missing exception handler\")\n---\n",
+            "date": "2009-09-11T14:53:12.126+0000",
+            "id": 11
+        }
+    ],
+    "component": "HttpClient (classic)",
+    "description": "When using ThreadSafeClientConnManager and developing with Jetty using auto-redeploy feature eventually I run into a PermGen out of memory exception.  I investigated with YourKit 8.0.6 and found a class loader circular reference in RefQueueWorker.  Not really sure what I was doing I made the refQueueHandler non-final and nulled it in the shutdown method of RedQueueWorker.  I don't seem to have the problem any longer with circular class loader references.\n\nHere is a diff from 4.0-beta2\n\n\n--- httpclient/src/main/java/org/apache/http/impl/conn/tsccm/RefQueueWorker.jav(revision 763223)\n+++ httpclient/src/main/java/org/apache/http/impl/conn/tsccm/RefQueueWorker.jav(working copy)\n@@ -50,7 +50,7 @@\n     protected final ReferenceQueue<?> refQueue;\n \n     /** The handler for the references found. */\n-    protected final RefQueueHandler refHandler;\n+    protected RefQueueHandler refHandler;\n \n \n     /**\n@@ -112,6 +112,8 @@\n             this.workerThread = null; // indicate shutdown\n             wt.interrupt();\n         }\n+\n+        refHandler = null;\n     }\n \n \n",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "HTTPCLIENT-841",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "HTTPCLIENT",
+    "project": "HTTPCLIENT",
+    "summary": "potential memory leak when using ThreadSafeClientConnManager",
+    "systemSpecification": true,
+    "version": "4.0 Beta 2"
+}

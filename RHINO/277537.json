@@ -1,0 +1,71 @@
+{
+    "comments": [
+        {
+            "author": "martin.honnen@gmx.de",
+            "body": "The problem with isXMLName doesn't seem to be restricted to that particular\ncase, here are some tests where Rhino all yields true while the result should be\nfalse I think:\n\nRhino 1.6 release 1 2004 11 30\njs> isXMLName(String.fromCharCode(8364) + '1')\ntrue\njs> isXMLName('-el')\ntrue\njs> isXMLName('1el')\n\nSo changing summary.\n\nHmm, I have just looked at the source and indeed the implementation currently is\n\n    public boolean isXMLName(Context cx, Object name)\n    {\n        // TODO: Check if qname.localName() matches NCName\n\n        return true;\n    }\n\nso obviously this is a known issue.",
+            "date": "20050108T16:55:36",
+            "id": 0
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Changing the title to reflect the real nature of the bug: currently isXMLName()\nin Rhino simply returns true.\n\n",
+            "date": "20050112T23:28:57",
+            "id": 1
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 171078\nFix: just follow E4X 13.1.2.1 and http://w3.org/TR/xml-names11/#NT-NCName",
+            "date": "20050112T23:41:48",
+            "id": 2
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 171174\nPatch change to work around jikes compiler bug",
+            "date": "20050113T19:44:08",
+            "id": 3
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "I committed the fix",
+            "date": "20050114T14:14:30",
+            "id": 4
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "(In reply to comment #0)\n> When I try\n>   isXMLName(String.fromCharCode(8364) + '1')\n> with Rhino 1.6 release 1 2004 11 30 it yields true while I think the character\n> with Unicode 8364 (it is the Euro symbol '\u00e2\u201a\u00ac') is not allowed as the first\n> character in an XML name, not even allowed in there at all.\n\nBTW, according to http://www.w3.org/TR/xml11#NT-NameStartChar the characters\nwithin [#x2070-#x218F] are allowed as first XML name character so \u20ac (8364 or 0x\n20ac) is allowed",
+            "date": "20050114T14:28:11",
+            "id": 5
+        },
+        {
+            "author": "martin.honnen@gmx.de",
+            "body": "(In reply to comment #6)\n \n> according to http://www.w3.org/TR/xml11#NT-NameStartChar the characters\n> within [#x2070-#x218F] are allowed as first XML name character so \u20ac (8364 or 0x\n> 20ac) is allowed\n\nOnly that E4X edition 1 (ECMA-357) only refers to XML 1.0 and Namespaces for XML\nbut not to XML 1.1 and in XML 1.0 the Euro character '\u20ac' is not allowed (inside\nnames).\n\nHave you now implemented isXMLName following the rules of the XML 1.1\nspecification? That will break compatibility between Spidermonkey E4X and Rhino\nE4X then as I think Spidermonkey attempts to implement XML 1.0 rules.",
+            "date": "20050114T14:52:39",
+            "id": 6
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "(In reply to comment #7)\n> \n> Have you now implemented isXMLName following the rules of the XML 1.1\n> specification? That will break compatibility between Spidermonkey E4X and Rhino\n> E4X then as I think Spidermonkey attempts to implement XML 1.0 rules.\n\nYou are right, I just followed XML 1.1 rules while E4X refer to XML 1.0. Now\nrules in XML 1.0, http://w3.org/TR/2004/REC-xml-20040204/#NT-Name , are much\nmore complex then in XML 1.1 and implementing them directly would lead to a huge\nbloat. \n\nNote that it is not possible AFAICS to use java.lang.Character methods directly\nsince in JDK 1.4 they refer to Unicode 3.0, in JDK 1.5 they refer to Unicode 4.0\nwhile XML 1.0 uses Unicode 2.0. In a sense following XML 1.1 is much simpler but\nnot E4X-compliant.\n",
+            "date": "20050114T16:02:48",
+            "id": 7
+        },
+        {
+            "author": "cam@mcc.id.au",
+            "body": "Hi.\n\nWhile the number of distinct ranges that cover the XML 1.0 name characters is greater than that of XML 1.1 name characters, using a lookup table where each bit represents a character in plane 0 shouldn't be too much of a bloat.  For example, see the arrays:\n\nhttp://svn.apache.org/viewcvs.cgi/xmlgraphics/batik/trunk/sources/org/apache/batik/xml/XMLCharacters.java?rev=216064&view=markup\n\nand the methods to look up the arrays:\n\nhttp://svn.apache.org/viewcvs.cgi/xmlgraphics/batik/trunk/sources/org/apache/batik/xml/XMLUtilities.java?rev=216064&view=markup\n\nthat are used in Batik.  You're welcome to use the arrays for Rhino (barring any licence complications).",
+            "date": "20060221T03:05:29",
+            "id": 8
+        }
+    ],
+    "component": "E4X",
+    "description": "When I try\n  isXMLName(String.fromCharCode(8364) + '1')\nwith Rhino 1.6 release 1 2004 11 30 it yields true while I think the character\nwith Unicode 8364 (it is the Euro symbol '\u20ac') is not allowed as the first\ncharacter in an XML name, not even allowed in there at all.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "277537",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "-- normal",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "isXMLName() should be properly implemented",
+    "systemSpecification": true,
+    "version": "1.6R1"
+}

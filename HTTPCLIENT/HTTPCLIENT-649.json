@@ -1,0 +1,83 @@
+{
+    "comments": [
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Murty,\n\nI am not sure I understand what exactly you want to say by \"we may need to connect more than one proxies before connects to target resource\". Please clarify.\n\nOleg",
+            "date": "2007-04-24T15:49:51.198+0000",
+            "id": 0
+        },
+        {
+            "author": "Murty Akundi",
+            "body": "Oleg\nThank you for response. \nI am using HttpClient code to access http(s) resources. For example  http(s)://www.verisign.com.\nMy code is deployed under an application server which is located below three firewalls and that needs to connect through 3 proxies to reach the final target.\nFor example I have following 3 proxies and target\nproxy1:9999\nproxy2:7777\nproxy3:5555\nhttp(s)://www.verisign.com\nFirst I need to open a socket and connect to proxy1:9999 and then connect proxy2:7777 and then connect to proxy3:5555 to reach the target resource.\nCurrently HttpClient supports one proxy and i need to goes through more than one proxies. So i had to modify HttpMethodDirector class to tunnel the socket through the proxies.\nregards\n\n",
+            "date": "2007-04-24T18:11:20.453+0000",
+            "id": 1
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Murty, \n\nI think this kind of functionality is usually referred to as proxy chaining. Presently HttpClient does not support it and see no easy and elegant way of adding it to the HttpClient 3.x code line. HttpClient is currently undergoing a complete redesign and we certainly could add support for proxy chaining to HttpClient 4.0. \n\nOleg",
+            "date": "2007-04-24T20:38:26.821+0000",
+            "id": 2
+        },
+        {
+            "author": "Roland Weber",
+            "body": "And here I thought this was a far-out use case we would not have to consider. HttpRoute is designed for a single proxy.\nRe-thinking the approach will take time. I believe that alpha1 is a rather optimistic target for this requirement.\n\ncheers,\n  Roland\n\n",
+            "date": "2007-04-28T10:33:42.723+0000",
+            "id": 3
+        },
+        {
+            "author": "Murty Akundi",
+            "body": "Ronald\n    Thanks for reply. I think this use case is real use case. Most of the comanies and people are using java on middle tier that locates behind firewalls.  \nWe can plugging through more than one proxies but that is really not secured.  \nOther solution is to write custom protocol handler to support multiple proxiesc but  HttpClient does not support it since it does not use URLStreamHandler internally.\nI think there is no other solution with HttpClient to support multiple proxies at this time.\nI have customized HttpClient and HttpMethodDirector classes to tunnel through configured number of proxies and working fine.\nPlease consider it for next major release.\nregards\nMurty\n",
+            "date": "2007-04-28T13:57:23.268+0000",
+            "id": 4
+        },
+        {
+            "author": "Roland Weber",
+            "body": "Hello Murty,\n\nI made a note on the Wiki page for HttpConn design, http://wiki.apache.org/jakarta-httpclient/ConnectionManagementDesign\nThis has tought me a lesson: the one time I try to avoid overdesigning, it comes back to bite me within 4 months. Now I wait for someone with the requirement to layer tunnels, and my happiness will be complete.\nIt's going to be a tough nut to crack, since each proxy in a chain may also need a different proxy authentication. I'll keep pondering it (with low priority though).\n\ncheers,\n  Roland\n",
+            "date": "2007-04-28T17:36:00.506+0000",
+            "id": 5
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Roland,\nWe do not necessarily have to provide this feature in the stock version of HttpClient if this will increase the complexity of connection management code dramatically. As long as the users are able to plug in their own custom connection operator this should be sufficient.\n\nOleg\n",
+            "date": "2007-04-28T17:49:54.570+0000",
+            "id": 6
+        },
+        {
+            "author": "Roland Weber",
+            "body": "The pieces are in place: HttpRoute represents proxy chains, ThreadSafeClientConnManager uses HttpRoute.\nThe last step is to add the missing ManagedClientConnection.tunnelProxy(...).\n",
+            "date": "2007-07-20T20:36:34.200+0000",
+            "id": 7
+        },
+        {
+            "author": "Murty Akundi",
+            "body": "Thank you very much for all you for adding new feature.",
+            "date": "2007-08-27T04:54:25.977+0000",
+            "id": 8
+        },
+        {
+            "author": "Ortwin Gl\u00fcck",
+            "body": "The feature has been requested in the past:\n\nhttp://issues.apache.org/jira/browse/HTTPCLIENT-136\nhttp://issues.apache.org/jira/browse/HTTPCLIENT-35\n\nespecially for 4.0 here:\n\nhttp://marc.info/?l=httpclient-commons-dev&m=110552030923369&w=2\n\nbut somehow the discussion ended up revolving around cookie storage.",
+            "date": "2007-08-27T07:35:15.101+0000",
+            "id": 9
+        },
+        {
+            "author": "Roland Weber",
+            "body": "I've added proxy chain support to HttpConn::ManagedClientConnection and a plugin point to HttpClient, see DefaultClientRequestDirector.createTunnelToProxy(...).\n\nDue to the complexity of proxy authentication, we cannot provide full support for proxy chains in HttpClient at this time. I just don't have the cycles available to refactor the proxy authentication logic. Everybody is invited to submit patches towards that goal.\n\ncheers,\n  Roland\n",
+            "date": "2007-09-08T14:27:29.705+0000",
+            "id": 10
+        }
+    ],
+    "component": "HttpClient (classic)",
+    "description": "HttpClient supports one proxy currently.\nOur requirement is to suppport more than one proxy. We may need to connect more than one proxies before connects to target resource. \nI found that HttpMethodDirector creates tunnelled socket and there is no easy way to plugin our custom HttpMethodDirector class with HttpClient other than extending HttpClient to override \"public int executeMethod(HostConfiguration hostconfig, final HttpMethod method, final HttpState state\" method.\n\n\n",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "HTTPCLIENT-649",
+    "issuetypeClassified": "RFE",
+    "issuetypeTracker": "RFE",
+    "priority": "Major",
+    "product": "HTTPCLIENT",
+    "project": "HTTPCLIENT",
+    "summary": "Support multiple proxies",
+    "systemSpecification": true,
+    "version": "3.0.1, 3.1 RC1"
+}

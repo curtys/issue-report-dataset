@@ -1,0 +1,89 @@
+{
+    "comments": [
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Igor,\nPlease attach a wire/context log of the HTTP session that exhibits the problem.\nThe relevant extracts from the Apache HTTPD log would help as well.\n\nOleg",
+            "date": "2005-12-27T05:44:42.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Igor Sereda",
+            "body": "Created an attachment (id=17276)\nhttp client log (look for \"400 Bad Request\")\n",
+            "date": "2005-12-27T07:40:18.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Igor Sereda",
+            "body": "Created an attachment (id=17277)\nextract from server access log\n",
+            "date": "2005-12-27T07:40:43.000+0000",
+            "id": 2
+        },
+        {
+            "author": "Igor Sereda",
+            "body": "Created an attachment (id=17278)\nextract from server error log\n",
+            "date": "2005-12-27T07:41:10.000+0000",
+            "id": 3
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Created an attachment (id=17284)\nPatch (take 1)\n\nI doubt we can do much about it. The proposed fix, admittedly hackish, seems\nthe way to go for 3.x series. HttpClient 4.0 based on HttpComponents is not\naffected by this problem as it will have a radically different architecture\n\nPlease review and comment\n\nOleg",
+            "date": "2005-12-27T22:39:05.000+0000",
+            "id": 4
+        },
+        {
+            "author": "Igor Sereda",
+            "body": "The patch works, thanks! \nGood luck with 4.0!\n\nIgor",
+            "date": "2005-12-28T18:34:49.000+0000",
+            "id": 5
+        },
+        {
+            "author": "Ortwin Gl\u00fcck",
+            "body": "replace \n  if (query.indexOf(\"?\") != 0) {\nwith\n  if (query.charAt(0) != '?')\n\notherwise fine with me",
+            "date": "2006-01-08T00:43:24.000+0000",
+            "id": 6
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "(In reply to comment #7)\n> replace \n>   if (query.indexOf(\"?\") != 0) {\n> with\n>   if (query.charAt(0) != '?')\n> \n> otherwise fine with me\n\nOdi,\nUnfortunately this is needed to be in sync with\nHttpMethodBase#generateRequestLine(). See\nhttp://jakarta.apache.org/commons/httpclient/xref/org/apache/commons/httpclient/HttpMethodBase.html#1408\n\nOleg",
+            "date": "2006-01-08T01:01:20.000+0000",
+            "id": 7
+        },
+        {
+            "author": "Michael Becke",
+            "body": "We could just change them both to:\n\n  if (query.charAt(0) != '?')\n\nDoesn't really matter too much to me though.  Patch away.\n\nMike",
+            "date": "2006-01-08T02:29:07.000+0000",
+            "id": 8
+        },
+        {
+            "author": "Ortwin Gl\u00fcck",
+            "body": "But be careful, if query.length()==0 it will throw an exception!",
+            "date": "2006-01-08T02:43:15.000+0000",
+            "id": 9
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "My preference would be \n\nif (!query.startsWith(\"?\"))\n...\n\nHowever, for the compatibility sake we probably should leave things as they are\n\nOleg",
+            "date": "2006-01-08T02:57:03.000+0000",
+            "id": 10
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Patch checked in\n\nOleg",
+            "date": "2006-01-13T21:25:32.000+0000",
+            "id": 11
+        }
+    ],
+    "component": "HttpClient (classic)",
+    "description": "This bug seems to be strongly related to #36918. But in this case, I don't have \nproxy and it is GET method.\n\nThe problem is that when a GET request with query parameters is sent to the \nserver, uri does not count in the parameters.  The server (Apache 1.3) then \nresponds with HTTP/1.1 400 Bad Request. In the error log, the server writes:  \nDigest: uri mismatch - </query.cgi> does not match request-uri \n</query.cgi?format=advanced&js=1&rememberjs=1>\n\nAs far as I can tell, the problem is with the following line of code:\n------------ cut DigestScheme.java\npublic String authenticate(Credentials credentials, HttpMethod method)\n....\ngetParameters().put(\"uri\", method.getPath());\n....\n------------ cut\n\nI am inclined to quick-hack this and add method.getQueryString() to the uri; \nbut to make it right it probably needs some refactoring, esp. considering issue \n#36918.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "HTTPCLIENT-544",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "HTTPCLIENT",
+    "project": "HTTPCLIENT",
+    "summary": "Digest auth uses incorrect URI",
+    "systemSpecification": false,
+    "version": "3.0 Final"
+}

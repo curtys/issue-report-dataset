@@ -1,0 +1,47 @@
+{
+    "comments": [
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 133503\nJava source for a simple Rhino embedding with debugger attached",
+            "date": "20031017T15:57:36",
+            "id": 0
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 133505\ntest script",
+            "date": "20031017T15:58:09",
+            "id": 1
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 133506\nFix for omg/Interpreter.java: always pop activation record on function exit if debugFrame is not null.\n\n\nThe bug is regression since Rhino 1.5R3 and caused by my code to support\ndebugging of scripts that were loaded prior the debugger was attached. That\ncode forces creation of the activation object even for functions that otherwise\noptimize it away so the debugger would see local variable. But I forgot to\nupdate the part that releases the activation record and the patch addressed\nthat.",
+            "date": "20031017T16:12:05",
+            "id": 2
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "I committed the patch: Dave Russo confirmed that his problem went away.",
+            "date": "20031017T20:16:25",
+            "id": 3
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Trageting as resolved against 1.5R5",
+            "date": "20040213T11:36:02",
+            "id": 4
+        }
+    ],
+    "component": "Core",
+    "description": "When a debugger is attached to Rhino by Context.setDebugger, then a memory leak\noccur as all local variable references are kept in memory. To test, save\nTest.java and test.js from the following attachments and then compile Test.java\nand run:\n\njava Test test.js\n\nCurrently it prints ever increasing memory usage and then exit with OutOfMemory.\n\nThis is was originally reported by Dave Russo:\n\n-------- Original Message --------\nSubject: \trhino memory leak(?) when debugger is attached\n\n\nI think I've run into a memory leak in Rhino and I'd appreciate any \nhelp/advice you can give. \n\nI'm using Sun's JVM 1.4.1 on Solaris 5.8 and I'm getting an \"out of \nmemory\" exception when I run the following script inside our application \nthat embeds Rhino 1.5R4.1:\n\n    function fread(fileName) \n    { \n        var line =\n    \"1234567890123456789012345678901234567890123456789012333333333\"; \n        var str = \"\";\n\n        for (var i = 0; i < 1000; i++) { \n            str += line + fileName; \n        }\n\n        return (str); \n    }\n\n    for (var i = 0; i < 2000; i++) fread(\"package.xml\");\n\nI've tried the latest Rhino tip and get the same results. \n\nWe've embedded rhino in a command line application which sets a custom \n\"debugger\" (ShellDebugger) using:\n\n    cx.setDebugger(new ShellDebugger(), new ShellDebugContext());\n\nand sets optimization level to -1 using:\n\n    cx.setOptimizationLevel(-1);\n\nWe're doing this because to get accurate line number information and \nstack trace information when errors occur.  ShellDebugger and \nShellDebugContext do nothing other than push and pop DebugFrame's from a \nstack maintained in a ShellDebugContext.  When an exception occurs we \ncan display the call stack with file and line number information.\n\nIt's possible that the leak is in our embedding and *not* in Rhino (if I \nrun the script above using \"java -cp js.jar \norg.mozilla.javascript.tools.Shell\" there is not a problem.)\n\nHowever, even if I remove *all* processing from ShellDebugger and \nShellDebugContext in our embedding, I get the memory exception from \nJava.  In addition, if I remove the following block (via the \"false &&\") \nfrom org.mozilla.javascript.Interpreter, I don't get the exception:\n\n        if (false && debuggerFrame != null) {\n            if (argsDbl != null) {\n                args = getArgsArray(args, argsDbl, argShift, argCount);\n                argShift = 0;\n                argsDbl = null;\n            }\n            if (idata.itsFunctionType != 0 && !idata.itsNeedsActivation) {\n                useActivationVars = true;\n                scope = ScriptRuntime.initVarObj(cx, scope, fnOrScript,\n                                                 thisObj, args);\n            }\n            debuggerFrame.onEnter(cx, scope, thisObj, args);\n        }\n\nIs there any possibility that Interpreter has a memory leak when the \ndebugger is attached?  Any help would be appreciated.\n\nThanks,\n\ndave",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "222635",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "BUG",
+    "priority": "-- normal",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "Memory leak with with activated debugger support",
+    "systemSpecification": false,
+    "version": "other"
+}

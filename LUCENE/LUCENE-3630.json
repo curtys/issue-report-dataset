@@ -1,0 +1,59 @@
+{
+    "comments": [
+        {
+            "author": "Uwe Schindler",
+            "body": "Only MultiReader has this problem, ParallelReader used another method name for the internal reopen. I will make the internal implementation private for both classes (they were protected because of the above override issue) and rename it to doReopen().\n\nThe same on trunk, where some relicts of those method signatures are still protected. But the bug does not occur here.",
+            "date": "2011-12-10T09:43:06.163+0000",
+            "id": 0
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Committed 3.x revision: 1212754\nCommitted changes merge + method renaming to trunk revision: 1212755",
+            "date": "2011-12-10T09:52:05.925+0000",
+            "id": 1
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "I found also a bug report on the user list about reopen not working with MultiReader. The use was calling openIfChanged(true) on MultiReader -> he got a clone instead of a reopened reader. The fix is to also implement doOpenIfChanged(boolean openReadOnly), but allow only true as param and throw UOE on false.",
+            "date": "2011-12-10T10:06:23.427+0000",
+            "id": 2
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Added missing doOpenIfChanged(readonly=true) support in 3.x revision: 1212756",
+            "date": "2011-12-10T10:09:31.336+0000",
+            "id": 3
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Further investigation showed that supporting openReadOnly on clone/readonly f*cks up refcounting. So don't support it at all and revert the last commit, clearly saying this.",
+            "date": "2011-12-10T12:10:19.880+0000",
+            "id": 4
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Patch with revert and more explanatory UOE for clone and doOpenIfChanged",
+            "date": "2011-12-10T13:00:47.975+0000",
+            "id": 5
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Committed fix in revision: 1212787",
+            "date": "2011-12-10T13:02:56.112+0000",
+            "id": 6
+        }
+    ],
+    "component": "core/index",
+    "description": "I found this during adding deprecations for RW access in LUCENE-3606:\n\nthe base class defines doOpenIfChanged(boolean readOnly), but MultiReader and ParallelReader \"override\" this method with a signature doOpenIfChanged(doClone) and missing @Override. This makes consumers calling IR.openIfChanged(boolean readOnly) do the wrong thing. Instead they should get UOE like for the other unimplemented doOpenIfChanged methods in MR and PR.\n\nEasy fix is to rename and hide this internal \"reopen\" method, like DirectoryReader,...",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-3630",
+    "issuetypeClassified": "OTHER",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "MultiReader and ParallelReader accidently override doOpenIfChanged(boolean readOnly) with doOpenIfChanged(boolean doClone)",
+    "systemSpecification": true,
+    "version": "3.5"
+}

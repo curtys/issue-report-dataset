@@ -1,0 +1,47 @@
+{
+    "comments": [
+        {
+            "author": "Tobias Bocanegra",
+            "body": "i'm a bit afraid on sychronizing the repository instance. i prefer a 'shutdown' lock around shutdown and login.",
+            "date": "2006-05-31T17:09:57.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Looking at the code I actually think that getWorkspaceInfo() *should* be synchronized regardless of what we do with login. The wspInfos map is not necessarily thread-safe, so invoking get() on it (or keySet() in getWorkspaceNames()) may cause a problem if a concurrent thread is invoking a synchronized createWorkspace() method. Thus I actually think that either the wspInfos map or the getWorkspaceInfo() and getWorkspaceNames() should be synchronized.\n\nOn the other hand login() should not be synchronized, as the JAAS authentication could easily block other threads while waiting for the user to enter a password or something similar.\n\nIn any case, the crucial part seems  to be the createSession() methods, that are currently synchronized, but do not invoke the sanityCheck() method. Thus it is possible for login() to start and invoke sanityCheck() before a shutdown is initiated, but stall waiting for user credentials during JAAS authentication. If during that time the repository is shutdown, login() will still continue to call createSession() without any more sanity checks. Adding sanityCheck() calls to the createSession() methods should solve this quite nicely.",
+            "date": "2006-05-31T17:28:00.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Sorry, I was looking at an older version of RepositoryImpl. The JCR-445 changes modified the synchronization in RepositoryImpl, so my point about wspInfos is already being taken care of. Thanks, Toby! :-)\n\nThe login/shutdown issue still exists, and it looks as if a 'shutdown' lock would be the best solution with the current approach to synchronization. The issue isn't too urgent though, so consider this low priority for now.",
+            "date": "2006-05-31T17:50:19.000+0000",
+            "id": 2
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Attached a proposed patch that implements the shutdown lock idea. The lock is a ReadWrite lock that allows any number of concurrent readers (logins) but only one concurrent writer (shutdown).\n\nPasses all unit tests and seems to work fine under normal loads. I'll apply the patch unless anyone objects.",
+            "date": "2006-09-16T09:29:23.000+0000",
+            "id": 3
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Proposed patch applied in revision 447148.",
+            "date": "2006-09-17T21:24:24.000+0000",
+            "id": 4
+        }
+    ],
+    "component": "jackrabbit-core",
+    "description": "Related to the last comment in JCR-445, should we prevent new sessions from being created during repository shutdown? It is an odd chance to run into a problem like that, but it seems like the issue could be easily solved by making getWorkspaceInfo() synchronized and adding sanityCheck() calls to the createSession() methods.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "JCR-446",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Minor",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "Prevent logins during repository shutdown",
+    "systemSpecification": true,
+    "version": "0.9, 1.0, 1.0.1"
+}

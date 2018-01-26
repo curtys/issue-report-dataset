@@ -1,0 +1,65 @@
+{
+    "comments": [
+        {
+            "author": "Hoss Man",
+            "body": "I'm not sure if i agree with this concept. Do we really want the curve of values from queryNorm to have a step drop down from really *huge* values when sumOfSquaredWeights is \"near\" zero to \"1\" when sumOfSquaredWeights becomes so close to zero it can only be represented as 0.0f ?\n\nFloat.MAX_VALUE seems like a better choice then 1, but I haven't really thought through wether or not that will still trigger NaN scores.",
+            "date": "2007-06-01T05:31:49.808+0000",
+            "id": 0
+        },
+        {
+            "author": "Yonik Seeley",
+            "body": "From a scoring perspective, it's a multiplier that's only used at the top level, so the scores produced will be zero anyway.  How else might Similarity.queryNorm() be used?\n\nIf the user uses a boost of zero, It doesn't make sense to try and normalize that upwards though.  Returning 0 could also make sense.\n\n",
+            "date": "2007-06-01T14:22:45.932+0000",
+            "id": 1
+        },
+        {
+            "author": "Michael Busch",
+            "body": "> Float.MAX_VALUE seems like a better choice then 1, but I haven't really \n> thought through wether or not that will still trigger NaN scores.\n\nFloat.MAX_VALUE * 0.0f = 0.0f. It would not result in NaN.",
+            "date": "2007-06-01T16:37:38.237+0000",
+            "id": 2
+        },
+        {
+            "author": "Doug Cutting",
+            "body": "Float.MAX_VALUE seems like a better choice then 1 [ ... ]\n\nWith nested queries, could Float.MAX_VALUE trigger overflow back to Infinity?\n",
+            "date": "2007-06-01T17:47:32.471+0000",
+            "id": 3
+        },
+        {
+            "author": "Hoss Man",
+            "body": "> From a scoring perspective, it's a multiplier that's only used at the top level, so the scores produced will be zero anyway. \n\nhuh?  queryNorm is passed down by BooleanWeight to all of the sub clauses ... am i miss understanding something? ",
+            "date": "2007-06-01T17:52:01.996+0000",
+            "id": 4
+        },
+        {
+            "author": "Yonik Seeley",
+            "body": "> huh? queryNorm is passed down by BooleanWeight to all of the sub clauses ... am i miss understanding something?\n\nSorry, I meant Similarity.queryNorm() is only called at the top level.\n\n> With nested queries, could Float.MAX_VALUE trigger overflow back to Infinity? \n\nI don't think so... BooleanWeight multiplies the queryNorm by it's boost before calling normalize on the nested weights (hence if the top-level boost is zero, it will call normalize(0.0f) on the subweights).\nSpanWeight doesn't seem to do nested normalization at all.\nNot sure if all the explain implementations would handle it correctly though.",
+            "date": "2007-06-01T19:09:27.170+0000",
+            "id": 5
+        },
+        {
+            "author": "Robert Muir",
+            "body": "This one is fixed (there is a Nan/Inf check in queryNorm added fairly recently)\n",
+            "date": "2011-01-25T13:22:44.760+0000",
+            "id": 6
+        },
+        {
+            "author": "Grant Ingersoll",
+            "body": "Bulk close for 3.1",
+            "date": "2011-03-30T15:50:32.419+0000",
+            "id": 7
+        }
+    ],
+    "component": "core/search",
+    "description": "Currently DefaultSimilarity.queryNorm() returns Infinity if sumOfSquaredWeights=0.\nThis can result in a score of NaN (e. g. in TermScorer) if boost=0.0f.\n\nA simple fix would be to return 1.0f in case zero is passed in.\n\nSee LUCENE-698 for discussions about this.",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "LUCENE-901",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Trivial",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "DefaultSimilarity.queryNorm() should never return Infinity",
+    "systemSpecification": true,
+    "version": ""
+}

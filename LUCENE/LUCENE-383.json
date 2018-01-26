@@ -1,0 +1,125 @@
+{
+    "comments": [
+        {
+            "author": "Yonik Seeley",
+            "body": "Created an attachment (id=14877)\nConstantScoreQuery\n",
+            "date": "2005-04-29T13:14:40.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Yonik Seeley",
+            "body": "Created an attachment (id=14878)\nConstantScoreRangeQuery\n",
+            "date": "2005-04-29T13:15:04.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Paul Elschot",
+            "body": "The ConstantScoreQuery requires java 1.4 for its skipTo() implementation, \nso this will have to wait until java 1.4 is a minimum requirement for \nLucene. \nSome time ago there was a bit of discussion on mixed boolean and \nscored queries, and I think the ConstantScoreQuery is a wellcome \naddition for such mixed queries. \nOne problem with the current score is that it is not really bound \nto a maximum, so it is difficult to choose a good constant score \nvalue in a mix. \nPerhaps that aspect of scoring should be tackled in the future. \n \nRegards, \nPaul Elschot \n ",
+            "date": "2005-05-02T03:48:33.000+0000",
+            "id": 2
+        },
+        {
+            "author": "Yonik Seeley",
+            "body": "Refresh:\n - implemented explain()\n - changed scoring so that score is simply the boost\n - fixed bug in scoring (weight normalization)\n - fixed bug where boost was not copied during rewrite",
+            "date": "2005-09-17T06:11:01.000+0000",
+            "id": 3
+        },
+        {
+            "author": "Yonik Seeley",
+            "body": "> One problem with the current score is that it is not really bound\n> to a maximum, so it is difficult to choose a good constant score\n> value in a mix. \n\ntf() and lengthNorm() factors will vary by index, but I think idf() may be the most problematic since it can change over time as the index grows.\n\nWould it be better to add something like an idf(1,maxDocs()) factor?\n",
+            "date": "2005-09-27T11:59:23.000+0000",
+            "id": 4
+        },
+        {
+            "author": "Paul Elschot",
+            "body": "Since the constant score is taken from the query boost, idf issues\ncan be dealt with elsewhere. IOW I don't think there is a need to\ndeal with idf here.\n\nRegards,\nPaul Elschot\n",
+            "date": "2005-09-27T16:18:29.000+0000",
+            "id": 5
+        },
+        {
+            "author": "Doug Cutting",
+            "body": "I like this patch.  It would be nice to have a unit test, and we need to agree that Lucene 1.9 will require java 1.4 (which seems reasonable to me) before we commit it.\n\nOnce this is committed, should we consider changing the query parser to use ConstantScoreRangeQuery for range queries?  That alone would probably solve the majority of too-many-clauses problems.",
+            "date": "2005-10-27T06:23:21.000+0000",
+            "id": 6
+        },
+        {
+            "author": "Yonik Seeley",
+            "body": "The functionality is definitely needed, I'm just not sure of the API yet.\nI also have a ConstantScorePrefixQuery/PrefixFilter that just needs to be cleaned up a bit before it can be contributed.\n\nDoug, you had brought up the possibility of having a flag on Query indicating if it was constant scoring or not... it would be simpler than reproducing Constant versions of all the query types.\nThe downside of that is the whole issue of query  immutability... if you set the constant-scoring flag on the root query, it really needs to set it on all of it's sub queries (and hence changes them).  You can easily get into trouble if a query is shared.\n\nTo avoid changing queries, you would have to follow the same strategy as rewrite()... \nYou would need to clone the query object, then set constantScoring, then call rewrite (which may clone it again).  Not the best for performance...\n\nOne solution is to communicate the fact that we want a constant scoring query in the rewrite method itself:  rewrite(Query query, int flags)\n\n",
+            "date": "2005-10-27T06:49:32.000+0000",
+            "id": 7
+        },
+        {
+            "author": "Daniel Naber",
+            "body": "Doug: actually we agreed to require Java 1.4 some time ago already. You can find that dicussion somewhere in the mail archives.",
+            "date": "2005-10-27T07:27:15.000+0000",
+            "id": 8
+        },
+        {
+            "author": "Hoss Man",
+            "body": "I hadn't heard about Doug's plans that Yonik refered to (to revamp all Query classes to support a constant score option) so forgive me if this is way off the mark:\n\nIf Doug's plan is fairly solid and just needs to be cranked out, then by all means it might make sense to go that route intstead of having seperate ConstantScoreRange and ConstantScorePrefix queries ... but if that plan is still very hypotheitcal, then perhaps the best course of action would be to commit Yonik's existing code into the contrib section.  \n\nNothing here requires any changes to the core codebase, and as of 1.9 the contrib code will start being reved/released on teh same schedule as the core correct? ... so there's really no downside to putting it in contrib.  If the other idea falls through, then this code could be \"promoted\" from contrib to the core (and perhaps then QueryParser could be changed to use it by default).  If the other plan does get implimented, then these classes can be deprecated in favor of the new ones (and their new API)",
+            "date": "2005-10-28T01:41:18.000+0000",
+            "id": 9
+        },
+        {
+            "author": "Yonik Seeley",
+            "body": "Doug's suggestion is here:\nhttp://www.mail-archive.com/java-dev@lucene.apache.org/msg00532.html",
+            "date": "2005-10-28T03:05:27.000+0000",
+            "id": 10
+        },
+        {
+            "author": "Doug Cutting",
+            "body": "Yonik: I'd forgotten about that suggestion, thanks for remembering it!\n\nHoss: I think there are some nasty details still to be worked out in that suggestion, like how to cache bitvectors.  Long-term, I think it would be a better approach, but Yonik's ConstantScoreQuery stuff works well today.\n\nI think fixing common use cases, like range queries, from exploding in people's faces is a high priority.  So I would argue for changing QueryParser sooner rather than later.  If we ever implement my proposal then we can deprecate these classes.  The majority of folks just use QueryParser, and they won't know the difference.\n",
+            "date": "2005-10-29T01:53:39.000+0000",
+            "id": 11
+        },
+        {
+            "author": "Hoss Man",
+            "body": "a Unit test for ConstantScoreRangeQuery ... that was easy to crank out based on the existing BaseTestRangeFilter.\n\nOne catch is that the test currently fails: when i tried to prove that the scores were not only constant, but also equaled the boost I couldn't get it to work -- perhaps I have a missunderstanding of how HItCollector works, but I thought that was the safest way to get a \"raw\" score.",
+            "date": "2005-11-12T11:27:11.000+0000",
+            "id": 12
+        },
+        {
+            "author": "Yonik Seeley",
+            "body": "Cool, thanks for the tests!\n\nYou are getting the raw score from the HitCollector all right.  The internal score is equal to the boost, but there is also a query normalization factor that's applied...\n\nQuery.weight() calls Weight.sumOfSquaredWeights() which returns boost*boost.\nThen it calls Similarity.queryNorm(boost*boost) which returns 1/boost\nThen it calls Weight.normalize(1/boost), and I multiply 1/boost by boost and get 1.0\n\n\n",
+            "date": "2005-11-12T11:48:54.000+0000",
+            "id": 13
+        },
+        {
+            "author": "Yonik Seeley",
+            "body": "I have committed these classes.\nUnless I hear objections, I'll change the QueryParser to use ConstantScoreRangeQuery, \nand allow the specification of open-ended ranges using \"*\".",
+            "date": "2005-11-15T14:36:23.000+0000",
+            "id": 14
+        },
+        {
+            "author": "Nadav Har'El",
+            "body": "Hi,\n\nIt appears that ConstantScoreRangeQuery is already in the trunk.\nHowever, QueryParser still uses RangeQuery, not ConstantScoreRangeQuery.\n\nShould this issue be closed? Or are you still intending to change QueryParser to use the new class?",
+            "date": "2006-04-10T19:49:49.000+0000",
+            "id": 15
+        },
+        {
+            "author": "Hoss Man",
+            "body": "I believe (but i'm not certain) that i remember a discusion on java-dev a while back regarding this and that there was some concensus not to make the QueryParser change until 2.0 so as not to affect the scores of existing searches.\n\ni could be completely wrong",
+            "date": "2006-04-13T13:45:52.000+0000",
+            "id": 16
+        },
+        {
+            "author": "Doug Cutting",
+            "body": "This has been fixed.",
+            "date": "2006-05-10T02:17:03.000+0000",
+            "id": 17
+        }
+    ],
+    "component": "core/search",
+    "description": "ConstantScoreQuery wraps a filter (representing a set of documents) and returns\na constant score for each document in the set.\n\nConstantScoreRangeQuery implements a RangeQuery that works for any number of\nterms in the range.  It rewrites to a ConstantScoreQuery that wraps a RangeFilter.\n\nStill needed:\n  - unit tests (these classes have been tested and work fine in-house, but the\ncurrent tests rely on too much application specific code)\n  - code review of Weight() implementation (I'm unsure If I got all the score\nnormalization stuff right)\n  - explain() implementation\n\nNOTE: requires Java 1.4 for BitSet.nextSetBit()",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "LUCENE-383",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "ConstantScoreRangeQuery - fixes \"too many clauses\" exception",
+    "systemSpecification": true,
+    "version": "1.4"
+}

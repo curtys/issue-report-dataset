@@ -1,0 +1,65 @@
+{
+    "comments": [
+        {
+            "author": "Shai Erera",
+            "body": "Oh .. found the thread we discussed that on the list, to which I've actually last posted w/ the following text:\n\n{quote}\nI've Googled around a bit and came across this: http://markmail.org/message/l67bierbmmedrfw5. Apparently, there's a long standing bug against SUN since May 2006 (http://bugs.sun.com/view_bug.do?bug_id=6431344) that's still open and reports the exact same behavior that I'm seeing.\n\nIf I understand correctly, this might be a Windows limitation and is expected to work well on Linux. I'll give it a try. But this makes me think if we should keep the current behavior for Linux-based directories, and fallback to the chunks approach for Windows ones? Since eventually I'll be running on Linux, I don't want to lose performance ...\n\nThis isn't the first that we've witnessed the \"write once, run everywhere\" misconception of Java :). I'm thinking if in general we should have a Windows/Linux FSDirectory impl, or handlers, to prepare for future cases as well. Mike already started this with LUCENE-2500 (DirectIOLinuxDirectory). Instead of writing a Directory, perhaps we could have a handler object or something, or a generic LinuxDirectory that impls some stuff the 'linux' way. In FSDirectory we already have code which detects the OS and JRE used to decide between Simple, NIO and MMAP Directories ...\n{quote}",
+            "date": "2010-07-13T19:06:15.598+0000",
+            "id": 0
+        },
+        {
+            "author": "Shai Erera",
+            "body": "I wrote a test which compares FileChannel API to intermediate buffer copies. The test runs each method 3 times and reports the best time of each. It can be run w/ different file and chunk sizes.\n\nHere are the results of copying a 1GB file using different chunk sizes (the chunk is used as the intermediate buffer size as well).\n\nMachine spec:\n* Linux, 64-bit (IBM) JVM\n* 2xQuad (+hyper-threading) - 16 cores overall\n* 16GB RAM\n* SAS HD\n\n||Chunk Size||FileChannel||Intermediate Buffer||Diff||\n|64K|1865|1528|{color:red}-18%{color}|\n|128K|1660|1526|{color:red}-9%{color}|\n|512K|1514|1493|{color:red}-2%{color}|\n|1M|1552|2072|{color:green}+33%{color}|\n|2M|1488|1559|{color:green}5%{color}|\n|4M|1596|1831|{color:green}13%{color}|\n|16M|1563|1964|{color:green}21%{color}|\n|64M|1494|2442|{color:green}39%{color}|\n|128M|1469|2445|{color:green}40%{color}|\n\nFor small buffer sizes, intermediate byte[] copies is preferable. However, FileChannel method performs pretty much consistently, irregardless of the buffer size (except for the first run), while the byte[] approach degrades a lot, as the buffer size increases.\n\nI think, given these results, we can use the FileChannel method w/ a chunk size of 4 (or even 2) MB, to be on the safe side and don't eat up too much RAM?",
+            "date": "2010-07-22T12:20:48.954+0000",
+            "id": 1
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Nice results Shai!\n\nbq. I think, given these results, we can use the FileChannel method w/ a chunk size of 4 (or even 2) MB, to be on the safe side and don't eat up too much RAM?\n\n+1",
+            "date": "2010-07-22T12:23:10.682+0000",
+            "id": 2
+        },
+        {
+            "author": "Shai Erera",
+            "body": "Patch copies the files in chunks of 2MB. All core tests pass. I'll wait a day or two in case someone wants to suggests a different approach, or chunk size limit before I commit.",
+            "date": "2010-07-22T12:48:48.573+0000",
+            "id": 3
+        },
+        {
+            "author": "Shai Erera",
+            "body": "Patch adds the following:\n* FSIndexOutput overrides copyBytes to do optimized copies as well (when possible).\n* CompoundFileWriter changed to call copyBytes, instead of using an intermediate buffer.\n* Some minor typos and code corrections.\n\n*NOTE:* with the changes to CFW, CheckAbort is accessed only after an entire file is written. The estimated amount of work is the length copied. This means that if abort() is called, it might take a tad longer until CFW will detect it.\nI don't think it's serious, since (1) abort() is not called often, (2) for small segments this will probably have no effect (OneMerge was accessed roughly every ~2MB copied) and (3) as reported, the optimized copy is faster when using FileChannel, therefore the time that passes between checks may not be that long.\nAnd there's a (4) -- for really large segments, the amount of work done to merge them is far larger than copying them into the CFS. Therefore the chances that abort() will be called during that process is relatively small ...\n\nAll tests pass.",
+            "date": "2010-07-23T12:45:09.167+0000",
+            "id": 4
+        },
+        {
+            "author": "Shai Erera",
+            "body": "If there are no objections, I'll commit this today,",
+            "date": "2010-07-25T05:58:02.708+0000",
+            "id": 5
+        },
+        {
+            "author": "Shai Erera",
+            "body": "Committed revision 979161 (3x).\nCommitted revision 979185.",
+            "date": "2010-07-26T07:25:23.951+0000",
+            "id": 6
+        },
+        {
+            "author": "Grant Ingersoll",
+            "body": "Bulk close for 3.1",
+            "date": "2011-03-30T15:49:56.880+0000",
+            "id": 7
+        }
+    ],
+    "component": "core/store",
+    "description": "There are a couple of issues with it:\n\n# FileChannel.transferFrom documents that it may not copy the number of bytes requested, however we don't check the return value. So need to fix the code to read in a loop until all bytes were copied..\n# When calling addIndexes() w/ very large segments (few hundred MBs in size), I ran into the following exception (Java 1.6 -- Java 1.5's exception was cryptic):\n{code}\nException in thread \"main\" java.io.IOException: Map failed\n    at sun.nio.ch.FileChannelImpl.map(FileChannelImpl.java:770)\n    at sun.nio.ch.FileChannelImpl.transferToTrustedChannel(FileChannelImpl.java:450)\n    at sun.nio.ch.FileChannelImpl.transferTo(FileChannelImpl.java:523)\n    at org.apache.lucene.store.FSDirectory.copy(FSDirectory.java:450)\n    at org.apache.lucene.index.IndexWriter.addIndexes(IndexWriter.java:3019)\nCaused by: java.lang.OutOfMemoryError: Map failed\n    at sun.nio.ch.FileChannelImpl.map0(Native Method)\n    at sun.nio.ch.FileChannelImpl.map(FileChannelImpl.java:767)\n    ... 7 more\n{code}\n\nI changed the impl to something like this:\n{code}\nlong numWritten = 0;\nlong numToWrite = input.size();\nlong bufSize = 1 << 26;\nwhile (numWritten < numToWrite) {\n  numWritten += output.transferFrom(input, numWritten, bufSize);\n}\n{code}\n\nAnd the code successfully adds the indexes. This code uses chunks of 64MB, however that might be too large for some applications, so we definitely need a smaller one. The question is how small so that performance won't be affected, and it'd be great if we can let it be configurable, however since that API is called by other API, such as addIndexes, not sure it's easily controllable.\n\nAlso, I read somewhere (can't remember now where) that on Linux the native impl is better and does copy in chunks. So perhaps we should make a Linux specific impl?",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-2537",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "FSDirectory.copy() impl is unsafe",
+    "systemSpecification": true,
+    "version": ""
+}

@@ -1,0 +1,59 @@
+{
+    "comments": [
+        {
+            "author": "Michael McCandless",
+            "body": "Attached patch nulls out the Fieldable reference.",
+            "date": "2010-04-09T10:31:21.619+0000",
+            "id": 0
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "As Tokenizers are reused, the analyzer holds also a reference to the last used Reader. The easy fix would be to unset the Reader in Tokenizer.close(). If this is the case for you, that may be easy to do. So Tokenizer.close() looks like this:\n\n{code}\n/** By default, closes the input Reader. */\n@Override\npublic void close() throws IOException {\n    input.close();\n    input = null; // <-- new!\n}\n{code}",
+            "date": "2010-04-09T10:56:31.764+0000",
+            "id": 1
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "I agree, Uwe -- I'll fold that into the patch.  Thanks.",
+            "date": "2010-04-09T10:59:51.218+0000",
+            "id": 2
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "29x version of this patch.",
+            "date": "2010-04-14T10:03:21.712+0000",
+            "id": 3
+        },
+        {
+            "author": "Shay Banon",
+            "body": "Is there a chance that this can also be applied to 3.0.2 / 3.1? It would be really helpful to get this as soon as possible in the next Lucene version.\n",
+            "date": "2010-05-04T22:09:53.598+0000",
+            "id": 4
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "OK I'll backport.",
+            "date": "2010-05-04T23:19:01.094+0000",
+            "id": 5
+        },
+        {
+            "author": "Shay Banon",
+            "body": "Thanks!",
+            "date": "2010-05-05T05:11:05.690+0000",
+            "id": 6
+        }
+    ],
+    "component": "",
+    "description": "As described in [1] IndexWriter retains references to Reader used in Fields and that can lead to big memory leaks when using tika's ParsingReaders (as those can take 1MB per ParsingReader). \n\n[2] shows a screenshot of the reference chain to the Reader from the IndexWriter taken with Eclipse MAT (Memory Analysis Tool) . The chain is the following:\n\nIndexWriter -> DocumentsWriter -> DocumentsWriterThreadState -> DocFieldProcessorPerThread  -> DocFieldProcessorPerField -> Fieldable -> Field (fieldsData) \n\n\n-------------\n[1] http://markmail.org/thread/ndmcgffg2mnwjo47\n[2] http://skitch.com/ecerulm/n7643/eclipse-memory-analyzer\n\n",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-2387",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "IndexWriter retains references to Readers used in Fields (memory leak)",
+    "systemSpecification": true,
+    "version": "3.0.1"
+}

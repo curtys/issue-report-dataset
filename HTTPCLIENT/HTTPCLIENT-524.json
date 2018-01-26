@@ -1,0 +1,59 @@
+{
+    "comments": [
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "David,\n\nPlease see javadocs [1]\n\n\" HttpClient makes no provisions to check whether the same credentials have been\ntried already. It is a responsibility of the custom credentials provider to keep\ntrack of authentication attempts and to ensure that credentials known to be\ninvalid are not retried. HttpClient will simply store the set of credentials\nreturned by the custom credentials provider in the http state object and will\nattempt to use these credentials for all subsequent requests with the given\nauthentication scope.\"\n\n[1]\nhttp://jakarta.apache.org/commons/httpclient/apidocs/org/apache/commons/httpclient/auth/CredentialsProvider.html",
+            "date": "2005-11-09T06:09:42.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Roland Weber",
+            "body": "> It is a responsibility of the custom credentials provider to keep\n> track of authentication attempts and to ensure that credentials\n> known to be invalid are not retried.\n\nWill invalid credentials be indicated to the credentials provider?\nThe interface was introduced to implement user dialogs, but it seems\nto be used for non-interactive credential stores on a regular basis.\nOf course we won't change the 3.0 API, but we should keep that in\nmind for 4.0, or maybe even 3.1.\n\n/** Indicates that credentials have been rejected by a host or proxy. */\npublic void invalidCredentials(AuthScheme, String host, int port,\n                               boolean proxy, Credentials)\n\ncheers,\n  Roland",
+            "date": "2005-11-09T15:36:58.000+0000",
+            "id": 1
+        },
+        {
+            "author": "David Martineau",
+            "body": "I've since recoded by modifying my credentials provider and all is well.  I \nadded a boolean to check to see if the getCredentials method had been called \nalready and if so, return null, which terminated the loop.  \n\nIf anything, this revealed shortcomings with tomcat BASIC authentication since \nthe endless loop repeatedly hammered my authenitication class on the web server-\n- but perhaps thats a limitation of the http protocol or something that would \nbe intercepted by the firewall in production.\n\nThe code sample I had initially used (copied from) was in fact the call-back \ncode which got the credentials from the command-line (I believe the sample code \nmay be part of the distribution).  Perhaps that code should be updated to show \nhow to terminate after 3 unsuccessful logins.\n\nD.",
+            "date": "2005-11-09T16:17:01.000+0000",
+            "id": 2
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "(In reply to comment #2)\n> > It is a responsibility of the custom credentials provider to keep\n> > track of authentication attempts and to ensure that credentials\n> > known to be invalid are not retried.\n> \n> Will invalid credentials be indicated to the credentials provider?\n> The interface was introduced to implement user dialogs, but it seems\n> to be used for non-interactive credential stores on a regular basis.\n> Of course we won't change the 3.0 API, but we should keep that in\n> mind for 4.0, or maybe even 3.1.\n> \n> /** Indicates that credentials have been rejected by a host or proxy. */\n> public void invalidCredentials(AuthScheme, String host, int port,\n>                                boolean proxy, Credentials)\n> \n> cheers,\n>   Roland\n\n\nRoland, \nThis issue highlights the problem that we kept on adding features to HttpClient\nat the expense of API quality. We need to take a hard look at the whole\nHttpState / Credentials story in the course of 4.0 API redesign. \n\nOleg",
+            "date": "2005-11-09T17:57:08.000+0000",
+            "id": 3
+        },
+        {
+            "author": "Ortwin Gl\u00fcck",
+            "body": "It would be nice for instance, to use the JAAS (javax.security.auth.callback)\nclasses for this. Let the user register a CallbackHandler with HttpClient.\nHttpClient then sends Callbacks to the CallbackHandler if it needs something.",
+            "date": "2005-11-09T18:12:35.000+0000",
+            "id": 4
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "The way HttpClient handles authentication has completely changed in the 4.0 codeline. \n\n(1) HttpState has been eliminated and its function has been replaced with CredentialsProvider interface. One can now easily plug in a custom implementation of that interface. \n(2) HttpClient now maintains an internal authentication state. I will retry the authentication process only if the credentials provider returns a different set of credentials in response to an authentication failure (thus avoiding an infinite loop). \n(3) Credentials providers are no longer expected to provide interactivity with the user. This logic should be implemented outside of the request execution loop. See sample: \n\nhttp://svn.apache.org/repos/asf/jakarta/httpcomponents/httpclient/trunk/module-client/src/examples/org/apache/http/examples/client/ClientInteractiveAuthentication.java\n\nOleg",
+            "date": "2007-07-21T12:13:41.198+0000",
+            "id": 5
+        },
+        {
+            "author": "Ralf Hauser",
+            "body": "the sample is now in http://svn.apache.org/repos/asf/httpcomponents/httpclient/trunk/module-client/src/examples/org/apache/http/examples/client/ClientInteractiveAuthentication.java\n\nsee also http://issues.apache.org/jira/browse/HTTPCLIENT-831",
+            "date": "2009-02-27T06:37:58.593+0000",
+            "id": 6
+        }
+    ],
+    "component": "HttpClient (classic)",
+    "description": "If the remote server is using BASIC or NT authentication and you pass in \ninvalid credentials you get stuck in an infinite for loop, repeatedly sending \nthe same authentication request again and again to the server.  The for loop is \nin the executeMethod method of the HttpMethodDirector class.\n\nSample code:\n=================================================================\n\n\nimport org.apache.commons.httpclient.Credentials;\nimport org.apache.commons.httpclient.NTCredentials;\nimport org.apache.commons.httpclient.UsernamePasswordCredentials;\nimport org.apache.commons.httpclient.HttpClient;\nimport org.apache.commons.httpclient.methods.GetMethod;\nimport org.apache.commons.httpclient.auth.*;\n\nimport java.io.IOException;\nimport java.io.BufferedInputStream;\nimport java.io.ByteArrayOutputStream;\n\n/**\n * Created by IntelliJ IDEA.\n * User: dmartineau\n * Date: Nov 8, 2005\n * Time: 1:43:21 PM\n */\npublic class ShowProblem\n{\n\n    private String location;\n    private String user;\n    private String pass;\n    private String domain;\n\n    public ShowProblem(String location, String user, String pass, String domain)\n    {\n        this.location = location;\n        this.user=user;\n        this.pass=pass;\n        this.domain=domain;\n\n    }\n\n    public int getFile()\n    {\n        int status = 500;\n        HttpClient client = new HttpClient();\n        client.getParams().setParameter(\n            CredentialsProvider.PROVIDER, new CProvider(user,pass,domain));\n        GetMethod httpget = new GetMethod(location);\n        httpget.setDoAuthentication(true);\n\n        try\n        {\n            // execute the GET\n            status = client.executeMethod(httpget);\n            if (status==200)\n            {\n                BufferedInputStream bin = new BufferedInputStream\n(httpget.getResponseBodyAsStream());\n\n                ByteArrayOutputStream bos = new ByteArrayOutputStream();\n                int bytesRead = 0;\n                byte[] buff = new byte[16384];\n\n                while ( (bytesRead = bin.read(buff)) != -1) {\n                    bos.write(buff, 0, bytesRead);\n                }\n\n                // display the results.\n                System.out.println(new String(bos.toByteArray()));\n            }\n        }\n        catch (Throwable t)\n        {\n            t.printStackTrace();\n        }\n        finally\n        {\n            // release any connection resources used by the method\n            httpget.releaseConnection();\n        }\n        return status;\n\n    }\n\n    public static void main(String[] args)\n    {\n        ShowProblem showProblem = new ShowProblem(args[0],args[1],args[2],args\n[3]);\n        int response = showProblem.getFile();\n        \n    }\n\n\n\n    class CProvider implements CredentialsProvider\n    {\n        private String user;\n        private String password;\n        private String domain;\n\n        public CProvider(String user, String password, String domain)\n        {\n            super();\n            this.user = user;\n            this.password = password;\n            this.domain = domain;\n        }\n\n        public Credentials getCredentials(final AuthScheme authscheme,final \nString host,int port,boolean proxy)\n        throws CredentialsNotAvailableException\n        {\n            if (authscheme == null)\n            {\n                return null;\n            }\n            try\n            {\n                if (authscheme instanceof NTLMScheme)\n                {\n                    return new NTCredentials(user, password, host, domain);\n                }\n                else if (authscheme instanceof RFC2617Scheme)\n                {\n                    return new UsernamePasswordCredentials(user, password);\n                }\n                else\n                {\n                    throw new CredentialsNotAvailableException(\"Unsupported \nauthentication scheme: \" +\n                        authscheme.getSchemeName());\n                }\n            }\n            catch (IOException e)\n            {\n                throw new CredentialsNotAvailableException(e.getMessage(), e);\n            }\n        }\n\n    }\n}",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "HTTPCLIENT-524",
+    "issuetypeClassified": "RFE",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "HTTPCLIENT",
+    "project": "HTTPCLIENT",
+    "summary": "Provide feedback mechanism to CredentialsProvider",
+    "systemSpecification": true,
+    "version": "3.0 RC4"
+}

@@ -1,0 +1,77 @@
+{
+    "comments": [
+        {
+            "author": "Christopher Morris",
+            "body": "For the highlighter trunk",
+            "date": "2009-11-05T13:43:11.820+0000",
+            "id": 0
+        },
+        {
+            "author": "Mark Miller",
+            "body": "Thanks for the tests and fix Christopher!\n\nI've got one more patch coming and ill commit in a few days.\n\nI'm going to break the tests back out in a separate file again (on second thought I think how you had is a good idea) and remove an author tag. Then after one more review I think this good to go in.",
+            "date": "2009-12-16T03:00:28.162+0000",
+            "id": 1
+        },
+        {
+            "author": "Mark Miller",
+            "body": "Hey Christopher, why are you going through the trouble of the custom collector to check that there are no hits? Why not just do a standard search?",
+            "date": "2009-12-16T23:47:01.394+0000",
+            "id": 2
+        },
+        {
+            "author": "Mark Miller",
+            "body": "I've broken the new tests back out into there own file, change the hit collector code to just search basically, and improved the test coverage of TokenSources a bit.",
+            "date": "2009-12-16T23:53:32.310+0000",
+            "id": 3
+        },
+        {
+            "author": "Mark Miller",
+            "body": "I'll commit this soon.",
+            "date": "2009-12-17T14:11:44.404+0000",
+            "id": 4
+        },
+        {
+            "author": "Christopher Morris",
+            "body": "Cheers Mark,\n\nThe custom collector was probably because I was learning the new API at the time.\n\nThe only changes I've made since the patch I submitted were to initialise the ArrayList with tpv.getTerms().length because that represents the minimum size that the list will grow to, and to replace the List and Iterator fields with an array (derived from the list) and an integer pointer. Both of which are probably unnecessary.\n\nThe tests could be improved - the first case could be fixed in it's present form by using the Analyzer to generate the phrase query. If the stemmed word was the middle word of the phrase then that fix wouldn't work.",
+            "date": "2009-12-18T09:32:17.910+0000",
+            "id": 5
+        },
+        {
+            "author": "Mark Miller",
+            "body": "Thanks Christopher!",
+            "date": "2010-01-06T19:08:57.680+0000",
+            "id": 6
+        },
+        {
+            "author": "Robert Muir",
+            "body": "reopening for possible 2.9.4/3.0.3 backport.\n",
+            "date": "2010-10-29T13:11:45.659+0000",
+            "id": 7
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Resolving again as this issue will not be backported to 2.9/3.0 branches.",
+            "date": "2010-11-27T23:25:33.478+0000",
+            "id": 8
+        },
+        {
+            "author": "Grant Ingersoll",
+            "body": "Bulk close for 3.1",
+            "date": "2011-03-30T15:50:25.741+0000",
+            "id": 9
+        }
+    ],
+    "component": "modules/highlighter",
+    "description": "TokenSources.StoredTokenStream does not assign positionIncrement information. This means that all tokens in the stream are considered adjacent. This has implications for the phrase highlighting in QueryScorer when using non-contiguous tokens.\n\nFor example:\nConsider  a token stream that creates tokens for both the stemmed and unstemmed version of each word - the fox (jump|jumped)\nWhen retrieved from the index using TokenSources.getTokenStream(tpv,false), the token stream will be - the fox jump jumped\n\nNow try a search and highlight for the phrase query \"fox jumped\". The search will correctly find the document; the highlighter will fail to highlight the phrase because it thinks that there is an additional word between \"fox\" and \"jumped\". If we use the original (from the analyzer) token stream then the highlighter works.\n\nAlso, consider the converse - the fox did not jump\n\"not\" is a stop word and there is an option to increment the position to account for stop words - (the,0) (fox,1) (did,2) (jump,4)\nWhen retrieved from the index using TokenSources.getTokenStream(tpv,false), the token stream will be - (the,0) (fox,1) (did,2) (jump,3).\n\nSo the phrase query \"did jump\" will cause the \"did\" and \"jump\" terms in the text \"did not jump\" to be highlighted. If we use the original (from the analyzer) token stream then the highlighter works correctly.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-2035",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "TokenSources.getTokenStream() does not assign positionIncrement",
+    "systemSpecification": true,
+    "version": "2.4, 2.4.1, 2.9"
+}

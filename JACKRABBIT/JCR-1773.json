@@ -1,0 +1,65 @@
+{
+    "comments": [
+        {
+            "author": "Lars Michele",
+            "body": "Sorry for the noise yesterday, this was not a solution and even not pointing in the right direction.\n\nThe test above makes a little mistake, there is nothing like a shareable item in JackRabbit, there are only shareable nodes. OK, the node path is also not correct, but that is just a small bug ;-) So here comes the solution for that :-)\n\nChange in ItemManager.java\n    /**\n     * @param path\n     * @return\n     * @throws PathNotFoundException\n     * @throws AccessDeniedException\n     * @throws RepositoryException\n     */\n    public NodeImpl getNode(Path path)\n            throws PathNotFoundException, AccessDeniedException, RepositoryException {\n        NodeId id = hierMgr.resolveNodePath(path);\n        NodeId parentId = hierMgr.resolveNodePath(path.getAncestor(1));\n        if (id == null) {\n            throw new PathNotFoundException(safeGetJCRPath(path));\n        }\n        try {\n        \tif (parentId == null)\n        \t\t// TODO add shortcut, only the rootnode has no parent\n        \t\treturn (NodeImpl) getItem(id, path);\n        \t// if the node is shareable, it now returns the node with the right parent \n        \treturn getNode(id, parentId);\n        } catch (ItemNotFoundException infe) {\n            throw new PathNotFoundException(safeGetJCRPath(path));\n        }\n    }\n\nChanges in NodeImpl.java\n\nNew method added\n    /**\n     * Returns the id of the parent node at <code>relPath</code> or <code>null</code>\n     * if no node exists at <code>relPath</code>.\n     * <p/>\n     * Note that access rights are not checked.\n     *\n     * @param relPath relative path of a (possible) node\n     * @return the id of the parent node at <code>relPath</code> or\n     *         <code>null</code> if no node exists at <code>relPath</code>\n     * @throws RepositoryException if <code>relPath</code> is not a valid\n     *                             relative path\n     */\n    protected NodeId resolveRelativeParentPath(String relPath)\n            throws RepositoryException {\n        try {\n            /**\n             * first check if relPath is just a name (in which case we don't\n             * have to build & resolve absolute path)\n             */\n            Path p = session.getQPath(relPath).getAncestor(1);\n            if (p.getLength() == 1) {\n                Path.Element pe = p.getNameElement();\n                if (pe.denotesName()) {\n                    // check if node entry exists\n                    NodeState thisState = data.getNodeState();\n                    int index = pe.getIndex();\n                    if (index == 0) {\n                        index = 1;\n                    }\n                    ChildNodeEntry cne =\n                            thisState.getChildNodeEntry(pe.getName(), index);\n                    if (cne != null) {\n                        return cne.getId();\n                    } else {\n                        // there's no child node with that name\n                        return null;\n                    }\n                }\n            }\n            /**\n             * build and resolve absolute path\n             */\n            p = PathFactoryImpl.getInstance().create(getPrimaryPath(), p, true);\n            return session.getHierarchyManager().resolveNodePath(p);\n        } catch (NameException e) {\n            String msg = \"failed to resolve path \" + relPath + \" relative to \" + this;\n            log.debug(msg);\n            throw new RepositoryException(msg, e);\n        }\n    }\n\nJust forget to add the complete method ;-)\n\nChanged method\n    /**\n     * {@inheritDoc}\n     */\n    public Node getNode(String relPath)\n            throws PathNotFoundException, RepositoryException {\n        // check state of this instance\n        sanityCheck();\n        NodeId id = resolveRelativeNodePath(relPath);\n        NodeId parentId = resolveRelativeParentPath(relPath);\n        if (id == null) {\n            throw new PathNotFoundException(relPath);\n        }\n        try {\n        \tif (parentId == null)\n        \t\t// TODO add shortcut, only the rootnode has no parent\n                return (NodeImpl) itemMgr.getItem(id);\n        \t// if the node is shareable, it now returns the node with the right parent \n            return itemMgr.getNode(id, parentId);\n        } catch (AccessDeniedException ade) {\n            throw new PathNotFoundException(relPath);\n        } catch (ItemNotFoundException infe) {\n            throw new PathNotFoundException(relPath);\n        }\n    }\n\nNow if you try the test with\nNode item = session.getNode(path)\ninstead of\nItem item = session.getItem(path)\nthe test works as expected.\n\nThe problem will still exist in the WebDAV layer, because it uses mostly Item instead of Node.",
+            "date": "2009-04-25T17:23:57.648+0000",
+            "id": 0
+        },
+        {
+            "author": "Lars Michele",
+            "body": "Here comes now the hotfix for the WebDAV layer: \n \n Change in org.apache.jackrabbit.webdav.simple.DavResourceImpl \n \n     /** \n      * @see DavResource#removeMember(DavResource) \n      */ \n     public void removeMember(DavResource member) throws DavException { \n         if (!exists() || !member.exists()) { \n             throw new DavException(DavServletResponse.SC_NOT_FOUND); \n         } \n         if (isLocked(this) || isLocked(member)) { \n             throw new DavException(DavServletResponse.SC_LOCKED); \n         } \n \n         // don't allow removal of nodes, that would be filtered out \n         if (isFilteredResource(member)) { \n             log.debug(\"Avoid removal of filtered resource: \" + member.getDisplayName()); \n             throw new DavException(DavServletResponse.SC_FORBIDDEN); \n         } \n \n \n         try { \n             String itemPath = member.getLocator().getRepositoryPath(); \n             Item memItem = getJcrSession().getItem(itemPath); \n             //TODO once jcr2 is out: simply call removeShare() \n             if (memItem instanceof Node){ \n              Node memNode = getJcrSession().getRootNode().getNode(itemPath.substring(1)); \n              memNode.remove(); \n             }else if (memItem instanceof org.apache.jackrabbit.api.jsr283.Node) { \n                 org.apache.jackrabbit.api.jsr283.Node n = (org.apache.jackrabbit.api.jsr283.Node) memItem; \n                 n.removeShare(); \n             } else { \n                 memItem.remove(); \n             } \n             getJcrSession().save(); \n \n             // make sure, non-jcr locks are removed, once the removal is completed \n             try { \n                 if (!isJsrLockable()) { \n                     ActiveLock lock = getLock(Type.WRITE, Scope.EXCLUSIVE); \n                     if (lock != null) { \n                         lockManager.releaseLock(lock.getToken(), member); \n                     } \n                 } \n             } catch (DavException e) { \n                 // since check for 'locked' exception has been performed before \n                 // ignore any error here \n             } \n         } catch (RepositoryException e) { \n             throw new JcrDavException(e); \n         } \n     } \n \n A simple cast from Item to Node is not useable here, because the Session.getPath() does not return the right node, if the node is shared. Btw, the memItem is never instance of org.apache.jackrabbit.api.jsr283.Node here, but removeShare() is internally the same as remove() in JackRabbit.",
+            "date": "2009-04-25T19:06:41.825+0000",
+            "id": 1
+        },
+        {
+            "author": "Manfred Baedke",
+            "body": "I am not quite sure if I got it right: \n\n<quote>\nNow if you try the test with\nNode item = session.getNode(path)\ninstead of\nItem item = session.getItem(path)\nthe test works as expected. \n</quote>\n\nSo it is now possible that for a given path P\n\nsession.getNode(P).equals(session.getItem(P))\n\nwill return false? Isn't that totally inconsistent?",
+            "date": "2009-04-27T11:39:14.186+0000",
+            "id": 2
+        },
+        {
+            "author": "Tobias Bocanegra",
+            "body": "lars: \n  please attach a proper patch to this issue and don't include source code directly. otherwise it's a real pain to apply the changes. thanks.\n\nmanfred:\n  it might return false. in jsr283 it is allowed for properties and nodes to have the same path. that's why session.getItem() is deprecated. however, it's behavior is implementation specific, it can return the property or the node.",
+            "date": "2009-04-27T11:59:48.629+0000",
+            "id": 3
+        },
+        {
+            "author": "Lars Michele",
+            "body": "<quote>\nSo it is now possible that for a given path P \n \n session.getNode(P).equals(session.getItem(P)) \n \n will return false? Isn't that totally inconsistent?\n</quote>\n\nGood catch, so here comes the real solution for the ItemManager#getItem(Path path). Just to mention, that this method is marked as deprecated.\n\n    public ItemImpl getItem(Path path)\n            throws PathNotFoundException, AccessDeniedException, RepositoryException {\n        ItemId id = hierMgr.resolvePath(path);\n        if (id == null) {\n            throw new PathNotFoundException(safeGetJCRPath(path));\n        }\n        try {\n        \tItemImpl item = getItem(id, path);\n        \t// Test, if the item is a shareable node\n        \tif(item.isNode() && ((NodeImpl)item).isShareable())\n        \t\treturn getNode(path);\n            return item;\n        } catch (ItemNotFoundException infe) {\n            throw new PathNotFoundException(safeGetJCRPath(path));\n        }\n    }\n\nIf you patch the ItemManger directly, the change in the WebDAV layer is obsolet.",
+            "date": "2009-04-27T12:03:24.398+0000",
+            "id": 4
+        },
+        {
+            "author": "Lars Michele",
+            "body": "Here are the patches. Sorry for the noise with the code.",
+            "date": "2009-04-27T12:15:45.004+0000",
+            "id": 5
+        },
+        {
+            "author": "Manfred Baedke",
+            "body": "@Tobias:\n\nUnderstood. But in this case session.getItem(P) does not return a property (but a node that just does not belong to P). Anyway, Lars' last comment addresses this issue.  \n",
+            "date": "2009-04-27T12:21:58.102+0000",
+            "id": 6
+        },
+        {
+            "author": "Dominique Pfister",
+            "body": "Thank you, Lars, for providing a patch. I just had to add the edge case of resolving a parent node or path, when the target itself is the root node.\n\nRemoved org.apache.jackrabbit.test.api.ShareableNodeTest#testSharedNodePath from the known.issues element in jackrabbit-core/pom.xml since the test now passes.\n\nFixed in revision 790127.",
+            "date": "2009-07-01T11:40:50.194+0000",
+            "id": 7
+        }
+    ],
+    "component": "jackrabbit-core",
+    "description": "It seems that for shareable nodes it can happen that getPath() returns the wrong path (one of another node in the shared set):\n\n/**\n* Verify that shared nodes return correct paths.\n*/\npublic void testPath() throws Exception {\n   Node a1 = testRootNode.addNode(\"a1\");\n   Node a2 = a1.addNode(\"a2\");\n   Node b1 = a1.addNode(\"b1\");\n   b1.addMixin(\"mix:shareable\");\n   testRootNode.save();\n\n   //now we have a shareable node N with path a1/b1\n\n   Session session = testRootNode.getSession();\n   Workspace workspace = session.getWorkspace();\n   String path = a2.getPath() + \"/b2\";\n   workspace.clone(workspace.getName(), b1.getPath(), path, false);\n\n   //now we have another shareable node N' in the same shared set as N with path a1/a2/b2\n\n   //using the path a1/a2/b2, we should get the node N' here\n   Item item = session.getItem(path);\n   String p = item.getPath();\n   assertFalse(\"unexpectedly got the path from another node from the same shared set \", p.equals(b1.getPath()));\n} \n\nNote that when this happens, a subsequent remove() deletes the wrong node.\n\n(Thanks Manfred for spotting this one).",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "JCR-1773",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "shareable nodes: wrong path returned, causes remove() to delete wrong node",
+    "systemSpecification": true,
+    "version": ""
+}

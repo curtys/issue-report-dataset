@@ -1,0 +1,53 @@
+{
+    "comments": [
+        {
+            "author": "Felix Meschberger",
+            "body": "Attaching a patch to RepositoryStartupServlet relative to the contrib/jcr-server/webapp directory.\n\nThis patch fixes the issue as follows (also see the added class comment regarding RMI registration):\n\n  - If neither rmi-uri, nor rmi-port, nor rmi-host is configured, RMI registration does not take place (as today)\n  - If rmi-uri is configured, rmi-host and rmi-port are ignored. Repository-name is ignored if rmi-uri contains a name\n\nIf the host name - either from rmi-uri or rmi-host parameter - is empty or null, the local host is used.\nIf the port number is negative, zero or higher than 65535, the default port number 1099 is used.\n\nAfter gathering the information, a Registry instance has to be retrieved. First LocalRegistry.createRegistry is called. If the host name is not empty or null a custom RMIServerSocketFactory is created which is enabled to create server sockets to a specific interface, otherwise the standard RMIServerSocketFactory is used, which simply creates a server socket binding to all interfaces on the local host.\n\nIf creating the registry fails - e.g. because host is a remote host or a registry is already active - LocalRegistry.getRegistry is called with the host and port.\n\nFinally the registry retrieved above is used to bind the repository.\n\nIf there is no opposition or further enhancement, I will commit the fix sometime next week.",
+            "date": "2005-12-11T21:54:58.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Tobias Bocanegra",
+            "body": "looks good. thanks.",
+            "date": "2005-12-12T18:57:53.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Felix Meschberger",
+            "body": "Commited proposed patch.\n\nFixed in Rev. 356251",
+            "date": "2005-12-12T21:18:23.000+0000",
+            "id": 2
+        },
+        {
+            "author": "Felix Meschberger",
+            "body": "Done.",
+            "date": "2005-12-12T21:22:11.000+0000",
+            "id": 3
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Reopened to change fix version to 1.0.",
+            "date": "2005-12-15T18:16:27.000+0000",
+            "id": 4
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Closed with the correct fix version.",
+            "date": "2005-12-15T18:16:50.000+0000",
+            "id": 5
+        }
+    ],
+    "component": "",
+    "description": "Registration of the repository to a RMI registry in RepositoryStartupServlet.registerRMI uses web application parameters inconsistently and may not always succeed registering the repository.\n\nToday, the registerRMI uses these parameters for registration to RMI:\n\n    rmi-host : The name of the host on which the registry is running\n    rmi-port : The port on which the registry is running\n    rmi-uri : An RMI URI to use for registration\n    repository-name : The name to bind the repository to\n\nThe problem is, that rmi-port is used to try to create the registry to make sure a registry is running on the local host. The rmi-uri is used to register the repository using the static Naming.bind method. If the rmi-uri is not configured, the URI is created from rmi-host, rmi-port and repository-name.\n\nThis may now create a bunch of problems: If the rmi-port and rmi-uri configurations do not match, registration fails, if rmi-host does not resolve to an IP address to which the registry is bound, registration fails.\n\nI encounter this issue, when trying to register the repository to an RMI registry using default rmi-port configuration (rmi-host and rmi-uri not configured) when running the web app in Jetty.",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "JCR-291",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Minor",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "jcr-server-webapp: RMI Registration unstable",
+    "systemSpecification": true,
+    "version": ""
+}

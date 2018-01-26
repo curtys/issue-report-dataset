@@ -1,0 +1,35 @@
+{
+    "comments": [
+        {
+            "author": "Marcel Reutegger",
+            "body": "It turns out the slowdown is not related to SortedLuceneQueryHits. With Jackrabbit 1.6 we also switched to Lucene 2.4.1 and one special handling in our RangeQuery implementation become obsolete [0]. It seems the Lucene replacement is a bit slower than what we previously had.\n\nI'll revert the changed to this class.\n\nPlease also note that you can reduce the query time further when you set a limit on the number of results. However, the method Query.setLimit() is only available in JCR 2.0. For 1.6 you'd have to cast the query to QueryImpl.\n\n[0] http://svn.apache.org/viewvc/jackrabbit/trunk/jackrabbit-core/src/main/java/org/apache/jackrabbit/core/query/lucene/RangeQuery.java?r1=752064&r2=756444",
+            "date": "2009-10-26T14:53:00.149+0000",
+            "id": 0
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "Fixed in revision: 829823",
+            "date": "2009-10-26T15:21:01.897+0000",
+            "id": 1
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "Oops, that commit went to the 1.6 branch, but should have gone to trunk.\n\nReverted previous commit in revision: 830246\n\nand committed the changed to trunk in revision: 830238",
+            "date": "2009-10-27T16:49:36.536+0000",
+            "id": 2
+        }
+    ],
+    "component": "jackrabbit-core",
+    "description": "I am evaluating migrating from 1.5 to 1.6. I created several test cases that prove the query performance of 1.6 is the same or better than 1.5. That is until I add a date property into my query. The repository has 400,000 nodes. Each node as several string based properties (@property, @property2, ...) and a date based property (@datestart). Every node has a relatively unique datestart and the total date range spans 6 years.\n\nIn my tests, my base query is:\n//element(*,my:namespace)[@property='value'] order by @datestart descending\n\nThe time to run this query in 1.5 and 1.6 is:\n1.5 = 1.5 seconds\n1.6 = 1.5 seconds\n\nIf I add a date property:\n//element(*,my:namespace)[@property='value' and @datestart<=xs:dateTime('2009-09-24T11:53:23.293-05:00')] order by @datestart descending\n\nthe results are:\n1.5 = 1.5 seconds\n1.6 = 3.5 seconds \n\nI have isolated the slow down to the implementation of SortedLuceneQueryHits. SortedLuceneQueryHits is not present in 1.5. I have run versions of the test where the query is run 20 times simultaneously and a different time where the query is run 20 times sequentially. In both tests I do see evidence that caching is taking place, but it provides only very minor performance gains. Also, running the 1.6 query multiple times does not decrease the query time dramatically.\n\nhttp://www.nabble.com/Date-Property-Performance-in-1.6-td25704607.html",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "JCR-2353",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Major",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "Poor performance in range queries using dates",
+    "systemSpecification": true,
+    "version": "1.6"
+}

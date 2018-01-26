@@ -1,0 +1,65 @@
+{
+    "comments": [
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "Could you post a proposed patch using diff -u? Sounds like you already \nfixed the problem in your local copy.\n\nThanks!",
+            "date": "20001115T17:46:44",
+            "id": 0
+        },
+        {
+            "author": "dnavas@yahoo.com",
+            "body": "Line-numbers are off -- I've been making some mods to the engine to support \nsome of our needs, but here's the two parts of the diffs you're likely \ninterested in:\nNativeFunction.java:\n@@ -910,7 +916,7 @@\n             fn.names = new String[1];\n         fn.names[0] = \"anonymous\";\n         fn.setPrototype(getFunctionPrototype(global));\n-        fn.setParentScope(global);\n+        fn.setParentScope(scope);\n\n         return fn;\n     }\n\nFunctionObject.java (using -u4)\n     public Object call(Context cx, Scriptable scope, Scriptable thisObj,\n                        Object[] args)\n         throws JavaScriptException\n     {\n+//System.out.println(\"Calling: \" + method.getName() + \" on: \" + thisObj.getClas\ns().getName());\n         if (parmsLength < 0)\n-            return callVarargs(cx, thisObj, args, false);\n+        {\n+            cx.ctorScope = scope;\n+            Object result = callVarargs(cx, thisObj, args, false);\n+            cx.ctorScope = null;\n+\n+            return result;\n+        }\n\n\nYou can ignore my printlns ovbiously :-)\n\n",
+            "date": "20001115T18:04:48",
+            "id": 1
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "You're right that our standard testing setup runs this test in the global scope,\nso we don't fail this test with the current code.\n\nI'm a little confused as I look at this more. Does the scope you run the code\nin have a parent scope? ECMA specifically states that the scope chain for\nthe function consists of the global scope only. With your change I get the\nfollowing behavior, which I think is non-ECMA:\n\njs> function f(a) { with (a) { return new Function(\"return y\"); } };\njs> x = f({y:3})\n\nfunction anonymous() {\n    return y;\n}\n\njs> y = 7\n7\njs> x()\n3\n\nI believe this last call should return 7, not 3, which is the behavior before \nthe change.",
+            "date": "20001116T15:10:05",
+            "id": 2
+        },
+        {
+            "author": "dnavas@yahoo.com",
+            "body": "Well, if Ecma says the scope should be the global scope, then so be it :-)\n\nHmm, maybe NativeFunction doesn't need to change, then.\n\nHere's the scope setup I see:\n\n    Window1 --> [proto] Window2 --> [parent] object --> [parent] null\n            --> [parent] null\n\nThe scope we run the test in does not have a direct parent scope -- I believe \nthat's the way you've documented to allow reuse of the standard objects, yes?  \n\nMyFunc gets added as a property of Window.  The function itself wants to access\nMyFunc -- and it can't be found when the function is run.  However, I believe\nthat the fix is then purely the change in FunctionObject.\n\nIndeed, removing the change to NativeFunction allows the test to continue to \npass.  My bad.\n",
+            "date": "20001116T17:39:43",
+            "id": 3
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "Okay, the FunctionObject change by itself makes sense--I see the code path\nthrough Function-as-a-call to Function-as-a-constructor.\n\nI'll run regressions on this and commit it if there are no problems. I've\nadded your name to the list of contributors.\n\nThanks!",
+            "date": "20001116T18:11:57",
+            "id": 4
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "Checked in FunctionObject change. Thanks!",
+            "date": "20001117T13:06:11",
+            "id": 5
+        },
+        {
+            "author": "pschwartau@meer.net",
+            "body": "Norris, is there a test I should add for this? I'm out of my depth on this\nbug, so if you have one, I'll add it to the suite - ",
+            "date": "20001117T18:35:14",
+            "id": 6
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "This one isn't possible to test for with the js shell. I'd recommend not \nwriting a regression test for it.",
+            "date": "20001117T18:45:29",
+            "id": 7
+        }
+    ],
+    "component": "Core",
+    "description": "To recreate, run the mozilla/js/tests/ecma/FunctionObjects/15.3.1.1-3 test.\n\nTypos (possibly merge problem on my end, apologies if true):\n    FunctionObject does not set Context's ctorScope in the call() method\n        when paramslength is < 0, like it does in the constructor.\n    NativeFunction's jsConstructor uses the global scope as the scope of the\n        created function.  Shouldn't it use scope rather than global as the\n        parentScope of the function?  I would have thought that the scope\n        for the function was a matter of where it was created....\n\nChanging both of these allows this test to pass in Rhino as it does in mozilla.\n\nNote: if Rhino's testing harness runs the test in the global scope, I suppose \nthe test won't actually fail....  We're running the tests where the scope that \nthe test code runs in is NOT the global scope....",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "60184",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "P3 normal",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "Functions created in wrong scope",
+    "systemSpecification": true,
+    "version": "other"
+}

@@ -1,0 +1,71 @@
+{
+    "comments": [
+        {
+            "author": "Michael McCandless",
+            "body": "Patch; this is a great simplification of the NRTMgr API, and I think sets it up for ThingyManager.\n\nBut: I had to introduce TrackingIndexWriter, which just wraps an IndexWriter and tracks the changes made through it (as a generation).  Previously NRTManager did this all itself, but now you may need to share this tracking across 2 NRTManagers so I had to pull it out... ",
+            "date": "2012-02-10T17:28:54.245+0000",
+            "id": 0
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "mike, I like the simplification. I think we talked about this last time we touched this code already. I think this is the most common use-case... Yet, I don't think NRTManager should expose IndexSearcher directly. Think of an app that either uses NRT or commit / reopen ie. uses a NRTManager and a PlainOldIndexManager. From a user perspective SearcherManager is the main interface to search the index no matter how you commit / flush / NRT etc. I'd rather keep it exposing the SM instead. \n\nabout TrackingIndexWriter - I think we should fix IW to use seq ids eventually but I think for this purpose its fine.",
+            "date": "2012-02-10T17:57:55.960+0000",
+            "id": 1
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "bq. Yet, I don't think NRTManager should expose IndexSearcher directly. \n\nHmm, but the example you raised will be addressed by LUCENE-3761, right?  Ie at that point, both SM and NRTM are ThingyManager<IndexSearcher>?\n\nI don't like the extra indirection (you get an SM from NRTM) because now you have two linked instances.  For example, it opens up the risk that the app will (incorrectly) call SM.maybeReopen instead of NRTM.maybeReopen.  I think having the one manager to work with is less dangerous...",
+            "date": "2012-02-10T18:29:05.972+0000",
+            "id": 2
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "bq. Hmm, but the example you raised will be addressed by LUCENE-3761, right? Ie at that point, both SM and NRTM are ThingyManager<IndexSearcher>?\n\nI think NRTM should delegate rather than subclass. It serves two different purposes and we shouldn't try to couple tight if not needed.",
+            "date": "2012-02-10T18:55:19.621+0000",
+            "id": 3
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "New patch, exposing the private SearcherManager via\ngetSearcherManager.\n\nI really don't like the trappiness, ie that an app will mistakenly\ncall SM.maybeReopen instead of NRTM.maybeReopen, thus silently causing\nthreads to hang....  But I think once LUCENE-3761 is in we can fix\nthis... I'll open a separate issue to address this....\n\nI think this is ready!",
+            "date": "2012-02-11T21:33:46.122+0000",
+            "id": 4
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "bq. I think this is ready!\n\n+1 I think this gets further improved once LUCENE-3761 is in. thanks mike",
+            "date": "2012-02-12T15:38:39.559+0000",
+            "id": 5
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "one question, who is \"MJB\" in the changes.txt?",
+            "date": "2012-02-12T15:39:33.444+0000",
+            "id": 6
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "bq. one question, who is \"MJB\" in the changes.txt?\n\nOh, it's someone who found the applyDeletes logic confusing... s/he was asking about it in the comments near the end, here:\n\nhttp://blog.mikemccandless.com/2011/06/lucenes-near-real-time-search-is-fast.html",
+            "date": "2012-02-13T19:01:03.487+0000",
+            "id": 7
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "I'll open follow-on issue for the nasty trap...",
+            "date": "2012-02-13T19:35:08.615+0000",
+            "id": 8
+        }
+    ],
+    "component": "core/search",
+    "description": "NRTManager is hairy now, because the applyDeletes is separately passed\nto ctor, passed to maybeReopen, passed to getSearcherManager, etc.\n\nI think, instead, you should pass it only to the ctor, and if you have\nsome cases needing deletes and others not then you can make two\nNRTManagers.  This should be no less efficient than we have today,\njust simpler.\n\nI think it will also enable NRTManager to subclass ThingyManager\n(LUCENE-3761).\n",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-3769",
+    "issuetypeClassified": "REFACTORING",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Major",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "Simplify NRTManager",
+    "systemSpecification": true,
+    "version": ""
+}

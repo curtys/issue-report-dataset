@@ -1,0 +1,71 @@
+{
+    "comments": [
+        {
+            "author": "Michael McCandless",
+            "body": "Patch, cutting over NRTManager to subclass ReferenceManager, and also\nsome minor cleanups to ReferenceManager/SearcherManager.\n\nI added a method, afterRefresh, to ReferenceManager, which it calls\nafter a refresh; NRTManager needs this so it can\nnotify any waiting threads that the new gen is now live.\n",
+            "date": "2012-02-16T13:39:36.705+0000",
+            "id": 0
+        },
+        {
+            "author": "Shai Erera",
+            "body": "Patch looks good !\n\n*SearcherManager*\nwith these changes, if the app passes an IndexReader that is not DirectoryReader, it will get ClassCastException (if asserts are disabled). Is that ok? Perhaps it'd be better if you check that in SM's ctor and throw IllegalArgumentException? The problem is that app cannot pass DirReader in 3x, so this will apply to trunk only. In fact, I think that for trunk it will be better if SM declared it expects a DirectoryReader up front?\n\nWe cannot avoid the cast in refreshIfNeeded because IR is obtained from IS, but at least the app won't hit ClassCastExceptions after it created SM?\n\nThat kinda makes SearcherManager a DirReader only impl which is unfortunate IMO. But I'm not sure if any IR can openIfChanged() anymore, so perhaps that's unavoidable.\n\n*ReferenceManager*\nAbout close() -- do you think it'll be better to keep close() final, and introduce a new protected closeResource()/closeInternal() that NRTManager can override? That way, RefManagers won't accidentally override close() and forget to call super.close()?\n\nAbout afterRefresh() -- I'll admit that first I didn't understand why you need it. Previously, it was used to warm an IndexSearcher, but now we say it's the responsibility of SearcherFactory. I can see why it's useful for NRTManager, and it might even help me in LUCENE-3793 ! Do you think that we should declare that it can throw IOE? I know that if I'll use it in LUCENE-3793, I'll need that and I'd hate to throw RuntimeException. NRTManager can still override and not declare that. I'm just thinking that since almost all methods declare throwing IOE, it won't be odd if we declare it too on afterRefresh(), and it's not unlikely that afterRefresh() will do something that throws exceptions.\n\n*NRTManager*\nAbout openIfNeeded:\n# Can you cast to DirectoryReader once? I don't know if the assert is better than a ClassCastException ... with how the code is written, ClassCastException is better than assert because at least it will tell the user what went wrong?\n# How critical it is to declare newSearcher final? If you didn't, you could init it to null, and only change if newReader != null. Saving 4 lines of code (improves readability IMO -- something that I know you care about :)).\n",
+            "date": "2012-02-16T14:36:06.548+0000",
+            "id": 1
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Thanks Shai.\n\nbq. with these changes, if the app passes an IndexReader that is not DirectoryReader, it will get ClassCastException (if asserts are disabled).\n\nHang on -- SM now takes either IW or Directory, from which we always\npull a DirectoryReader, right (we call DR.open ourselves)?  Won't we\nalways have a DR in SM...?\n\nHmm, or do you mean the SearcherFactory could make some other\nreader...?  Hmm maybe we should have a hard check for that\n(SearcherFactory shouldn't do that...?)\n\nbq. About close() \u2013 do you think it'll be better to keep close() final, and introduce a new protected closeResource()/closeInternal() that NRTManager can override? That way, RefManagers won't accidentally override close() and forget to call super.close()?\n\nGood idea... I'll add afterClose (matches afterRefresh);\n\nbq. About afterRefresh() \u2013 I'll admit that first I didn't understand why you need it. Previously, it was used to warm an IndexSearcher, but now we say it's the responsibility of SearcherFactory. I can see why it's useful for NRTManager, and it might even help me in LUCENE-3793 ! Do you think that we should declare that it can throw IOE? I know that if I'll use it in LUCENE-3793, I'll need that and I'd hate to throw RuntimeException. NRTManager can still override and not declare that. I'm just thinking that since almost all methods declare throwing IOE, it won't be odd if we declare it too on afterRefresh(), and it's not unlikely that afterRefresh() will do something that throws exceptions.\n\nGood, I'll add throws IOE.\n\n{quote}\n About openIfNeeded:\nCan you cast to DirectoryReader once?\n{quote}\n\nWill do.\n\nbq. I don't know if the assert is better than a ClassCastException ... with how the code is written, ClassCastException is better than assert because at least it will tell the user what went wrong?\n\nI *think* there's no way a non-DirReader can get into NRTManager (like\nSM), except for SearcherFactory.\n\nbq. How critical it is to declare newSearcher final? If you didn't, you could init it to null, and only change if newReader != null. Saving 4 lines of code (improves readability IMO \u2013 something that I know you care about ).\n\nNot critical!  Good idea...\n",
+            "date": "2012-02-16T20:18:25.445+0000",
+            "id": 2
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "New patch folding in Shai's suggestions (thanks!).\n\nI didn't yet add a hard check for an evil SearcherFactory...",
+            "date": "2012-02-16T20:20:24.009+0000",
+            "id": 3
+        },
+        {
+            "author": "Shai Erera",
+            "body": "bq. Hang on \u2013 SM now takes either IW or Director\n\nYou're right, I missed that. For some reason I had the impression it takes an IR, which is obviously wrong, since it won't be allowed to close it.\n\nbq. do you mean the SearcherFactory could make some other reader\n\nI'm less worried about that. We give SF an IndexReader, I can only expect that it will return an IndexSearcher on top of it. Maybe we can assert that IndexSearcher.getIndexReader == newReader in refreshIfNeeded?\n\nbq. I think there's no way a non-DirReader can get into NRTManager \n\nYou're right. If you keep the assert, maybe add a nice msg to it?\n\nbq. I didn't yet add a hard check for an evil SearcherFactory...\n\nI think that's ok to assume that SearcherFactory is not evil. Maybe the assert I suggested above would be enough?",
+            "date": "2012-02-17T05:24:44.384+0000",
+            "id": 4
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "OK, I made the evil SearcherFactory a real check; it's too dangerous if the app messes this up (eg it could be a DirReader, but a different one, and then we are inc/decRefing the wrong DR).\n\nI also add messages to the new asserts... I think it's ready!",
+            "date": "2012-02-17T14:05:35.536+0000",
+            "id": 5
+        },
+        {
+            "author": "Shai Erera",
+            "body": "Looks good Mike.\n\nDo we still need that assert, now that getSearcher() checks that the returned IR is the one it passed to SearcherFactory? I think it covers the case the returned IR is also a DirReader?\n\n{code}\nassert r instanceof DirectoryReader: \"searcher's IndexReader should be a DirectoryReader, but got \" + r;\n{code}\n\nI noticed that NRTManager shares some logic with SearcherManager (e.g. getSearcher) -- is there a way to avoid the duplication? Maybe if getSearcher would be a package-private static method on SM?\n\nThese are not critical IMO, so I'll leave the decision on whether to fix or not to you. +1 to commit.",
+            "date": "2012-02-17T15:28:38.322+0000",
+            "id": 6
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Thanks Shai -- I'll share a common (static) getSearcher.  I think assert only makes it safer, eg in case someone changes something in the future that somehow lets a non-DR in or something...",
+            "date": "2012-02-17T15:36:17.471+0000",
+            "id": 7
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Thanks Shai!",
+            "date": "2012-02-17T19:30:34.401+0000",
+            "id": 8
+        }
+    ],
+    "component": "",
+    "description": "Spinoff from LUCENE-3769.\n\nTo actually obtain an IndexSearcher from NRTManager, it's a 2-step process now.\n\nYou must .getSearcherManager(), then .acquire() from the returned SearcherManager.\n\nThis is very trappy... because if the app incorrectly calls maybeReopen on that private SearcherManager (instead of NRTManager.maybeReopen) then it can unexpectedly cause threads to block forever, waiting for the necessary gen to become visible.  This will be hard to debug... I don't like creating trappy APIs.\n\nHopefully once LUCENE-3761 is in, we can fix NRTManager to no longer expose its private SM, instead subclassing ReferenceManaager.\n\nOr alternatively, or in addition, maybe we factor out a new interface (SearcherProvider or something...) that only has acquire and release methods, and both NRTManager and ReferenceManager/SM impl that, and we keep NRTManager's SM private.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-3776",
+    "issuetypeClassified": "OTHER",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Blocker",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "NRTManager shouldn't expose its private SearcherManager",
+    "systemSpecification": true,
+    "version": ""
+}

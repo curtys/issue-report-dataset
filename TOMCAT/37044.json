@@ -1,0 +1,59 @@
+{
+    "comments": [
+        {
+            "author": null,
+            "body": "I have also experienced this bug with a custom JAAS LoginModule.\n\nIf Request.getUserPrincipal is changed to this:\n\n    public Principal getUserPrincipal() {\n//        if (userPrincipal instanceof GenericPrincipal) {\n//            return ((GenericPrincipal) userPrincipal).getUserPrincipal();\n//        } else {\n            return (userPrincipal);\n//        }\n    }\n\nThings seem to work fine (though I don't know if this might have negative\nimpacts elsewhere).",
+            "date": "20051014T19:07:54",
+            "id": 0
+        },
+        {
+            "author": null,
+            "body": "RealmBase.hasResourcePermission() indeed needs to get the actual\nGenericPrincipal rather than the result of getUserPrincipal().",
+            "date": "20051017T12:40:36",
+            "id": 1
+        },
+        {
+            "author": null,
+            "body": "*** Bug 37518 has been marked as a duplicate of this bug. ***",
+            "date": "20051116T01:38:42",
+            "id": 2
+        },
+        {
+            "author": null,
+            "body": "(In reply to comment #3)\n> *** Bug 37518 has been marked as a duplicate of this bug. ***\n\nI assume the solution was: \npublic Principal getUserPrincipal() {\n//        if (userPrincipal instanceof GenericPrincipal) {\n//            return ((GenericPrincipal) userPrincipal).getUserPrincipal();\n//        } else {\n            return (userPrincipal);\n//        }\n    }\n\nThat will force JAASRealm to use GenericPrincipal as the only userClassNames \nand roleClassName in server.xml.\n\n\nSuggest add back hasRole in JAASRealm, a little redundent, but seems no other \nbetter way. \n\n\nin JAASRealm.java, add roleSet private instance variable, then in \ncreatePrincipal method, just after roles.add(principal.getName());,\nadd \"roleSet.add(principal);\"\n\nthen add hasRole method like following:\n\npublic boolean hasRole(Principal principal, String role) {\n    if (principal == null) {\n         return false;\n    }\n    Iterator it = roleSet.iterator();\n    while (it.hasNext()) {\n        Principal p = (Principal)it.next();\n        if (p.equals(principal)) {\n            return true;\n        }\n    }\n    return super.hasRole(principal, role);\n}",
+            "date": "20051116T01:49:04",
+            "id": 3
+        },
+        {
+            "author": null,
+            "body": "This one has not been fixed.\n\nWould you please consider to fix JAASRealm with a correct hasRole() method?\n\nThis would make life easier for JAAS realm login module implementors. \nCustom role classes are causing 403 forbidden messages, which drives people\ncrazy because all parameter settings are correct. \n\nThe 5.5.4 implementation uses a roleMap, which works fine. I don't know why it\nhas been removed. It broke all custom role classes.",
+            "date": "20051222T00:15:39",
+            "id": 4
+        },
+        {
+            "author": null,
+            "body": "This bug has not been fixed. Source code of class JAASRealm in version 5.5.12 is\nidentical with source code in current version (5.5.17).",
+            "date": "20060601T09:49:51",
+            "id": 5
+        },
+        {
+            "author": null,
+            "body": "There appears to be quite some confusion about how the roles should work\n\n  - Bug 37852 apparently has applied a patch, but even with 5.5.17 (the relevant\nclasses are still the same in SVN Head), some people (me included) do not get\nconfigurations to work that work previously...\n\n  - Bug 39364 provides a concrete example and Mark says that this is according\nto the specs ?",
+            "date": "20060808T15:03:20",
+            "id": 6
+        }
+    ],
+    "component": "Catalina",
+    "description": "JAASRealm authenticates the user and creates a GenericPrincipal with \n  userPrincipal set to some principal returned by LoginModule.\n\n  Later RealmBase.hasResourcePermission() calls request.getUserPrincipal()\n  to recover authenticated user principal\n\n  Request.getUserPrincipal() checks if the principal is instanceof \n  GenericPrincipal, and if it is, it returns its userPrincipal. \n\n  RealmBase.hasRole() checks if the principal is instanceof GenericPrincipal \n  and if not it fails immediately.\n\n  Note: previous versions of JAASRealm had their own hasRole() implementation.\n\n  Note: request.isUserInRole() is not getting userPrincipal from \n  GenericPrincipal when calling realm.hasRole() and this one seems to\n  work.",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "37044",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "P2 major",
+    "product": "Tomcat 5",
+    "project": "TOMCAT",
+    "summary": "JAASRealm / RealmBase role checking bug ?",
+    "systemSpecification": true,
+    "version": "5.5.12"
+}

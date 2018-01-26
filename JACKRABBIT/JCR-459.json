@@ -1,0 +1,47 @@
+{
+    "comments": [
+        {
+            "author": "Jukka Zitting",
+            "body": "+1 Nice.\n\nShould the stop() method explicitly unbind the server from the RMI registry in addition to clearing the reference?\n\nIt might also be good to add a method for setting the JNDI environment HashTable. Some repositories might be available in alternate JNDI trees and would thus need a custom initial context factory and perhaps some other configuration parameters.\n\nPS. I've been thinking about a generic RepositoryMBean interface and perhaps a specific JackrabbitRepositoryMBean extension for monitoring and managing a local Jackrabbit repository. It could be used quite easily for example for things like externally managing node types and the future backup utility.",
+            "date": "2006-06-16T13:23:51.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Edgar Poce",
+            "body": ">Should the stop() method explicitly unbind the server from the RMI registry in addition to \n> clearing the reference? \nYou are right.\n\n> It might also be good to add a method for setting the JNDI environment HashTable. Some repositories\n> might be available in alternate JNDI trees and would thus need a custom initial context factory and \n> perhaps some other configuration parameters. \nI agree, maybe something like a String parameter which contains a comma separated list of assignments. e.g. \n\"java.naming.factory.initial=org.jnp.interfaces.NamingContextFactory,java.naming.factory.url.pkgs=org.jboss.naming:org.jnp.interfaces\"\nwould that be ok?\n\nLet me know if you prefer me to make the changes and prepare a patch, commit it directly, or make the changes yourself.\n\n> PS. I've been thinking about a generic RepositoryMBean interface and perhaps \n> a specific JackrabbitRepositoryMBean \n> extension for monitoring and managing a local Jackrabbit repository. \n> It could be used quite easily for example for things like externally \n> managing node types and the future backup utility.\n\nSee my comments in the ML",
+            "date": "2006-06-16T17:33:16.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Edgar Poce",
+            "body": "jukka, I made the changes we discussed, thanks for your comments.",
+            "date": "2006-06-19T09:24:30.000+0000",
+            "id": 2
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Thanks, feel free to commit the changes in svn.\n\nI was actually thinking of setting the properties of the local JNDI context, i.e. so that you could access some other naming tree than the default one in your container. Something like this:\n\n    String localAddress = ...;\n    Hashtable localEnvironment = ...;\n    String targetAddress = ...;\n    Hashtable targetEnvironment = ...;\n\n    InitialContext localContext = new InitialContext(localEnvironment);\n    Repository repository = (Repository) local.lookup(localAddress);\n\n    RemoteAdapterFactory factory = new ServerAdapterFactory();\n    RemoteRepository remote = factory.getRemoteRepository(repository);\n\n    InitialContext targetContext = new InitialContext(targetEnvironment);\n    targetContext.bind(targetAddress, remote);\n\n",
+            "date": "2006-06-20T02:19:50.000+0000",
+            "id": 3
+        },
+        {
+            "author": "Edgar Poce",
+            "body": "both local and remote environment variables are configurable optionally. thanks jukka.",
+            "date": "2006-06-20T04:03:20.000+0000",
+            "id": 4
+        }
+    ],
+    "component": "jackrabbit-jcr-rmi",
+    "description": " I added two classes and one descriptor file to the jcr-rmi project. These files provide support to make the generated jar deployable into a Jboss server. \n\n The deployment descriptor contains two parameters, the address of the local repository instance, and the target address where the rmi server should be registered. \n\ne.g.\n\n<server>\n <mbean code=\"org.apache.jackrabbit.rmi.server.jmx.JCRServer\"\n     name=\"Jackrabbit.services:RMIServer = JCR RMI Server\">\n    <attribute name=\"Local\">java:jcr/local</attribute>\n    <attribute name=\"Target\">jnp://localhost:1099/jcrServer</attribute>\t\n<depends>jboss.jca:service=ManagedConnectionFactory,name=jcr/local</depends>\t\t\t\t\t\n  </mbean>\n</server>\t\n\nthis configuration registers an RMI server at /jcrServer that wraps the local repository at java:jcr/local.\n\nbr,\nEdgar",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "JCR-459",
+    "issuetypeClassified": "RFE",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Minor",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "Add JMX support to register a JCR RMI Server into Jboss",
+    "systemSpecification": true,
+    "version": "1.0, 1.0.1"
+}

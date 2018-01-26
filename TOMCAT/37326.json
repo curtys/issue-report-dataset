@@ -1,0 +1,71 @@
+{
+    "comments": [
+        {
+            "author": null,
+            "body": "Created attachment 16849\nexample war file",
+            "date": "20051101T23:00:53",
+            "id": 0
+        },
+        {
+            "author": null,
+            "body": "I'm looking at org.apache.catalina.core.ApplicationDispatcher (which I think is\nthe relevant class), and it seems to log and re-throw all the exceptions. \nSteve, can you please retry it on 5.5.12 with DEBUG-level logging enabled for\nthis class, and post your findings when you get a chance?  Thanks.",
+            "date": "20051128T21:27:21",
+            "id": 1
+        },
+        {
+            "author": null,
+            "body": "(In reply to comment #2)\nOK have done that.  Used fresh install of TC5.5.12 installed as windows \nservice using the service.bat script (which is my standard dev setup).  TC is \nunmodified from standard install, except that I added my test.war (attached) \nto the webapps folder. No other changes to standard setup.  PS am using jdk \n1.5.0_02-b09\n\nFor some reason could not get DEBUG/ALL logging of the class to work with \njava.util.logging (which is what I normally use), so installed log4j instead \nexactly as described on the logging docs page (at \nhttp://tomcat.apache.org/tomcat-5.5-doc/logging.html), with the exception that \nI modified log4j.properties as shown below to give DEBUG level on the \nApplicationDispatcher, hope this is correct, not sure as do not know log4j \nwell:\n\nlog4j.rootLogger=info, R \nlog4j.appender.R=org.apache.log4j.RollingFileAppender \nlog4j.appender.R.File=${catalina.home}/logs/tomcat.log \nlog4j.appender.R.MaxFileSize=10MB \nlog4j.appender.R.MaxBackupIndex=10 \nlog4j.appender.R.layout=org.apache.log4j.PatternLayout \nlog4j.appender.R.layout.ConversionPattern=%p %t %c - %m%n \nlog4j.logger.org.apache.catalina.core.ApplicationDispatcher=DEBUG\n\nThen ran the request to http://localhost:8080/test/ to test the attached war.  \nPage worked fine as before, no reported errors in logfile or browser, despite \none of the included files being missing from the webapp.  The entire contents \nof the resulting tomcat.log are attached.\n\nHope this helps, just let me know if you need anything else.\n",
+            "date": "20051129T11:32:42",
+            "id": 2
+        },
+        {
+            "author": null,
+            "body": "Created attachment 17073\ntomcat.log using log4j with DEBUG level for ApplicationDispatcher",
+            "date": "20051129T11:33:40",
+            "id": 3
+        },
+        {
+            "author": null,
+            "body": "Steve, thank you.  This helps.  I'll try to find more time to look at this\nwithin the next few days.",
+            "date": "20051129T15:11:43",
+            "id": 4
+        },
+        {
+            "author": null,
+            "body": "Ooops, I guess I didn't get to this in a few days, did I?  It's piqued my\ncuriosity again.  Thanks for going through the debugging steps and attaching the\nWAR.  Your log4j configuration looks fine.  I'll try to run an instrumented\nversion of the code locally with more logging statements and see if I can learn\nanything.",
+            "date": "20061226T16:45:30",
+            "id": 5
+        },
+        {
+            "author": null,
+            "body": "This has been fixed in 5.5.x and 6.0.x and will be included in the next releases\nof each.",
+            "date": "20070804T11:20:08",
+            "id": 6
+        },
+        {
+            "author": null,
+            "body": "Is it possible to disable this behavior with configuration?  I love the addition\nof this error, but I don't want to have to update legacy versions of my app.",
+            "date": "20080218T12:36:32",
+            "id": 7
+        },
+        {
+            "author": null,
+            "body": "I am afraid not.",
+            "date": "20080218T13:06:28",
+            "id": 8
+        }
+    ],
+    "component": "Servlet & JSP API",
+    "description": "I'm not sure this is a bug - might be expected behaviour - I'm not expert in \nthis area.  Have tried to ascertain what should be happening, by reading the \nservlet/JSP spec docs and parts of the TC source code, but I'm still not quite \nsure.  I posted to tomcat-user twice seeking help on this (no responses).\n\nThe problem that I'm seeing is that when a JSP page includes one or more JSP \nfragments using <jsp:include> actions, but the fragment files don't exist, the \nincluding JSP page is returned to the browser without the fragments included.  \nIt's as if the including JSP ignores the missing fragments and continues being \nprocessed.  The including page is returned with SC of 200, as if there is no \nproblem. Nothing is written to any log file to indicate the problem.\n\nI would have expected this to return an exception or a 404, but neither \nhappens.  Is this the expected behaviour?  As it stands, a webapp bug like \nthis could go unnoticed for quite some time.  Normally TC is good at bringing \nbugs like this to the developer's attention.\n\nSee attached war for simple example.  First discovered on 5.5.9, verified same \nbehaviour on 5.5.12, both based on fresh TC installs.\n\nI appreciate that once the including JSP has written the part of its response \nbefore the include, the response could already be committed depending on \nbuffer size, so calling sendError() will cause an IllegalStateException.  \nAlso, may not be possible to return an error page at this point, again because \nthe response is already committed...?  Perhaps though an exception could be \nlogged?  Or, perhaps (?)the including page's processing should be stopped, \nrather than allowing it to continue.\n\nSome other info: I only discovered that I had omitted the fragment files from \nmy warfile when I first started TC from NetBeans rather than from TC batch \nscripts.  When I did this, the missing fragments are then reported with SC \n404.  As far as I can tell, it seems that the addition of the NetBeans \nHTTPMonitorFilter to conf/web.xml is what causes the 404 to be reported where \nit was previously silent.  Have drawn a blank on why this might be.\n\nFor more info (my posts to tc-user) see also: http://marc.theaimsgroup.com/?\nl=tomcat-user&m=113034098008166&w=2",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "37326",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "P2 normal",
+    "product": "Tomcat 5",
+    "project": "TOMCAT",
+    "summary": "No error reported when <jsp:include> has non-existent target",
+    "systemSpecification": true,
+    "version": "5.5.12"
+}

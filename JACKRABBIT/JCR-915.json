@@ -1,0 +1,53 @@
+{
+    "comments": [
+        {
+            "author": "Ian Boston",
+            "body": "Using the 1.3 tag source\n\nI have put some debug statements in the AppendRecord class and the ReadRecord Class to record all the write and read operations respectively. \n\nThe Revision in question 3161 has some strange charateristics.\n\nThe Write trace is \n\nWrite String :0:sakai\nWrite Char :0:L:Ox4c\nWrite Byte :0:76:Ox4c\nWrite Fully :0: 0x47 0xffffff98 0xf 0x1e 0xffffffc6 0xffffffc0 0x43 0xffffffb4 0xffffff99 0xffffffe5 0xffffffdb 0x18 0xffffffe6 0x4e 0x2b 0x6f (END)  \nAs String G???C?????N+o\nWrite Boolean :0:false\nWriting Journal JR:localhost1:3161:28\nWritten :3161:28\n\nWhere the format is \nAction:revision:more data\nWriting Journal JR:localhost1:3161:28 meaning that localhost1 wrote revision 3161 length 28 bytes\n\nThe read for the same Journal Record on the second node is\nRead record JR:localhost1:3161:28\nRead String :3161:sakai\nRead Char :3161:L:Ox4c\nRead Byte :3161:Ox4c\nRead Fully :3161: 0x47 0xffffff98 0xf 0x1e 0xffffffc6 0xffffffc0 0x43 0xffffffb4 0xffffff99 0xffffffe5 0xffffffdb 0x18 0xffffffe6 0x4e 0x2b 0x6f (END)  \nAs String G???C?????N+o\nRead Boolean :3161:false\nRead Char :3161:\n:Oxa\nERROR: Error while processing revision 3161: Unknown entry type: \n(a) (2007-05-13 19:57:02,258 main_org.apache.jackrabbit.core.cluster.ClusterNode)\nERROR: Unable to start clustered node, forcing shutdown... (2007\n\n\nWhich all looks OK...... every other record is terminated with a 0x0 byte.\n\n\nIf I look at the next record that was written \nWrite String :0:sakai\nWrite Char :0:L:Ox4c\nWrite Byte :0:76:Ox4c\nWrite Fully :0: 0x47 0xffffff98 0xf 0x1e 0xffffffc6 0xffffffc0 0x43 0xffffffb4 0xffffff99 0xffffffe5 0xffffffdb 0x18 0xffffffe6 0x4e 0x2b 0x6f (END)  \nAs String G???C?????N+o\nWrite Boolean :0:true\nWrite Boolean :0:false\nWrite String :0:admin\nWrite Char :0::Ox0\nWriting Journal JR:localhost1:3220:39\nWritten :3220:39\n\n\nIt ended with  0x0, which would have terminated the entry\n\n\nIt looks like the boolean written at the end of the 3161 revision indicates something odd, and there is no 0x0 being output after that ?\n\nI will have a further look as it appears to be a L record ?\n\n\n\n\n\n\n\n\n\n\n",
+            "date": "2007-05-13T19:20:16.773+0000",
+            "id": 0
+        },
+        {
+            "author": "Ian Boston",
+            "body": "Looks like Unlock is not terminating the record\n\nIndex: ClusterNode.java\n===================================================================\n--- ClusterNode.java    (revision 537603)\n+++ ClusterNode.java    (working copy)\n@@ -637,6 +637,7 @@\n                 record = journal.getProducer(PRODUCER_ID).append();\n                 record.writeString(workspace);\n                 write(record, nodeId);\n+                record.writeChar('\\0');\n                 record.update();\n                 setRevision(record.getRevision());\n                 succeeded = true;\n\n\n\n",
+            "date": "2007-05-13T19:24:05.214+0000",
+            "id": 1
+        },
+        {
+            "author": "Ian Boston",
+            "body": "This appears to have fixed it for me,\n\n\nI notice that the record.update in WorkspaceUpdateChannel.updateCommited may also not be emitting a 0x0,..... perhapse it doesnt need to ?\n\n",
+            "date": "2007-05-13T19:31:31.715+0000",
+            "id": 2
+        },
+        {
+            "author": "Dominique Pfister",
+            "body": "Perfect analysis! Indeed, the 0-terminator was missing at the end of the unlock record, probably happened during the refactoring process, sigh!\n\nSame error happening in JCR-914, again an \"unlock\" operation produced an invalid record.\n\nThe updateCommitted does not need to emit a 0x0, as this is already done in updatePrepared.\n\n\n",
+            "date": "2007-05-14T08:24:33.881+0000",
+            "id": 3
+        },
+        {
+            "author": "Dominique Pfister",
+            "body": "Fixed as suggested by Ian Boston. Thank you for tracking down this bug!",
+            "date": "2007-05-14T08:34:11.163+0000",
+            "id": 4
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Merged to the 1.3 branch in revision 544236.",
+            "date": "2007-06-04T20:04:11.141+0000",
+            "id": 5
+        }
+    ],
+    "component": "jackrabbit-core",
+    "description": "ERROR: Error while processing revision 3161: Unknown entry type: \n(a) (2007-05-13 19:57:02,258 main_org.apache.jackrabbit.core.cluster.ClusterNode)\nERROR: Unable to start clustered node, forcing shutdown... (2007-05-13 19:57:02,259 main_org.apache.jackrabbit.core.RepositoryImpl)\norg.apache.jackrabbit.core.cluster.ClusterException: Unable to read record with revision: 3161\n        at org.apache.jackrabbit.core.cluster.ClusterNode.sync(ClusterNode.java:285)\n        at org.apache.jackrabbit.core.cluster.ClusterNode.start(ClusterNode.java:229)\n        at org.apache.jackrabbit.core.RepositoryImpl.<init>(RepositoryImpl.java:308)\n        at org.apache.jackrabbit.core.RepositoryImpl.create(RepositoryImpl.java:584)\n        at org.sakaiproject.jcr.jackrabbit.RepositoryBuilder.init(RepositoryBuilder.java:213)\n        at sun.reflect.NativeMethodAccessorImpl.invoke0(Native Method)\n        at sun.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:39)\n        at sun.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:25)\n        at java.lang.reflect.Method.invoke(Method.java:585)\n\n\nThis is a 2 node cluster, with persistance managers in the DB and journal on the shared filesystem.\n\nStart the first node in the cluster up from a completely clean and empty repo.\n\nLet it add some note types, and create a since workspace (called sakai) and then connect via webdav (using OSX Finder) which creates some Journal Records (due to the finder putting some .xxxx files in)\n\nDont add any files.\n\nThen start the second node in the cluster up,\n\nIt runs through the first 15 or so journal entries and then hits a one where the entry is unknown (stack trace above)\n\nSome analysis to follow\n",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "JCR-915",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "Invalid Journal Record appearing when read during sync operation",
+    "systemSpecification": true,
+    "version": "1.3"
+}

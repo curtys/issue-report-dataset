@@ -1,0 +1,89 @@
+{
+    "comments": [
+        {
+            "author": "jamiemccrindle+mozilla@gmail.com",
+            "body": "Ah, In the test, I left out a call to x, i.e. x();",
+            "date": "20080724T09:31:59",
+            "id": 0
+        },
+        {
+            "author": "jamiemccrindle+mozilla@gmail.com",
+            "body": "Created attachment 331593\nFix for __noSuchMethod__ and continuations\n\nThis uses the Interpreter loop for __noSuchMethod__ calls which allows them to work correctly if they're in a stored Continuation stack. Note: it doesn't work for TAIL_CALLs.",
+            "date": "20080728T21:11:20",
+            "id": 1
+        },
+        {
+            "author": "jamiemccrindle+mozilla@gmail.com",
+            "body": "To clarify, it does work for TAIL_CALLs in the sense that it behaves as it currently does for TAIL_CALLs, i.e. it doesn't use the interpreter loop and a continuation wouldn't cross the __noSuchMethod__ call on the stack. ",
+            "date": "20080729T16:15:18",
+            "id": 2
+        },
+        {
+            "author": "szegedia@freemail.hu",
+            "body": "Created attachment 333793\nImproved Jamie's patch that also handles tail calls\n\nAdded an improved patch that also handles tail calls",
+            "date": "20080814T18:15:17",
+            "id": 3
+        },
+        {
+            "author": "szegedia@freemail.hu",
+            "body": "Committed the last patch:\n\ncvs ci -m \"Fix for bug #447697 \u2013 Continuations don't work across __noSuchMethod__ methods. Patch contributed by Jamie McCrindle\" -l \"/Rhino/src/org/mozilla/javascript/ScriptRuntime.java\" \"/Rhino/src/org/mozilla/javascript/Interpreter.java\"\n     \n    Checking in src/org/mozilla/javascript/ScriptRuntime.java;\n    /cvsroot/mozilla/js/rhino/src/org/mozilla/javascript/ScriptRuntime.java,v  <--  ScriptRuntime.java\n    new revision: 1.302; previous revision: 1.301\n    done\n    Checking in src/org/mozilla/javascript/Interpreter.java;\n    /cvsroot/mozilla/js/rhino/src/org/mozilla/javascript/Interpreter.java,v  <--  Interpreter.java\n    new revision: 1.348; previous revision: 1.347\n    done\nok (took 0:28.095)\n***\n",
+            "date": "20080814T18:19:48",
+            "id": 4
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "This causes a regression in test js1_5/extensions/no-such-method.js. \n\nThe problem is that __noSuchMethod__ is being called as __noSuchMethod__(\"foo\", 1, 2, 3) rather than __noSuchMethod__(\"foo\", [1, 2, 3]).",
+            "date": "20080822T18:58:29",
+            "id": 5
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "This regression only occurs for interpreted mode.",
+            "date": "20080822T18:58:52",
+            "id": 6
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "Created attachment 335353\nPatch to fix regression\n\nPatch to fix regression",
+            "date": "20080825T14:25:46",
+            "id": 7
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "Sigh, another problem. Adding this code blows the interpreter loop beyond the length that Hotspot will compile, so execution time goes up by more than 2X.\n\n",
+            "date": "20080825T14:43:03",
+            "id": 8
+        },
+        {
+            "author": "szegedia@freemail.hu",
+            "body": "That's a shame -- I might be able to refactor it into a separate method call to drop the size down below it again.",
+            "date": "20080825T15:09:42",
+            "id": 9
+        },
+        {
+            "author": "szegedia@freemail.hu",
+            "body": "Created attachment 335364\nImprovement to previous patch that moves the code out to a separate method\n\nI attached a new patch developed from \"Patch to fix regression\" that factors out the code into a separate method, hopefully bringing the size of the interpret() method down so that HotSpot again compiles it normally.",
+            "date": "20080825T15:29:17",
+            "id": 10
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "Fixed, with code pulled out into a separate method we don't exceed the maximum method size for Hotspot compilation.\n\nChecking in src/org/mozilla/javascript/Interpreter.java;\n/cvsroot/mozilla/js/rhino/src/org/mozilla/javascript/Interpreter.java,v  <--  Interpreter.java\nnew revision: 1.349; previous revision: 1.348\ndone\n",
+            "date": "20080825T16:44:05",
+            "id": 11
+        }
+    ],
+    "component": "Core",
+    "description": "User-Agent:       Mozilla/5.0 (Macintosh; U; Intel Mac OS X 10.4; en-GB; rv:1.9.0.1) Gecko/2008070206 Firefox/3.0.1\nBuild Identifier: 1.7R1\n\nContinuations don't work across methods defined with the name __noSuchMethod__.\n\nReproducible: Always\n\nSteps to Reproduce:\nfunction Test() {}\nTest.prototype = {\n    pause: function() { throw new Continuation(); },\n    one: function() { this.pause(); print(\"one\"); },\n    two: function() { this.one(); print(\"two\"); },\n    __noSuchMethod__: function(methodName) { this.two(); print(methodName); },\n    four: function() { this.three(); print(\"four\"); },\n    five: function() { this.four(); print(\"five\");}\n}\nvar test = new Test();\nvar x;\ntry { test.five(); } catch(c) { x = c; }\n\n\nActual Results:  \none\ntwo\nthree\n\nExpected Results:  \none\ntwo\nthree\nfour\nfive\n\nLooking at the code, __noSuchMethod__ calls use ScriptRuntime.NoSuchMethodShim which implements Callable. The Interpreter then doesn't treat them as InterpretedMethod's. It should be possible to treat them in a similarish way to apply() calls.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "447697",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "BUG",
+    "priority": "-- normal",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "Continuations don't work across __noSuchMethod__ methods",
+    "systemSpecification": true,
+    "version": "head"
+}

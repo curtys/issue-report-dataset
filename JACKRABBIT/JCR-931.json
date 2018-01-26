@@ -1,0 +1,59 @@
+{
+    "comments": [
+        {
+            "author": "Ian Boston",
+            "body": "Does the node in question hang to all requests after the exception (untill you restart the node)\nor does it continue working ?\n\nMight be related to JCR-929 ?",
+            "date": "2007-05-18T15:42:39.149+0000",
+            "id": 0
+        },
+        {
+            "author": "Xiaohua Lu",
+            "body": "it is not under heavy load and it was working after the exception and the exception is gone after restart tomcat",
+            "date": "2007-05-18T15:50:19.856+0000",
+            "id": 1
+        },
+        {
+            "author": "Ian Boston",
+            "body": "thanks for the clarification, JCR-929 was also seeing the same error as well as the lock. Seperate issues, I think.",
+            "date": "2007-05-18T17:21:35.873+0000",
+            "id": 2
+        },
+        {
+            "author": "Dominique Pfister",
+            "body": "While testing the clustering functionality, I encountered this exception on rare occasions. From the contents of the journal log , I deduced the following scenario:\n\nCluster-Node1 (CN1):\n(1) adds child node C to N\n      performs some other operations, \n(2) deletes child node C,\n\nCluster-Node2 (CN2):\n----> CN1 executes (1)\n- receives the notification about the addition of node C\n- invokes all registered event handlers\n- SearchManager.onEvent invokes updateNodes of its query handler (cf stack trace above)\n- SearchIndex.updateNodes retrieves the node state, CN1 did not yet execute (2)\n- SearchIndex.createDocument invokes NodeIndexer.createDoc\n----> CN1 executes (2)\n- NodeIndexer.createDoc tries to retrieve the node state's child node entry in its parent: \n  this returns null, since the node does no longer exists and the very next line, trying to\n  retrieve the child's node name, throws.\n",
+            "date": "2007-05-21T13:55:03.231+0000",
+            "id": 3
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "I've added a check to the NodeIndexer to make sure the child node entry is present or otherwise throw a RepositoryException. The SearchIndex class will then log a warn message but continue to index the remaining items.\n\nFixed in revision: 540492",
+            "date": "2007-05-22T08:49:58.152+0000",
+            "id": 4
+        },
+        {
+            "author": "Ian Boston",
+            "body": "You might want to check what you transaction isolation is.\n\nIn MySQL if its REPEATABLE-READ the nodes added on other nodes will not be updated on the current node until the current node does a commit.\n\nif its READ-COMMITTED the underlying problem might go away.\n\nI've been seeing simular problems that went away once the DB transaction isolation was put right, some versions of MySQL come shipped with REPEATABLE-READ on InnoDB (which you must use)\n",
+            "date": "2007-06-02T14:23:02.357+0000",
+            "id": 5
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Merged to the 1.3 branch in revision 544256.",
+            "date": "2007-06-04T20:43:58.386+0000",
+            "id": 6
+        }
+    ],
+    "component": "jackrabbit-core",
+    "description": "we have a 4 machines setup and encountered the following NPE in one of the nodes. After restarting tomcat, the problem seems to go away. But it would be nice to find out why.\n\n\njava.lang.NullPointerException\n        at org.apache.jackrabbit.core.query.lucene.NodeIndexer.createDoc(NodeInd\nexer.java:146)\n        at org.apache.jackrabbit.core.query.lucene.SearchIndex.createDocument(Se\narchIndex.java:566)\n        at org.apache.jackrabbit.core.query.lucene.SearchIndex$2.next(SearchInde\nx.java:368)\n        at org.apache.jackrabbit.core.query.lucene.MultiIndex.update(MultiIndex.\njava:354)\n        at org.apache.jackrabbit.core.query.lucene.SearchIndex.updateNodes(Searc\nhIndex.java:356)\n        at org.apache.jackrabbit.core.SearchManager.onEvent(SearchManager.java:4\n23)\n        at org.apache.jackrabbit.core.observation.EventConsumer.consumeEvents(Ev\nentConsumer.java:231)\n        at org.apache.jackrabbit.core.observation.ObservationDispatcher.dispatch\nEvents(ObservationDispatcher.java:201)\n        at org.apache.jackrabbit.core.observation.EventStateCollection.dispatch(\nEventStateCollection.java:424)\n        at org.apache.jackrabbit.core.state.SharedItemStateManager.externalUpdat\ne(SharedItemStateManager.java:882)\n        at org.apache.jackrabbit.core.RepositoryImpl$WorkspaceInfo.externalUpdat\ne(RepositoryImpl.java:1957)\n        at org.apache.jackrabbit.core.cluster.ClusterNode.end(ClusterNode.java:8\n34)\n        at org.apache.jackrabbit.core.cluster.ClusterNode.consume(ClusterNode.ja\nva:929)\n        at org.apache.jackrabbit.core.journal.AbstractJournal.doSync(AbstractJou\nrnal.java:191)\n        at org.apache.jackrabbit.core.journal.AbstractJournal.sync(AbstractJourn\nal.java:166)\n        at org.apache.jackrabbit.core.cluster.ClusterNode.sync(ClusterNode.java:\n283)\n        at org.apache.jackrabbit.core.cluster.ClusterNode.start(ClusterNode.java\n:229)\n        at org.apache.jackrabbit.core.RepositoryImpl.<init>(RepositoryImpl.java:\n308)\n        at org.apache.jackrabbit.core.RepositoryImpl.create(RepositoryImpl.java:\n584)\n        at org.apache.jackrabbit.core.jndi.BindableRepository.createRepository(B\nindableRepository.java:174)",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "JCR-931",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "cluster synchronization NPE",
+    "systemSpecification": true,
+    "version": "1.3"
+}

@@ -1,0 +1,149 @@
+{
+    "comments": [
+        {
+            "author": "Michael McCandless",
+            "body": "Patch.",
+            "date": "2011-04-14T22:48:11.133+0000",
+            "id": 0
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Current patch...",
+            "date": "2011-04-24T18:35:58.652+0000",
+            "id": 1
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Another rev of the patch... tons of nocommits, but I think it's close (though some tests still fail w/ StandardTree codec).",
+            "date": "2011-07-22T16:01:28.631+0000",
+            "id": 2
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Checkpointing my current state here -- the big change is I added a Terms.intersect(CompiledAutomaton) method, which returns a TermsEnum, but there's something wrong it still -- seems to give the right results but makes LEV2 FuzzyQ slower.",
+            "date": "2011-08-01T16:11:25.373+0000",
+            "id": 3
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "I created a branch https://svn.apache.org/repos/asf/lucene/dev/branches/blocktree_3030 for iterating on this.",
+            "date": "2011-08-01T21:39:09.111+0000",
+            "id": 4
+        },
+        {
+            "author": "Robert Muir",
+            "body": "This is awesome, i really like adding the intersect() hook!\n\nThanks for making a branch, I will check it out and try to dive in to help with some of this  :)\n\nOne trivial thing we might want to do is to add the logic currently in AQ's ctor to CA, so that you ask CA for its termsenum.\nthis way, if it can be accomplished with a simpler enum like just terms.iterator() or prefixtermsenum etc etc we get that optimization always.",
+            "date": "2011-08-02T12:54:14.784+0000",
+            "id": 5
+        },
+        {
+            "author": "Robert Muir",
+            "body": "Also, we should measure if a \"prefix automaton\" with intersect() is faster than PrefixTermsEnum (I suspect it could be!)\n\nIf this is true, we might want to not rewrite to prefixtermsenum anymore, instead changing PrefixQuery to extend AutomatonQuery too.",
+            "date": "2011-08-02T12:57:39.852+0000",
+            "id": 6
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "bq. One trivial thing we might want to do is to add the logic currently in AQ's ctor to CA, so that you ask CA for its termsenum.\n\n+1 -- I think CA should serve up a TermsEnum when provided a Terms?",
+            "date": "2011-08-02T13:34:12.237+0000",
+            "id": 7
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "The block tree terms dict seems to be working... all tests pass w/\nStandardTree codec.  There's still more to do (many nocommits), but, I\nthink the perf results should be close to what I finally commit:\n\n||Task||QPS base||StdDev base||QPS blocktree||StdDev blocktree||Pct diff||||\n|IntNRQ|11.58|1.37|10.11|1.77|{color:red}35%{color}-{color:green}16%{color}|\n|Term|106.65|3.24|98.84|4.97|{color:red}14%{color}-{color:green}0%{color}|\n|Prefix3|30.83|1.36|28.64|2.42|{color:red}18%{color}-{color:green}5%{color}|\n|OrHighHigh|5.85|0.15|5.44|0.28|{color:red}14%{color}-{color:green}0%{color}|\n|OrHighMed|19.25|0.62|17.91|0.86|{color:red}14%{color}-{color:green}0%{color}|\n|Phrase|9.37|0.42|8.87|0.10|{color:red}10%{color}-{color:green}0%{color}|\n|TermBGroup1M|44.02|0.90|42.76|1.08|{color:red}7%{color}-{color:green}1%{color}|\n|TermGroup1M|37.68|0.65|36.95|0.74|{color:red}5%{color}-{color:green}1%{color}|\n|TermBGroup1M1P|47.16|2.94|46.36|0.16|{color:red}7%{color}-{color:green}5%{color}|\n|SpanNear|5.60|0.35|5.55|0.29|{color:red}11%{color}-{color:green}11%{color}|\n|SloppyPhrase|3.36|0.16|3.34|0.04|{color:red}6%{color}-{color:green}5%{color}|\n|Wildcard|35.15|1.30|35.05|2.42|{color:red}10%{color}-{color:green}10%{color}|\n|AndHighHigh|10.71|0.22|10.99|0.22|{color:red}1%{color}-{color:green}6%{color}|\n|AndHighMed|51.15|1.44|54.31|1.84|{color:green}0%{color}-{color:green}12%{color}|\n|Fuzzy1|31.63|0.55|66.15|1.35|{color:green}101%{color}-{color:green}117%{color}|\n|PKLookup|40.00|0.75|84.93|5.49|{color:green}94%{color}-{color:green}130%{color}|\n|Fuzzy2|33.78|0.82|89.59|2.46|{color:green}151%{color}-{color:green}179%{color}|\n|Respell|23.56|1.15|70.89|1.77|{color:green}179%{color}-{color:green}224%{color}|\n\nThis is for a multi-segment index, 10 M wikipedia docs, using luceneutil.\n\nThese are huge speedups for the terms-dict intensive queries!\n\nThe two FuzzyQuerys and Respell get the speedup from the directly\nimplemented intersect method, and the PKLookup gets gains because it\ncan often avoid seeking since block tree's terms index can sometimes\nrule out terms by their prefix (though, this relies on the PK terms\nbeing \"predictable\" -- I use \"%09d\" w/ a counter, now; if you instead\nused something more random looking (GUIDs )I don't think we'd see\ngains).\n",
+            "date": "2011-08-02T18:16:23.422+0000",
+            "id": 8
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Here's the graph of the results:\n\n!BlockTree.png!\n",
+            "date": "2011-08-02T18:18:54.656+0000",
+            "id": 9
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "bq. These are huge speedups for the terms-dict intensive queries!\noh boy! This is awesome!",
+            "date": "2011-08-02T20:01:02.284+0000",
+            "id": 10
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Patch, removing all nocommits!",
+            "date": "2011-08-16T15:51:07.014+0000",
+            "id": 11
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Some small cleanups over the last patch.  I'll commit shortly.",
+            "date": "2011-08-16T17:49:59.585+0000",
+            "id": 12
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "There is a small hit to indexing perf here, somewhere between 0 - 5% or so depending on the run.  Given the gains for MTQs I think this is an OK tradeoff.  We can further optimize the BlockTreeTermsWriter later....",
+            "date": "2011-08-19T16:59:21.655+0000",
+            "id": 13
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Final patch, against current trunk.  I think it's ready to commit!  I'll wait a day or so...",
+            "date": "2011-08-19T17:02:04.729+0000",
+            "id": 14
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "bq. There is a small hit to indexing perf here, somewhere between 0 - 5% or so depending on the run. Given the gains for MTQs I think this is an OK tradeoff. We can further optimize the BlockTreeTermsWriter later....\n\nI think 0 - 5 % is totally fine. if somebody is totally obsessed by indexing throughput they should overclock :)\n\nawesome work mike!",
+            "date": "2011-08-19T20:25:48.762+0000",
+            "id": 15
+        },
+        {
+            "author": "Dawid Weiss",
+            "body": "bq. awesome work mike!\n\nI couldn't agree more, this is great stuff.",
+            "date": "2011-08-19T20:54:16.912+0000",
+            "id": 16
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "New patch, just cleaning up small stuff, commenting out the DEBUGs, adding some TODOs.",
+            "date": "2011-08-20T00:00:13.311+0000",
+            "id": 17
+        },
+        {
+            "author": "Robert Muir",
+            "body": "Just some trivial cleanups!",
+            "date": "2011-08-20T18:26:16.766+0000",
+            "id": 18
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Thanks Robert -- looks good!  I'll commit shortly.",
+            "date": "2011-08-20T19:08:05.943+0000",
+            "id": 19
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Awesome!",
+            "date": "2011-08-20T20:49:55.812+0000",
+            "id": 20
+        },
+        {
+            "author": "Commit Tag Bot",
+            "body": "[branch_4x commit] Michael McCandless\nhttp://svn.apache.org/viewvc?view=revision&revision=1382141\n\nLUCENE-3030: add missing CHANGES entry\n",
+            "date": "2013-03-22T16:43:00.547+0000",
+            "id": 21
+        }
+    ],
+    "component": "",
+    "description": "Our default terms index today breaks terms into blocks of fixed size\n(ie, every 32 terms is a new block), and then we build an index on top\nof that (holding the start term for each block).\n\nBut, it should be better to instead break terms according to how they\nshare prefixes.  This results in variable sized blocks, but means\nwithin each block we maximize the shared prefix and minimize the\nresulting terms index.  It should also be a speedup for terms dict\nintensive queries because the terms index becomes a \"true\" prefix\ntrie, and can be used to fast-fail on term lookup (ie returning\nNOT_FOUND without having to seek/scan a terms block).\n\nHaving a true prefix trie should also enable much faster intersection\nwith automaton (but this will be a new issue).\n\nI've made an initial impl for this (called\nBlockTreeTermsWriter/Reader).  It's still a work in progress... lots\nof nocommits, and hairy code, but tests pass (at least once!).\n\nI made two new codecs, temporarily called StandardTree, PulsingTree,\nthat are just like their counterparts but use this new terms dict.\n\nI added a new \"exactOnly\" boolean to TermsEnum.seek.  If that's true\nand the term is NOT_FOUND, we will (quickly) return NOT_FOUND and the\nenum is unpositioned (ie you should not call next(), docs(), etc.).\n\nIn this approach the index and dict are tightly connected, so it does\nnot support a pluggable index impl like BlockTermsWriter/Reader.\nBlocks are stored on certain nodes of the prefix trie, and can contain\nboth terms and pointers to sub-blocks (ie, if the block is not a leaf\nblock).  So there are two trees, tied to one another -- the index\ntrie, and the blocks.  Only certain nodes in the trie map to a block\nin the block tree.\n\nI think this algorithm is similar to burst tries\n(http://citeseer.ist.psu.edu/viewdoc/summary?doi=10.1.1.18.3499),\nexcept it allows terms to be stored on inner blocks (not just leaf\nblocks).  This is important for Lucene because an [accidental]\n\"adversary\" could produce a terms dict with way too many blocks (way\ntoo much RAM used by the terms index).  Still, with my current patch,\nan adversary can produce too-big blocks... which we may need to fix,\nby letting the terms index not be a true prefix trie on it's leaf\nedges.\n\nExactly how the blocks are picked can be factored out as its own\npolicy (but I haven't done that yet).  Then, burst trie is one policy,\nmy current approach is another, etc.  The policy can be tuned to\nthe terms' expected distribution, eg if it's a primary key field and\nyou only use base 10 for each character then you want block sizes of\nsize 10.  This can make a sizable difference on lookup cost.\n\nI modified the FST Builder to allow for a \"plugin\" that freezes the\n\"tail\" (changed suffix) of each added term, because I use this to find\nthe blocks.\n",
+    "hasPatch": true,
+    "hasScreenshot": true,
+    "id": "LUCENE-3030",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Major",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "Block tree terms dict & index",
+    "systemSpecification": true,
+    "version": ""
+}

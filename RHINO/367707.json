@@ -1,0 +1,59 @@
+{
+    "comments": [
+        {
+            "author": "sameera@wso2.com",
+            "body": "Created attachment 252288\nattachement contains a proposed ant target to build Rhino without E4X",
+            "date": "20070122T05:14:56",
+            "id": 0
+        },
+        {
+            "author": "inonit@inonit.com",
+            "body": "Do you change Rhino source in order to integrate your E4X implementation?  I'd think that what you'd want would be to be able to plug in your implementation rather than the XMLBeans one (or the coming DOM one), regardless of whether the XML-related classes remain in the JAR file, right?",
+            "date": "20070122T22:08:28",
+            "id": 1
+        },
+        {
+            "author": "sameera@wso2.com",
+            "body": "In org.mozilla.javascript.ScriptRuntime class, the variable 'XML_INIT_CLASS' is used to hold a reference to the class XMLLibImpl which is used to load the e4x related classes. It currently has 'org.mozilla.javascript.xmlimpl.XMLLibImpl' hard coded. One option is to make it configurable, so that other e4x implementations can be plugged in by configuring that variable.  \n\nSecond option is to remove the default 'org.mozilla.javascript.xmlimpl.XMLLibImpl' and the containing package from the classpath. This enables users to put another implementation (eg: axiom, dom based...) of E4X with the same package structure to the classpath.\n\nI chose the second option because it requires minimal changes (adding a separate ant target to the build.xml). The E4X implementation based on Apache Axiom is available at https://wso2.org/repos/wso2/wsf/javascript/rhino/. Maven is used to build js-axiom.jar(E4X impl based on Axiom) this building process uses temporarily hosted js-core.jar (Rhino without E4X related classes). The js-core.jar is hosted only for testing purposes. if you want to plug a dom impl then what you have to do is to follow the same package structure and specifically the 'org.mozilla.javascript.xmlimpl.XMLLibImpl' class and then put it in to the classpath. \n\nThis option results in two jar files. One js-core and the other is js-e4x-impl.\n\n\n",
+            "date": "20070124T04:20:38",
+            "id": 2
+        },
+        {
+            "author": "inonit@inonit.com",
+            "body": "I apologize if you've already explored this, but couldn't this be fixed in your situation by putting your E4X implementation ahead of js.jar in your classpath?\n\nAlso, does 'smalljar' meet your needs?\n\nIn any case, unless someone strongly objects, the next version of E4X support will provide a pluggability mechanism for the Context to decide its E4X implementation.  So under that scenario, you'd rename your classes (i.e., choose a different package name) and use the pluggability mechanism to select your implementation.  Once your E4X implementation were repackaged, you could just change your way of instantiating the Contexts and use the \"default\" build.\n\nThat said, I'm not saying it doesn't make sense to revamp how Rhino is built (and try to come up with some organized way of managing these \"optional\" packages).  There are 'jar' and 'smalljar' presently but there are a bunch of things (the soon-to-be-two E4X implementations, the class generation library) that could be packaged optionally, either by building several JAR files by default or by switching them on or off either via Ant properties or some other mechanism.  I personally would just want to avoid a proliferation of Ant targets for each yes/no combination of include-or-don't-include.\n\nI personally would tend to err on the side of simplicity and not trying to save a bunch of size on the JAR file, but that's just my view.",
+            "date": "20070125T20:27:33",
+            "id": 3
+        },
+        {
+            "author": "inonit@inonit.com",
+            "body": "OK, I think I've found your answer for now -- you can build the JAR file without the XMLBeans implementation by setting the property without-xmlimpl, either at the command line or in your build.local.properties or ... however you want to do it.  This causes the xmlimplsrc/build.xml compile step not to get executed.\n\nI haven't tested this, but unless I don't understand how Ant works, ...\n\nWe could document this better.",
+            "date": "20070126T02:41:47",
+            "id": 4
+        },
+        {
+            "author": "inonit@inonit.com",
+            "body": "A couple of comments.\n\n1. I do believe the -Dwithout-xmlimpl=true option to Ant would do the trick on older releases.\n\n2. I have revised the xmlimplsrc/build.xml to respond to two properties (and tested them):\n\na. -Dno-e4x=true:  Will cause E4X not to be built, like -Dwithout-xmlimpl=true used to (and still does)\n\nb. -Dno-xmlbeans=true:  Will not build the old XMLBeans-based implementation of E4X (but will build the new DOM one).\n\nSubmitter should also note one change to the XMLLib class committed along with the fix for bug 355677.  The library used to be responsible for quoting attributes inside curly braces, but now the interpreter takes on that responsibility.  Of course submitter is encouraged to use the new pluggability API for E4X but the previous solution will work as well.\n\nClosing as FIXED.",
+            "date": "20070208T16:00:27",
+            "id": 5
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "Adding target milestone of 1.6R6 based on the date this bug was resolved FIXED.",
+            "date": "20070518T15:11:44",
+            "id": 6
+        }
+    ],
+    "component": "Core",
+    "description": "User-Agent:       Mozilla/5.0 (X11; U; Linux i686; en-US; rv:1.8.1.1) Gecko/20061208 Firefox/2.0.0.1\nBuild Identifier: Rhino 1.6R1\n\nIt is required in some instances to build Rhino without the E4X implementation. If there is a option to build Rhino without E4X then the user can add a customized E4X implementation to the classpath and use it. \n\nWe(www.wso2.org) use rhino in Apache Axis2 (Web service engine) to enable JavaScript web services and we have our own e4x implementation that uses Apache Axiom instead of XMLBeans. Since Axis2 uses Axiom, our E4X implementation improves performance of Axis2. Therefore we have a requirement to build rhino without e4x and then add our e4x implementation to the classpath.\n\nWhat I suggest is to add a seperate ant target to the build.xml which build Rhino without E4X.\n\nReproducible: Didn't try\n\nSteps to Reproduce:\n1.\n2.\n3.",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "367707",
+    "issuetypeClassified": "RFE",
+    "issuetypeTracker": "RFE",
+    "priority": "-- enhancement",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "Building Rhino without E4X implementation",
+    "systemSpecification": true,
+    "version": "other"
+}

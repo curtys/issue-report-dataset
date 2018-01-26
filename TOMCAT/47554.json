@@ -1,0 +1,59 @@
+{
+    "comments": [
+        {
+            "author": null,
+            "body": "Created attachment 24013\nJvmRouteBinderValve For Tomcat6_trunk\n\nThis patch for Tomcat6(tomcat/tc6.0.x/trunk/).\nThis patch uses response.addCookieInternal(Cookie, boolean).",
+            "date": "20090721T03:19:52",
+            "id": 0
+        },
+        {
+            "author": null,
+            "body": "Created attachment 24014\nJvmRouteBinderValve For Tomcat_trunk\n\nThis patch for Tomcat7 or later (tomcat/trunk/).\nThis patch uses javax.servlet.SessionCookieConfig.\n(It has not been implemented yet now ? I tried to make a patch.)\nIt is similar to org.apache.catalina.connector.Request#configureSessionCookie.",
+            "date": "20090721T03:20:51",
+            "id": 1
+        },
+        {
+            "author": null,
+            "body": "I reproduced this case. \n\n[configuration]\nClustering by TomcatA and TomcatB\nBoth TomcatA and TomcatB set <Context useHttpOnly=\"true\" />.\nBoth TomcatA and TomcatB set JvmRouteBinderValve. \n[Test]\naccesses TomcatA. (create session.)\naccesses TomcatB. (session id is changed by JvmRouteBinderValve. )\n\nAt the above test, value of the Set-Cookie header was acquired by using RequestDumperValve.\nIt is as follows. \n\n[Before changing session ID]\n...\nJul 27, 2009 6:39:55 PM org.apache.catalina.valves.RequestDumperValve invoke\nINFO:             header=Set-Cookie=JSESSIONID=327B246DA102027AB0860AE512169236.ajp13w; Path=/test; HttpOnly\n...\n\nThis means HttpOnly is set.\n\n\n[After changing session ID by JvmRouteBinderValve]\n...\nJul 27, 2009 6:40:05 PM org.apache.catalina.valves.RequestDumperValve invoke\nINFO:             header=Set-Cookie=JSESSIONID=327B246DA102027AB0860AE512169236.ajp13w2; Path=/test\n...\n\nThis means HttpOnly is not set.\n\nTherefore,\nWhen session ID is changed by JvmRouteBinderValve, HttpOnly is not set to the Set-Cookie header. \n\nBest Regards.",
+            "date": "20090727T02:57:54",
+            "id": 2
+        },
+        {
+            "author": null,
+            "body": "This was fixed in trunk in r802146",
+            "date": "20091122T14:07:11",
+            "id": 3
+        },
+        {
+            "author": null,
+            "body": "Created attachment 24585\nUpdate patch for 6.0.x\n\nThe provided patch for 6.0.x doe snot update the debug log message. An updated patch is attached which will be proposed for 6.0.x and 5.5.x",
+            "date": "20091122T14:15:02",
+            "id": 4
+        },
+        {
+            "author": null,
+            "body": "The patch has been applied to 6.0.x and will be included in 6.0.21 onwards",
+            "date": "20091216T08:45:44",
+            "id": 5
+        },
+        {
+            "author": null,
+            "body": "This has been fixed for 5.5.x and will be included in 5.5.29 onwards.",
+            "date": "20100130T11:30:27",
+            "id": 6
+        }
+    ],
+    "component": "Catalina:Cluster",
+    "description": "When session ID is changed with o.a.c.h.s.JvmRouteBinderValve, \nHttpOnly flag is not set to the session cookie newly made.\n\nThe cause is in the following o.a.c.h.s.JvmRouteBinderValve#setNewSessionCookie's codes. \n\nprotected void setNewSessionCookie(Request request,\n        Response response, String sessionId) {\n    if (response != null) {\n        Context context = request.getContext();\n        if (context.getCookies()) {\n            // set a new session cookie\n            Cookie newCookie = new Cookie(Globals.SESSION_COOKIE_NAME,\n                    sessionId);\n            newCookie.setMaxAge(-1);\n            String contextPath = null;\n            if (!response.getConnector().getEmptySessionPath()\n                    && (context != null)) {\n                contextPath = context.getEncodedPath();\n            }\n            if ((contextPath != null) && (contextPath.length() > 0)) {\n                newCookie.setPath(contextPath);\n            } else {\n                newCookie.setPath(\"/\");\n            }\n            if (request.isSecure()) {\n                newCookie.setSecure(true);\n            }\n            if (log.isDebugEnabled()) {\n                log.debug(sm.getString(\"jvmRoute.newSessionCookie\",\n                        sessionId, Globals.SESSION_COOKIE_NAME, newCookie\n                                .getPath(), new Boolean(newCookie\n                                .getSecure())));\n            }\n            response.addCookie(newCookie);\n        }\n    }\n}\n\nHttpOnly flag is never set to Cookie regardless of the value of context.getUseHttpOnly().\nWhen context.getUseHttpOnly() is set to true, it is necessary to set HttpOnly to Cookie. \n\nI made two patches.\n\nThe first is a patch for Tomcat6(tomcat/tc6.0.x/trunk/).\nThis patch uses response.addCookieInternal(Cookie, boolean).\n\nThe second is a patch for Tomcat7 or later (tomcat/trunk/).\nThis patch uses javax.servlet.SessionCookieConfig.\n(It has not been implemented yet now ? I tried to make a patch.)\nIt is similar to org.apache.catalina.connector.Request#configureSessionCookie.\n\nBest regards.",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "47554",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "P2 normal",
+    "product": "Tomcat 5",
+    "project": "TOMCAT",
+    "summary": "o.a.c.h.s.JvmRouteBinderValve doesn't set HttpOnly flag to session Cookie.",
+    "systemSpecification": false,
+    "version": "5.5.28"
+}

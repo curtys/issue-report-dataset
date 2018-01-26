@@ -1,0 +1,155 @@
+{
+    "comments": [
+        {
+            "author": "Simon Willnauer",
+            "body": "I will look into this issue closer next week, Once I can reproduce it I will write up a custom patch.\n\nsimon",
+            "date": "2009-06-24T18:29:55.070+0000",
+            "id": 0
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Excellent, thanks Simon!",
+            "date": "2009-06-24T18:51:37.562+0000",
+            "id": 1
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "I was able to reproduce the bug on my machine using several JVMs. The attached patch is what I got ready by now - I though I get it out there as soon as possible for discussion.\nTest pass on my side!",
+            "date": "2009-06-29T17:40:29.181+0000",
+            "id": 2
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "missed to enable asserts in testcase - updated patch to correctly assert offset / length ",
+            "date": "2009-07-01T11:18:15.092+0000",
+            "id": 3
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "@Mike: could you have a look at this if you have time, thanks!",
+            "date": "2009-07-01T19:02:33.364+0000",
+            "id": 4
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Yes, I'll take this.  Thanks Simon!",
+            "date": "2009-07-06T11:09:01.743+0000",
+            "id": 5
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Could we move the fix down into SimpleFSDir.FSIndexInput?  We are only hitting it with norms today, but in the future if we read other large things from the index (eg with column-stride fields) we'd like the workaround to apply there as well.\n\nCan we turn it on by default, only on 32 bit JREs?\n\nI think you can read directly into the norms byte[], instead of allocating a temp buffer, as long as you read in smaller chunks.  From the email thread it looked like smaller was up to ~100 MB, which I think is fine to simply do by default.  Maybe offer a setter (instead of static property) to turn this workaround on/off in SimpleFSDir.",
+            "date": "2009-07-06T15:21:07.068+0000",
+            "id": 6
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "bq. Could we move the fix down into SimpleFSDir.FSIndexInput? We are only hitting it with norms today, but in the future if we read other large things from the index (eg with column-stride fields) we'd like the workaround to apply there as well. \n\nsure!\n\nbq. Can we turn it on by default, only on 32 bit JREs?\n\ngood point! - will try to do so.\n\nbq. I think you can read directly into the norms byte[], instead of allocating a temp buffer, as long as you read in smaller chunks. From the email thread it looked like smaller was up to ~100 MB, which I think is fine to simply do by default. Maybe offer a setter (instead of static property) to turn this workaround on/off in SimpleFSDir.\n\nI did hit the error while I did that but I will verify again.\n\nThanks for the comments thats why I hacked it together and did throw it out ASAP. Will look at it tomorrow.\n\nsimon",
+            "date": "2009-07-06T15:50:10.413+0000",
+            "id": 7
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "bq. I did hit the error while I did that but I will verify again.\n\nUgh.  If that's the case then maybe catch the OOM in the read, and fallback to the temp buffer read solution?",
+            "date": "2009-07-06T20:02:48.582+0000",
+            "id": 8
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Assigning this one back to you Simon!",
+            "date": "2009-07-13T10:47:07.285+0000",
+            "id": 9
+        },
+        {
+            "author": "Thulasi Ram Naidu P",
+            "body": "any temporary solution for this problem?",
+            "date": "2009-07-14T05:55:12.202+0000",
+            "id": 10
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Alas no simple workaround here.  You could try using the current patch, here (though this patch will only apply to 2.9, I think).  Or, create your own subclass of FSDir that overrides the read method of FSIndexInput.\n\nAre you hitting the issue?  Can you provide some details about the size of your index, etc?  Maybe the output of running \"java org.apache.lucene.index.CheckIndex /path/to/index\"?",
+            "date": "2009-07-14T09:23:44.870+0000",
+            "id": 11
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "@Mike: Thanks for your comments.\nI did run my testcase to reproduce the OOM with some other directory implementation (SimpleFSDirectory and NIOFSDirectory) and both of them suffer from the JVM bug. My testcase is the following.\n1. Start JVM with -Xmx2500M (32bit) either 1.5 / 1.6 -- I hit the error with all of my VMs\n2. index  250000000 simple documents and optimize the index once the last document is added.\n3. open IndexReader with either a SimpleFSDirectory or NIOFSDirectory\n4. Catch the error :)\n\nI added a workaround to FSDirectory / NIOFSDirectory / SimpleFSDirectory as well as a testcase to test the added code for correctness. The included testcase will not trigger the JVM bug as I need such a specific setup to trigger it.\n\nAny comments welcome.\nsimon\n\n\n",
+            "date": "2009-07-15T16:00:27.422+0000",
+            "id": 12
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Looks good Simon!\n\n  * From your post above, I thought the \"read in 100MB chunks into the\n    big array\" failed to work around the issue?  Ie that's why you\n    allocated a tiny intermediate buffer?  Did that turn out not to be\n    the case?\n\n  * How about, instead of ignoring the chunk size on 64bit jre, we\n    conditionally default it to Long.MAX_VALUE?\n\n  * Can you link also to the Sun VM bug in the javadocs for these\n    set/getChunkSize?\n",
+            "date": "2009-07-15T20:00:20.866+0000",
+            "id": 13
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "bq. From your post above, I thought the \"read in 100MB chunks into the\nbig array\" failed to work around the issue? Ie that's why you\nallocated a tiny intermediate buffer? Did that turn out not to be\nthe case?\n\nI verified that again with a 1.5.0_08 as well as the latest JVM on linux 32bit. Did not run the tests on windows yet but will do so tomorrow. Haven't had time to install the JVMs (or at least one) listed in the Sun Bug Report. Reading in chunks into a big array is fine.\n\nbq. How about, instead of ignoring the chunk size on 64bit jre, we\nconditionally default it to Long.MAX_VALUE?\n\nHmm, would remove \"code duplication\" - good point. The readBytes method seems to be critical but I guess there won't be any performance impact by assigning one or two extra variables. \n\nbq. Can you link also to the Sun VM bug in the javadocs for these\nset/getChunkSize?\n\nSure, I will also add CHANGES.TXT in the patch.\nwill do as soon as I get into the office tomorrow.\n\n",
+            "date": "2009-07-15T20:30:11.012+0000",
+            "id": 14
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "* Set chunkSize to Integer.MAX_VALUE on 64 Bit JVM\n* Removed 64bit JVM condition as chunkSize is set to maximum in 64bit case\n* Added CHANGES.TXT to patch\n\n@Mike: once you commit this change I will close this issue.\n\nSimon",
+            "date": "2009-07-16T09:12:34.735+0000",
+            "id": 15
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "SimpleFSDirectory is missing from the last patch?",
+            "date": "2009-07-16T10:16:57.643+0000",
+            "id": 16
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "added missing SimpleFSDirectory.",
+            "date": "2009-07-16T10:25:54.372+0000",
+            "id": 17
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "bq. SimpleFSDirectory is missing from the last patch? \n\nups! :)\n",
+            "date": "2009-07-16T10:26:25.802+0000",
+            "id": 18
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "OK I reworked the patch some, tweaking javadocs, changes, etc., and\nsimplifying the loops that read the bytes inside NIOFSDir &\nSimpleFSDir.  I think it's ready to commit.  Simon can you take a\nlook?  Thanks.\n",
+            "date": "2009-07-16T15:29:21.322+0000",
+            "id": 19
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "bq. Simon can you take a look? \n\nI looked at it closely and did run testcases again. Looks good to me! Thanks for looking at it again!\n\nsimon",
+            "date": "2009-07-16T15:59:12.271+0000",
+            "id": 20
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "OK thanks Simon; I'll commit shortly.",
+            "date": "2009-07-16T17:51:30.521+0000",
+            "id": 21
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Thanks Simon!",
+            "date": "2009-07-16T18:08:15.416+0000",
+            "id": 22
+        }
+    ],
+    "component": "core/index",
+    "description": "This is not a Lucene issue, but I want to open this so future google\ndiggers can more easily find it.\n\nThere's this nasty bug in Sun's JRE:\n\n  http://bugs.sun.com/bugdatabase/view_bug.do?bug_id=6478546\n\nThe gist seems to be, if you try to read a large (eg 200 MB) number of\nbytes during a single RandomAccessFile.read call, you can incorrectly\nhit OOM.  Lucene does this, with norms, since we read in one byte per\ndoc per field with norms, as a contiguous array of length maxDoc().\n\nThe workaround was a custom patch to do large file reads as several\nsmaller reads.\n\nBackground here:\n\n  http://www.nabble.com/problems-with-large-Lucene-index-td22347854.html\n",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-1566",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Minor",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "Large Lucene index can hit false OOM due to Sun JRE issue",
+    "systemSpecification": true,
+    "version": "2.4.1"
+}

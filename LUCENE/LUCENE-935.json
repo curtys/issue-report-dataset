@@ -1,0 +1,155 @@
+{
+    "comments": [
+        {
+            "author": "Michael Busch",
+            "body": "This patch:\n\n   * Includes the latest patch from LUCENE-908\n   * Uses the maven ant task <artifact:deploy> instead of <artifact:install>. \n     The advantage is that the metadata files don't contain \"local\" in the \n     filenames anymore. This also solves some problems with the latest version \n     of the maven ant tasks and simplifies the <generate-maven-artifacts> target \n     in contrib-build.xml.\n   * The macro <m2-deploy> now has a nested, optional element \n     <artifact-attachments> which is used to attach the sources as jar files if \n     possible for an artifact.\n   * The macro <jarify> now has two attributes \"destfile\" and \"basedir\" which \n     allows <jarify> to be used by other targets like <jar-src>.\n   * The target <jar-src> now calls the macro <jarify> which makes it possible to \n     overwrite <jar-src> in contrib build.xml files. This is neccessary to include \n     special license files in the meta-inf folder (needed for snowball) or to add\n     additional content to the MANIFEST file (needed for lucli).\n   * \"lucene-parent\" now extends artifact \"apache\"\n\nNote: I separated the patch into two files to improve readability. Both patches \nhave to be applied.",
+            "date": "2007-08-20T01:09:52.572+0000",
+            "id": 0
+        },
+        {
+            "author": "Michael Busch",
+            "body": "I'm planning to commit this together with LUCENE-908 in a day or so...",
+            "date": "2007-08-22T07:04:10.729+0000",
+            "id": 1
+        },
+        {
+            "author": "Michael Busch",
+            "body": "Committed. Revision: 568766",
+            "date": "2007-08-22T23:17:53.495+0000",
+            "id": 2
+        },
+        {
+            "author": "Michael Busch",
+            "body": "   * Define property \"m2.repository.url\" that defaults to \"file://${maven.dist.dir}\" and use it\n     in m2-deploy.\n   * Register provider needed for using the transfer protocol of the remote repository.\n     Example for scp: <artifact:install-provider artifactId=\"wagon-ssh\" version=\"1.0-beta-2\"/>",
+            "date": "2007-08-23T18:17:49.141+0000",
+            "id": 3
+        },
+        {
+            "author": "Michael Busch",
+            "body": "Does our build machine have local access to  /www/people.apache.org/maven-snapshot-repository ? I'm asking this question because I'm not familiar with hudson and the build infrastructure. If the answer is yes, then we don't have to register any special providers to deploy to the snapshot repository. \n\nHowever, if the answer is no, how can we deploy to the repository? Remotely via scp?",
+            "date": "2007-10-02T06:38:59.803+0000",
+            "id": 4
+        },
+        {
+            "author": "Michael Busch",
+            "body": "This small patch adds the property \"m2.repository.url\", that defaults to\n\"file://${maven.dist.dir}\". You easily can set a different value:\n  ant -Dm2.repository.url=\"file://C:\\temp\\maven\" \n  \nI'm going to commit this now. In case our build machine cannot deploy to \nthe snapshot repository using the local path \n\"file:///www/people.apache.org/maven-snapshot-repository\" let me know \nplease, then we'll have to register a provider for an appropriate transfer \nprotocol.",
+            "date": "2007-11-01T01:20:54.892+0000",
+            "id": 5
+        },
+        {
+            "author": "Michael Busch",
+            "body": "I just committed the latest patch.\n\nI'm leaving this open in case more work needs to be done in order to deploy to the snapshot repository.\nI'm clearing the fix version though.",
+            "date": "2007-11-01T01:35:31.795+0000",
+            "id": 6
+        },
+        {
+            "author": "Grant Ingersoll",
+            "body": "I have the necessary pieces in place for this, just need to figure out some security issues between zones and p.a.o.\n\nFor now, you can see a sample of what should be published at http://people.apache.org/maven-snapshot-repository/org/apache/lucene/ based on me running it by hand.\n\nI will update when the security issues are straightened out.  So just know that those jars there are based on trunk from this morning (11/1/07) until further notice.",
+            "date": "2007-11-01T16:18:02.666+0000",
+            "id": 7
+        },
+        {
+            "author": "Michael Busch",
+            "body": "Grant,\ntwo comments:\n- How often are you planning two publish a snapshot? In every nightly build? Or in every nightly build unless no commit happened? Seems too often, I took a look a the other projects that publish snapshots in that repository and they don't seem to publish more often than once per month.\n- For publishing a snapshot we should set the version to \"x.y.z-SNAPSHOT\" and increase z for every snapshot?\n",
+            "date": "2007-11-01T17:54:49.837+0000",
+            "id": 8
+        },
+        {
+            "author": "Grant Ingersoll",
+            "body": "well, I don't know that I have a lot of control over it unless I want to spend a good deal of time scripting it, etc. (which I don't have the time to do)\n\nI guess, ideally, we would only publish on commit, but I am not sure how to enable that at the moment.  I wish we could just run the Maven deploy target for the nightly build and be done with it (instead of all these ANT gyrations)\n\nAt any rate, right now it is setup to do nightly regardless and the VERSION ID is generated by Hudson, so it should mirror the version numbers for the nightly builds there.\n\nLet's let it run tonight as part of the nightly build and see how it goes.  Then we can decide on frequency, etc.",
+            "date": "2007-11-01T19:20:57.284+0000",
+            "id": 9
+        },
+        {
+            "author": "Grant Ingersoll",
+            "body": "Looks like it went through successfully last night.  I suppose we should look up if there are any policies on how often to publish snapshots.",
+            "date": "2007-11-02T12:48:27.005+0000",
+            "id": 10
+        },
+        {
+            "author": "Grant Ingersoll",
+            "body": "I'm thinking maybe what we should do is basically what we do on zones:  only keep the last 10 builds.  I also will try to modify the version id so it only has the date in it and not the time.",
+            "date": "2007-11-05T15:31:38.543+0000",
+            "id": 11
+        },
+        {
+            "author": "Michael Busch",
+            "body": "I think in nightly.sh we should call \"ant generate-maven-artifacts\" before we run clover code coverage?\n\nOtherwise the snapshots probably contain the clover instrumentation?",
+            "date": "2007-11-26T23:07:25.552+0000",
+            "id": 12
+        },
+        {
+            "author": "Grant Ingersoll",
+            "body": "Done.",
+            "date": "2007-11-27T17:07:52.120+0000",
+            "id": 13
+        },
+        {
+            "author": "Grant Ingersoll",
+            "body": "I have changed the nightly.sh to output these now as 2.3-SNAPSHOT.  I don't know how to get it to recognize the version number in the build file with out somehow slurping it from that file (not worth the effort), so instead, I will add to the release notes that the nightly.sh file needs to be updated upon release\n",
+            "date": "2007-12-02T20:15:02.167+0000",
+            "id": 14
+        },
+        {
+            "author": "Grant Ingersoll",
+            "body": "Added the note to the release TODO on the Wiki",
+            "date": "2007-12-02T20:20:35.487+0000",
+            "id": 15
+        },
+        {
+            "author": "Michael Busch",
+            "body": "Hey Grant, \n\ncan you try out this patch. It should make our life easier, \nI think I got the remote repos deployment to work in the\nant script.\n\nTry this (just replace my username) :\nant -Dm2.repository.url=scp://people.apache.org:/www/people.apache.org/maven-snapshot-repository -Dm2.repository.username=buschmi -Dm2.repository.private.key=/export/home/buschmi/.ssh/id_dsa -Dversion=2.3-SNAPSHOT clean generate-maven-artifacts\n\n",
+            "date": "2007-12-02T23:09:00.880+0000",
+            "id": 16
+        },
+        {
+            "author": "Michael Busch",
+            "body": "I just committed the latest patch.\n\nOK, I think I can close this issue now. We have made good progress\nwith the maven artifacts since we released 2.2. The artifacts include\nthe sources and javadocs now and we're deploying nightly snapshots\nto the m2 snapshot repository.\n\nThanks, Grant, and everyone else who helped here!!\n",
+            "date": "2007-12-03T07:34:43.070+0000",
+            "id": 17
+        },
+        {
+            "author": "Grant Ingersoll",
+            "body": "{quote}\ncan you try out this patch\n{quote}\n\n\nBUILD FAILED\n..../lucene/java/lucene935/build.xml:459: Specify at least one source - a file or a resource collection.\n\nThis happened after lucene-xml-query-parser.  It seems like most everything went through up to that point and I don't see any other errors.",
+            "date": "2007-12-03T11:40:32.862+0000",
+            "id": 18
+        },
+        {
+            "author": "Michael Busch",
+            "body": "Oups, I forgot to remove the lines that generate the checksums for the\nartifacts. <artifact:deploy> does this automatically. I committed the fix.\n\nI tried it out on zones, the build succeeds now. ",
+            "date": "2007-12-03T17:28:12.109+0000",
+            "id": 19
+        },
+        {
+            "author": "Grant Ingersoll",
+            "body": "OK, now we just need to figure out how best to incorporate it into nightly.sh.  Part of the problem is Hudson is the account running nightly.sh and it doesn't have an account on p.a.o.  Thus, the need for Hudson to access a private key of one of us w/ a zones account.  I don't really like this idea.\n\n",
+            "date": "2007-12-03T17:36:29.200+0000",
+            "id": 20
+        },
+        {
+            "author": "Michael Busch",
+            "body": "generate-maven-artifacts still works fine if no m2.* properties are overridden. It\nthen deploys locally to <dist_dir>/maven as before.\n\nSo if the account doesn't have access to p.a.o, how does it copy the artifacts then?\nDo we use different accounts to run nightly.sh and the cron job currently?",
+            "date": "2007-12-03T19:17:07.183+0000",
+            "id": 21
+        },
+        {
+            "author": "Grant Ingersoll",
+            "body": "My cron job copies from the Hudson dir to p.a.o.  Whereas the Hudson script runs under a different account\n\nI realize this isn't great, but we asked infrastructure for a headless acct for Hudson on p.a.o and it was denied.\n\nI think for now, we can just leave it as is.",
+            "date": "2007-12-03T19:36:07.828+0000",
+            "id": 22
+        }
+    ],
+    "component": "general/build",
+    "description": "There are a couple of things we can improve for the next release:\n- \"*pom.xml\" files should be renamed to \"*pom.xml.template\"\n- artifacts \"lucene-parent\" should extend \"apache-parent\"\n- add source jars as artifacts\n- update <generate-maven-artifacts> task to work with latest version of maven-ant-tasks.jar\n- metadata filenames should not contain \"local\"",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-935",
+    "issuetypeClassified": "OTHER",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Minor",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "Improve maven artifacts",
+    "systemSpecification": true,
+    "version": ""
+}

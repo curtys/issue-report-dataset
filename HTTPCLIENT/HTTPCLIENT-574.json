@@ -1,0 +1,101 @@
+{
+    "comments": [
+        {
+            "author": "Faron Dutton",
+            "body": "Created an attachment (id=18014)\nPatch\n",
+            "date": "2006-04-02T20:55:43.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "(In reply to comment #0)\n> HttpMethodBase provides the readStatusLine method explicitly designed for\n> subclasses to override. However, any attempt to do so quickly encounters issues\n> since the subclass does not have access to the statusLine member variable in\n> HttpMethodBase. The same holds true for several other member variables as well.\n> \n> Recommend that all access to member variables occur through accessors and that\n> mutators be provided to set them. See patch below.\n\nThis _may_ be right. However I personally would very much rather keep things as\nthey are at the very least for the sake of consistency, unless the same coding\nconvention can be applied throughout the entire code base. Moreover,\nHttpMethodBase class will go as version 4.0. There's no point in trying to apply\na new coding convention to something which is fundamentally flawed conceptually.\n\nCould you please come up with a patch that just provides access to private\ninstance variables that you need with the minimal impact on the existing code?\n\nOleg",
+            "date": "2006-04-03T04:57:09.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Faron Dutton",
+            "body": "The only other option, which is lass safe, is to change all private member\nvariables to protected. If this is what you prefer I can produce a patch for it.",
+            "date": "2006-04-04T04:36:22.000+0000",
+            "id": 2
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "(In reply to comment #3)\n> The only other option, which is lass safe, is to change all private member\n> variables to protected. If this is what you prefer I can produce a patch for it.\n\nWhat about just a protected getter?\n\nOleg",
+            "date": "2006-04-04T04:39:14.000+0000",
+            "id": 3
+        },
+        {
+            "author": "Faron Dutton",
+            "body": "The getter is already public for statusLine. The attached patch has a protected\nsetter and changes the rest of the code to use both the getter and setter\ninstead of using the member variable directly. For example,\n\"setStatusLine(null);\" is used instead of \"statusLine = null;\" Same thing for\neffectiveVersion.\n\nI am no longer sure I understand what you meant by keeping a consistent coding\nstyle. Could you elaborate?",
+            "date": "2006-04-04T18:33:00.000+0000",
+            "id": 4
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "I thought the whole issue was one could not have access to some private instance\nvariable because they did not have a corresponding protected getter. If that is\nthe case I am fully prepared to accept a patch for it. Otherwise I see no point\nin providing protected setters for a _limited_ number of private instance\nvariables in a _single_ class just because some believe this is a better way.\n\nIt is just not feasible that we patch HttpMethodBase in order to please every\nsingle user out there. HttpMethodBase is helplessly broken. It simply needs to go.\n\nI hope this makes my position clearer\n\nOleg",
+            "date": "2006-04-04T18:50:51.000+0000",
+            "id": 5
+        },
+        {
+            "author": "Faron Dutton",
+            "body": "If I have offended you then I appologize. I did not open this issue just because\nI think it could be done a better way. I have not commented on the suitability\nof the code. I would like to try again :-)\n\nreadResponse enters a loop looking for a non-null statusLine. readStatusLine is\nresponsible for setting the variable to a non-null value. If I override\nreadStatusLine I cannot set the variable and readResponse is stuck in the loop.\nI cannot override getStatusLine since readResponse uses the variable directly.\n\nI see four solutions here. Never override readStatusLine (should be private),\nmake variable protected, add a setter, or change code to use existing getter.\nAny of the last three will work for me.\n\nThe same problems exist with the other member variables; I just used statusLine\nas an example. I can resubmit the patch for any solution you choose and I can\nensure that all member variables are accessed in a consistent manner.",
+            "date": "2006-04-04T19:27:55.000+0000",
+            "id": 6
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "(In reply to comment #7)\n> If I have offended you then I appologize. I did not open this issue just because\n> I think it could be done a better way. I have not commented on the suitability\n> of the code. I would like to try again :-)\n> \n\nNo offense taken at all. The point I was trying to make (rather unsuccessfully)\nis that merits of what some may consider a good practice tend to be subjective\nand context specific. \n\n> readResponse enters a loop looking for a non-null statusLine. readStatusLine is\n> responsible for setting the variable to a non-null value. If I override\n> readStatusLine I cannot set the variable and readResponse is stuck in the loop.\n> I cannot override getStatusLine since readResponse uses the variable directly.\n> \n> I see four solutions here. Never override readStatusLine (should be private),\n> make variable protected, add a setter, or change code to use existing getter.\n> Any of the last three will work for me.\n> \n> The same problems exist with the other member variables; I just used statusLine\n> as an example. I can resubmit the patch for any solution you choose and I can\n> ensure that all member variables are accessed in a consistent manner.\n\nMy preference would be to make those variables protected. \n\nHttpMethodBase (imho) is a horrible pile of <self-censored> broken beyond\nredemption. I just want to keep it as stable as possible in the 3.x branch and\ndo away with it in the 4.x branch\n\nOleg",
+            "date": "2006-04-04T19:51:53.000+0000",
+            "id": 7
+        },
+        {
+            "author": "Ortwin Gl\u00fcck",
+            "body": "+1 to make them protected",
+            "date": "2006-04-04T20:58:34.000+0000",
+            "id": 8
+        },
+        {
+            "author": "Faron Dutton",
+            "body": "Created an attachment (id=18025)\nChange private member variables to protected.\n",
+            "date": "2006-04-05T18:08:42.000+0000",
+            "id": 9
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Faron,\nI think this is too much. Please pprovide a patch with _minimal_ impact on the\nexisting code. Please make protected only those variables that you absolutely\nmust have write access to.\n\nOleg",
+            "date": "2006-04-06T23:50:49.000+0000",
+            "id": 10
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Faron,\n\nFeel free to re-open the bug if you provide an alternative patch. I am closing\nthe bug as WONTFIX for now\n\nOleg",
+            "date": "2006-04-18T21:31:50.000+0000",
+            "id": 11
+        },
+        {
+            "author": "Caleb",
+            "body": "Minimal diff required to override some functionality in child classes",
+            "date": "2006-07-28T08:34:52.000+0000",
+            "id": 12
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Patch checked in\n\nOleg",
+            "date": "2006-08-07T10:50:14.000+0000",
+            "id": 13
+        }
+    ],
+    "component": "HttpClient (classic)",
+    "description": "HttpMethodBase provides the readStatusLine method explicitly designed for\nsubclasses to override. However, any attempt to do so quickly encounters issues\nsince the subclass does not have access to the statusLine member variable in\nHttpMethodBase. The same holds true for several other member variables as well.\n\nRecommend that all access to member variables occur through accessors and that\nmutators be provided to set them. See patch below.\n----------------------------------------------------------\n\nIndex: HttpMethodBase.java\n===================================================================\n--- HttpMethodBase.java\t(revision 390815)\n+++ HttpMethodBase.java\t(working copy)\n@@ -563,7 +563,7 @@\n      * @return the status code associated with the latest response.\n      */\n     public int getStatusCode() {\n-        return statusLine.getStatusCode();\n+        return getStatusLine().getStatusCode();\n     }\n \n     /**\n@@ -577,6 +577,13 @@\n     }\n \n     /**\n+     * @param statusLine The statusLine to set.\n+     */\n+    protected final void setStatusLine(StatusLine statusLine) {\n+        this.statusLine = statusLine;\n+    }\n+\n+    /**\n      * Checks if response data is available.\n      * @return <tt>true</tt> if response data is available, <tt>false</tt>\notherwise.\n      */\n@@ -798,7 +805,7 @@\n      * @return The status text.\n      */\n     public String getStatusText() {\n-        return statusLine.getReasonPhrase();\n+        return getStatusLine().getReasonPhrase();\n     }\n \n     /**\n@@ -920,16 +927,16 @@\n         }\n         LOG.debug(\"Resorting to protocol version default close connection policy\");\n         // missing or invalid connection header, do the default\n-        if (this.effectiveVersion.greaterEquals(HttpVersion.HTTP_1_1)) {\n+        if (getEffectiveVersion().greaterEquals(HttpVersion.HTTP_1_1)) {\n             if (LOG.isDebugEnabled()) {\n-                LOG.debug(\"Should NOT close connection, using \" +\nthis.effectiveVersion.toString());\n+                LOG.debug(\"Should NOT close connection, using \" +\ngetEffectiveVersion().toString());\n             }\n         } else {\n             if (LOG.isDebugEnabled()) {\n-                LOG.debug(\"Should close connection, using \" +\nthis.effectiveVersion.toString());\n+                LOG.debug(\"Should close connection, using \" +\ngetEffectiveVersion().toString());\n             }\n         }\n-        return this.effectiveVersion.lessEquals(HttpVersion.HTTP_1_0);\n+        return getEffectiveVersion().lessEquals(HttpVersion.HTTP_1_0);\n     }\n     \n     /**\n@@ -980,14 +987,14 @@\n         this.responseConnection = conn;\n \n         checkExecuteConditions(state, conn);\n-        this.statusLine = null;\n+        setStatusLine(null);\n         this.connectionCloseForced = false;\n \n         conn.setLastResponseInputStream(null);\n \n         // determine the effective protocol version\n-        if (this.effectiveVersion == null) {\n-            this.effectiveVersion = this.params.getVersion(); \n+        if (getEffectiveVersion() == null) {\n+            setEffectiveVersion(this.params.getVersion()); \n         }\n \n         writeRequest(state, conn);\n@@ -996,7 +1003,7 @@\n         // the method has successfully executed\n         used = true; \n \n-        return statusLine.getStatusCode();\n+        return getStatusCode();\n     }\n \n     /**\n@@ -1048,8 +1055,8 @@\n         getRequestHeaderGroup().clear();\n         getResponseHeaderGroup().clear();\n         getResponseTrailerHeaderGroup().clear();\n-        statusLine = null;\n-        effectiveVersion = null;\n+        setStatusLine(null);\n+        setEffectiveVersion(null);\n         aborted = false;\n         used = false;\n         params = new HttpMethodParams();\n@@ -1586,18 +1593,18 @@\n         \"enter HttpMethodBase.readResponse(HttpState, HttpConnection)\");\n         // Status line & line may have already been received\n         // if 'expect - continue' handshake has been used\n-        while (this.statusLine == null) {\n+        while (getStatusLine() == null) {\n             readStatusLine(state, conn);\n             processStatusLine(state, conn);\n             readResponseHeaders(state, conn);\n             processResponseHeaders(state, conn);\n             \n-            int status = this.statusLine.getStatusCode();\n+            int status = getStatusCode(); \n             if ((status >= 100) && (status < 200)) {\n                 if (LOG.isInfoEnabled()) {\n-                    LOG.info(\"Discarding unexpected response: \" +\nthis.statusLine.toString()); \n+                    LOG.info(\"Discarding unexpected response: \" +\ngetStatusLine().toString()); \n                 }\n-                this.statusLine = null;\n+                setStatusLine(null);\n             }\n         }\n         readResponseBody(state, conn);\n@@ -1675,7 +1682,7 @@\n         if (Wire.CONTENT_WIRE.enabled()) {\n             is = new WireLogInputStream(is, Wire.CONTENT_WIRE);\n         }\n-        boolean canHaveBody = canResponseHaveBody(statusLine.getStatusCode());\n+        boolean canHaveBody = canResponseHaveBody(getStatusCode());\n         InputStream result = null;\n         Header transferEncodingHeader =\nresponseHeaders.getFirstHeader(\"Transfer-Encoding\");\n         // We use Transfer-Encoding if present and ignore Content-Length.\n@@ -1714,7 +1721,7 @@\n         } else {\n             long expectedLength = getResponseContentLength();\n             if (expectedLength == -1) {\n-                if (canHaveBody &&\nthis.effectiveVersion.greaterEquals(HttpVersion.HTTP_1_1)) {\n+                if (canHaveBody &&\ngetEffectiveVersion().greaterEquals(HttpVersion.HTTP_1_1)) {\n                     Header connectionHeader =\nresponseHeaders.getFirstHeader(\"Connection\");\n                     String connectionDirective = null;\n                     if (connectionHeader != null) {\n@@ -1850,19 +1857,19 @@\n         } while(true);\n \n         //create the status line from the status string\n-        statusLine = new StatusLine(s);\n+        setStatusLine(new StatusLine(s));\n \n         //check for a valid HTTP-Version\n-        String versionStr = statusLine.getHttpVersion();\n+        String versionStr = getStatusLine().getHttpVersion();\n         if (getParams().isParameterFalse(HttpMethodParams.UNAMBIGUOUS_STATUS_LINE) \n            && versionStr.equals(\"HTTP\")) {\n             getParams().setVersion(HttpVersion.HTTP_1_0);\n             if (LOG.isWarnEnabled()) {\n                 LOG.warn(\"Ambiguous status line (HTTP protocol version missing):\" +\n-                statusLine.toString());\n+                getStatusLine().toString());\n             }\n         } else {\n-            this.effectiveVersion = HttpVersion.parse(versionStr);\n+            setEffectiveVersion(HttpVersion.parse(versionStr));\n         }\n \n     }\n@@ -1943,9 +1950,9 @@\n                     readResponseHeaders(state, conn);\n                     processResponseHeaders(state, conn);\n \n-                    if (this.statusLine.getStatusCode() ==\nHttpStatus.SC_CONTINUE) {\n+                    if (getStatusCode() == HttpStatus.SC_CONTINUE) {\n                         // Discard status line\n-                        this.statusLine = null;\n+                        setStatusLine(null);\n                         LOG.debug(\"OK to continue received\");\n                     } else {\n                         return;\n@@ -2087,7 +2094,7 @@\n      */\n     private String getRequestLine(HttpConnection conn) {\n         return  HttpMethodBase.generateRequestLine(conn, getName(),\n-                getPath(), getQueryString(), this.effectiveVersion.toString());\n+                getPath(), getQueryString(), getEffectiveVersion().toString());\n     }\n \n     /**\n@@ -2128,6 +2135,13 @@\n     }\n \n     /**\n+     * @param effectiveVersion The effectiveVersion to set.\n+     */\n+    protected final void setEffectiveVersion(HttpVersion effectiveVersion) {\n+        this.effectiveVersion = effectiveVersion;\n+    }\n+\n+    /**\n      * Per RFC 2616 section 4.3, some response can never contain a message\n      * body.\n      *\n@@ -2358,7 +2372,7 @@\n     ) {\n         // set used so that the response can be read\n         this.used = true;\n-        this.statusLine = statusline;\n+        setStatusLine(statusline);\n         this.responseHeaders = responseheaders;\n         this.responseBody = null;\n         this.responseStream = responseStream;",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "HTTPCLIENT-574",
+    "issuetypeClassified": "OTHER",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "HTTPCLIENT",
+    "project": "HTTPCLIENT",
+    "summary": "Subclasses do not have write access to StatusLine",
+    "systemSpecification": false,
+    "version": "3.0 Final"
+}

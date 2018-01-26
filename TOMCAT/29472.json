@@ -1,0 +1,29 @@
+{
+    "comments": [
+        {
+            "author": null,
+            "body": "getConnectorNames() was suffering from the same problem.\n\nFixed by:\n\n- changing \"initialized\", \"connectors\", and \"container\" from private to\n  protected in StandardService,\n- removing \"connectors\" from Embedded,\n- leveraging StandardService's addConnector() and removeConnector() from\n  Embedded, and\n- storing the most recently added Engine in Embedded's \"container\" (so that it\n  is used when calling connector.setContainer() in\n  Standardservice.addConnector())\n",
+            "date": "20040610T01:06:23",
+            "id": 0
+        },
+        {
+            "author": null,
+            "body": "Following Jan's comments and my inspection of the code of\nEmbedded and StandardService, it appears that there may still be several\nissues laying around that could be resolved by a refactoring of many\nof the methods.\n\nI believe that the Listener subscription logic is duplicated.\nIt should be possible for the subclasses (Embedded) not to override the\nvariables nor the code.\n\nThe debug (variable, setter, getter) appears to be duplicated as well.\nSo is the Lifecycle creation.\n\nAlso, the start() method on both appears to not share the same activities\nhappening. Worthwhile to consider Embedded to invoke appropriately\nsuper.start().\n\nSimilarly for stop().",
+            "date": "20040610T17:11:53",
+            "id": 1
+        }
+    ],
+    "component": "Catalina",
+    "description": "The problem I am having relates to the Embedded class.\n\nIt centers around the problem that 'connectors' is a private variable\nin the class, and there is no overriding of 'findConnectors' (which\nis defined in StandardService).\n\nTherefore, findConnectors() on Embedded returns a value related to its\nsuperclass (StandardService) own (private) connectors[] variable, while\nthe class manages its own private list. \n\n-- \n\nA possible solution would be to:\n\n    - remove connectors private definition from Embedded\n    - make connectors in StandardService 'protected'\n\n-- \n\nI understand that one would not expect to query connectors when using\nEmbedded. However, in the context I am using, I have variants that may\nuse either Embedded, or Catalina (or a modification of Catalina/Bootstrap\nthat I have developed).",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "29472",
+    "issuetypeClassified": "OTHER",
+    "issuetypeTracker": "RFE",
+    "priority": "P3 enhancement",
+    "product": "Tomcat 5",
+    "project": "TOMCAT",
+    "summary": "Embedded overrides add/remove Connector, but not findConnectors",
+    "systemSpecification": false,
+    "version": "5.0.25"
+}

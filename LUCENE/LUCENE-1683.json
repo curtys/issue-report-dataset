@@ -1,0 +1,47 @@
+{
+    "comments": [
+        {
+            "author": "Trejkaz",
+            "body": "I screwed up the formatting.  Fixed version:\n\n{code}\n    @Test\n    public void testNecessity() throws Exception\n    {\n        File dir = new File(new File(System.getProperty(\"java.io.tmpdir\")), \"index\");\n        IndexWriter writer = new IndexWriter(dir, new StandardAnalyzer(), true);\n        Document doc = new Document();\n        doc.add(new Field(\"field\", \"cat cats cathy\", Field.Store.YES, Field.Index.TOKENIZED));\n        writer.addDocument(doc);\n        writer.close();\n\n        IndexReader reader = IndexReader.open(dir);\n\n        TermEnum terms = new RegexQuery(new Term(\"field\", \"cat.\")).getEnum(reader);\n        assertEquals(\"Wrong term\", \"cats\", terms.term().text());\n        assertFalse(\"Should have only been one term\", terms.next());\n    }\n{code}\n",
+            "date": "2009-06-11T01:50:06.711+0000",
+            "id": 0
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Do you have a proposed fix for this...?  Or, why is RegexQuery treating the trailing \".\" as a \".*\" instead?",
+            "date": "2009-07-16T17:49:13.417+0000",
+            "id": 1
+        },
+        {
+            "author": "Steve Rowe",
+            "body": "bq. ... why is RegexQuery treating the trailing \".\" as a \".*\" instead? \n\nJavaUtilRegexCapabilities.match() is implemented as j.u.regex.Matcher.lookingAt(), which is equivalent to adding a trailing \".*\", unless you explicity append a \"$\" to the pattern.\n\nBy contrast, JakartaRegexpCapabilities.match() is implemented as RE.match(), which does not imply the trailing \".*\".\n\nThe difference in the two implementations implies this is a kind of bug, especially since the javadoc \"contract\" on RegexCapabilities.match() just says \"@return true if string matches the pattern last passed to compile\".\n\nThe fix is to switch JavaUtilRegexCapabilities.match to use Matcher.match() instead of lookingAt().",
+            "date": "2009-07-16T18:11:41.914+0000",
+            "id": 2
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "I agree this is a bug -- I'll switch to matches shortly.",
+            "date": "2009-07-31T17:59:13.401+0000",
+            "id": 3
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Thanks Trejkaz!",
+            "date": "2009-07-31T18:03:13.585+0000",
+            "id": 4
+        }
+    ],
+    "component": "modules/other",
+    "description": "I was writing some unit tests for our own wrapper around the Lucene regex classes, and got tripped up by something interesting.\n\nThe regex \"cat.\" will match \"cats\" but also anything with \"cat\" and 1+ following letters (e.g. \"cathy\", \"catcher\", ...)  It is as if there is an implicit .* always added to the end of the regex.\n\nHere's a unit test for the behaviour I would expect myself:\n\n    @Test\n    public void testNecessity() throws Exception {\n        File dir = new File(new File(System.getProperty(\"java.io.tmpdir\")), \"index\");\n        IndexWriter writer = new IndexWriter(dir, new StandardAnalyzer(), true);\n        try {\n            Document doc = new Document();\n            doc.add(new Field(\"field\", \"cat cats cathy\", Field.Store.YES, Field.Index.TOKENIZED));\n            writer.addDocument(doc);\n        } finally {\n            writer.close();\n        }\n\n        IndexReader reader = IndexReader.open(dir);\n        try {\n            TermEnum terms = new RegexQuery(new Term(\"field\", \"cat.\")).getEnum(reader);\n            assertEquals(\"Wrong term\", \"cats\", terms.term());\n            assertFalse(\"Should have only been one term\", terms.next());\n        } finally {\n            reader.close();\n        }\n    }\n\nThis test fails on the term check with terms.term() equal to \"cathy\".\n\nOur workaround is to mangle the query like this:\n\n    String fixed = String.format(\"(?:%s)$\", original);\n",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "LUCENE-1683",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Major",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "RegexQuery matches terms the input regex doesn't actually match",
+    "systemSpecification": true,
+    "version": "2.3.2"
+}

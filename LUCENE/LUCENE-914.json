@@ -1,0 +1,155 @@
+{
+    "comments": [
+        {
+            "author": "Hoss Man",
+            "body": "my gut says we should fix the Impls and leave the spec the way it is ... less risk of irate clients 2 years down the road wondering why their custom Query classes no longer work in boolean queries because we: a) relaxed the spec; b) made optimizations in BooleanQuery to take advantage of the relaxation.",
+            "date": "2007-06-07T00:03:11.564+0000",
+            "id": 0
+        },
+        {
+            "author": "Yonik Seeley",
+            "body": "The spec text is ambiguous.\nThe biggest issue is to look if any scorers actually call skipTo(n) with n<=doc().\nWe could further restrict the spec to say that n *must* be > doc() for defined results.\nThat change would not hurt customers, since the current behavior is already somewhat undefined.",
+            "date": "2007-06-07T01:01:20.431+0000",
+            "id": 1
+        },
+        {
+            "author": "Doron Cohen",
+            "body": "patch adds a test to QueryUtils that exposes this issue.\n50 test cases in 9 test files fail with this.\n(I know that I did not worry to fulfill this spec in search.function, for instance.)",
+            "date": "2007-06-07T03:00:45.707+0000",
+            "id": 2
+        },
+        {
+            "author": "Yonik Seeley",
+            "body": "ConstantScorer is implemented like:\n\n    public boolean skipTo(int target) throws IOException {\n      doc = bits.nextSetBit(target);  // requires JDK 1.4\n      return doc >= 0;\n    }\n\nThe fix would be:\n\n    public boolean skipTo(int target) throws IOException {\n      doc = bits.nextSetBit( Math.max(target, doc+1) );\n      return doc >= 0;\n    }\n\nBut I'm really not sure I prefer that over just clarifying/restricting skipTo.\n",
+            "date": "2007-06-07T03:12:16.818+0000",
+            "id": 3
+        },
+        {
+            "author": "Doug Cutting",
+            "body": "The text was mostly trying to describe what the specified implementation did, to provide as clear and unambiguous of a contract as possible.  Note that the specified implementation must call next() before doc(), since doc() isn't always defined unless next() has been called.",
+            "date": "2007-06-07T04:51:54.019+0000",
+            "id": 4
+        },
+        {
+            "author": "Paul Elschot",
+            "body": "I've been struggling with this before at LUCENE-413 .\n\nI think the Scorer.skipTo() contract is geared towards TermScorer.skipTo(target), and rightly so, because that is where it is all done in the end, and the current fast implementation should remain possible.\n\nI like the idea to further restrict the spec to say that n *must* be > doc() for defined results, but that should also take into account that doc() is not defined initially.\nAn initial doc() == -1 nicely fits here, too.\n\nThere are some scorers that could have simplified firstTime logic when doc() always return -1 initially, and iirc Yonik had/has ideas about that, but I can't find these back right now.\n",
+            "date": "2007-06-08T07:30:34.619+0000",
+            "id": 5
+        },
+        {
+            "author": "Yonik Seeley",
+            "body": "Yes, I remember an initial doc()==-1 would be nice (and easy I think).\nFor example DisjunctionMaxScorer could simply remove firstTime blocks in both skipTo() and next() with no other changes.  Even the \"more\" flag could easily be removed I think.\n",
+            "date": "2007-06-08T16:34:18.533+0000",
+            "id": 6
+        },
+        {
+            "author": "Doug Cutting",
+            "body": "Note also that Scorer#skipTo() is specified almost identically to TermDocs#skipTo().  It would be best if the contracts for these interfaces stayed similar, to avoid confusion.",
+            "date": "2007-06-08T17:03:05.376+0000",
+            "id": 7
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "How about we change the spec for all skipTo's to require n must be > doc() else what happens is undefined (ie, may or may not advance)?  This would resolve this issue and LUCENE-1327.",
+            "date": "2008-09-08T10:17:22.657+0000",
+            "id": 8
+        },
+        {
+            "author": "Paul Elschot",
+            "body": "I had another look at these lines in DisjunctionScorer.skipTo()  from LUCENE-413:\n{code}\n    if (target <= currentDoc) { // CHECKME: skipTo() semantics?\n      return true;\n    }\n{code}\nI think these lines can simply be dropped. The bug at LUCENE-413 was probably fixed\nby the changes to SpanScorer then.\n\nDropping these lines also makes DisjunctionSumScorer advance (effectively use next())\nwhen skipTo(target) is called, even when target <= doc().\n\nAlso, I'm changing my opinion on what to do when target <= doc(). I think a DocIdSetIterator\n(and any Scorer) should always advance in that case, just like the javadocs of TermDocs.\n\nWhen Scorers/DocIdSetIterators are combined, for example in disjunctions or conjunctions\nor in the more complex cases of BooleanScorer2, the test for target <= doc() can simply\nbe done before calling skipTo() on any of the combined Scorers/DocIdSetIterators.\n\nNow, if such a change surfaces some bugs like LUCENE-413, so be it. It's better to have\nclearly defined semantics than to have lingering bugs due to explicitly undefined semantics\nin the case of target <= doc().\n\nBtw. there is a small bug in SpanScorer, the (freq != 0) test there should\nbe replaced by a boolean check for actual matches. See SpanScorer.setFreqCurrentDoc().\nThe bug would only surface when the Similarity used in SpanScorer returns 0 for sloppyFreq().\n",
+            "date": "2008-09-08T11:17:09.519+0000",
+            "id": 9
+        },
+        {
+            "author": "Doron Cohen",
+            "body": "{quote}\n... else what happens is undefined ...\n{quote}\nI prefer a clearly defined logic, like the one Yonik gave above:\n{code}\nskipTo(n) == skipTo (n, max(doc()+1)  // assume doc() initialized to -1\n{code}\n",
+            "date": "2008-09-08T11:30:52.140+0000",
+            "id": 10
+        },
+        {
+            "author": "Paul Elschot",
+            "body": "Well, how about changing the TermDocs interface into an abstract subclass of DocIdSetIterator ?\nThat would allow the javadocs of the definition of skipTo() to be done in DocIdSetIterator only.\nThese javadocs could be taken directly from TermDocs.skipTo().\n\n(As a bonus, implementing a TermFilter could be done by directly using a TermDocs.)\n\nSuch a change is not backward compatible (interface -> abstract class), but there are ways to deal with that.",
+            "date": "2008-09-08T12:05:35.623+0000",
+            "id": 11
+        },
+        {
+            "author": "Paul Elschot",
+            "body": "See LUCENE-1379 for the SpanScorer bug when sloppyFreq() returns 0.",
+            "date": "2008-09-08T12:52:40.249+0000",
+            "id": 12
+        },
+        {
+            "author": "Yonik Seeley",
+            "body": "bq. How about we change the spec for all skipTo's to require n must be > doc() else what happens is undefined (ie, may or may not advance)?\n\n+1, this allows more implementation flexibility.",
+            "date": "2008-09-08T13:33:59.486+0000",
+            "id": 13
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Since we're still having healthy discussions on the approach to resolve this, I think we shouldn't hold 2.4 for this or LUCENE-1327?",
+            "date": "2008-09-08T13:58:38.692+0000",
+            "id": 14
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "I really don't have a strong opinion on how to resolve this.\n\nExcept, I've now changed my previous weak opinion in favor of keeping the spec ambiguous (since it maximizes back compat flexibility) to making the spec unambiguous (always advance) and fixing all impls to match the spec, to prevent and/or ferret out any bugs that would otherwise sneak in.",
+            "date": "2008-09-09T09:49:12.377+0000",
+            "id": 15
+        },
+        {
+            "author": "Doron Cohen",
+            "body": "Checking if this issue can be resolved.\nThere were quite a few changes in this code:\n* in LUCENE-584 skipTo was moved to DISI\n* in LUCENE-1614 skipTo was replaced by advance() and the javadocs were refreshed.\n\nCurrent javadocs of DISI.advance() are almost accurate to me, and I think this can be fixed by adding one more (first) note to the method, like this:\n{code} \n* <b>NOTE:</b> this method is intended for use with <code>target &gt; current</code>, \n* otherwise it is not guaranteed to advance beyond current.\n{code}",
+            "date": "2011-01-26T21:46:44.295+0000",
+            "id": 16
+        },
+        {
+            "author": "Shai Erera",
+            "body": "The method currently has this in its jdocs:\n\n{noformat}\n   * <b>NOTE:</b> certain implementations may return a different value (each\n   * time) if called several times in a row with the same target.\n{noformat}\n\nI think we need to collapse it with your proposal somehow. Both statements are slightly inaccurate IMO because:\n* Current uses cumbersome wording.\n* Proposal says \"... intended for use with target > current otherwise ...\" but I think it's a bit fuzzy also.\n\nMaybe something like this:\n\n{noformat}\n* <b>NOTE:</b> some implementations may not advance beyond their current {@link #docID()} if {@code current == target}.\n{noformat}\n\nWhat do you think?\n\nAlso, while we're at it, there's a wrong {@value} reference in the jdocs which should be {@link} - the jdocs look awkward with {@value} when generated.",
+            "date": "2011-01-27T06:57:56.500+0000",
+            "id": 17
+        },
+        {
+            "author": "Doron Cohen",
+            "body": "I agree, well. almost... :) - the exclusion should also cover *target < current* - I'll add a patch shortly.\n",
+            "date": "2011-01-27T08:07:59.456+0000",
+            "id": 18
+        },
+        {
+            "author": "Doron Cohen",
+            "body": "Trivial patch to fix this documentation.",
+            "date": "2011-01-27T08:49:59.449+0000",
+            "id": 19
+        },
+        {
+            "author": "Shai Erera",
+            "body": "Patch looks good. +1 to commit.",
+            "date": "2011-01-27T08:59:16.841+0000",
+            "id": 20
+        },
+        {
+            "author": "Doron Cohen",
+            "body": "javadoc fix committed in trunk and 3x, thanks Shai.",
+            "date": "2011-01-27T09:54:47.396+0000",
+            "id": 21
+        },
+        {
+            "author": "Grant Ingersoll",
+            "body": "Bulk close for 3.1",
+            "date": "2011-03-30T15:50:08.041+0000",
+            "id": 22
+        }
+    ],
+    "component": "core/search",
+    "description": "Background in http://www.nabble.com/scorer.skipTo%28%29-contr-tf3880986.html\n\nIt appears that several scorers do not strictly follow the spec of Scorer.skipTo(n), and skip to current location remain in current location whereas the spec says: \"beyond current\". \n\nWe should (probably) either relax the spec or fix the implementations.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-914",
+    "issuetypeClassified": "OTHER",
+    "issuetypeTracker": "BUG",
+    "priority": "Minor",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "Scorer.skipTo(current) remains on current for some scorers",
+    "systemSpecification": true,
+    "version": ""
+}

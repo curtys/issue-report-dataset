@@ -1,0 +1,23 @@
+{
+    "comments": [
+        {
+            "author": "hannesw@gmail.com",
+            "body": "Fixed in CVS (now erring on the safe side and rather counting too much than too little)",
+            "date": "20110223T16:32:00",
+            "id": 0
+        }
+    ],
+    "component": "Core",
+    "description": "User-Agent:       Mozilla/5.0 (Macintosh; U; Intel Mac OS X 10_6_2; en-US) AppleWebKit/532.5 (KHTML, like Gecko) Chrome/4.0.249.12 Safari/532.5\nBuild Identifier: 1.7R2\n\nI've setup a Context with setInstructionObserverThreshold(1000) and a corresponding ContextFactory with an observeInstructionCount function which immediately throws an error.  Most infinite loops correctly throw an error, but \"while(true) continue;\" does not, and runs forever.\n\nReproducible: Always\n\nSteps to Reproduce:\nHere's my code:\n\n\tprivate static RunResult runJSProgram(String program) {\n\t\tRunResult result = new RunResult();\n\t\t\n\t\t\n\t\tSecureContextFactory cf = new SecureContextFactory();\n\t\tContext cx = cf.enterContext();\n\t\t\n\t\tScriptable scope = cx.initStandardObjects();\n\t\ttry {\n\t\t\tcx.evaluateString(scope, program, \"<cmd>\", 1, null);\n\t\t}\n\t\tcatch(Throwable t) {\n\t\t\tresult.exceptionEncountered = t;\n\t\t}\n\t\t\n\t\tContext.exit();\n\t\treturn result;\n\t}\n\n\tprivate static class RunResult {\n\t\tpublic Throwable exceptionEncountered = null;\n\t\tpublic StringBuilder output = new StringBuilder();\n\t\t\n\t\tpublic void addOutput(String out) {\n\t\t\toutput.append(out);\n\t\t}\n\t\t\n\t\tpublic boolean equals(Object o) {\n\t\t\tif (!(o instanceof RunResult)) return false;\n\t\t\tRunResult r = (RunResult) o;\n\t\t\tif ((this.exceptionEncountered == null) !=\n\t\t\t    (r.exceptionEncountered    == null))\n\t\t\t\treturn false;\n\t\t\t\n\t\t\tif (!output.toString().equals(r.output.toString()))\n\t\t\t\treturn false;\n\t\t\t\n\t\t\treturn true;\n\t\t}\n\t}\n\t\n\tprivate static class SecureContextFactory extends ContextFactory {\n\t\t@Override\n\t\tpublic Context makeContext() {\n\t\t\treturn new SecureContext(this);\n\t\t}\n\t\t\n\t\t@Override\n\t\tprotected void observeInstructionCount(Context cx, int instructionCount) {\n\t\t\tthrow new RuntimeException(\"timout reached\");\n\t\t}\n\t}\n\t\n\tprivate static class SecureContext extends Context {\n\t\tstatic private final ClassShutter denyAllClasses = new ClassShutter() {\n\t\t\t@Override\n\t\t\tpublic boolean visibleToScripts(String classname) {\n\t\t\t\treturn false;//no access to Java classes\n\t\t\t}\n\t\t};\n\t\t\n\t\tpublic SecureContext(ContextFactory cf) {\n\t\t\tsuper(cf);\n\t\t\t\n\t\t\tthis.setClassShutter(denyAllClasses);\n\t\t\tthis.setInstructionObserverThreshold(1000);\n\t\t}\n\t}\nActual Results:  \nrunJSProgram(\"while(true) continue;\") runs forever\n\nExpected Results:  \nIt should throw an exception.",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "531600",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "-- critical",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "\"while(true) continue;\" will never trigger observeInstructionCount",
+    "systemSpecification": true,
+    "version": "other"
+}

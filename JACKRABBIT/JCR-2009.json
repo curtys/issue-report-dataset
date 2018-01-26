@@ -1,0 +1,29 @@
+{
+    "comments": [
+        {
+            "author": "angela",
+            "body": "fixed as suggested (just added minor modifications and a simple test)\n\nthanks for reporting!",
+            "date": "2009-03-12T12:12:26.681+0000",
+            "id": 0
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Merged to the 1.5 branch in revision 767534. ",
+            "date": "2009-04-22T14:14:24.152+0000",
+            "id": 1
+        }
+    ],
+    "component": "jackrabbit-webdav",
+    "description": "Downloading a large file (>2GB) from webdav causes an exception.\n\n(Note: uploading the file works ok, when jackrabbit is configured to use the filesystem DataStore.)\n\nWhen trying to retrieve the file with e.g. \"wget\", we get the following error:\n\nGozer:Desktop greg$ wget --http-user=xxx --http-passwd=xxx http://localhost:8080/jackrabbit/repository/workbench/pkgs/demo/zip/zips/largetest-1.zip\n--08:59:50--  http://localhost:8080/jackrabbit/repository/workbench/pkgs/demo/zip/zips/largetest-1.zip\n           => `largetest-1.zip'\nResolving localhost... done.\nConnecting to localhost[127.0.0.1]:8080... connected.\nHTTP request sent, awaiting response... 500 For input string: \"3156213760\"\n09:04:53 ERROR 500: For input string: \"3156213760\".\n\nIn the server log we see this:\n\n06.03.2009 08:59:50 *INFO * RepositoryImpl: SecurityManager = class org.apache.jackrabbit.core.security.simple.SimpleSecurityManager (RepositoryImpl.java, line 432)\n2009-03-06 09:04:53.822::WARN:  /jackrabbit/repository/workbench/pkgs/demo/zip/zips/largetest-1.zip\njava.lang.NumberFormatException: For input string: \"3156213760\"\n\tat java.lang.NumberFormatException.forInputString(NumberFormatException.java:48)\n\tat java.lang.Integer.parseInt(Integer.java:459)\n\tat java.lang.Integer.parseInt(Integer.java:497)\n\tat org.apache.jackrabbit.webdav.io.OutputContextImpl.setContentLength(OutputContextImpl.java:60)\n\tat org.apache.jackrabbit.server.io.ExportContextImpl.informCompleted(ExportContextImpl.java:192)\n\tat org.apache.jackrabbit.server.io.IOManagerImpl.exportContent(IOManagerImpl.java:157)\n\tat org.apache.jackrabbit.webdav.simple.DavResourceImpl.spool(DavResourceImpl.java:332)\n\tat org.apache.jackrabbit.webdav.server.AbstractWebdavServlet.spoolResource(AbstractWebdavServlet.java:422)\n\tat org.apache.jackrabbit.webdav.server.AbstractWebdavServlet.doGet(AbstractWebdavServlet.java:388)\n\tat org.apache.jackrabbit.webdav.server.AbstractWebdavServlet.execute(AbstractWebdavServlet.java:229)\n\tat org.apache.jackrabbit.webdav.server.AbstractWebdavServlet.service(AbstractWebdavServlet.java:196)\n\tat javax.servlet.http.HttpServlet.service(HttpServlet.java:820)\n\tat org.mortbay.jetty.servlet.ServletHolder.handle(ServletHolder.java:502)\n\tat org.mortbay.jetty.servlet.ServletHandler.handle(ServletHandler.java:363)\n\tat org.mortbay.jetty.security.SecurityHandler.handle(SecurityHandler.java:216)\n\tat org.mortbay.jetty.servlet.SessionHandler.handle(SessionHandler.java:181)\n\tat org.mortbay.jetty.handler.ContextHandler.handle(ContextHandler.java:766)\n\tat org.mortbay.jetty.webapp.WebAppContext.handle(WebAppContext.java:417)\n\tat org.mortbay.jetty.handler.ContextHandlerCollection.handle(ContextHandlerCollection.java:230)\n\tat org.mortbay.jetty.handler.HandlerCollection.handle(HandlerCollection.java:114)\n\tat org.mortbay.jetty.handler.HandlerWrapper.handle(HandlerWrapper.java:152)\n\tat org.mortbay.jetty.Server.handle(Server.java:324)\n\tat org.mortbay.jetty.HttpConnection.handleRequest(HttpConnection.java:534)\n\tat org.mortbay.jetty.HttpConnection$RequestHandler.headerComplete(HttpConnection.java:864)\n\tat org.mortbay.jetty.HttpParser.parseNext(HttpParser.java:533)\n\tat org.mortbay.jetty.HttpParser.parseAvailable(HttpParser.java:207)\n\tat org.mortbay.jetty.HttpConnection.handle(HttpConnection.java:403)\n\tat org.mortbay.io.nio.SelectChannelEndPoint.run(SelectChannelEndPoint.java:409)\n\tat org.mortbay.thread.BoundedThreadPool$PoolThread.run(BoundedThreadPool.java:451)\n\n\nThe problem seems to lie in OutputContextImpl.java it makes the mistake of potentially trying to parse a Long as an Integer, here: http://svn.apache.org/repos/asf/jackrabbit/trunk/jackrabbit-webdav/src/main/java/org/apache/jackrabbit/webdav/io/OutputContextImpl.java\n\nin the method setContentLength(long contentLength):\n\npublic void setContentLength(long contentLength) {\n       int length = Integer.parseInt(contentLength + \"\");\n       if (length >= 0) {\n           response.setContentLength(length);\n       }\n   }\n\nI'm not sure, but a fix might be like this:\n\npublic void setContentLength(long contentLength) {\n       if(contentLength <= Integer.MAX_VALUE && contentLength >= 0) {\n           response.setContentLength((int) contentLength);\n       }else if (contentLength >  Integer.MAX_VALUE) {\n            response.addHeader(\"Content-Length\", Long.toString(contentLength));\n       }\n   }\n\nThis would at least set the Content-Length header, and in some preliminary tests does seem to allow downloading the files.",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "JCR-2009",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "Large file download over webdav causes exception",
+    "systemSpecification": true,
+    "version": "1.5.2"
+}

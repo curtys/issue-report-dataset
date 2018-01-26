@@ -1,0 +1,47 @@
+{
+    "comments": [
+        {
+            "author": "Julian Reschke",
+            "body": "For instance, in getVersionHistoryOfNode:\n\n    public InternalVersionHistory getVersionHistoryOfNode(NodeId id)\n            throws RepositoryException {\n        VersioningLock.ReadLock lock = acquireReadLock();\n        try {\n            String uuid = id.toString();\n            Name name = getName(uuid);\n\n            NodeStateEx parent = getParentNode(getHistoryRoot(), uuid, null);\n            if (parent != null && parent.hasNode(name)) {\n                NodeStateEx history = parent.getNode(name, 1);\n                return getVersionHistory(history.getNodeId());\n            } else {\n                throw new ItemNotFoundException(\"Version history of node \" + id + \" not found.\");\n            }\n        } finally {\n            lock.release();\n        }\n    }",
+            "date": "2011-10-13T11:21:32.421+0000",
+            "id": 0
+        },
+        {
+            "author": "Julian Reschke",
+            "body": "Proposed patch.",
+            "date": "2011-10-13T11:55:48.824+0000",
+            "id": 1
+        },
+        {
+            "author": "Julian Reschke",
+            "body": "Actually, NodeStateEx.getNode(name, ...) *only* returns null if the child node entry is not found:\n\n        ChildNodeEntry entry = nodeState.getChildNodeEntry(name, index);\n        if (entry == null) {\n            return null;\n        }\n\n...otherwise it throws. So if the NPE happens in getVersionHistoryOfNode (and it has...), this indicates that some strange is happening which can't even be explained by inconsistent storage. \n\nSo a better approach seems to be to simply add null checks, and add better diagnostics for now. Maybe this will help understanding what's going on next time it happens.",
+            "date": "2011-10-14T10:22:18.843+0000",
+            "id": 2
+        },
+        {
+            "author": "Julian Reschke",
+            "body": "new proposed patch, just adding explicit exceptions supplying more information",
+            "date": "2011-10-14T11:57:43.257+0000",
+            "id": 3
+        },
+        {
+            "author": "Julian Reschke",
+            "body": "trunk: r1183409\n2.2: 1183425",
+            "date": "2011-10-14T17:04:18.238+0000",
+            "id": 4
+        }
+    ],
+    "component": "jackrabbit-core, versioning",
+    "description": "There are at least two instances where we check for a node with hasNode(), and then call getNode() without checking for null.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "JCR-3111",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "InternalVersionManagerBase; missing null check after getNode()",
+    "systemSpecification": true,
+    "version": ""
+}

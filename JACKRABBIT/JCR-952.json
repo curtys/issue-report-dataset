@@ -1,0 +1,89 @@
+{
+    "comments": [
+        {
+            "author": "Dennis Dam",
+            "body": "What I don't understand is, why is this issue open for 2,5 years already? And why is it a minor issue? As far as I'm concerned, this is a major issue. Can this be easily solved?",
+            "date": "2009-10-23T08:07:33.284+0000",
+            "id": 0
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "> What I don't understand is, why is this issue open for 2,5 years already?\n\nbecause nobody provided a patch\n\n> And why is it a minor issue?\n\nbecause this is a feature that is not part of the JCR specification.\n\n> As far as I'm concerned, this is a major issue.\n\nFeel free to contribute a patch.\n\n>  Can this be easily solved?\n\nIt is actually solved already. At least partially. Using JQOM or JCR_SQL2 you already have the ability to use a lower/upper case function in the order by clause. XPath and SQL (the query syntax defined in JCR 1.0) do not support them yet.\n\nSee classes LowerCaseSortComparator and UpperCaseSortComparator in jackrabbit-core. The parsers for XPath and SQL are in the module spi-commons.",
+            "date": "2009-10-23T08:37:41.175+0000",
+            "id": 1
+        },
+        {
+            "author": "Ard Schrijvers",
+            "body": "Is there a usecase where people would like to sort case sensitive? If not, we could easily change the code snippet below, to first lowercase the terms. But, I am not sure whether we do want to have the option to sort case sensitive. \n\nIn SharedFieldSortComparator :\n\nreturn new ScoreDocComparator() {\n\n           public final int compare(final ScoreDoc i, final ScoreDoc j) {\n               int idx1 = readerIndex(i.doc);\n               int idx2 = readerIndex(j.doc);\n\n               String iTerm = indexes[idx1].getTerm(i.doc - starts[idx1]);\n               String jTerm = indexes[idx2].getTerm(j.doc - starts[idx2]);\n\n               if (iTerm == jTerm) {\n                   return 0;\n               } else if (iTerm == null) {\n                   return -1;\n               } else if (jTerm == null) {\n                   return 1;\n               } else {\n                   return iTerm.compareTo(jTerm);\n               }\n           }",
+            "date": "2009-10-23T09:18:32.065+0000",
+            "id": 2
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "I think there are use cases for both. But we cannot just change the current behaviour and redefine it. That might break existing clients.",
+            "date": "2009-10-23T10:45:06.701+0000",
+            "id": 3
+        },
+        {
+            "author": "Ard Schrijvers",
+            "body": "Yes, agreed\n",
+            "date": "2009-10-23T11:01:21.739+0000",
+            "id": 4
+        },
+        {
+            "author": "Dennis Dam",
+            "body": "What solution do you guys propose? Support for lower() and upper() functions in the order by clause, or perhaps the change proposed by  Ard, but then as an optional feature?",
+            "date": "2009-10-23T11:05:35.599+0000",
+            "id": 5
+        },
+        {
+            "author": "Alexander Karpov",
+            "body": "I have changed \n\\openjpa\\openjpa-kernel\\src\\main\\jjtree\\org\\apache\\openjpa\\kernel\\jpql\\JPQL.jjt\nvoid orderby_extension() #ORDERBYEXTENSION : { }\n{\n    aggregate_select_expression()\n}\nto \nvoid orderby_extension() #ORDERBYEXTENSION : { }\n{\n    aggregate_select_expression() | upper()\n}\nand it works \nDevelopers, who knows code well, any potential problems I can meet due to my fix?\nThanks.",
+            "date": "2010-09-28T05:37:55.054+0000",
+            "id": 6
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "> I have changed \n>  \\openjpa\\openjpa-kernel\\src\\main\\jjtree\\org\\apache\\openjpa\\kernel\\jpql\\JPQL.jjt \n\nWrong issue?",
+            "date": "2010-09-28T08:28:08.428+0000",
+            "id": 7
+        },
+        {
+            "author": "Alexander Karpov",
+            "body": "Yep, sorry :)\n",
+            "date": "2010-09-28T09:23:58.026+0000",
+            "id": 8
+        },
+        {
+            "author": "Michael D\u00fcrig",
+            "body": "tentative patch. Needs cleanup and javadoc",
+            "date": "2010-12-17T17:47:27.381+0000",
+            "id": 9
+        },
+        {
+            "author": "Michael D\u00fcrig",
+            "body": "Committed modified version of the patch at revision 1051916",
+            "date": "2010-12-22T14:32:50.303+0000",
+            "id": 10
+        },
+        {
+            "author": "Michael D\u00fcrig",
+            "body": "XPath queries of the following form are now supported:\n\n//element(*,nt:base) order by fn:lower-case(@foo)\n//element(*,nt:base) order by fn:upper-case(@foo)\n\nMeaning the property used for sorting is first converted to lower (upper) case before comparison takes place. \n\n",
+            "date": "2010-12-22T14:35:15.535+0000",
+            "id": 11
+        }
+    ],
+    "component": "jackrabbit-core, query",
+    "description": "The query languages should support lower- and upper-case functions within the \"order by\" clause.  This would provide case-insensitive ordering of query results.\n\nExample:  Find all \"nt:base\" nodes ordered by the \"foo\" property, but ignoring case\n\nIn XPath:\n\n//element(*,nt:base) order by fn:lower-case(@foo)\n\nIn SQL:\n\nSELECT * FROM nt:base ORDER BY lower(foo)\n\n",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "JCR-952",
+    "issuetypeClassified": "RFE",
+    "issuetypeTracker": "RFE",
+    "priority": "Minor",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "Support lower and upper case functions in \"order by\" clause",
+    "systemSpecification": true,
+    "version": "1.3"
+}

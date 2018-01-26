@@ -1,0 +1,41 @@
+{
+    "comments": [
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "Just occurs in interpretive mode.",
+            "date": "20001012T15:02:39",
+            "id": 0
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "This patch fixes it. Roger, would you review this change?\n\nIndex: org/mozilla/javascript/Interpreter.java\n===================================================================\nRCS file: /cvsroot/mozilla/js/rhino/org/mozilla/javascript/Interpreter.java,v\nretrieving revision 1.33\ndiff -u -r1.33 Interpreter.java\n--- Interpreter.java    2000/08/15 15:54:11     1.33\n+++ Interpreter.java    2000/10/12 16:08:31\n@@ -493,8 +493,7 @@\n                 */\n                     Node target = (Node)(node.getProp(Node.TARGET_PROP));\n                     target.putProp(Node.FINALLY_PROP, node);\n-                    iCodeTop = addGoto(node, TokenStream.GOSUB,\n-                                                        iCodeTop);\n+                    iCodeTop = addGoto(node, TokenStream.GOSUB, iCodeTop);\n                 }\n                 break;\n\n@@ -848,20 +847,25 @@\n                         exception object.\n                     */\n                     while (child != null) {\n-                        if (lastChild == catchTarget) {\n+                        if (catchTarget != null && lastChild == catchTarget) {\n                             itsStackDepth = 1;\n                             if (itsStackDepth > itsData.itsMaxStack)\n                                 itsData.itsMaxStack = itsStackDepth;\n                         }\n                         /*\n-                            When the following child is the catchTarget,\n+                            When the following child is the catchTarget\n+                            (or the finallyTarget if there are no catches),\n                             the current child is the goto at the end of\n                             the try statemets, we need to emit the endtry\n                             before that goto.\n                         */\n-                        if (child.getNextSibling() == catchTarget)\n+                        Node nextSibling = child.getNextSibling();\n+                        if (nextSibling == catchTarget ||\n+                            nextSibling == finallyTarget)\n+                        {\n                             iCodeTop = addByte((byte) TokenStream.ENDTRY,\n-                                                                iCodeTop);\n+                                               iCodeTop);\n+                        }\n                         iCodeTop = generateICode(child, iCodeTop);\n                         lastChild = child;\n                         child = child.getNextSibling();\n\nChecking in org/mozilla/javascript/Interpreter.java;\n/cvsroot/mozilla/js/rhino/org/mozilla/javascript/Interpreter.java,v  <--  Interp\nreter.java\nnew revision: 1.34; previous revision: 1.33\ndone",
+            "date": "20001012T16:11:19",
+            "id": 1
+        },
+        {
+            "author": "rogerl@formerly-netscape.com.tld",
+            "body": "looks good to me",
+            "date": "20001012T20:22:37",
+            "id": 2
+        },
+        {
+            "author": "pschwartau@meer.net",
+            "body": "Compare bug 56716 in JS Engine -",
+            "date": "20001017T18:49:23",
+            "id": 3
+        }
+    ],
+    "component": "Core",
+    "description": "I'm using rhino from the file rhinoTip.zip, of 9/11/00.\n\nThe following code doesn't work as it should unless you uncomment\nthe catch clause.  Otherwise, I get a bogus exception from the \nfinally clause().\n\nvar i = 0, total = 0; \nvar a = [1,2,3,4];\nwhile(i < a.length) {\n    try {\n        print(i);\n        print(a[i]);\n        if ((typeof a[i] != \"number\") || isNaN(a[i])) // If it is not a number\n            continue;  // then go on to the next iteration of the loop.\n        total += a[i]; // Otherwise, add the number to the total.\n        print(\"total: \" + total);\n    }\n/*    catch(e) { print(e); } */\n    finally {\n        i++;  // Always increment i, even if we used continue above\n    }\n}",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "56185",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "P3 normal",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "try/finally without catch doesn't work right!",
+    "systemSpecification": true,
+    "version": "other"
+}

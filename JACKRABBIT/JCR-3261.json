@@ -1,0 +1,95 @@
+{
+    "comments": [
+        {
+            "author": "Unico Hommes",
+            "body": "Patch against 2.4.x branch.\n\nThe special handling of maxcount is only necessary in the case of longlong storage model. In the case of a binary storage model I can easily understand that ordering is not well defined and can vary from database to database. Therefore only do the special handling for longlong storage model. ",
+            "date": "2012-03-16T14:27:26.912+0000",
+            "id": 0
+        },
+        {
+            "author": "Unico Hommes",
+            "body": "Updated title and description because another problem with the same method was found for Derby DB. Attaching an updated patch.",
+            "date": "2012-03-17T18:47:33.201+0000",
+            "id": 1
+        },
+        {
+            "author": "Unico Hommes",
+            "body": "Problem was at my end apparently. No problem with Derby DB after all.",
+            "date": "2012-03-17T19:05:23.001+0000",
+            "id": 2
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "What is your use case, that is, why do you need getAllNodeIds? I'm just wondering if we really need this method... If we could remove it then we wouldn't have to deal with such problems.",
+            "date": "2012-03-19T08:12:43.161+0000",
+            "id": 3
+        },
+        {
+            "author": "Julian Reschke",
+            "body": "> What is your use case, that is, why do you need getAllNodeIds? I'm just wondering if we really need this method... If we could remove it then we wouldn't have to deal with such problems. \n\nIt's needed by the datastore garbage collector and the consistency checker.",
+            "date": "2012-03-19T09:52:30.647+0000",
+            "id": 4
+        },
+        {
+            "author": "Unico Hommes",
+            "body": "I was using the Jackrabbit consistency checker. See http://svn.apache.org/repos/asf/jackrabbit/tags/2.4.0/jackrabbit-core/src/main/java/org/apache/jackrabbit/core/persistence/bundle/ConsistencyCheckerImpl.java\n",
+            "date": "2012-03-19T10:43:57.073+0000",
+            "id": 5
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "OK I see. For data store garbage collection, you could live without the method, as persistence manager scan is optional there. But the consistency checker needs it, and changing the consistency checker to do a regular node traversal would be probably quite a lot of work.\n\nNot sure how to solve it, possibly use \"order by desc\"? I guess more tests would be required (it seems we use varbinary(16) in MySQL, which might deal with trailing zeroes differently and binary(16))",
+            "date": "2012-03-19T11:00:07.439+0000",
+            "id": 6
+        },
+        {
+            "author": "Unico Hommes",
+            "body": "I think the supplied patch is probably the right solution. Order by descending won't work because it's not exactly the other way around that MySQL orders the nodes.",
+            "date": "2012-03-19T11:09:52.455+0000",
+            "id": 7
+        },
+        {
+            "author": "Bart van der Schans",
+            "body": "The problem seems to be that the following block should only be applied for LONGLONG keys and not for BINARY keys.\n\n                    if (lowId != null) {\n                        // skip the keys that are smaller or equal (see above, maxCount += 10)\n                        // only required for SM_LONGLONG_KEYS\n                        if (current.compareTo(lowId) <= 0) {\n                            continue;\n                        }\n                    }\n",
+            "date": "2012-03-19T12:48:03.167+0000",
+            "id": 8
+        },
+        {
+            "author": "Bart van der Schans",
+            "body": "Patch committed in r1302401 in slightly adjusted form to trunk.",
+            "date": "2012-03-19T12:50:27.342+0000",
+            "id": 9
+        },
+        {
+            "author": "Julian Reschke",
+            "body": "> OK I see. For data store garbage collection, you could live without the method, as persistence manager scan is optional there. But the consistency checker needs it, and changing the consistency checker to do a regular node traversal would be probably quite a lot of work. \n\nIt would also defeat part of the purpose of the consistency checker (finding orphaned nodes). ",
+            "date": "2012-03-19T13:14:00.561+0000",
+            "id": 10
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "> It would also defeat part of the purpose of the consistency checker (finding orphaned nodes).\n\nYes, absolutely true.",
+            "date": "2012-03-19T13:28:36.335+0000",
+            "id": 11
+        },
+        {
+            "author": "Bart van der Schans",
+            "body": "Merged in 2.4 in r1302430.",
+            "date": "2012-03-19T13:46:24.116+0000",
+            "id": 12
+        }
+    ],
+    "component": "",
+    "description": "When using MySQL:\nThe problem arises when the method parameter maxcount is less than the total amount of records in the bundle table.\n\nFirst of all I found out that mysql orders the nodeid objects different than jackrabbit does. The following test describes this idea:\n\n    public void testMySQLOrderByNodeId() throws Exception {\n        NodeId nodeId1 = new NodeId(\"7ff9e87c-f87f-4d35-9d61-2e298e56ac37\");\n        NodeId nodeId2 = new NodeId(\"9fd0d452-b5d0-426b-8a0f-bef830ba0495\");\n\n        PreparedStatement stmt = connection.prepareStatement(\"SELECT NODE_ID FROM DEFAULT_BUNDLE WHERE NODE_ID = ? OR NODE_ID = ? ORDER BY NODE_ID\");\n\n        Object[] params = new Object[] { nodeId1.getRawBytes(), nodeId2.getRawBytes() };\n        stmt.setObject(1, params[0]);\n        stmt.setObject(2, params[1]);\n\n        ArrayList<NodeId> nodeIds = new ArrayList<NodeId>();\n        ResultSet resultSet = stmt.executeQuery();\n        while(resultSet.next()) {\n            NodeId nodeId = new NodeId(resultSet.getBytes(1));\n            System.out.println(nodeId);\n            nodeIds.add(nodeId);\n        }\n        Collections.sort(nodeIds);\n        for (NodeId nodeId : nodeIds) {\n            System.out.println(nodeId);\n        }\n    }\n\nWhich results in the following output:\n\n7ff9e87c-f87f-4d35-9d61-2e298e56ac37\n9fd0d452-b5d0-426b-8a0f-bef830ba0495\n9fd0d452-b5d0-426b-8a0f-bef830ba0495\n7ff9e87c-f87f-4d35-9d61-2e298e56ac37\n\n\nNow the problem with the getAllNodeIds method is that it fetches an extra 10 records on top of maxcount (to avoid a problem where the first key is not the one you that is wanted). Afterwards it skips a number of records again, this time using nodeid.compareto. This compareto statement returns true unexpectedly for mysql because the code doesn't expect the mysql ordering.\n\nI had the situation where I had about 17000 records in the bundle table but consecutively getting the ids a thousand records at a time returned only about 8000 records in all.\n",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "JCR-3261",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "Problems with BundleDbPersistenceManager getAllNodeIds",
+    "systemSpecification": true,
+    "version": "2.4"
+}

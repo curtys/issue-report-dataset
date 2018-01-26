@@ -1,0 +1,35 @@
+{
+    "comments": [
+        {
+            "author": null,
+            "body": "Created attachment 17712\nWebApp with a simple JSP  and Tagfile",
+            "date": "20060216T12:57:24",
+            "id": 0
+        },
+        {
+            "author": null,
+            "body": "I think you are right. There are two things:\n\n1) When JasperLoader loads a class it checks if the class has already been\nloaded by the super URLClassLoader. But in our case a new instance of\nJasperLoader is used every time JspCompilationContext.load() is being called. So\nthe TagFile class is really loaded every time load is called for it. For Tomcat\n5.5 this changed, the JasperLoader is being reused, so the problem is hidden by\nthat.\n\n2) For Servlets the attribute reload of JspServletWrapper is used to determine,\nif the servlet should be reloaded.\n\nctxt.load() is being called in the JspServletWrapper methods:\n\n- getServlet() if reload is true\n- loadTagFile() if reload is true\n- getDependants() if isTagFile and reload are true\n\nreload is set to true:\n\n- as default in JspServletWrapper \n- in JspServletWrapper.setServletClassLastModifiedTime() after updating the\nmtime to true\n- in JspCompilationContext.compile() if isPackagedTagFile or\njspCompiler.isOutDated()\n\nreload is set to false:\n\n- in JspServletWrapper.getServlet() after loading to false\n\nSo I think, yes, reload has to be set to false in loadTagFile().",
+            "date": "20060219T21:13:25",
+            "id": 1
+        },
+        {
+            "author": null,
+            "body": "Fixed in 5.0 HEAD. Consistent Changes applied to 5.5 and 6.0, although the\nproblem was hidden in these versions.",
+            "date": "20060610T07:56:22",
+            "id": 2
+        }
+    ],
+    "component": "Jasper",
+    "description": "Scenario:\n\n- jsp with a tag in it (tagfile, no taglib)\n- activate \"reloading\" in web.xml\n- clean work directory\n- start tomcat\n- load jsp\n\nTomcat generates/compiles/load the jsp and the tagfile classes. After\n\"checkInterval\" seconds the background compile thread \"JspRuntimeContext[\\*]\"\nloads the tagfile classes (and only them) again and again. This produces a lot\nof work for the garbage collector. (permanently class unloading of tagfile classes)\n\nA Breakpoint in the method loadTagFile() in JspServletWrapper.java will show\nthis. Perhaps the reload flag must be set to false after loading the TagFile?\n\nJspServletWrapper.java:\n...\n\nif(reload) {\n   tagHandlerClass = ctxt.load();\n   reload = false;  //perhaps, this solves the problem but i am not shure\n}\n\n...\n\nAfter restarting the server the problem is not present because no\nJspServletWrapper is instantiated for the tagfile an therefore the backround\ncompile task does not check the tagfile.",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "38676",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "BUG",
+    "priority": "P2 normal",
+    "product": "Tomcat 5",
+    "project": "TOMCAT",
+    "summary": "permanently reloading tagfile classes without changes to the tagfile",
+    "systemSpecification": false,
+    "version": "5.0.28"
+}

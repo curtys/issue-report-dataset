@@ -1,0 +1,119 @@
+{
+    "comments": [
+        {
+            "author": "Przemo Pakulski",
+            "body": "Attached simple java class that can be used to reproduce the issue.",
+            "date": "2007-10-30T12:34:32.192+0000",
+            "id": 0
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "When the versionable child node is restored it is first removed, which is IMO not needed. The following change worked for me, while all tests still pass:\n\nIndex: src/main/java/org/apache/jackrabbit/core/NodeImpl.java\n===================================================================\n--- src/main/java/org/apache/jackrabbit/core/NodeImpl.java\t(revision 592000)\n+++ src/main/java/org/apache/jackrabbit/core/NodeImpl.java\t(working copy)\n@@ -4010,7 +4010,7 @@\n                         }\n                         oldVersion = n.getBaseVersion().getName();\n                     } else if (n.getParent().isSame(this)) {\n-                        n.internalRemove(true);\n+                        oldVersion = n.getBaseVersion().getName();\n                     } else {\n                         // since we delete the OPV=Copy children beforehand, all\n                         // found nodes must be outside of this tree\n\n\nTobi, what do you think?",
+            "date": "2007-11-06T15:10:21.886+0000",
+            "id": 1
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "Somehow related to JCR-423.",
+            "date": "2007-11-06T15:12:51.919+0000",
+            "id": 2
+        },
+        {
+            "author": "Przemo Pakulski",
+            "body": "There is a lot of layers in Jackrabbit, and almost each layer has own cache. It seems that caches are not invalidated properly.\nDuring save() method on ItemImpl transient item states are disposed from SessionItemStateManager, but it seems than ItemManager cache is not invalidated. Sometimes it works because ItemManager uses weak references, but in some cases it is causing problems like this.\n\nTo make it work I needed to put such line :\n\n((SessionImpl)session).getItemManager().dispose();\n\nbetween restore and checkout in our code. This line clears ItemManager cache completely.",
+            "date": "2007-11-07T16:47:26.036+0000",
+            "id": 3
+        },
+        {
+            "author": "Przemo Pakulski",
+            "body": "Marcel, after applying your fix Jackrabbit tests passes, but my application tests don't. \nIt seems that by removing this line some events can be missed, and index is not rebuilt correclty (node can be indexed twice after restore).\n\nI think that problem is with caches that are not maintained correctly. I've tried to evict items from ItemManager cache during save(), but is hard to understand dependencies between all the caches, and I encountered another problem with dispatchindevents and HierarchyManager.",
+            "date": "2007-11-07T16:57:17.547+0000",
+            "id": 4
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "Thanks for your feedback. IIRC the ItemManager is a listener on the ItemStateManager which provides the ItemStates for Items. This means it should get notifications whenever an ItemState changes.",
+            "date": "2007-11-09T10:37:31.918+0000",
+            "id": 5
+        },
+        {
+            "author": "Przemo Pakulski",
+            "body": "Actually ItemManager is notified on ItemState changes (proper methods stateModifeid, stateDiscarded are called), but those methods do not invalidate the ItemManager cache.\n\nI tried do evict item from cache in ItemManager by adding single line :\n\n\n    public void stateModified(ItemState modified) {    \t\n        ItemImpl item = retrieveItem(modified.getId());\n        if (item != null) {\n            item.stateModified(modified);\n+            evictItem(modified.getId());\n        }\n    }\n\nbut it doesn't work, seems that observation mechanism (triggered after disposing transient states, during stateMgr.update)  needs this data still to work properly.\n\n\nHere is exception, after adding evict() in stateModified method :\n\nCaused by: org.apache.jackrabbit.core.state.ItemStateException: Unable to resolve path for item: b0ec45fd-cf39-4ab5-bcd0-a8e95d06008f/{http://www.jcp.org/jcr/1.0}predecessors\n\tat org.apache.jackrabbit.core.observation.EventStateCollection.getPath(EventStateCollection.java:520)\n\tat org.apache.jackrabbit.core.observation.EventStateCollection.createEventStates(EventStateCollection.java:385)\n\tat org.apache.jackrabbit.core.state.SharedItemStateManager$Update.begin(SharedItemStateManager.java:655)\n\tat org.apache.jackrabbit.core.state.SharedItemStateManager.beginUpdate(SharedItemStateManager.java:826)\n\tat org.apache.jackrabbit.core.state.SharedItemStateManager.update(SharedItemStateManager.java:856)\n\tat org.apache.jackrabbit.core.state.LocalItemStateManager.update(LocalItemStateManager.java:324)\n\tat org.apache.jackrabbit.core.state.XAItemStateManager.update(XAItemStateManager.java:313)\n\tat org.apache.jackrabbit.core.state.LocalItemStateManager.update(LocalItemStateManager.java:300)\n\tat org.apache.jackrabbit.core.state.SessionItemStateManager.update(SessionItemStateManager.java:306)\n\tat org.apache.jackrabbit.core.ItemImpl.save(ItemImpl.java:1244)",
+            "date": "2007-11-09T11:29:19.512+0000",
+            "id": 6
+        },
+        {
+            "author": "Stefan Guggisberg",
+            "body": "my 2 cents: \n\ni don't believe that this issue is related to ItemManager's cache of ItemImpl instances.\n\n<quote from ItemManager's javadoc>\nThe ItemManager's responsabilities are:\n...\nguaranteeing that there aren't multiple instances representing the same Node or Property associated with the same Session instance.\n...\n</quote from ItemManager's javadoc>\n\nthere's no need to explicitly evict cached ItemImpl instances from ItemManager's cache.\nquite the contrary, doing so would violate the ItemManager's contract.",
+            "date": "2007-11-09T16:04:54.099+0000",
+            "id": 7
+        },
+        {
+            "author": "Przemo Pakulski",
+            "body": "There is definitely problem with modCount attribute of ItemState. During each save this attribute is incremented by SharedItemStateManager, but sometimes after restore ItemState holded by Items in ItemManager cache still has different (old) valueo modCount.\n\nThen during next save operation exception is thrown.",
+            "date": "2007-11-22T12:55:24.145+0000",
+            "id": 8
+        },
+        {
+            "author": "Tobias Bocanegra",
+            "body": "i'm able to reproduce it and will take a look at it",
+            "date": "2007-12-20T10:14:11.755+0000",
+            "id": 9
+        },
+        {
+            "author": "Tobias Bocanegra",
+            "body": "the problem is in the special case of the restore operation, where an entire subnode is internally removed and recreated. this results in a change log that contains deleted and created property states with the same id.\nafter the shared states are persisted, the notification events update all caches correctly, but when the local item state manager updates his state, those deleted/created states are thrown out of the cache.\nthis causes a later reconnect to fail and the item is marked as stale.\n\nfix: re-cache the state on a 'created' event.",
+            "date": "2007-12-31T21:07:31.753+0000",
+            "id": 10
+        },
+        {
+            "author": "Tobias Bocanegra",
+            "body": "fixed as proposed.",
+            "date": "2007-12-31T21:08:40.058+0000",
+            "id": 11
+        },
+        {
+            "author": "Tobias Bocanegra",
+            "body": "change produces a lot of warning messages:\n\n   ItemStateReferenceCache: overwriting cached entry <uuid>\n(ItemStateReferenceCache.java, line 117)\n   MLRUItemStateCache: overwriting cached entry <uuid>\n(MLRUItemStateCache.java, line 140)\n   ItemStateMap: overwriting map entry <uuid> (ItemStateMap.java, line 8",
+            "date": "2008-01-02T08:52:14.374+0000",
+            "id": 12
+        },
+        {
+            "author": "Tobias Bocanegra",
+            "body": "fixed warning messages.",
+            "date": "2008-01-02T17:47:22.582+0000",
+            "id": 13
+        },
+        {
+            "author": "Tobias Bocanegra",
+            "body": "changes produce failures of jcr2spi tests. see JCR-1293.",
+            "date": "2008-01-07T17:13:39.916+0000",
+            "id": 14
+        },
+        {
+            "author": "Tobias Bocanegra",
+            "body": "without the modifications the tests mentioned in JCR-1293 pass.",
+            "date": "2008-01-07T17:15:22.934+0000",
+            "id": 15
+        },
+        {
+            "author": "Tobias Bocanegra",
+            "body": "not related to issue JCR-1293. so resolving it again.",
+            "date": "2008-01-08T09:14:36.446+0000",
+            "id": 16
+        }
+    ],
+    "component": "jackrabbit-core, versioning",
+    "description": "It seems that ItemManager cache is not maintained correctly. I'm getting InvalidItemStateException: 'propertyId' has been modified externally tryin restore/checkout versionable nodes in single thread.\n\nItemState should be evicted from ItemStateManager cache when modified, it seems that status of ItemState is changed to MODIFIED, but itemState remains in the cache.",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "JCR-1197",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Critical",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "Node.restore() may throw InvalidItemStateException",
+    "systemSpecification": true,
+    "version": "1.3.3"
+}

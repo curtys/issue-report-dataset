@@ -1,0 +1,41 @@
+{
+    "comments": [
+        {
+            "author": "djgredler@gmail.com",
+            "body": "Hi,\n\nIt seems that all the browser interpreters implement this feature, so it's something that we at HtmlUnit (which emulates a browser and uses Rhino) would like to have.\n\nI have two questions:\n\n1. Would a patch fixing this \"bug\" be accepted, assuming it's up to snuff technically?\n\n2. Would it be preferrable to: a) modify the contract of Scriptable#getIds() so that it is guaranteed to return property IDs in definition order, or b) add a new method (Scriptable#getOrderedIds(), for example) that is used only by ScriptRuntime#enumChangeObject(IdEnumeration)?\n\nRegards,\n\nDaniel",
+            "date": "20080304T02:57:34",
+            "id": 0
+        },
+        {
+            "author": "djgredler@gmail.com",
+            "body": "Created attachment 307332\nproposed patch\n\nAttaching proposed patch which uses a doubly-linked list of slots to keep track of property definition order.",
+            "date": "20080304T23:38:58",
+            "id": 1
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "Strictly speaking, the current behavior is acceptable under ECMA. However, matching the behavior of JS engines in browsers is important. Bug 383592 is an open request with a proposed patch for making the architecture pluggable so that people who want a well-defined iteration order (and are willing to pay the performance penalty) can do so. This is probably the way to go, but in my work with it so far the performance cost of switching to the standard Java Map classes is too high. So some work needs to be done to improve performance before I can switch.",
+            "date": "20080307T15:07:01",
+            "id": 2
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "I've committed a modified version of the proposed patch (thanks!):\n\nChecking in src/org/mozilla/javascript/ScriptableObject.java;\n/cvsroot/mozilla/js/rhino/src/org/mozilla/javascript/ScriptableObject.java,v  <--  ScriptableObject.java\nnew revision: 1.131; previous revision: 1.130\ndone\nRCS file: /cvsroot/mozilla/js/rhino/testsrc/doctests/serialize.doctest,v\ndone\nChecking in testsrc/doctests/serialize.doctest;\n/cvsroot/mozilla/js/rhino/testsrc/doctests/serialize.doctest,v  <--  serialize.doctest\ninitial revision: 1.1\ndone\n\nMy only changes were to go from a doubly-linked list to a singly-linked list to reduce the memory footprint. In my profiling the performance impact of adding this list was minimal. ",
+            "date": "20080501T12:39:25",
+            "id": 3
+        }
+    ],
+    "component": "Core",
+    "description": "User-Agent:       Mozilla/5.0 (Windows; U; Windows NT 5.1; en-US; rv:1.8.1.12) Gecko/20080201 Firefox/2.0.0.12\nBuild Identifier: \n\nObject properties seem to be returned in hash order in a for-each loop as opposed to entered order.  e.g.:\n\n{a:1, b:1, c:1} appears as {b:1, c:1, a:1}.  I believe it's hash order because {c:1, b:1, a:1} or any other order you specify always returns the same order (b, c, a).\n\nReproducible: Always\n\nSteps to Reproduce:\n1. create an object with properties\n2. echo the properties of that object\nActual Results:  \nproperties returned in hash-order\n\nExpected Results:  \nproperties return in entered order\n\nI fully realize that from a programatic point of view this does not matter.  It does, however, matter in terms of a usability point of view.  If there is a logical order to the properties and you view the object, that order is discarded.  e.g.:\n\nmyObj: {posX: 10, posY: 10, posZ: 10, width: 10, height: 10, depth: 10}\n\nreturns:\n\n{\"height\": 10, \"posY\": 10, \"posX\": 10, \"width\": 10, \"posZ\": 10, \"depth\": 10}",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "419090",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "-- normal",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "Object properties list in different (hash?) order than entered",
+    "systemSpecification": true,
+    "version": "other"
+}

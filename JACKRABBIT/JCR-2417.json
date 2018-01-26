@@ -1,0 +1,41 @@
+{
+    "comments": [
+        {
+            "author": "Philipp Bunge",
+            "body": "A suggested solution for the bug including a corresponding unittest.",
+            "date": "2009-12-02T12:34:21.491+0000",
+            "id": 0
+        },
+        {
+            "author": "Philipp Bunge",
+            "body": "I've attached a patch which offers a possible solution which initializes the LuceneQueryFactoryImpl with the bind variable values and therefore does not require a change of the LuceneQueryFactory interface.",
+            "date": "2009-12-02T12:36:06.608+0000",
+            "id": 1
+        },
+        {
+            "author": "Philipp Bunge",
+            "body": "Fixed license header.",
+            "date": "2010-02-05T09:39:39.634+0000",
+            "id": 2
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "Applied patch with minor changes (see below) to trunk in revision: 907659\n\nFixed a minor javadoc issue and exception type in LuceneQueryFactoryImpl.\n\nThanks a lot for the patch.",
+            "date": "2010-02-08T14:06:25.137+0000",
+            "id": 3
+        }
+    ],
+    "component": "query",
+    "description": "When using a BindVariable in a JCR-SQL2 CONTAINS constraint, the query fails with a RepositoryException.\n\nFor example:\n\nString sql = \"SELECT * FROM [nt:unstructured] WHERE ISCHILDNODE([/testroot]) AND CONTAINS(mytext, $searchExpression)\";\nQuery q = superuser.getWorkspace().getQueryManager().createQuery(sql, Query.JCR_SQL2);\nq.bindValue(\"searchExpression\", superuser.getValueFactory().createValue(\"fox\"));\nq.execute();\n\nResults in:\n\njavax.jcr.RepositoryException: Unknown static operand type: org.apache.jackrabbit.spi.commons.query.qom.BindVariableValueImpl@591a4d\n        at org.apache.jackrabbit.core.query.lucene.LuceneQueryFactoryImpl.create(LuceneQueryFactoryImpl.java:215)\n        at org.apache.jackrabbit.core.query.lucene.constraint.FullTextConstraint.<init>(FullTextConstraint.java:42)\n        at org.apache.jackrabbit.core.query.lucene.constraint.ConstraintBuilder$Visitor.visit(ConstraintBuilder.java:175)\n        at org.apache.jackrabbit.spi.commons.query.qom.FullTextSearchImpl.accept(FullTextSearchImpl.java:117)\n        at org.apache.jackrabbit.core.query.lucene.constraint.ConstraintBuilder$Visitor.visit(ConstraintBuilder.java:137)\n        at org.apache.jackrabbit.spi.commons.query.qom.AndImpl.accept(AndImpl.java:72)\n        at org.apache.jackrabbit.core.query.lucene.constraint.ConstraintBuilder.create(ConstraintBuilder.java:82)\n        at org.apache.jackrabbit.core.query.lucene.QueryObjectModelImpl.execute(QueryObjectModelImpl.java:109)\n        at org.apache.jackrabbit.core.query.QueryImpl.execute(QueryImpl.java:127)\n\nI tried to fix this issue but there is no way to access the BindVariables from the ConstraintBuilder from the LuceneQueryFactoryImpl and the ConstraintBuilder just passes the FullTextSearchImpl QOM subtree to the factory (via FullTextConstraint constructor) without any further visiting. If the signature would be \"LuceneQueryFactoryImpl#create(FullTextSearchImpl fts, Value searchExpression)\" we could visit the StaticOperand in the ConstraintBuilder and then modify the FullTextSearchImpl constructor accordingly, but this would imply that LuceneQueryFactory interface would need to be change accordingly and I don't know what that would mean.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "JCR-2417",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "RepositoryException when using BindVariables in JCR-SQL2 CONTAINS",
+    "systemSpecification": true,
+    "version": "2.0-beta3, 2.0"
+}

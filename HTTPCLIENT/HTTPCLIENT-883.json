@@ -1,0 +1,29 @@
+{
+    "comments": [
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "There is an effective work-around for the problem:\n\n---\nDefaultHttpClient httpclient = new DefaultHttpClient();\nhttpclient.addRequestInterceptor(new HttpRequestInterceptor() {\n    \n    public void process(\n            final HttpRequest request, \n            final HttpContext context) throws HttpException, IOException {\n        HttpClientConnection conn = (HttpClientConnection) context.getAttribute(\n                ExecutionContext.HTTP_CONNECTION);\n        int timeout = request.getParams().getIntParameter(CoreConnectionPNames.SO_TIMEOUT, 0);\n        conn.setSocketTimeout(timeout);\n    }\n\n});\n\n\nHttpGet request = new HttpGet(\"http://www.google.com/\");\n\nHttpResponse rsp = httpclient.execute(request);\n\nHttpEntity entity = rsp.getEntity();\n\nSystem.out.println(\"----------------------------------------\");\nSystem.out.println(rsp.getStatusLine());\nSystem.out.println(\"----------------------------------------\");\n\nif (entity != null) {\n    entity.consumeContent();\n}\n---",
+            "date": "2009-10-25T17:05:54.053+0000",
+            "id": 0
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Fixed in trunk and 4.0.x branch\n\nOleg",
+            "date": "2009-10-26T14:10:32.767+0000",
+            "id": 1
+        }
+    ],
+    "component": "HttpClient (classic)",
+    "description": "The scenario is as follows: I'm doing two consecutive requests to the same host, using a multi-threaded (or thread safe) connection pool manager. The first invocation has a timeout of 10s and the second has a timeout of 30s. \n\nIn version 3.1 of HttpClient all works well, but in 4.0 I get a timeout exception in the second request, after ~10 seconds, which means the first timeout is used.\n\nLooking at the code, I see that in version 3.1, the HttpMethodDirector.executeWithRetry() method invokes a method named applyConnectionParams() that took care of setting the timeout taken from the request on the socket. \n\nBut in version 4.0, the only place I see the timeout is set on the socket is when DefaultRequestDirector.execute(HttpHost, HttpRequest, HttpContext) opens a connection using the managedConn.open() method. Since the connection is reused between the requests, the second request uses a socket with a timeout of the first request.\n",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "HTTPCLIENT-883",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "HTTPCLIENT",
+    "project": "HTTPCLIENT",
+    "summary": "SO_TIMEOUT is not set on a request level",
+    "systemSpecification": true,
+    "version": "4.0 Final"
+}

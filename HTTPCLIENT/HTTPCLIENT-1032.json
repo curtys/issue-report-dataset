@@ -1,0 +1,59 @@
+{
+    "comments": [
+        {
+            "author": "Jon Moore",
+            "body": "Attached is a patch with a unit test that exposes this bug.\n",
+            "date": "2010-12-09T15:34:21.073+0000",
+            "id": 0
+        },
+        {
+            "author": "Jon Moore",
+            "body": "I think this is related to the way we store and manage variants. Right now, we create a cache key for a variant based on the varying headers from the original request, and then store these cache keys on the \"parent\" entry. I think this combines two items which should be separated:\n\n1. which cache entries are variants of a parent entry\n2. which variant should be used for a particular set of request headers\n\nI think this might be as simple as turning the Set<String> \"variantURIs\" on the parent cache entry into a Map<String,String> that maps request header values (using the scheme we currently use to generate the variantURI cache keys) to particular cache locations. Thus in the example above, rather than storing a new variant entry, we should simply \"point\" requests with \"User-Agent: agent2\" to the cache entry for the \"agent1\" response.\n\nThoughts?\n",
+            "date": "2010-12-09T16:56:22.994+0000",
+            "id": 1
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Jon,\n\nCan this be done without breaking API compatibility?\n\nOleg",
+            "date": "2010-12-09T22:29:45.681+0000",
+            "id": 2
+        },
+        {
+            "author": "Jon Moore",
+            "body": "Oleg,\n\nI'm in the process of figuring that out by creating a patch that fixes it. :) My suspicion is that we can do this without breaking API compatibility, although it might mean keeping around methods that don't get used by the main implementation anymore. For example, HttpCacheEntry#getVariants() that just returns a Set will probably be deprecated (although will still work) and we'll be using HttpCacheEntry#getVariantMap() instead going forward.\n\nJon\n",
+            "date": "2010-12-10T11:43:59.229+0000",
+            "id": 3
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "That's perfectly all right. Go for it.\n\nOleg",
+            "date": "2010-12-10T11:56:24.380+0000",
+            "id": 4
+        },
+        {
+            "author": "Michajlo Matijkiw",
+            "body": "With this change do you think it would be possible to also have cache entries self identify (ie: adding HttpCacheEntry#getURI()).  Under the current system there is a one to one mapping of variant URI to cache entry, but it seems the proposed change would make it many to one.  I had run into this situation while developing the stale-while-revalidate patch, which uses the variant URI to uniquely identify a cache entry.  The change wouldn't necessarily break this patch (assuming it is commited), but could cause unnecessary revalidations.\n\nIf this is too much trouble I am sure there will be other ways to derive the unique key an entry is stored under, it just might require some repetition.\n\nAny thoughts?\n\n- Michajlo",
+            "date": "2010-12-10T16:26:45.389+0000",
+            "id": 5
+        },
+        {
+            "author": "Jon Moore",
+            "body": "Issue fixed, and patch with test committed (which now passes).\n",
+            "date": "2010-12-14T11:51:50.408+0000",
+            "id": 6
+        }
+    ],
+    "component": "HttpCache",
+    "description": "When the cache stories multiple variant entries due to Vary headers in responses, the cache correctly sends a conditional request containing the etags of any existing variants on a \"variant miss\" (incoming request does not match the request variants already cached). In addition, when it receives a 304 response, it correctly returns the indicated variant to the request that causes the variant miss. However, it does not update the pre-existing variant cache entry as recommended by RFC 2616.\n\nFor example:\n\nrequest 1, User-Agent: agent1 results in a 200 OK with Etag: etag1 and Vary: User-Agent.\nrequest 2, User-Agent: agent2 causes an If-None-Match to the origin; if it returns 304 Not Modified with Etag: etag1\nrequest 3, User-Agent: agent1 results in a 200 OK but gets the (outdated) entry that resulted from request 1\n\nin other words, the origin response from request 2 does not update the variant for \"agent1\".\n\nThis does not cause incorrect behavior (this is a SHOULD) but does miss out on some caching opportunities here.\n",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "HTTPCLIENT-1032",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "BUG",
+    "priority": "Minor",
+    "product": "HTTPCLIENT",
+    "project": "HTTPCLIENT",
+    "summary": "cache revalidation of variants does not update original variant entry",
+    "systemSpecification": true,
+    "version": "4.1 Beta1"
+}

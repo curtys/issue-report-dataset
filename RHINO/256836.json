@@ -1,0 +1,47 @@
+{
+    "comments": [
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 156967\nImplementation\n\nThe essential part of the patch is changes to ScriptRuntime.java. The patch\ntakes advantage of the fact that due to E4X-related changes the top scope of\nthe first JS frame is stored in Context and Context is passed to name lookup\nmethods so all the necessary information is readily available for dynamic\nalteration of scope chain lookup. \n\nIn addition patched code only switches to the dynamic top scope from the static\ntop scope only if static scope is present on the prototype chain of the dynamic\nscope. In this way only functions defined in the shared scope are affected and\ncalls across multiple private top-scope would not alter name lookup there.\n\nThen patch deprecates\nhasCompileFunctionsWithDynamicScope/setCompileFunctionsWithDynamicScope methods\nand points instead to Context.FEATURE_DYNAMIC_SCOPE. Note that the patch does\nnot change anything regarding setCompileFunctionsWithDynamicScope: the old code\nshould run as is including nested function problems. \n\nTo take advantage of this the application should explicitly overrides\nhasFeature to return true for Context.FEATURE_DYNAMIC_SCOPE as demonstrated in\nthe updated examples/DynamicScopes.java.",
+            "date": "20040825T11:18:04",
+            "id": 0
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 156968\nDynamicScope example from the patch using new API",
+            "date": "20040825T11:22:11",
+            "id": 1
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "http://www.mir2.org/igor/rhino contains prebuild rhino distro with the patch applied",
+            "date": "20040825T11:30:23",
+            "id": 2
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 157414\nImplementation update to reflect CVS changes",
+            "date": "20040830T15:14:33",
+            "id": 3
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "I committed the patch: folks at helma.org confirmed that it worked for them",
+            "date": "20040901T14:21:41",
+            "id": 4
+        }
+    ],
+    "component": "Core",
+    "description": "The dynamic scope in the present form does not work with nested functions\ncreated by functions from shared scope.\n\nConsider the following modification of the example from\nhttp://lxr.mozilla.org/mozilla/source/js/rhino/examples/DynamicScopes.java :\n\nvar x = 'sharedScope';\nfunction f() { return x; }\nfunction initClosure(prefix) {\n    return function test() { return prefix+x; }\n}\nclosure = initClosure('nested:');\n\nwhich adds closure variable to the shared scope initialized with the nested\nfunction.\n\nIf per-thread source is also modified to include call to closure:\n\nfunction g() { var x = 'local'; return f(); }\njava.lang.System.out.println(g());\nfunction g2() { var x = 'local'; return closure(); }\njava.lang.System.out.println(g2());\n\nthen the expected behavior for the program is to print \n\nsharedScope\nnested:sharedScope\nsharedScope\nnested:sharedScope\nsharedScope\nnested:sharedScope\nthread0\nnested:thread0\nthread1\nnested:thread1\nthread2\nnested:thread2\n\nsince the idea is that the variable x should be accessed from the thread scope\nboth in the case of f() and closure() calls.\n\nIn fact the program prints:\n\nsharedScope\nnested:sharedScope\nsharedScope\nnested:sharedScope\nsharedScope\nnested:sharedScope\nthread0\nnested:sharedScope\nthread1\nnested:sharedScope\nthread2\nnested:sharedScope\n\nwhich shows that closure() still access the shared scope while looking for x.\n\nThe reason for this is that dynamic scoping in the current form does not affect\nnested functions since they need to access their lexical scope which defines\nparent scope variables.\n\nThe proper solution for this would be to change the name lookup to patch the top\nscope dynamically. That is the name lookup when it reaches the top scope while\nlooking for the name in the scope chain should not look in the top scope but\nrather switch to the top dynamic scope.\n\nThen the question is what the top dynamic scope should be? The answer can be\nsimple: it is the top scope of the scope for the first JS stack frame.\n\nEffectively it would mean that that the name resolution when it reaches the top\nscope of the scope from the current JS stack frame should ignore it and instead\nlook for the name in the top scope of the first JS frame.\n\nBut then it does not make any sense to have per function flag and instead just\nassume one global settings that can always be on to do the right job.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "256836",
+    "issuetypeClassified": "RFE",
+    "issuetypeTracker": "RFE",
+    "priority": "-- enhancement",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "Dynamic scope and nested functions",
+    "systemSpecification": true,
+    "version": "head"
+}

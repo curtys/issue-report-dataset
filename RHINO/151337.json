@@ -1,0 +1,47 @@
+{
+    "comments": [
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 91521\nTest java code as an attachment (save it as ErrorTest.java)\n\nThe test should print PASSED if getLineSource returns proper string",
+            "date": "20020716T18:06:34",
+            "id": 0
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 91522\nPatch including the fix among other things\n\nI committed the patch which is big due to removal of startString/getString as\nTokenStream uses own buffer.",
+            "date": "20020716T18:12:54",
+            "id": 1
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Fixed: it would be nice if Rhino will implement the line property of the error\nobject to match SM so the test case can be written in JS...",
+            "date": "20020716T18:15:25",
+            "id": 2
+        },
+        {
+            "author": "pschwartau@meer.net",
+            "body": "Verified FIXED. Before the patch, the above testcase failed as follows:\n\nFAILED! e.getLineSource() does not match 'javascript syntax error':\njavascript syntax \nerror\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x0\n0\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x0\n0\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\\nx00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\\nx00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\\nx00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\\nx00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\\nx00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\\nx00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\\nx00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\\nx00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\\nx00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\n\n\nAfter the patch: \n\nPASSED",
+            "date": "20020717T01:00:19",
+            "id": 3
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Targeting as resolved against 1.5R4",
+            "date": "20040213T12:21:19",
+            "id": 4
+        }
+    ],
+    "component": "Core",
+    "description": "The function EcmaError.getLineSource() returns 0x0 ascii characters if the \nsyntax error happened on a line that doesnt have a end of line before the \nscript ends (last line of the code that doesnt have a newline in the end).\n\nFor example, the script \"illegal javascript syntax\" will return \"illegal \njavascript syntax[][][][][][][][][]\" where [] is ascii 0x0.\n\n---- Little code showing the problem ----\nimport org.mozilla.javascript.*;\nimport java.io.*;\n\npublic class EcmaError {\n    public static void main(String args[]) \n        throws JavaScriptException, IOException\n    {\n        Context cx = Context.enter();\n        Scriptable scope = cx.initStandardObjects(null);\n        String s = \"\\njavascript syntax error\";  // A script with syntax error \nand no newline\n        try {\n        Object result = cx.evaluateString(scope, s, \"<cmd>\", 1, null);\n\n        } catch (EcmaError e) {\n            e.printStackTrace();\n            for (int i = 0 ; i < e.getLineSource().length() ; i++ )\n                System.out.print(\" \" + (int)(e.getLineSource().charAt(i)));  \n            System.out.println(\"\\nline is : \\\"\" + e.getLineSource() + \"\\\" \n(length of line = \" + e.getLineSource().length() + \")\");\n        }\n        \n        Context.exit();\n    }\n}\n\n---- Run result ---\n106 97 118 97 115 99 114 105 112 116 32 115 121 110 116 97 120 32 101 114 114 \n111 114 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 \n0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 \n0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 \n0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 \n0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 \n0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0\nline is : \"javascript syntax error\" (length of line = 254)\n\nNotice the string is 254 characters long and have a lot of 0x0 ascii chars in \nthe end. Sounds like a end of buffer problem.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "151337",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "-- minor",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "EcmaError.getLineSource() returns 0x0 characters.",
+    "systemSpecification": true,
+    "version": "other"
+}

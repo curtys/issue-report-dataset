@@ -1,0 +1,71 @@
+{
+    "comments": [
+        {
+            "author": "szegedia@freemail.hu",
+            "body": "Created attachment 173365\nThe patch that solves the problem\n\nPatch attached",
+            "date": "20050204T14:56:18",
+            "id": 0
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "I thought that Java used week references to store ThreadLocal in Thread\ninstances. Apparently it does not which also means that even with the patch\nafter Rhino reloading all those ThreaLocal instances from reloaded Rhino classes\nwould stuck in memory forever.\n\nOf cause it is much better then forever stuck Rhino classes themselves so I will\ncommit the patch after regression testing. ",
+            "date": "20050204T15:47:43",
+            "id": 1
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "I committed the patch. \n\nBTW, since you repeatedly reload Rhino classes, did the patch address memory\nleak completely on your JVM? Or do you still see some leaks like the one\ndescribed in \nhttps://bugzilla.mozilla.org/show_bug.cgi?id=243305#c9 ?",
+            "date": "20050204T15:56:49",
+            "id": 2
+        },
+        {
+            "author": "szegedia@freemail.hu",
+            "body": "(In reply to comment #3)\n> \n> BTW, since you repeatedly reload Rhino classes, did the patch address memory\n> leak completely on your JVM? Or do you still see some leaks like the one\n> described in \n> https://bugzilla.mozilla.org/show_bug.cgi?id=243305#c9 ?\n\nI'll run it through a profiler now (been profiling all day :-) ). However, what \nyou say is certainly true - the ThreadLocal object and the Object[] will get \nstuck in the thread's local table... Hm... maybe in the end I'll really have to \nintroduce a feature for perodically shutting down and recreating the JMS \nsessions...",
+            "date": "20050204T16:27:44",
+            "id": 3
+        },
+        {
+            "author": "szegedia@freemail.hu",
+            "body": "(In reply to comment #3)\n> I committed the patch. \n> \n> BTW, since you repeatedly reload Rhino classes, did the patch address memory\n> leak completely on your JVM? Or do you still see some leaks like the one\n> described in \n> https://bugzilla.mozilla.org/show_bug.cgi?id=243305#c9 ?\n\nNo, I see no leaks now. As a matter of fact, Thread indeed holds the ThreadLocal \nobjects using weak references. However, weak references are defeated if the \nvalue - directly or indirectly - refers back strongly to the key. In the case \nwith storing a Context[], we had a strong reference from value to key via the \npath value = Context[] instance -> Context[].class -> Context.class -> Context.\nthreadLocalCx = key. Storing an Object[] instead of Context[] solved it for good \n:-). Provided the array element is null (which is easy by using a Context.exit() \nin a finally block), the ThreadLocal object can be fully garbage collected after \nthe Context class is unloaded.",
+            "date": "20050204T16:56:19",
+            "id": 4
+        },
+        {
+            "author": "szegedia@freemail.hu",
+            "body": "Thinking about it, I believe it'd be necessary to provide a comment around \n\"storage = new Object[1];\" explaining why do we use it instead of Context[] - \nit's not immediately apparent, and some otherwise well-meaning soul (who comes \nto maintain it sometime in the future after we all moved along) unsuspectingly \nrewrites it back to Context[]...",
+            "date": "20050204T21:23:31",
+            "id": 5
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "(In reply to comment #5)\n> As a matter of fact, Thread indeed holds the ThreadLocal \n> objects using weak references. However, weak references are defeated if the \n> value - directly or indirectly - refers back strongly to the key. In the case \n> with storing a Context[], we had a strong reference from value to key via the \n> path value = Context[] instance -> Context[].class -> Context.class -> Context.\n> threadLocalCx = key.\n\n\nBut why the reference from Context.threadLocalCx prevents in your case Rhino\nclasses from garbage collection? If ThreadLocal value is reachable from Thread\nonly through week reference, it should allow to GC classes as long as the last\nstrong reference to them and their class loader is gone.",
+            "date": "20050206T11:34:55",
+            "id": 6
+        },
+        {
+            "author": "szegedia@freemail.hu",
+            "body": "(In reply to comment #7)\n> \n> But why the reference from Context.threadLocalCx prevents in your case Rhino\n> classes from garbage collection? If ThreadLocal value is reachable from Thread\n> only through week reference, it should allow to GC classes as long as the last\n> strong reference to them and their class loader is gone.\n\nNo, only the keys in the WeakHashMap are weakly reachable (in our case, the \nThreadLocal object). The values in WeakHashMap are strongly reachable. And if \nthe value is a Context[], it'll establish a strong reference to the ThreadLocal \nkey, as outlined in comment #5, preventing it to be GC-ed for the lifetime of \nthe thread.",
+            "date": "20050206T14:47:27",
+            "id": 7
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "(In reply to comment #8)\n>... only the keys in the WeakHashMap are weakly reachable (in our case, the \n> ThreadLocal object). The values in WeakHashMap are strongly reachable. And if \n> the value is a Context[], it'll establish a strong reference to the ThreadLocal \n> key, as outlined in comment #5, preventing it to be GC-ed for the lifetime of \n> the thread.\n\nI will add then comments about using Object[], not Context[] after I will finish\nwith bug 281247.",
+            "date": "20050206T17:41:26",
+            "id": 8
+        }
+    ],
+    "component": "Core",
+    "description": "User-Agent:       Opera/7.54 (Windows NT 5.0; U)  [en]\nBuild Identifier: \n\nI have an environment where most of the system (including Rhino) is hot-\nreloadable. The classes are loaded through a particular java.net.URLClassLoader, \nand upon detecting a change, the class loader is thrown away, and a new one is \ncreated, allowing for the classes to be reloaded. However, a small issue in \nRhino's Context class prevents the throwaway class loader (and all the classes \nit loads) from being garbage collected, resulting in memory leak over time.\n\nThe issue is the ThreadLocal \"Context[] storage\". Since the type of the value in \nThreadLocal is org.mozilla.javascript.Context[], the class org.mozilla.\njavascript.Context will remain permanently loaded, and will keep the class \nloader from being garbage collected -- we're utilizing a permanent set of \nthreads, actually they're created by JMS sessions, so we can't just terminate \nand restart the threads to get rid of the stuck thread locals. However, there is \na brilliantly simple solution - store an Object[] instead of Context[] in the \nthread local. Granted, we sacrifice a bit of static type safety, but Rhino will \nno longer prevent the class loader that loaded it from being garbage collected.\nPatch on the way.\n\nReproducible: Always\n\nSteps to Reproduce:",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "281067",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "BUG",
+    "priority": "-- normal",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "ThreadLocal in Context prevents class unloading",
+    "systemSpecification": false,
+    "version": "other"
+}

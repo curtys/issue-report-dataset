@@ -1,0 +1,59 @@
+{
+    "comments": [
+        {
+            "author": "Boni Gopalan",
+            "body": "Fixed with the supplied patch",
+            "date": "2008-10-04T17:51:01.198+0000",
+            "id": 0
+        },
+        {
+            "author": "Christophe Lombart",
+            "body": "Your patch seems good but I'm wondering why you have modified the class AbstractMapperImpl ( see [1]).\nIt works without this modification and we can leave the code as it is (throw an exception is there is no descriptor). \nAre you agree if we don't modify this class ?\n\n\n\n\n[1] Index: src/main/java/org/apache/jackrabbit/ocm/mapper/impl/AbstractMapperImpl.java\n===================================================================\n--- src/main/java/org/apache/jackrabbit/ocm/mapper/impl/AbstractMapperImpl.java\t(revision 701632)\n+++ src/main/java/org/apache/jackrabbit/ocm/mapper/impl/AbstractMapperImpl.java\t(working copy)\n@@ -200,7 +200,7 @@\n    public ClassDescriptor getClassDescriptorByClass(Class clazz) {\n \t   ClassDescriptor descriptor = mappingDescriptor.getClassDescriptorByName(clazz.getName());\n \t   if (descriptor==null) {\n-\t\t\tthrow new IncorrectPersistentClassException(\"Class of type: \" + clazz.getName() + \" has no descriptor.\");\n+\t\t\t//throw new IncorrectPersistentClassException(\"Class of type: \" + clazz.getName() + \" has no descriptor.\");\n \t   }\n        return descriptor ;\n    }\n\n",
+            "date": "2008-10-06T19:01:47.568+0000",
+            "id": 1
+        },
+        {
+            "author": "Christophe Lombart",
+            "body": "The patch has been applied. thanks and well done ! it was a nice bug :-) \nI didn't modify the class AbstractMapperImpl. For me, this modification is not necessary. \nI also added unit tests for the annotation support. \n\nLet me know if something is wrong. ",
+            "date": "2008-10-06T19:32:32.221+0000",
+            "id": 2
+        },
+        {
+            "author": "Boni Gopalan",
+            "body": "We seem to be going back and forth with this AbstractMapperImpl change I made.  I had a problem with that throws clause and unfortunately I need to spend some time to recreate the test scenario that required me to change the implementation.  If I remove the throws clause I know that a few of my application testcases will fail.  I will work out a testcase that I hope will convince you the need to remove that throws.  Till then I completely am with you on keeping AbstractMapperImpl as is.\n\nI came across a similar issue with update elsewhere.  Consider same name sibling nodes with UUID specified.  Though these are not part of a collection it very well act as those are collection elements.  However since the code handles the mapping from directly within ObjectConverterImpl's update method we need to make that update as well intelligent enough to decipher uniqueness through UUID.  I have a patch and I will add it to this discussion.",
+            "date": "2008-10-07T06:46:31.341+0000",
+            "id": 3
+        },
+        {
+            "author": "Boni Gopalan",
+            "body": "I also did a bit of code cleanup to remove some repeating code.  Basically I saw the approach to update a Node to be :\n\nLocate the node to  update and then update it.  So I introduce a method that takes in the session, Node to Update and the Object to Update to as parameters and does the updating.  This methos is called from the other facade methods that already existed for doing the updates.  Eliminated the code duplication.\n\nAll the tests are passing.",
+            "date": "2008-10-07T07:38:24.733+0000",
+            "id": 4
+        },
+        {
+            "author": "Christophe Lombart",
+            "body": "Done. Thanks for your contribution.  \n\nDo you want to see the latest path in the branch 1.5 ? \nI'm not sure that is critical for the release 1.5. \n\n",
+            "date": "2008-10-15T20:16:39.784+0000",
+            "id": 5
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Both changes are now also in the 1.5 branch. I guess this is everything we need here, so resolving as Fixed.",
+            "date": "2008-10-17T08:48:15.308+0000",
+            "id": 6
+        }
+    ],
+    "component": "jackrabbit-ocm",
+    "description": "On ocm.update transaction, the  Current implementation of DefaultCollectionConverterImpl recreates the colleciton-element nodes if there is no id field specificaiton.  This is completely valid for majority of the cases.  But I came across a case where the colleciton element has a uuid field.  In this case also what is happening with the current implementation is that it drops all the elements from the old collection-elements and recreates the new ones.  The major flip side is that now I am left with brand new UUIDs.  I think we should address the uniqueness characteristics specified through UUID also while mapping colleciton elements.\n\nI have a patch and a TestCase to verify the same.  I have implemented it only for the digester.  If people feel the approach is right I will work out an annotation based testcase as well.  I do not think it is going to fail even with annotations.\n",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "JCR-1784",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "OCM:The UUID of the collection elements changes on update.",
+    "systemSpecification": true,
+    "version": "1.5"
+}

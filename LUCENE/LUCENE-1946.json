@@ -1,0 +1,113 @@
+{
+    "comments": [
+        {
+            "author": "Uwe Schindler",
+            "body": "Short and simple patch for Lucene core. The tests were modified yesterday to no longer call deprecated TS methods and no longer use setOnlyUseNewAPI()",
+            "date": "2009-10-04T09:00:15.602+0000",
+            "id": 0
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "One general question:\n\nMy last patch also removes the ISOLatin1AccentFilter, because it is deprecated. The problem with removing this filter is, that current indexes cannot be used anymore, because you have no possibility to add new documents using this filter in 3.0 or do queries with accents against it. Maybe we should leave this class deprecated alive or move it to contrib? Or we force people to reindex.\n\nThe same applies to DateField from the o.a.l.document package. It is deprecated, so no one should use it, but we cannot remove it, because existing indexes need this support. This is different for e.g. Field.Store.COMPRESS, because you can still read the indexes (decompression is automatically), and can add new content without compression. Or reindex and use a own compression using byte[] stored field (as suggested).",
+            "date": "2009-10-04T12:50:17.895+0000",
+            "id": 1
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Some more changes and additional tests (removed by the backwards-testcase removal). It now also fixes contrib/analyzers.\n\nThere are still some problems in contrib like tests or old-style consumers.",
+            "date": "2009-10-04T13:32:56.303+0000",
+            "id": 2
+        },
+        {
+            "author": "Michael Busch",
+            "body": "In case the change in our backwards-compatibility policy happens (see LUCENE-1698) we could think about removing the old TokenStream API in 3.1, considering how central this API is. ",
+            "date": "2009-10-05T19:52:10.740+0000",
+            "id": 3
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "I already promoted (and also Grant in his webinar) that Lucene 3.0 will not contain the old TokenStream API anymore. Nobody had problems with it (even the UIMA people were very happy about the new API, because it fits better to the UIMA architecture [they also have such things like Attribute but called different] - there was a conference about UIMA in Potsdam).\n\nI keep this patch pending (only the generics changes are submitted), but all tests for the BW compatibility were removed in my deprecated cleanup, so there are no tests for the old api anymore in trunk.",
+            "date": "2009-10-05T21:12:04.678+0000",
+            "id": 4
+        },
+        {
+            "author": "Michael Busch",
+            "body": "{quote}\neven the UIMA people were very happy about the new API, because it fits better to the UIMA architecture\n{quote}\n\nYeah, I had the feeling they like it too (had lunch with them a couple weeks ago when I was working from Boeblingen).\n\nI'm personally ok with removing the old API; just thought Grant and others mentioned concerns about removing it too soon, because lots of users have their own TokenStreams.",
+            "date": "2009-10-05T21:23:44.067+0000",
+            "id": 5
+        },
+        {
+            "author": "Michael Busch",
+            "body": "This patch was sitting here for a week now and it seems like nobody objects removing the old API in 3.0.\n\nSo my +1 for committing this!",
+            "date": "2009-10-11T05:18:29.110+0000",
+            "id": 6
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "+1 from me too. The patch needs some more work, as I stopped somewhere in contrib to remove, as it was not clear to remove it for 3.0I will do the rest now. They only problem is InstantiatedIndexWriter, which still uses the old API to consume. I will try to modify it. But maybe this contrib will get removed (see other issue LUCENE-1948).\n\nSo I will find out what to do.",
+            "date": "2009-10-11T08:32:39.785+0000",
+            "id": 7
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Here the patch with all contrib's fixed:\n- PrecedenceQueryParser was missing new TokenStream API, I fixed it somehow with States and restoreState. I also added a javacc-target, which was missing\n- InstantiatedIndexWriter was also changed to use the new TokenStream API. The fix is very hackish, but works for the beginning. The class uses lots of Lists/Sets with cloned Token instances inside, so I simple used an AttributeImpl iterator and used copyTo(token). This works most cases (other cases are ignored by a empty Exception catch block). But this should really be fixed or the whole class removed (as suggested)\n\nThere is one question: I removed IsoLatin1Filter. Thismay be a backwards break, so that old indexes using this filter in the analyzer need to be reindexed. But for most cases the AccentFilter would also work, but some hits may be missing when you query such an index. What should we do. Leave the deprecated analyzer in and remove it with 4.0 when all old indexes cannot be read anymore?",
+            "date": "2009-10-11T15:39:01.927+0000",
+            "id": 8
+        },
+        {
+            "author": "Robert Muir",
+            "body": "{quote}\nThere is one question: I removed IsoLatin1Filter. Thismay be a backwards break, so that old indexes using this filter in the analyzer need to be reindexed. But for most cases the AccentFilter would also work, but some hits may be missing when you query such an index. What should we do. Leave the deprecated analyzer in and remove it with 4.0 when all old indexes cannot be read anymore?\n{quote}\n\nI do not think this is a backwards break, because IsoLatin1Filter is deprecated?\n\n{noformat}\n * @deprecated in favor of {@link ASCIIFoldingFilter} which covers a superset \n * of Latin 1. This class will be removed in Lucene 3.0.\n{noformat}\n",
+            "date": "2009-10-11T15:43:35.947+0000",
+            "id": 9
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "This is correct. But e.g. NumberTools and DateTools will also stay deprecated in 3.0, because you need them to use Indexes from previous versions.\n\nSo there is a difference between deprecated APIs and deprecated functionality that is maybe needed, as long as old indexes are available. With 4.0 we will change the index format and then the problem is gone.\n\nBut I agree with you, the differences between both classes are so minimal and only western european languages would have used the ISO filter. The superset does not hurt, only when extended chars (>255) are involved.",
+            "date": "2009-10-11T15:49:40.469+0000",
+            "id": 10
+        },
+        {
+            "author": "Robert Muir",
+            "body": "Uwe, well this class already uses new tokenstream API, so it is not hurting anything right?\nmaybe follow what Mark said and keep it, change the javadoc to say 'this class will be removed in Lucene 4.0' ?\n\nedit. also maybe another option, you could move it to contrib?",
+            "date": "2009-10-11T15:52:27.618+0000",
+            "id": 11
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Cool idea. I move it to contrib/analyzers/common. But the class name will stay, the same so it will be in the top-level dir (without language suffix) as the only one.\n\nWith NumberTools/DateField/DateTools we can do the same? This would be good in misc or somewhere else. But we then have to remove support for them from core's query parser? --- mhhm bad idea for the beginning. I leave it there :-)",
+            "date": "2009-10-11T16:03:01.098+0000",
+            "id": 12
+        },
+        {
+            "author": "Robert Muir",
+            "body": "bq. Cool idea. I move it to contrib/analyzers/common. But the class name will stay, the same so it will be in the top-level dir (without language suffix) as the only one. \n\nor maybe put it in misc also? I don't understand the Number/Date issues like you do, so maybe contrib is a bad idea... just throwing it out there.\n",
+            "date": "2009-10-11T16:06:46.976+0000",
+            "id": 13
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Patch with ISOLatin1Filter deprecated with a hint to 4.0 and additional text. I also made the missing TokenStreams (intended not to be extended) final (see LUCENE-1753).\n\nAll test pass. I will commit soon.",
+            "date": "2009-10-11T17:23:54.651+0000",
+            "id": 14
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Committed revision: 824116",
+            "date": "2009-10-11T17:35:33.316+0000",
+            "id": 15
+        }
+    ],
+    "component": "modules/analysis",
+    "description": "I looked into clover analysis: It seems to be no longer used since I removed the tests yesterday - I am happy!",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-1946",
+    "issuetypeClassified": "OTHER",
+    "issuetypeTracker": "OTHER",
+    "priority": "Major",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "Remove deprecated TokenStream API",
+    "systemSpecification": true,
+    "version": ""
+}

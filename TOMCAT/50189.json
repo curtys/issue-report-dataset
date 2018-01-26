@@ -1,0 +1,53 @@
+{
+    "comments": [
+        {
+            "author": null,
+            "body": "Thanks for the report. Which version of mod_jk and which config are you using?",
+            "date": "20101101T07:42:48",
+            "id": 0
+        },
+        {
+            "author": null,
+            "body": "The version of mod_jk is 1.2.28 on CentOS 5.4.\n\nIf you are unable to reproduce this issue, let me know and I'll do more investigations to reproduce it on my side, I'll see if I can reproduce it on later versions of Tomcat and I'll attach tcpdump logs etc.  I haven't done that yet because the only logs and environment that I have handy are a production environment, and the logs contain sensitive information, but I'm hoping my description so far is adequate.",
+            "date": "20101101T20:18:23",
+            "id": 1
+        },
+        {
+            "author": null,
+            "body": "I've also hit this issue in tomcat 6.0.26 and 7.0.4. This has been using an in-house version of the AJP client (webserver-side).\n\nOur symptoms were the same, and we had been working around by disabling connection sharing across requests.\n\nFollowing James' advice, I've removed the possibility for a servlet-side read from the request after the response has been closed. This has resolved the issue of us.",
+            "date": "20101110T14:22:58",
+            "id": 2
+        },
+        {
+            "author": null,
+            "body": "Fixed in 7.0.x and will be included in 7.0.9.\n\nAn attempt to read from the request once the response has been will trigger an exception.\n\nI'll also propose back-ports for 6.0.x and 5.5.x",
+            "date": "20110218T11:25:39",
+            "id": 3
+        },
+        {
+            "author": null,
+            "body": "Fixed in 6.0.x and will be included in 6.0.33 onwards.",
+            "date": "20110221T07:53:34",
+            "id": 4
+        },
+        {
+            "author": null,
+            "body": "This has been fixed in 5.5.x and will be included in 5.5.34 onwards.",
+            "date": "20110314T07:43:44",
+            "id": 5
+        }
+    ],
+    "component": "Connector:AJP",
+    "description": "If a servlet (probably incorrectly) closes the writer/outputstream of a response, and then attempts to read from the request, the AJP connector sends GET BODY CHUNK to the mod_jk worker.\n\nThis then starts a series of very confusing communication between the worker and tomcat.  The worker doesn't read it until it makes its next request.  After making its next request, it reads it, and then sends a response with 0 length.  At the same time, Tomcat responds to the request made by the worker with another GET BODY CHUNK, which the worker also responds with a message of 0 length.  Then the really weird thing happens, Tomcat replays the first request made by that worker.  At this point, based on what I'm looking at with tcpdump, I get too confused to work out exactly what is happening.",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "50189",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "P2 normal",
+    "product": "Tomcat 5",
+    "project": "TOMCAT",
+    "summary": "AJP connector sends GET BODY CHUNK when reading after response closed",
+    "systemSpecification": true,
+    "version": "5.5.23"
+}

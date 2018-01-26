@@ -1,0 +1,35 @@
+{
+    "comments": [
+        {
+            "author": "Marcel Reutegger",
+            "body": "I agree with you that the test cases should not compare Calendar instances because the specification only defines value equality on Value instances and not their representations in basic Java types.\n\nHowever I do think that Value.equals(Object) should work and indicate true when the Calendar instance which is passed to setProperty() goes through the ValueFactory. IMO a repository implementation must not change the time zone part of a Calendar because this results in a different Calendar. If an implementation normalizes a calendar it should at least do it consistent when using the ValueFactory.\n\nI therefore propose to change the test cases the following way:\n\nIndex: java/org/apache/jackrabbit/test/api/SetPropertyCalendarTest.java\n===================================================================\n--- java/org/apache/jackrabbit/test/api/SetPropertyCalendarTest.java\t(revision 424965)\n+++ java/org/apache/jackrabbit/test/api/SetPropertyCalendarTest.java\t(working copy)\n@@ -19,6 +19,7 @@\n import org.apache.jackrabbit.test.AbstractJCRTest;\n \n import javax.jcr.Node;\n+import javax.jcr.ValueFactory;\n \n import java.util.Calendar;\n import java.util.GregorianCalendar;\n@@ -36,12 +37,15 @@\n \n     private Node testNode;\n \n+    private ValueFactory vFactory;\n+\n     private Calendar c1 = new GregorianCalendar(2005, 1, 10, 14, 8, 56);\n     private Calendar c2 = new GregorianCalendar(1945, 1, 6, 16, 20, 0);\n \n     protected void setUp() throws Exception {\n         super.setUp();\n         testNode = testRootNode.addNode(nodeName1, testNodeType);\n+        vFactory = superuser.getValueFactory();\n     }\n \n     /**\n@@ -52,8 +56,8 @@\n         testNode.setProperty(propertyName1, c1);\n         superuser.save();\n         assertEquals(\"Setting property with Node.setProperty(String, Calendar) and Session.save() not working\",\n-                c1,\n-                testNode.getProperty(propertyName1).getDate());\n+                vFactory.createValue(c1),\n+                testNode.getProperty(propertyName1).getValue());\n     }\n \n     /**\n@@ -66,8 +70,8 @@\n         testNode.setProperty(propertyName1, c2);\n         superuser.save();\n         assertEquals(\"Modifying property with Node.setProperty(String, Calendar) and Session.save() not working\",\n-                c2,\n-                testNode.getProperty(propertyName1).getDate());\n+                vFactory.createValue(c2),\n+                testNode.getProperty(propertyName1).getValue());\n     }\n \n     /**\n@@ -78,8 +82,8 @@\n         testNode.setProperty(propertyName1, c1);\n         testRootNode.save();\n         assertEquals(\"Setting property with Node.setProperty(String, Calendar) and parentNode.save() not working\",\n-                c1,\n-                testNode.getProperty(propertyName1).getDate());\n+                vFactory.createValue(c1),\n+                testNode.getProperty(propertyName1).getValue());\n     }\n \n     /**\n@@ -92,8 +96,8 @@\n         testNode.setProperty(propertyName1, c2);\n         testRootNode.save();\n         assertEquals(\"Modifying property with Node.setProperty(String, Calendar) and parentNode.save() not working\",\n-                c2,\n-                testNode.getProperty(propertyName1).getDate());\n+                vFactory.createValue(c2),\n+                testNode.getProperty(propertyName1).getValue());\n     }\n \n     /**\n\n\nWDYT?",
+            "date": "2006-08-02T13:04:27.000+0000",
+            "id": 0
+        },
+        {
+            "author": "David Pitfield",
+            "body": "> I therefore propose to change the test cases the following way:\n\n+1.  Thanks.",
+            "date": "2006-08-02T23:59:06.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "Comitted my above mentioned patch.\n\nsvn revision: 428296\n\nThank you for reporting this issue.",
+            "date": "2006-08-03T09:56:33.000+0000",
+            "id": 2
+        }
+    ],
+    "component": "test",
+    "description": "SetPropertyCalendarTest# testNewCalendarPropertySession\nSetPropertyCalendarTest# testModifyCalendarPropertySession\nSetPropertyCalendarTest# testNewCalendarPropertyParent\nSetPropertyCalendarTest# testModifyCalendarPropertyParent\n\nTests compare Calendar objects.  Calendar.equals(Object) is a stronger test than JSR-170 specifies for Value.equals(Object), leading to false failures.  For the purpose of these tests, even Value.equals(Object) is too strong an equality test, since some repositories may normalize date/time values across a save/read roundtrip (for example, converting \"Z\" to \"+00:00\", or adding/removing trailing zeros in fractional seconds).\n\nProposal: compare the getTimeInMillis() values.\n\n--- SetPropertyCalendarTest.java        (revision 422074)\n+++ SetPropertyCalendarTest.java        (working copy)\n@@ -52,8 +52,8 @@\n         testNode.setProperty(propertyName1, c1);\n         superuser.save();\n         assertEquals(\"Setting property with Node.setProperty(String, Calendar) and Session.save() not working\",\n-                c1,\n-                testNode.getProperty(propertyName1).getDate());\n+                c1.getTimeInMillis(),\n+                testNode.getProperty(propertyName1).getDate().getTimeInMillis());\n     }\n  \n     /**\n@@ -66,8 +66,8 @@\n         testNode.setProperty(propertyName1, c2);\n         superuser.save();\n         assertEquals(\"Modifying property with Node.setProperty(String, Calendar) and Session.save() not working\",\n-                c2,\n-                testNode.getProperty(propertyName1).getDate());\n+                c2.getTimeInMillis(),\n+                testNode.getProperty(propertyName1).getDate().getTimeInMillis());\n     }\n  \n     /**\n@@ -78,8 +78,8 @@\n         testNode.setProperty(propertyName1, c1);\n         testRootNode.save();\n         assertEquals(\"Setting property with Node.setProperty(String, Calendar) and parentNode.save() not working\",\n-                c1,\n-                testNode.getProperty(propertyName1).getDate());\n+                c1.getTimeInMillis(),\n+                testNode.getProperty(propertyName1).getDate().getTimeInMillis());\n     }\n  \n     /**\n@@ -92,8 +92,8 @@\n         testNode.setProperty(propertyName1, c2);\n         testRootNode.save();\n         assertEquals(\"Modifying property with Node.setProperty(String, Calendar) and parentNode.save() not working\",\n-                c2,\n-                testNode.getProperty(propertyName1).getDate());\n+                c2.getTimeInMillis(),\n+                testNode.getProperty(propertyName1).getDate().getTimeInMillis());\n     }\n",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "JCR-502",
+    "issuetypeClassified": "OTHER",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "TCK: SetPropertyCalendarTest compares Calendar objects",
+    "systemSpecification": true,
+    "version": ""
+}

@@ -1,0 +1,47 @@
+{
+    "comments": [
+        {
+            "author": "Julian Reschke",
+            "body": "It appears that serializing a DOM will not cause startPrefixMapping to be called, causing the JDK 1.4 workaround never to be invoked.\n",
+            "date": "2008-10-05T10:40:23.731+0000",
+            "id": 0
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Yep, you're right. I have a draft patch that looks at the namespaces used in the element name and attributes passed to startElement and automatically calls startPrefixMapping for any namespaces that have not yet been declared. This workaround seems to work on 1.4, but I'm getting increasingly worried about the extra stuff we're layering on XML serialization. On the other hand, I guess it's still better than having the explicit Xerces dependency.",
+            "date": "2008-10-05T15:58:50.585+0000",
+            "id": 1
+        },
+        {
+            "author": "Julian Reschke",
+            "body": "Yes. As far as I can tell, 1.4 is nearing end of life anyway (see <http://java.sun.com/j2se/1.4.2/>). So maybe we should just park this one, and see that we can accelerate getting rid of the requrement to support 1.4.\n\nRelated to this:  the way SerializingContentHandler.getSerializer() currently works seems to cause the \"probe\" happening upon each invocation, which seems to be a very expensive thing to do. As the outcome of the probe only depends on the VM + loaded classes, maybe the result should be held in a static variable?\n\n\n",
+            "date": "2008-10-05T16:34:22.167+0000",
+            "id": 2
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Updated the title and other settings to indicate that the root cause should be fixed in jackrabbit-jcr-commons. We only hit this issue in WebDAV since that's the only place where we serialize from DOM instead of directly calling the SAX methods.\n\nI'd like to get this fixed for 1.5 as this issue breaks the webdav build in Java 1.4.",
+            "date": "2008-11-25T09:38:27.737+0000",
+            "id": 3
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Fixed in revision 720492.",
+            "date": "2008-11-25T13:31:23.753+0000",
+            "id": 4
+        }
+    ],
+    "component": "jackrabbit-jcr-commons",
+    "description": "WebDAV uses XmlRequestEntity for serializing XML, which in turn uses org.apache.jackrabbit.commons.xml.SerializingContentHandler to work around the JDK 1.4 problem (serializing in absence of explicit namespace declarations).\n\nThe following test fails under JDK 1.4, but passed with newer JDKs:\n\n    public void testXmlSerialization() throws ParserConfigurationException, IOException, SAXException {\n        \n        DocumentBuilderFactory dbf = DocumentBuilderFactory.newInstance();\n        dbf.setNamespaceAware(true);\n        DocumentBuilder db = dbf.newDocumentBuilder();\n        \n        Document doc = db.newDocument();\n        doc.appendChild(doc.createElementNS(\"DAV:\", \"propfind\"));\n        \n        XmlRequestEntity xmlent = new XmlRequestEntity(doc);\n        ByteArrayOutputStream bos = new ByteArrayOutputStream();\n        xmlent.writeRequest(bos);\n        \n        Document doc2 = db.parse(new ByteArrayInputStream(bos.toByteArray()));\n        Element docelem = doc2.getDocumentElement();\n        assertEquals(\"DAV:\", docelem.getNamespaceURI());\n    }",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "JCR-1767",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Minor",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "XML serialization in JDK 1.4 broken (mostly for WebDAV)",
+    "systemSpecification": true,
+    "version": ""
+}

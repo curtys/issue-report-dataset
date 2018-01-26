@@ -1,0 +1,41 @@
+{
+    "comments": [
+        {
+            "author": "szegedia@freemail.hu",
+            "body": "The problem is in NativeJavaObject.getConversionWeight that deviates from LC3 \nmethod overloading specification <http://www.mozilla.org/js/liveconnect/\nlc3_method_overloading.html> in point 3.3.6.1. Namely, if the method's declared \nargument type is java.lang.String, it will return \"2\" even if the passed \nNativeJavaObject is an instance of java.lang.String, where LC3 3.3.6.1 says that \nthe first in the order of preference of conversions for NativeJavaObject should \nbe \"Any interface or class that is assignment-compatible with the Java object \nobtained by unwrapping the JS object, i.e. the unwrapped JavaObject is an \ninstanceof() the Java argument type.\"",
+            "date": "20050820T16:12:25",
+            "id": 0
+        },
+        {
+            "author": "szegedia@freemail.hu",
+            "body": "Created attachment 193289\nfix for the bug\n\nAttached a fix for the bug. Basically, I moved the instanceOf check to be\nearlier than the if(to == String.class) check, so it's compliant with LC3. I'm\nnot aware if this will break anything, nor am I aware if it was written\nintentionally this way in the first place. So, I'd appreciate some peer review\nbefore committing the patch.",
+            "date": "20050820T16:17:45",
+            "id": 1
+        },
+        {
+            "author": "szegedia@freemail.hu",
+            "body": "I was reviewing potential side-effects of this patch, but the NativeJavaObject.\ngetConversionWeight() method I modified is only used from NativeJavaMethod.\npreferSignature() [it was fixed exactly for it] and from NativeJavaMethod.\ncanConvert(). canConvert() only checks if the returned value is less than \nCONVERSION_NONE, so the patch can have no effect on it. So I'm fairly confident \nthis shouldn't break anything.",
+            "date": "20050820T16:26:57",
+            "id": 2
+        },
+        {
+            "author": "szegedia@freemail.hu",
+            "body": "Committed the patch to CVS.",
+            "date": "20050821T13:31:14",
+            "id": 3
+        }
+    ],
+    "component": "Core",
+    "description": "User-Agent:       Mozilla/4.0 (compatible; MSIE 6.0; Windows NT 5.0; en) Opera 8.02\nBuild Identifier: \n\nNote: this might be related to Bug 13415.\n\nWhen Rhino needs to select from overloaded methods, and the declared types of \nmethods are are (String, String, String) and (String, Object, Object), and the \nactual types are (java.lang.String, java.lang.String, org.mozilla.javascript.\nNativeJavaObject wrapping java.lang.String), it will find the choice ambigous.\n\nReproducible: Always\n\nSteps to Reproduce:\nRun this example:\n\npublic class RhinoReflectionTest\n{\n    public static void assertEquals(String s1, String s2, String s3)\n    {\n        System.err.println(\"s\");\n    }\n    \n    public static void assertEquals(String s1, Object o2, Object o3)\n    {\n        System.err.println(\"o\");\n    }\n    \n    public static void main(String[] args) throws Exception\n    {\n        Context cx = Context.enter();\n        Script s = cx.compileString(\n                \"Packages.test.RhinoReflectionTest.assertEquals(\\\"\\\", \\\"\\\", new \njava.lang.String());\", \"\", 1, null);\n        ScriptableObject scope = cx.initStandardObjects();\n        s.exec(cx, scope);\n    }\n}\nActual Results:  \nException was thrown:\n\norg.mozilla.javascript.EvaluatorException: The choice of Java constructor \nassertEquals matching JavaScript argument types (string,string,java.lang.String) \nis ambiguous; candidate constructors are: \n    class java.lang.String assertEquals(java.lang.String,java.lang.Object,java.\nlang.Object)\n    class java.lang.String assertEquals(java.lang.String,java.lang.String,java.\nlang.String) (#1)\n\n\nExpected Results:  \nSuccesfully execute, printing \"s\".",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "305323",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "-- major",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "Rhino fails to select the appropriate overloaded method",
+    "systemSpecification": false,
+    "version": "other"
+}

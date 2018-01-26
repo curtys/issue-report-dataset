@@ -1,0 +1,83 @@
+{
+    "comments": [
+        {
+            "author": "Przemo Pakulski",
+            "body": "Fixed in revision: 592957",
+            "date": "2007-11-07T23:36:31.494+0000",
+            "id": 0
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "> There is no need to save them individually because checked in node must not have pending changes ...\n\nI'm not sure this is really the case. While fixing JCR-975 I was tempted to also change the checkout method. I then realized there is no InvalidItemStateException on the checkout method. Jackrabbit also does not check whether there are pending changes on the session if checkout is called.\n\nWith your patch it may happen that pending changes on a checked out versionable child node are saved on checkout of the current node.",
+            "date": "2007-11-09T09:28:17.107+0000",
+            "id": 1
+        },
+        {
+            "author": "Przemo Pakulski",
+            "body": "hm, I forgot that Node.save() method saves changes on the whole subtree.\n\nWe could check if node has pending changes, if not call save once on node otherwise call save twice on properties level, but i'm not sure if it makes sense.",
+            "date": "2007-11-09T10:14:29.529+0000",
+            "id": 2
+        },
+        {
+            "author": "Stefan Guggisberg",
+            "body": "> We could check if node has pending changes, if not call save once on node otherwise call save twice on properties level, but i'm not sure if it makes sense.\n\ni don't think that's worth it. i'd leave it as it was before. ",
+            "date": "2007-11-09T10:52:03.870+0000",
+            "id": 3
+        },
+        {
+            "author": "Przemo Pakulski",
+            "body": "The idea was to speed up versioning operations like checkin/checkout I'll revert the changes for now.",
+            "date": "2007-11-09T11:31:33.508+0000",
+            "id": 4
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "As far as performance is concerned, the save() call is by far the most expensive operation, so getting rid of the second call would definitely be nice. But I agree with Stefan that it might not be worth the extra complexity in code.\n\nCould (should?) we make the checkout operation work on a lower level, parallel to what save() does? That would nicely clean up the logic.",
+            "date": "2007-11-09T11:43:22.324+0000",
+            "id": 5
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "I did a quick performance test using derby and the default configuration (but removed the durability setting we have for testing). The test involved 200 checkin/checkout cycles:\n\ncurrent average checkout time: 140 ms.\ncheckout time using node.save: 90 ms.\n\nthat's a decrease of 35%",
+            "date": "2007-11-09T12:39:40.735+0000",
+            "id": 6
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "I suggest we implement a check for pending changes. For most cases this also allows us to commit the changes to the two properties atomically. Currently there are always two save calls and if the first one fails, the workspace is inconsistent. The patch also adds a refresh in case the session save fails.\n\nIt's not the perfect solution, but IMO better than what we currently have.",
+            "date": "2007-12-14T10:21:17.162+0000",
+            "id": 7
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "+1, in addition to the performance improvement  there's also a correctness aspect to this, as there's no need to worry about the second save() failing.",
+            "date": "2007-12-17T17:35:54.227+0000",
+            "id": 8
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "Thank you for reviewing.\n\nCommitted patch in revision: 605134",
+            "date": "2007-12-18T08:36:14.187+0000",
+            "id": 9
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Merged to the 1.3 branch in revision 632328.",
+            "date": "2008-02-29T14:28:05.229+0000",
+            "id": 10
+        }
+    ],
+    "component": "jackrabbit-core, versioning",
+    "description": "Similar to JCR-975, The version related properties on a versionable node that is checked out are saved individually. There is no need to save them individually because checkd in node must not have pending changes and save() can be called safely on the node itself.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "JCR-1209",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Minor",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "NodeImpl.checkout() calls save() two times",
+    "systemSpecification": true,
+    "version": ""
+}

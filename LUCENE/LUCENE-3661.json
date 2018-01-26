@@ -1,0 +1,77 @@
+{
+    "comments": [
+        {
+            "author": "Michael McCandless",
+            "body": "This sounds like a great plan!  So then the use of BitVector is an impl detail to the codec...",
+            "date": "2011-12-21T10:52:31.791+0000",
+            "id": 0
+        },
+        {
+            "author": "Robert Muir",
+            "body": "I started working on this some before christmas break, and just merged it up to trunk.\n\nIll commit it to a branch (branches/lucene3661) in case anyone wants to help. \n\nI don't think I really got much done yet, but it would be nice to make our codec api \nmore complete by including representation of deletions.",
+            "date": "2012-01-19T17:14:10.401+0000",
+            "id": 1
+        },
+        {
+            "author": "Robert Muir",
+            "body": "So this is \"working\" in the branch (SimpleText deletes and stuff), but needs rounding out\nbefore committing, e.g. the API should not be so horrible and some documentation and such.",
+            "date": "2012-01-23T20:28:30.527+0000",
+            "id": 2
+        },
+        {
+            "author": "Robert Muir",
+            "body": "Here's a patch showing the differences between branch and trunk.\n\nI think its ready: thanks to Mike for helping with a lot of the cleanup here.\n",
+            "date": "2012-01-28T18:27:48.427+0000",
+            "id": 3
+        },
+        {
+            "author": "Robert Muir",
+            "body": "and also Simon for helping track down a tricky bug involving docvalues... maybe we \nshould open an issue later to try to make it more resilient just for future refactorings? \n",
+            "date": "2012-01-28T18:34:56.140+0000",
+            "id": 4
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "One thing: Can we not split the BitVector and LiveDocs in 3.x and trunk? Just because the logic is inverse in 3.x (deletions instead of live docs). This would also make the LiveDocs in trunk always have a codec header, but not in 3.x?\n\nOtherwise, looks great!",
+            "date": "2012-01-28T19:08:01.148+0000",
+            "id": 5
+        },
+        {
+            "author": "Robert Muir",
+            "body": "We could, I think it would be mostly duplicate code at this point.\n\nBut, like stored fields (which is also shared), its just another TODO we can do later.\n\nDefinitely needs not block this issue (its unrelated).\n",
+            "date": "2012-01-28T19:47:05.741+0000",
+            "id": 6
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "We should open issue, otherwise coomit that so I can work on splitting composite and atomic readers again!",
+            "date": "2012-01-28T21:25:23.517+0000",
+            "id": 7
+        },
+        {
+            "author": "Robert Muir",
+            "body": "I'll open a followup issue (can be done in trunk after this is committed).\n\nJust for reference, there are 3 bitvector versions that can be read:\nunversioned/darkages: some 3.x versions\ncodec header version 0: some 3.x versions\ncodec header version 1: trunk\n\nso trunk always writes a versioned codec header, even lucene 3.5 always writes \na versioned codec header, but i think the 3.x codec must at least support\nunversioned files still for e.g. 3.0 indexes.\n\nalso, under the same issue we could maybe remove bitvector completely and the \ncodecs just use FastBitSet. there is no difference now that count() is unused.\n\nThis could be cleaner: just having different serialization forms for fastbitset.\n",
+            "date": "2012-01-28T23:15:45.772+0000",
+            "id": 8
+        },
+        {
+            "author": "Robert Muir",
+            "body": "Merging this to trunk now...\n\nWe can use LUCENE-3613 issue for any remaining splitting of 4.x/3.x codec impls (stored fields, deletes).\n",
+            "date": "2012-01-29T11:29:39.214+0000",
+            "id": 9
+        }
+    ],
+    "component": "",
+    "description": "After LUCENE-3631, this should be easier I think.\n\nI haven't looked at it much myself but i'll play around a bit, but at a glance:\n* SegmentReader to have Bits liveDocs instead of BitVector\n* address the TODO in the IW-using ctors so that SegmentReader doesn't take a parent but just an existing core.\n* we need some type of minimal \"MutableBits\" or similar subinterface of bits. BitVector and maybe Fixed/OpenBitSet could implement it\n* BitVector becomes an impl detail and moves to codec (maybe we have a shared base class and split the 3.x/4.x up rather than the conditional backwards)\n* I think the invertAll should not be used by IndexWriter, instead we define the codec interface to say \"give me a new MutableBits, by default all are set\" ?\n* redundant internally-consistent checks in checkLiveCounts should be done in the codec impl instead of in SegmentReader.\n* plain text impl in SimpleText.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-3661",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "OTHER",
+    "priority": "Major",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "move deletes under codec",
+    "systemSpecification": true,
+    "version": "4.0-ALPHA"
+}

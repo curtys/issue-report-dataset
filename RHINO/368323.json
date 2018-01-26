@@ -1,0 +1,83 @@
+{
+    "comments": [
+        {
+            "author": "bjervis@google.com",
+            "body": "Could you package this up as a patch and attach it?",
+            "date": "20070524T19:41:31",
+            "id": 0
+        },
+        {
+            "author": "krouskop+mozillabugzilla@gmail.com",
+            "body": "Created attachment 267275\nrunCommandBug.js file described in my original comment that exposes this issue",
+            "date": "20070605T15:04:29",
+            "id": 1
+        },
+        {
+            "author": "krouskop+mozillabugzilla@gmail.com",
+            "body": "Created attachment 267276\nPatch file to fix the \"bug\" with Global.java\n\nPatches Global.java revision 1.43 from CVS:\n\n$ cvs status Global.java\n===================================================================\nFile: Global.java       Status: Locally Modified\n\n   Working revision:    1.43\n   Repository revision: 1.43    /cvsroot/mozilla/js/rhino/toolsrc/org/mozilla/javascript/tools/shell/Global.java,v",
+            "date": "20070605T15:07:39",
+            "id": 2
+        },
+        {
+            "author": "krouskop+mozillabugzilla@gmail.com",
+            "body": "Note - this bug does seem to be environment specific. Running with the latest code in CVS, and with Java 6 / Ubuntu 7.04, I'm no longer able to exploit this bug.\n\n$ java -version\njava version \"1.6.0_01\"\nJava(TM) SE Runtime Environment (build 1.6.0_01-b06)\nJava HotSpot(TM) 64-Bit Server VM (build 1.6.0_01-b06, mixed mode)\n\n$ cat /proc/version\nLinux version 2.6.20-16-generic (root@king) (gcc version 4.1.2 (Ubuntu 4.1.2-0ubuntu4)) #2 SMP Wed May 23 00:30:47 UTC 2007\n\n--\n\nHOWEVER, if I try running it using Java 5 again (even under Ubuntu 7.04), I AM able to still exploit the bug. Generally I get the bad IOException around 75 iterations through. The stack trace is slightly different than originally reported (this is accounted for by the fact the code in CVS has changed since I originally reported this) but it's the same underlying problem.\n\nI've attached a patch for Global.java (CVS revision 1.43) which solves the problem under Java 5 (and continues to work fine under Java 6).",
+            "date": "20070605T15:15:09",
+            "id": 3
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "I don't really like just swallowing the exception, even if we check the message to ensure it's the right exception. \n\nLooking at the code I believe I can see code paths that will close a stream more than once. Note that pipe will close either its 2rd or 3rd argument, and PipeThread calls pipe. Yet we have close called in runProcess on those streams as well. Perhaps there is a race condition with the termination of the PipeThread that causes this not to fail every time.",
+            "date": "20070613T15:47:57",
+            "id": 4
+        },
+        {
+            "author": "joshuaallen@wildmail.com",
+            "body": "I came across this bug as well. It's thread related, so that's why it doesn't show up all the time, or in all environments. This script reproduces it on my environment, after about half a dozen times through the loop, although it varies greatly.\n\nThe solution sent by Adam addresses the symptom and not the cause. I wouldn't put it into production (sorry Adam :)\n\n<code>\nwhile (true) {\n    runCommand(\"echo\");\n}\n</code>\n\nOS: CentOS release 4.5 (Final)\nJRE: 1.5.0_06 and 1.6.0_03\nRhino: 1.6R7\n\norg.mozilla.javascript.WrappedException: Wrapped java.io.IOExescriptor\n        at org.mozilla.javascript.Context.throwAsScriptRuntim57)\n        at org.mozilla.javascript.MemberBox.invoke(MemberBox.\n        at org.mozilla.javascript.FunctionObject.call(Functio\n        at org.mozilla.javascript.optimizer.OptRuntime.callNa97)\n        at org.mozilla.javascript.gen.c1._c0(Unknown Source)\n        at org.mozilla.javascript.gen.c1.call(Unknown Source)\n        at org.mozilla.javascript.ContextFactory.doTopCall(Co93)\n        at org.mozilla.javascript.ScriptRuntime.doTopCall(Scr4)\n        at org.mozilla.javascript.gen.c1.call(Unknown Source)\n        at org.mozilla.javascript.gen.c1.exec(Unknown Source)\n        at org.mozilla.javascript.tools.shell.Main.evaluateSc\n        at org.mozilla.javascript.tools.shell.Main.processFil46)\n        at org.mozilla.javascript.tools.shell.Main.processFil\n        at org.mozilla.javascript.tools.shell.Main.processSou\n        at org.mozilla.javascript.tools.shell.Main.processFil\n        at org.mozilla.javascript.tools.shell.Main$IProxy.run\n        at org.mozilla.javascript.Context.call(Context.java:5\n        at org.mozilla.javascript.ContextFactory.call(Context\n        at org.mozilla.javascript.tools.shell.Main.exec(Main.\n        at org.mozilla.javascript.tools.shell.Main.main(Main.\nCaused by: java.io.IOException: Bad file descriptor\n        at java.io.FileInputStream.close0(Native Method)\n        at java.io.FileInputStream.close(FileInputStream.java\n        at org.mozilla.javascript.tools.shell.Global.runProce\n        at org.mozilla.javascript.tools.shell.Global.runComma\n        at sun.reflect.GeneratedMethodAccessor1.invoke(Unknow\n        at sun.reflect.DelegatingMethodAccessorImpl.invoke(DesorImpl.java:25)\n        at java.lang.reflect.Method.invoke(Method.java:597)\n        at org.mozilla.javascript.MemberBox.invoke(MemberBox.\n        ... 18 more\n",
+            "date": "20071011T01:13:04",
+            "id": 5
+        },
+        {
+            "author": "krouskop+mozillabugzilla@gmail.com",
+            "body": "Just a few comments...\n\nFirst - to Josh - I don't believe this is thread related. Unless runCommand launches new threads (which I do NOT believe to be the case), my code snippet runs exclusively in a single thread and I believe yours does as well.\n\nNow regarding a proper solution:\n\nI agree with Norris that my solution of swallowing the exception is not the ideal solution, and I certainly hope the patch I provided does NOT get incorporated into base code. I can (however) attest to the fact that I've been using a version of Rhino with the patch to run a script that backups my company's servers on a nightly basis since January and have yet to have any problems -- so if someone is in a pinch, I heartily recommend patching and using without worry. Alternatively, based on my testing, you could also simply move to Sun's Java 6 VM and also be fine w/ stock Rhino.\n\nA real solution should be to avoid the second calls to close(). A hack-ish way to do this might be to wrap the stream with a proxy that would track if close has been called and only pass on a close call once. The less hack-ish approach (but would be more work, and require better working knowledge of Rhino than I currently have) would be to re-wrote the code so the path to closing twice never occurs.\n\nAlso, note, that I believe two calls to close() can occur without an Exception occurring (again, I don't believe this is thread/race-condition related). I believe the problem is that underlying the stream, their should be a file descriptor. If, after the first call to close(), the association between the file descriptor and the stream is released, the second call to close() raises the exception. But, I do not believe that the first call always breaks the association (hence why a second close() call does not always fail.)",
+            "date": "20071011T03:34:58",
+            "id": 6
+        },
+        {
+            "author": "joshuaallen@wildmail.com",
+            "body": "Created attachment 284416\nFix to bug, refactored\n\nI refactored the code so that an erroneous additional call to close() is not possible. close() was being called inside pipe() so there was no need to call it in runProcess() as well. The code is cleaner due to the lack of nesting of try{} blocks. In general this excessive nesting should be avoided anyway, and the function was in need of refactoring IMO.",
+            "date": "20071011T05:18:03",
+            "id": 7
+        },
+        {
+            "author": "joshuaallen@wildmail.com",
+            "body": "Thanks for your comments Adam.\nI was able to reproduce bug with my code and environment with jdk1.6.0.03.\n\nThe 2nd call to close was always being done, but most of the time it happened inside the PipeThread class where it was suppressed.  Every once in a while the other thread finished first and the IOException propagated out of runProcess(). Hence this was a race condition and so was a thread issue.\n\nThanks again, and cheers!\n",
+            "date": "20071011T05:28:42",
+            "id": 8
+        },
+        {
+            "author": "joshuaallen@wildmail.com",
+            "body": "Created attachment 284424\nBug fix, cleaner\n\nPlease use this instead of earlier patch I submitted. The variable declares are cleaner in this one.",
+            "date": "20071011T06:12:06",
+            "id": 9
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "Fixed: \n\nChecking in toolsrc/org/mozilla/javascript/tools/shell/Global.java;\n/cvsroot/mozilla/js/rhino/toolsrc/org/mozilla/javascript/tools/shell/Global.java,v  <--  Global.java\nnew revision: 1.45; previous revision: 1.44\ndone\n",
+            "date": "20071113T21:43:56",
+            "id": 10
+        }
+    ],
+    "component": "Core",
+    "description": "User-Agent:       Mozilla/5.0 (X11; U; Linux x86_64; en-US; rv:1.8.0.9) Gecko/20070102 Ubuntu/dapper-security Firefox/1.5.0.9\nBuild Identifier: Rhino 1.6 release 5\n\nWhen using the org.mozilla.javascript.tools.shell.Global.runCommand method (via calls to \"runCommand(...)\" in the Rhino shell), after a number of calls, an IOException (bad file descriptor) occurs.\n\nExample stack trace for when this Exception occurs:\norg.mozilla.javascript.WrappedException: Wrapped java.io.IOException: Bad file descriptor (runCommandBug.js#10)\n        at org.mozilla.javascript.Context.throwAsScriptRuntimeEx(Context.java:1693)\n        at org.mozilla.javascript.MemberBox.invoke(MemberBox.java:160)\n        at org.mozilla.javascript.FunctionObject.call(FunctionObject.java:408)\n        at org.mozilla.javascript.optimizer.OptRuntime.callName(OptRuntime.java:97)\n        at org.mozilla.javascript.gen.c1._c0(runCommandBug.js:10)\n        at org.mozilla.javascript.gen.c1.call(runCommandBug.js)\n        at org.mozilla.javascript.ContextFactory.doTopCall(ContextFactory.java:340)\n        at org.mozilla.javascript.ScriptRuntime.doTopCall(ScriptRuntime.java:2758)\n        at org.mozilla.javascript.gen.c1.call(runCommandBug.js)\n        at org.mozilla.javascript.gen.c1.exec(runCommandBug.js)\n        at org.mozilla.javascript.tools.shell.Main.evaluateScript(Main.java:503)\n        at org.mozilla.javascript.tools.shell.Main.processFileSecure(Main.java:425)\n        at org.mozilla.javascript.tools.shell.Main.processFile(Main.java:391)\n        at org.mozilla.javascript.tools.shell.Main.processSource(Main.java:382)\n        at org.mozilla.javascript.tools.shell.Main.processFiles(Main.java:179)\n        at org.mozilla.javascript.tools.shell.Main$IProxy.run(Main.java:100)\n        at org.mozilla.javascript.Context.call(Context.java:528)\n        at org.mozilla.javascript.ContextFactory.call(ContextFactory.java:450)\n        at org.mozilla.javascript.tools.shell.Main.exec(Main.java:162)\n        at org.mozilla.javascript.tools.shell.Main.main(Main.java:140)\nCaused by: java.io.IOException: Bad file descriptor\n        at java.io.FileInputStream.close0(Native Method)\n        at java.io.FileInputStream.close(FileInputStream.java:245)\n        at org.mozilla.javascript.tools.shell.Global.runProcess(Global.java:774)\n        at org.mozilla.javascript.tools.shell.Global.runCommand(Global.java:536)\n        at sun.reflect.GeneratedMethodAccessor2.invoke(Unknown Source)\n        at sun.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:25)\n        at java.lang.reflect.Method.invoke(Method.java:585)\n        at org.mozilla.javascript.MemberBox.invoke(MemberBox.java:145)\n        ... 18 more\n\n(Line 774 is the line with errProcess.close():\n\n  } finally {\n      if (errProcess != null) {\n          errProcess.close();\n      }\n  }\n\n)\n\nLooking in to this, my best guess (I wish I could provide insight that was more certain than a guess...) is that following the call to .close() done in the pipe() method, the errProcess stream gets cleaned up, and its underlying file descriptor is destroyed, thus this exception on this later (second) call to close().\n\nIf this call to errProcess.close() is commented out, the same exception would occur, but via the call to in.close() on line 744: (\n\n  pipe(false, in, inProcess);\n  in.close();\n\n)\n\nI suspect (though didn't actually encounter) this exception could also happen on line 769's call to outProcess.close().\n\nReproducible: Always\n\nSteps to Reproduce:\nrun \"rhino runCommandBug.js\", where the file runCommandBug.js consists of:\n\nvar i = 0;\nwhile (true) {\n\n    i += 1;\n\n    print(\"\\nA - \" + i);\n    runCommand(\"ls\", \"-w\", \"0\");\n\n    print(\"\\nB - \" + i);\n    runCommand(\"ls\", \"-w\", \"1\");\n\n}\nActual Results:  \nIOException (\"Bad file descriptor\") would occur around the 30th iteration of the loop. (Sometimes the exception would not occur until after several hundred iterations though.)\n\nExpected Results:  \nException-free execution\n\nEnvironment information:\n\n$ java -version\njava version \"1.5.0_06\"\nJava(TM) 2 Runtime Environment, Standard Edition (build 1.5.0_06-b05)\nJava HotSpot(TM) 64-Bit Server VM (build 1.5.0_06-b05, mixed mode)\n\n$ cat /proc/version\nLinux version 2.6.15-27-amd64-generic (buildd@king) (gcc version 4.0.3 (Ubuntu 4.0.3-1ubuntu5)) #1 SMP PREEMPT Fri Dec 8 17:50:54 UTC 2006\n\n\n===\n\nPossible workaround:\n\nI am using a patched version of the Global class, based on the source from rhino1_6R5.zip, which seems to be working fine for me. Below is a diff between my patched version and the original:\n\ndiff toolsrc/org/mozilla/javascript/tools/shell/Global.java.orig toolsrc/org/mozilla/javascript/tools/shell/Global.java\n744c744,746\n<                             in.close();\n---\n>\n>                             closeAndIgnoreBadFileDesciptor(in);\n>\n769c771\n<                         outProcess.close();\n---\n>                         closeAndIgnoreBadFileDesciptor(outProcess);\n774c776\n<                     errProcess.close();\n---\n>                     closeAndIgnoreBadFileDesciptor(errProcess);\n793a796,809\n>     static void closeAndIgnoreBadFileDesciptor(InputStream stream)\n>             throws IOException {\n>\n>         try {\n>             stream.close();\n>         }\n>         catch (IOException e) {\n>             final String msg = e.getMessage();\n>             if (! msg.startsWith(\"Bad file descriptor\") )\n>                 throw e;\n>         }\n>\n>     }\n>",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "368323",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "-- normal",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "Global class's runCommand suffers from Bad file descriptor IOExceptions on extra close() calls",
+    "systemSpecification": true,
+    "version": "1.6R5"
+}

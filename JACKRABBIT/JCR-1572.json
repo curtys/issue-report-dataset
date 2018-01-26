@@ -1,0 +1,113 @@
+{
+    "comments": [
+        {
+            "author": "Thomas Mueller",
+            "body": "> If a DbDataStore connection is closed due to an error \nWhat kind of error did occur? I don't think the DbDataStore should automatically re-try forever by default.",
+            "date": "2008-05-05T07:08:00.323+0000",
+            "id": 0
+        },
+        {
+            "author": "Moshe Immerman",
+            "body": "a MySQL max_packet_size error. I agree it shouldn't retry forever, but a addRecord operation should not fail only because the previous addRecord failed. I believe an option to execute a simple query before returning a connection from the pool should be sufficient. ",
+            "date": "2008-05-06T03:13:31.173+0000",
+            "id": 1
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "Hi,\n\nI think it makes sense to solve the original problem instead of trying to work around it.\n\nI was searching for \"MySQL max_packet_size error\" and found this: \nhttp://www.mysqltalk.org/maxpacketsize-info-vt112883.html\n\n\"I had to set this an actually it is a setting in the server side mysql config file like this:\nset-variable = max_allowed_packet=16M \"\n\n\"This is a known bug (check http://bugs.mysql.com/) that was a regression in 3.0. It is fixed (to be released in 3.0.9)\"\n\nWhat version of MySQL (server and JDBC client) do you use? How big was your largest object? Did you set max_allowed_packet? When I tested it, it worked without any special settings. I have tested with MySQL 5.0.27-community-nt on Windows XP (2007-12-11) and found out that the objects must fit in memory. It would be great if this problem could be solved as well.\n",
+            "date": "2008-05-06T07:09:19.099+0000",
+            "id": 2
+        },
+        {
+            "author": "Moshe Immerman",
+            "body": "Hi, \nThe biggest file is whatever the user wants to upload (upto GB's) ,  This occurs with  a CommunicationException as well so changing the max_packet_size will have no affect when the link goes down temporarily. allowing this option will greatly improve the robustness of Jackrabbit. A check-valid-sql options is quite common for connection pools and can be found in commons-dbcp and jboss datasource, etc..  If you agree with the fix I am prepared to submit a patch for it.",
+            "date": "2008-05-06T12:20:57.571+0000",
+            "id": 3
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "Hi,\n\nValidation is a good idea, what about a query of the form SELECT * FROM DATASTORE WHERE 1=0. What I want to avoid is hiding a real problem, so I think this validation should be optional. \n\nI still think it's more important to understand the real problem first: why did you get a CommunicationException, why did the link go down temporarily? What version of MySQL (server and JDBC client) do you use? When I have tested it with MySQL, I found out that the objects must fit in memory. Is this the case for you as well?\n\nRegards,\nThomas",
+            "date": "2008-05-09T07:11:50.590+0000",
+            "id": 4
+        },
+        {
+            "author": "Moshe Immerman",
+            "body": "Hi\n\n\nI agree it should be optional, I do believe objects need to fit it memory, I think the connection went down due to an internal network error.  I use MySQL 5.0 and 5.1 driver.  I will submit a patch shortly.\n\nMoshe\n\n\n",
+            "date": "2008-05-09T14:10:17.616+0000",
+            "id": 5
+        },
+        {
+            "author": "Moshe Immerman",
+            "body": "an optional checkValidConnectionSql attribute can be added to DbDataStore and BundleDbPersistenceManager\n\nShould I refactor DatabaseFileystem, DatabaseJournal and DatabasePersistenceManager to use ConnectionRecoveryManager so that they can benefit from this change as well?",
+            "date": "2008-05-31T14:42:00.572+0000",
+            "id": 6
+        },
+        {
+            "author": "Brennan Spies",
+            "body": "I haven't looked at the patch yet, but I am experiencing a very similar problem using Apache Derby. It is occurring because I am using Artifactory 1.3 (beta) which updates its Maven indexes using Quartz scheduled jobs that rely on Apache Jackrabbit to store/persist the data. The code path of the problem is the same--through the addRecord() method, which automatically calls setAutoReconnect(false) without checking for a valid connection. Forgive me if I am repeating the above discussion, but there are two problems here:\n\n1. Not checking for valid connection before setting autoReconnect(false). This seems to be happening constantly in the Artifactory jobs, since they are long-running and the connections tend to time out. Some logic equivalent to DBCP's testOnBorrow() needs to be implemented.\n2. The setAutoReconnect(false)...setAutoReconnect(true) are both inside a try-catch block. What happens here if an exception is thrown between the two calls? Since the ConnectionRecoveryManager instances are held in a pool (the Pool class), the ConnectionRecoveryManager will be returned to the pool with the autoReconnect flag = false. Assuming that execution continues after the original exception, this ConnectionRecoveryManager instance will be likely to throw another exception if a connection timeout occurs. THE SOLUTION: restore the correct flag using setAutoReconnect in the finally block.\n\nThese should be very easy fixes to implement.\n\nThe exception looks like this:\n\n[9/12/08 11:05:24:697 PDT] 0000004e SystemOut     O 2008-09-12 11:05:24,696 [WARN ] (data.db.DbDataStore :588)  - Can not insert new record\norg.apache.jackrabbit.core.data.DataStoreException: Can not insert new record: connection has been closed and autoReconnect == false: connection has been closed and autoReconnect == false\n        at org.apache.jackrabbit.core.data.db.DbDataStore.convert(DbDataStore.java:592)\n        at org.apache.jackrabbit.core.data.db.DbDataStore.addRecord(DbDataStore.java:295)\n        at org.apache.jackrabbit.core.value.BLOBInDataStore.getInstance(BLOBInDataStore.java:120)\n        at org.apache.jackrabbit.core.value.InternalValue.getBLOBFileValue(InternalValue.java:644)\n        at org.apache.jackrabbit.core.value.InternalValue.create(InternalValue.java:123)\n        at org.apache.jackrabbit.core.PropertyImpl.setValue(PropertyImpl.java:609)\n        at org.apache.jackrabbit.core.PropertyImpl.setValue(PropertyImpl.java:525)\n        at org.apache.jackrabbit.core.NodeImpl.setProperty(NodeImpl.java:2309)\n        at org.artifactory.jcr.fs.JcrFile.fillJcrData(JcrFile.java:591)\n        at org.artifactory.jcr.fs.JcrFile.setResourceNode(JcrFile.java:550)\n        at org.artifactory.jcr.fs.JcrFile.<init>(JcrFile.java:80)\n        at org.artifactory.jcr.fs.JcrFile.<init>(JcrFile.java:164)\n        at org.artifactory.repo.index.RepoIndexerData.saveIndexFiles(RepoIndexerData.java:103)\n        at org.artifactory.repo.index.IndexerManagerImpl.saveIndexFiles(IndexerManagerImpl.java:168)\n        at org.artifactory.repo.index.IndexerManagerImpl$$FastClassByCGLIB$$76058b92.invoke(<generated>)\n        at net.sf.cglib.proxy.MethodProxy.invoke(MethodProxy.java:149)\n        at org.springframework.aop.framework.Cglib2AopProxy$CglibMethodInvocation.invokeJoinpoint(Cglib2AopProxy.java:700)\n        at org.springframework.aop.framework.ReflectiveMethodInvocation.proceed(ReflectiveMethodInvocation.java:149)\n        at org.springframework.transaction.interceptor.TransactionInterceptor.invoke(TransactionInterceptor.java:106)\n        at org.springframework.aop.framework.ReflectiveMethodInvocation.proceed(ReflectiveMethodInvocation.java:171)\n        at org.springframework.aop.framework.Cglib2AopProxy$DynamicAdvisedInterceptor.intercept(Cglib2AopProxy.java:635)\n        at org.artifactory.repo.index.IndexerManagerImpl$$EnhancerByCGLIB$$7cded8f3.saveIndexFiles(<generated>)\n        at org.artifactory.repo.index.IndexerManagerImpl.index(IndexerManagerImpl.java:137)\n        at org.artifactory.repo.index.IndexerManagerImpl$$FastClassByCGLIB$$76058b92.invoke(<generated>)\n        at net.sf.cglib.proxy.MethodProxy.invoke(MethodProxy.java:149)\n        at org.springframework.aop.framework.Cglib2AopProxy$CglibMethodInvocation.invokeJoinpoint(Cglib2AopProxy.java:700)\n        at org.springframework.aop.framework.ReflectiveMethodInvocation.proceed(ReflectiveMethodInvocation.java:149)\n        at org.springframework.transaction.interceptor.TransactionInterceptor.invoke(TransactionInterceptor.java:106)\n        at org.springframework.aop.framework.ReflectiveMethodInvocation.proceed(ReflectiveMethodInvocation.java:171)\n        at org.springframework.aop.framework.Cglib2AopProxy$DynamicAdvisedInterceptor.intercept(Cglib2AopProxy.java:635)\n        at org.artifactory.repo.index.IndexerManagerImpl$$EnhancerByCGLIB$$7cded8f3.index(<generated>)\n        at org.artifactory.repo.index.IndexerJob.onExecute(IndexerJob.java:25)\n        at org.artifactory.schedule.ArtifactoryJob.execute(ArtifactoryJob.java:41)\n        at org.quartz.core.JobRunShell.run(JobRunShell.java:202)\n        at org.quartz.simpl.SimpleThreadPool$WorkerThread.run(SimpleThreadPool.java:525)\nCaused by: java.sql.SQLException: connection has been closed and autoReconnect == false\n        at org.apache.jackrabbit.core.persistence.bundle.util.ConnectionRecoveryManager.getConnection(ConnectionRecoveryManager.java:159)\n        at org.apache.jackrabbit.core.persistence.bundle.util.ConnectionRecoveryManager.executeStmtInternal(ConnectionRecoveryManager.java:287)\n        at org.apache.jackrabbit.core.persistence.bundle.util.ConnectionRecoveryManager.executeStmt(ConnectionRecoveryManager.java:257)\n        at org.apache.jackrabbit.core.persistence.bundle.util.ConnectionRecoveryManager.executeStmt(ConnectionRecoveryManager.java:237)\n        at org.apache.jackrabbit.core.data.db.DbDataStore.addRecord(DbDataStore.java:286)\n        ... 33 more\n\n",
+            "date": "2008-09-12T18:29:38.706+0000",
+            "id": 7
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "Sorry for the delay. I can now reproduce the problem, re-connect is disabled at the wrong time. I don't actually see why auto-reconnect should be disabled at all: autoCommit is never disabled. I suggest to simply remove those lines:\n\nIndex: jackrabbit/jackrabbit-core/src/main/java/org/apache/jackrabbit/core/data/db/DbDataStore.java\n===================================================================\n--- jackrabbit/jackrabbit-core/src/main/java/org/apache/jackrabbit/core/data/db/DbDataStore.java\t(revision 698167)\n+++ jackrabbit/jackrabbit-core/src/main/java/org/apache/jackrabbit/core/data/db/DbDataStore.java\t(working copy)\n@@ -285,7 +285,6 @@\n         TempFileInputStream fileInput = null;\n         ConnectionRecoveryManager conn = getConnection();\n         try {\n-            conn.setAutoReconnect(false);\n             String id = null, tempId = null;\n             long now;\n             for (int i = 0; i < ConnectionRecoveryManager.TRIALS; i++) {\n@@ -362,7 +362,6 @@\n             }\n             usesIdentifier(identifier);\n             DbDataRecord record = new DbDataRecord(this, identifier, length, now);\n-            conn.setAutoReconnect(true);\n             return record;\n         } catch (Exception e) {\n             throw convert(\"Can not insert new record\", e);\n\nI tested it and it works, and I don't see a reason why it shouldn't. Unless somebody sees a problem I will commit it to the trunk.",
+            "date": "2008-09-25T10:02:59.147+0000",
+            "id": 8
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "Committed in revision 701154",
+            "date": "2008-10-02T15:28:21.653+0000",
+            "id": 9
+        },
+        {
+            "author": "Bart van der Schans",
+            "body": "Thomas,\n\nCould this (almost) trivial  patch also be backported to the 1.5 and 1.4 branch? This is quite a nasty bug because it leaves the repository in an error state in which no new documents can be added.\n\nBart",
+            "date": "2008-12-30T22:22:36.657+0000",
+            "id": 10
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "> Could this (almost) trivial patch also be backported to the 1.5 and 1.4 branch?  \n\nThis fix is included in the 1.5.0 release.",
+            "date": "2008-12-31T09:23:14.746+0000",
+            "id": 11
+        },
+        {
+            "author": "Bart van der Schans",
+            "body": "Indeed it is! I somehow completely overlooked that one... My question still stands for the 1.4 branch though. Or are there no plans to release new versions of the 1.4 (core) jars?",
+            "date": "2008-12-31T10:01:31.417+0000",
+            "id": 12
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "There's no active plan for another 1.4.x release, but it shouldn't be too much trouble to do such a release if there's demand and upgrading to 1.5.0 is for some reason not an option.",
+            "date": "2008-12-31T10:13:54.673+0000",
+            "id": 13
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Scheduling for jackrabbit-core 1.4.8.",
+            "date": "2009-01-14T17:07:35.503+0000",
+            "id": 14
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "Committed in revision 736273 (1.4 branch)",
+            "date": "2009-01-21T09:32:14.041+0000",
+            "id": 15
+        }
+    ],
+    "component": "jackrabbit-core",
+    "description": "If a DbDataStore connection is closed due to an error all subsequent addRecord calls will fail with 'connection has been closed and autoReconnect == false'\n after getRecord is called and the connection is reconnected addRecord will succeed.\n\nthe connection should be validated before setting autoReconnect = false or on retrieval from the pool.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "JCR-1572",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "DbDataStore connection does not always reconnect",
+    "systemSpecification": true,
+    "version": ""
+}

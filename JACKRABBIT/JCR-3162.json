@@ -1,0 +1,137 @@
+{
+    "comments": [
+        {
+            "author": "Alex Deparvu",
+            "body": "Studying this problem revealed that this issue happens whenever we are dealing with a cluster sync operation involving an instance that has been running for a really long time.\n\nAt this point I'm not sure what really long time means exactly, but it would appear that after a while the journal revision resets to 0.\nThis causes the cluster slave to sync using a lower revision number, thus fetching the journal records again, which would determine the repository to index them again.\nIf the current index corresponds to a bigger revision number, re-indexing again means that there will be duplicates in the index.\n\nJCR-905 tried to address that by first deleting all the records that come from an external source (the cluster sync) before adding them.\n\nThe proposed solution tries to determine on repository startup if the index is stale and tries to force a full reindex by deleting it.\nIndex staleness is currently determined by checking if journal revision is 0 and if there are already index files present in the repository.\n\nInterestingly this happens a lot during tests when the index is conserved from one restart to the other, but the journal impl is memory based so it gets reset every time.\n\nThe solution has some issues because of the asynchronous initialization of SearchIndex for workspaces other than \"default\". Meaning that by the time the SearchIndex gets initialized, the cluster node has already sync'ed to a bigger revision than 0, even if it was 0 at the moment when the repo was starting up.\nBut this doesn't apply to the default workspace.\n",
+            "date": "2011-11-30T16:07:44.959+0000",
+            "id": 0
+        },
+        {
+            "author": "Alex Deparvu",
+            "body": "attaching patch.\n\nWarning: this is a work in progress, not really tested. \nIt includes changes from JCR-3160 (as some files overlap).\n\nFeedback needed.",
+            "date": "2011-11-30T16:10:13.523+0000",
+            "id": 1
+        },
+        {
+            "author": "Alex Deparvu",
+            "body": "Attaching v2 of the patch.\n\nIt is basically v1 + a test + some feature flags.\nI managed to find a way to test this problem within JR Core, which should allow us to have some meaningful progress.\n\nThe test DbClusterTestJCR3162 contains 2 feature flags (which will be removed once the patch is good):\n - JCR3162_ENABLE_CLUSTER_DELETE this is the JCR-905 fix which can be switched on/off with the help of this flag\n - JCR3162_ENABLE_REINDEX this controls the new code (reindexing if the index is considered stale)\n\nSo basically: \n - both flags off: you can see the initial behaviour (pre JCR-905) in action. The test fails (as it should).\n\n - just JCR3162_ENABLE_CLUSTER_DELETE represents the current behaviour of the repository (the test passes)\n\n - just JCR3162_ENABLE_REINDEX represents the patch in action (the test passes!)\n\nThe original problem still stands: how do we know if an index is stale or not. Default workspace will be covered, the other workspaces are going to be initializes asynchronously, so there are no guarantees.\n",
+            "date": "2011-12-01T17:36:23.880+0000",
+            "id": 2
+        },
+        {
+            "author": "Alex Deparvu",
+            "body": "V3 comes with a complete redesign of the patch.\n\nAfter further analysis we've decided to go with inspecting the incoming journal changes in the case of an initial index re-build.\n\nI'll try to clarify. The scope of JCR-905 fix should *only* be for an initial index build. \nThe initial indexing operation can cause doubles to appear, as some nodes can be seen by a slave before the ADD event has reached it. This happens because of shared storage between cluster nodes.\nSo, when a slave starts to re-index the repository content, it will include *everything* (potentially also nodes that is hasn't received a ADD event for yet). \nWhen the index finishes, the repository will continue its startup. A bit later, the cluster component will also initialize and consequently sync. This will pull in the ADD events that were pending in a newer revision, on the master.\n\nThe V3 tries to poll the changes before the cluster.sync call, and preemptively generate DELETE events for all the ADD events that it finds on the current workspace.\n(this is similar to the JCR-905 patch, but with a much smaller scope).\n\n \nAnother feature introduced in the patch is to force flush the index after the initial index has been created.\nThis was artificially done in the original test case (no unit test though) by:\n> However, when I debug clusternode 2 and have a breakpoint (i.e., a pause of a few seconds at line 306 of RepositoryImpl.java - just before the clusternode is started), then the resultset contains two results, both with the same UUID.\n\nSo forcing the index flush will correctly reproduce the original problem. And I think should be the correct behaviour of the original index creation.\nOn the other hand, not flushing the index will hide the problem because the indexing queue is smart enough to remove doubles.\n\nBut, flushing the index basically invalidates JCR-905, which is a bit unexpected (see attached patch, by switching the feature flags off).\n\nOn the code itself: I guess the AbstractJournal could use a bit of refactoring on the event polling side.\n\n",
+            "date": "2011-12-06T12:28:34.384+0000",
+            "id": 3
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "Thanks for the patch.\n\nI see that you moved the initial index creation from the SearchIndex to the MultiIndex. This is how it was before JCR-1064, where we had to move it out of the MultiIndex. I'm not sure if it is now safe to move the initial index creation trigger back to the SearchIndex...\n\nThe are some imports which look odd. The class ClusterNode imports the MultiIndex, though this is probably just minor because it is not really required to compile the class, but only to resolve the javadoc reference. More troublesome is the import of DbClusterTestJCR3162 in SearchManager. That doesn't work because DbClusterTestJCR3162 is a test class.\n\nI'm also wordering if it is possible to fix this issue without introducing too much changes to the journal/cluster code. Wouldn't it be sufficient to use the existing journal and cluster node interface to get changes from a given revision?",
+            "date": "2011-12-13T13:00:59.700+0000",
+            "id": 4
+        },
+        {
+            "author": "Alex Deparvu",
+            "body": "hi, thanks for the feedback.\n\n> I see that you moved the initial index creation from the SearchIndex to the MultiIndex. This is how it was before JCR-1064, where we had to move it out of the MultiIndex. I'm not sure if it is now safe to move the initial index creation trigger back to the SearchIndex... \n\nI wasn't aware of that move. I can put it back, it just felt a bit off to have code that is potentially internal to MultiIndex outside controlled by SearchIndex.\n\n> The class ClusterNode imports the MultiIndex, though this is probably just minor because it is not really required to compile the class, but only to resolve the javadoc reference\nTrue. We can remove that import.\n\n> More troublesome is the import of DbClusterTestJCR3162 in SearchManager. That doesn't work because DbClusterTestJCR3162 is a test class. \nThat is just the feature flag. It will be removed once we agree on what the code should look like.\n\n>Wouldn't it be sufficient to use the existing journal and cluster node interface to get changes from a given revision?\nI'm not aware of any such interface. You have the local revision number available, but not the actual changes, that is why I've added the 'poll' operation.\n\nNow I'm investigating a lock on Cluster.sync introduced by this patch, so I'll upload another one soon that will take this feedback into consideration.",
+            "date": "2011-12-13T13:14:14.468+0000",
+            "id": 5
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "I think Journal.getRecords(long startRevision) could be used for that purpose.",
+            "date": "2011-12-13T13:28:45.602+0000",
+            "id": 6
+        },
+        {
+            "author": "Alex Deparvu",
+            "body": "> I think Journal.getRecords(long startRevision) could be used for that purpose.\n\nyes,that makes perfect sense! (and it gets rid of my lock problem :)\n\nAttaching v4:\n - using Journal.getRecords\n - cleanup of imports\n - moved feature flags from 'test' code to main code (I'll remove them entirely once the code is good)\n\n",
+            "date": "2011-12-13T14:33:46.796+0000",
+            "id": 7
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "Looks better now to me.\n\nSome more comments:\n\n- I would rather put getting the change log records into the SearchIndex, to not expand the api of the cluster node unnecessarily.\n- getChangeLogRecords() should check the producer id of the record\n- processing of ClusterRecords can be done without instanceof check\n- Record.getWorkspace() may return null for operations on the version storage (RepositoryImpl.getSearchManager() should pass null as workspace name?)\n- instance revision is also available from ClusterNode.getRevision()\n\nI'll attach a patch.",
+            "date": "2011-12-14T14:59:51.910+0000",
+            "id": 8
+        },
+        {
+            "author": "Alex Deparvu",
+            "body": "thanks for taking the time to rewrite the patch!\n\nIt looks good to me.\nI'll remove the feature flags and the ol' dirty fix and commit the code.",
+            "date": "2011-12-14T15:26:01.859+0000",
+            "id": 9
+        },
+        {
+            "author": "Alex Deparvu",
+            "body": "fixed in revision 1214329",
+            "date": "2011-12-14T16:44:18.283+0000",
+            "id": 10
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "> I'll remove the feature flags and the ol' dirty fix and commit the code.\n\nmy patch was just a quick rewrite of the patch to illustrate my comments. I didn't run any tests with the patch. Did you run the tests? Otherwise I suggest we revert the commit for now...",
+            "date": "2011-12-14T17:47:23.739+0000",
+            "id": 11
+        },
+        {
+            "author": "Alex Deparvu",
+            "body": "yes I did. do you see any tests failing?\n\nis there any reason for reverting the change?",
+            "date": "2011-12-14T17:52:59.674+0000",
+            "id": 12
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "I also noticed that the test is not included in the TestAll suite of the respective package. This means the new test is not run with every build.\n\nThe new test uses annotations to mark the test, which makes it difficult to use in the TestAll. Is there a specific reason why you used annotations instead of inheriting from JUnitTest.\n\nI quickly extended the test to make the test nodes versionable and check consistency on the complete workspace (including the version storage). Running the test now results in random failure for me.\n\nSee attached patch.",
+            "date": "2011-12-15T11:44:44.372+0000",
+            "id": 13
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "To me it looks like this is not yet fixed.",
+            "date": "2011-12-15T11:45:41.444+0000",
+            "id": 14
+        },
+        {
+            "author": "Alex Deparvu",
+            "body": "Reverted the patch.\n\nIt seems that there are some problems with the consistency chech on the versioning store.\n\nI'm not sure it is related to this code, but just to be on the safe side I've reverted the changes.\n\nThere are 2 issues blocking this issue, both tied to the query on the versioning store:\n -  some queries just fail (JCR-3182)\n - some queries are built wrong (possibly because of the same issue)\nPath \n  '/jcr:system/jcr:versionStorage/00'\nGenerated SQL2: \n  SELECT NODE.* FROM [nt:base] AS NODE WHERE ISCHILDNODE(NODE, [/jcr:system/jcr:versionStorage/0])",
+            "date": "2011-12-15T14:34:24.068+0000",
+            "id": 15
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "I can confirm that the test runs successful when the path in the query statement is quoted.\n\nI think now that we know what's going on, we can apply the patch again. Sorry, for being overly cautious....",
+            "date": "2011-12-15T16:27:41.496+0000",
+            "id": 16
+        },
+        {
+            "author": "Alex Deparvu",
+            "body": "Fixed in rev 1214842.\n\nFalse alarm, the errors came from an issue with the SQL2 Parsed (JCR-3182).\nAs it turns out, we have a workaround for it: quoting the path helps the parser work properly.",
+            "date": "2011-12-15T16:30:52.053+0000",
+            "id": 17
+        },
+        {
+            "author": "Kriss FR ",
+            "body": "Hello, \nYou remove a piece of code :\n// quick'n dirty fix for JCR-905\nif (e.isExternal()) {\n               removedNodes.add(e.getChildId());\n}\n\nIs it normal ? Because I have the same problem in JCR-905",
+            "date": "2016-10-10T12:34:31.695+0000",
+            "id": 18
+        },
+        {
+            "author": "Kriss FR ",
+            "body": "I made the test (add the remove code) and it's OK, the JCR 905 is correct.\nWhat can we do ?",
+            "date": "2016-10-11T09:08:19.828+0000",
+            "id": 19
+        }
+    ],
+    "component": "clustering",
+    "description": "JCR-905 is a quick and dirty fix and causes overhead on a cluster slave node when it processes revisions.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "JCR-3162",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Minor",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "Index update overhead on cluster slave due to JCR-905",
+    "systemSpecification": true,
+    "version": ""
+}

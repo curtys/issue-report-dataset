@@ -1,0 +1,77 @@
+{
+    "comments": [
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "Thanks for debugging this problem and suggesting fixes. So does this diff\ncapture your suggested fixes? \n\nIndex: Main.java\n===================================================================\nRCS file:\n/cvsroot/mozilla/js/rhino/toolsrc/org/mozilla/javascript/tools/debugger/Main.java,v\nretrieving revision 1.36\ndiff -u -r1.36 Main.java\n--- Main.java\t13 Feb 2003 03:01:09 -0000\t1.36\n+++ Main.java\t17 Apr 2003 01:31:08 -0000\n@@ -431,6 +431,8 @@\n     }\n     public void mouseReleased(MouseEvent e) {\n         checkPopup(e);\n+        requestFocus();\n+        getCaret().setVisible(true);\n     }\n \n     private void checkPopup(MouseEvent e) {\n@@ -2311,7 +2313,7 @@\n     synchronized boolean removeBreakpoint(int line) {\n         boolean wasBreakpoint = false;\n         if (breakpoints != null && line < breakpoints.length) {\n-            wasBreakpoint = (breakpoints[line] != BREAK_FLAG);\n+            wasBreakpoint = (breakpoints[line] == BREAK_FLAG);\n             breakpoints[line] = 0;\n         }\n         return wasBreakpoint;",
+            "date": "20030417T01:32:49",
+            "id": 0
+        },
+        {
+            "author": "pschwartau@meer.net",
+            "body": "cc'ing Igor -",
+            "date": "20030417T01:34:15",
+            "id": 1
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "Reviewed by Christopher Olivier. Fix committed:\n\nChecking in Main.java;\n/cvsroot/mozilla/js/rhino/toolsrc/org/mozilla/javascript/tools/debugger/Main.java,v\n <--  Main.java\nnew revision: 1.37; previous revision: 1.36\ndone",
+            "date": "20030421T15:00:07",
+            "id": 2
+        },
+        {
+            "author": "mpg@mpgsoftware.com",
+            "body": "This is not a fix.  The body of the method\norg.mozilla.javascript.tools.debugger.FileHeader::mouseClicked() should be \nempty.\n\nThe mouseReleased() method of the FileTextArea can remain unchanged.  The \nsuggested change does trigger a repaint, but it needs to be processed on \nmouseRelease in the FileHeader class, and this makes the change to the \nFileTextArea unnecessary (the two lines of changes to \nFileTextArea::mouseReleased() here:\n     +        requestFocus();\n     +        getCaret().setVisible(true);\n)\n\nThe changes to removeBreakpoint are needed:\n-            wasBreakpoint = (breakpoints[line] != BREAK_FLAG);\n+            wasBreakpoint = (breakpoints[line] == BREAK_FLAG);\n             \nand I suggest making the FileHeader class look like this (only up to the \nconstructor).  I've added a variable to make sure that the toggle only gets \nprocessed on the same line that the mousePressed occurred.\n\nclass FileHeader extends JPanel implements MouseListener {\n    private int pressLine = -1;\n    FileWindow fileWindow;\n\n    public void mouseEntered(MouseEvent e) {\n    }\n    public void mousePressed(MouseEvent e) {\n\t\tFont font = fileWindow.textArea.getFont();\n\t\tFontMetrics metrics = getFontMetrics(font);\n\t\tint h = metrics.getHeight();\n\t\tpressLine = e.getY() / h;\n    }\n    public void mouseClicked(MouseEvent e) {\n    }\n    public void mouseExited(MouseEvent e) {\n    }\n    public void mouseReleased(MouseEvent e) {\n        if (e.getComponent() == this &&\n          (e.getModifiers() & MouseEvent.BUTTON1_MASK) != 0) {\n            int x = e.getX();\n            int y = e.getY();\n            Font font = fileWindow.textArea.getFont();\n            FontMetrics metrics = getFontMetrics(font);\n            int h = metrics.getHeight();\n            int line = y/h;\n            if (line == pressLine) {\n            \tfileWindow.toggleBreakPoint(line + 1);\n            }\n            else {\n            \tpressLine = -1;\n            }\n        }\n    }\n\n\n\n\n\n\n\n\n",
+            "date": "20030421T16:23:40",
+            "id": 3
+        },
+        {
+            "author": "mpg@mpgsoftware.com",
+            "body": "Also, the reason why it should be processed on mouseReleased, is that many \nusers can not press and release the mouse on the same pixel.  The press + \nrelease combination is much less difficult for most users.\n\nThanks",
+            "date": "20030421T16:27:56",
+            "id": 4
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "Okay, thanks. I appreciate your help; I'm not a Swing programmer and the\ndebugger UI code was donated by someone else. \n\nSo are these the changes you suggest?\n\nIndex: Main.java\n===================================================================\nRCS file:\n/cvsroot/mozilla/js/rhino/toolsrc/org/mozilla/javascript/tools/debugger/Main.java,v\nretrieving revision 1.37\ndiff -u -r1.37 Main.java\n--- Main.java\t21 Apr 2003 14:59:22 -0000\t1.37\n+++ Main.java\t21 Apr 2003 17:44:07 -0000\n@@ -432,8 +432,6 @@\n     }\n     public void mouseReleased(MouseEvent e) {\n         checkPopup(e);\n-        requestFocus();\n-        getCaret().setVisible(true);\n     }\n \n     private void checkPopup(MouseEvent e) {\n@@ -756,28 +754,38 @@\n };\n \n class FileHeader extends JPanel implements MouseListener {\n-\n+    private int pressLine = -1;\n     FileWindow fileWindow;\n \n     public void mouseEntered(MouseEvent e) {\n     }\n     public void mousePressed(MouseEvent e) {\n+        Font font = fileWindow.textArea.getFont();\n+        FontMetrics metrics = getFontMetrics(font);\n+        int h = metrics.getHeight();\n+        pressLine = e.getY() / h;\n     }\n     public void mouseClicked(MouseEvent e) {\n+    }\n+    public void mouseExited(MouseEvent e) {\n+    }\n+    public void mouseReleased(MouseEvent e) {\n         if (e.getComponent() == this &&\n-          (e.getModifiers() & MouseEvent.BUTTON1_MASK) != 0) {\n+          (e.getModifiers() & MouseEvent.BUTTON1_MASK) != 0) \n+        {\n             int x = e.getX();\n             int y = e.getY();\n             Font font = fileWindow.textArea.getFont();\n             FontMetrics metrics = getFontMetrics(font);\n             int h = metrics.getHeight();\n             int line = y/h;\n-            fileWindow.toggleBreakPoint(line + 1);\n+            if (line == pressLine) {\n+                fileWindow.toggleBreakPoint(line + 1);\n+            }\n+            else {\n+                pressLine = -1;\n+            }\n         }\n-    }\n-    public void mouseExited(MouseEvent e) {\n-    }\n-    public void mouseReleased(MouseEvent e) {\n     }\n \n     FileHeader(FileWindow fileWindow) {\n",
+            "date": "20030421T17:48:05",
+            "id": 5
+        },
+        {
+            "author": "mpg@mpgsoftware.com",
+            "body": "Yes, those look like the changes.  \nI don't quite know what this means:\n\n     private void checkPopup(MouseEvent e) {\n@@ -756,28 +754,38 @@\n };\n \n\nbut I have made no changes to the checkPopup(...) method.  I'm hoping that \nthat's what \"@@ -756,28 +754,38 @@\" means, namely \"no changes\", to\norg.mozilla.javascript.tools.debugger.Main.FileTextArea::checkPopup(MouseEvent).\n\nBut yes the looks perfect.  The method body of what was mouseClicked is now \nmouseReleased, and the toggle only occurs if the line of text associated with \nthe mouseReleased is the same as the line of text associated with mousePressed, \nwhich is what we have here.\n\nThis appears to fix it.  \nThanks.\n",
+            "date": "20030421T18:27:04",
+            "id": 6
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "Yes, the @@ -756,28 +754,38 @@ means \"no changes\".\n\nChecking in Main.java;\n/cvsroot/mozilla/js/rhino/toolsrc/org/mozilla/javascript/tools/debugger/Main.java,v\n <--  Main.java\nnew revision: 1.38; previous revision: 1.37\n\nThanks for your help.\n",
+            "date": "20030421T19:44:47",
+            "id": 7
+        },
+        {
+            "author": "pschwartau@meer.net",
+            "body": "Verified FIXED. The red breakpoint toggles correctly now -",
+            "date": "20030421T20:26:01",
+            "id": 8
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Targeting as resolved against 1.5R5",
+            "date": "20040213T11:52:01",
+            "id": 9
+        }
+    ],
+    "component": "Core",
+    "description": "User-Agent:       Mozilla/4.0 (compatible; MSIE 5.5; Windows NT 4.0)\nBuild Identifier: Rhino 1.5R4\n\nIn the Rhino debugger, clearing a breakpoint does not get properly repainted.\n\nIn the following method (org/mozilla/javascript/tools/debugger/Main.java, \nSourceInfo class):\n\n    synchronized boolean removeBreakpoint(int line) {\n        boolean wasBreakpoint = false;\n        if (breakpoints != null && line < breakpoints.length) {\n            wasBreakpoint = (breakpoints[line] == BREAK_FLAG);\n            breakpoints[line] = 0;\n        }\n        return wasBreakpoint;\n    }\n\nThe line:\n            wasBreakpoint = (breakpoints[line] == BREAK_FLAG);\n\nwas incorrectly coded like this:\n\n            wasBreakpoint = (breakpoints[line] != BREAK_FLAG);\n\nChanging the \"!=\" to \"==\" fixes the bug.\n\nAlso, as a tip to make toggling breakpoints easier, move the body of the \nFileHeader.mouseClicked to FileHeader.mouseReleased. The Java mouseClicked \nevent is too limiting - it is only posted if you press & release the mouse \nbutton on the exact same pixel. It's difficult for many users to be so precise, \nand it winds up looking like the feature doesn't work.\n\nReproducible: Always\n\nSteps to Reproduce:\n1. Set a breakpoint in the Rhino debugger by clicking on the left margin.\n2. Try to remove the breakpoint created in step (1) by clicking on it.\n3. It will NOT disappear.  Move the window off screen and back on screen and it \nwill repaint correctly.\n\nActual Results:  \nIt did not repaint as described above.  See details for a solution to this bug.",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "202344",
+    "issuetypeClassified": "OTHER",
+    "issuetypeTracker": "BUG",
+    "priority": "-- normal",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "clearing a breakpoint does not get properly repainted",
+    "systemSpecification": false,
+    "version": "other"
+}

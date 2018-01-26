@@ -1,0 +1,59 @@
+{
+    "comments": [
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Created an attachment (id=13011)\nPatch (take 1)\n",
+            "date": "2004-10-10T23:44:07.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "This should take care of the problem. Let me know what you think\n\nOleg",
+            "date": "2004-10-10T23:44:57.000+0000",
+            "id": 1
+        },
+        {
+            "author": ".t.may",
+            "body": "Thanks for the quick response.  Please give me some time to look things over \nthoroughly and get back to you.",
+            "date": "2004-10-13T03:39:11.000+0000",
+            "id": 2
+        },
+        {
+            "author": ".t.may",
+            "body": "The patch appears to be correct.  But I haven't had time to check through the \nentire execution path of the code I'm using.  And I haven't had a chance to \ncontrive a test scenario.  But it does look good enough for alpha, thanks!",
+            "date": "2004-10-14T03:31:32.000+0000",
+            "id": 3
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Folks, any objections to committing the patch?\n\nOleg",
+            "date": "2004-10-16T00:09:56.000+0000",
+            "id": 4
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Looks good to me.\n\nMike",
+            "date": "2004-10-18T03:12:43.000+0000",
+            "id": 5
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Patch committed.\n\nOleg",
+            "date": "2004-10-20T01:12:49.000+0000",
+            "id": 6
+        }
+    ],
+    "component": "HttpClient (classic)",
+    "description": "There are a couple of places where you're catching InterruptedIOException \nthat should catch SocketTimeoutException instead.  For example, from \nHttpConnection:\n\n    protected boolean isStale() {\n        boolean isStale = true;\n        if (isOpen) {\n            // the connection is open, but now we have to see if we can \nread it\n            // assume the connection is not stale.\n            isStale = false;\n            try {\n                if (inputStream.available() == 0) {\n                    try {\n                        socket.setSoTimeout(1);\n                        inputStream.mark(1);\n                        int byteRead = inputStream.read();\n                        if (byteRead == -1) {\n                            // again - if the socket is reporting all data \nread,\n                            // probably stale\n                            isStale = true;\n                        } else {\n                            inputStream.reset();\n                        }\n                    } finally {\n                        socket.setSoTimeout(this.params.getSoTimeout());\n                    }\n                }\n            } catch (InterruptedIOException e) {\n                // aha - the connection is NOT stale - continue on!\n\nHere the catch of InterruptedIOException is intended to happen when \ninputStream.read() terminates due to the socket.setSoTimeout() time being \nreached.  However, it could also occur because Thread.interrupt() has been \ncalled, in which case \"continue on\" is not what should happen, instead, the \nrequest should terminate.\n\nThere are legitimate reasons why someone might want to interrupt the \nhttpclient code, for example, httpclient does not provide a hard timeout on \nthe total length of time a request may take, including connecting, sending \nthe request, and receiving the complete response, so to enforce a hard \ntimeout it is necessary to run the request in a worker thread and interrupt \nit if it hasn't completed before the timeout expires (the technique used in \nyour TimeoutController class).\n\nNote that SocketTimeoutException was added in 1.4.  For compatibility with \nolder jdk versions, the code can catch InterruptedIOException and use \ngetClass() to see whether it is a SocketTimeoutException.\n\nThere are probably other places in the code where InterruptedIOException is \ncaught and interpreted as a socket timeout, and where Thread.interrupt() \nwill not have the proper effect of causing the request to terminate ASAP, \nbut I'm not familiar enough with the code to find them all.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "HTTPCLIENT-386",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "HTTPCLIENT",
+    "project": "HTTPCLIENT",
+    "summary": "Catch SocketTimeoutException not InterruptedIOException",
+    "systemSpecification": true,
+    "version": "3.0 Alpha 2"
+}

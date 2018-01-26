@@ -1,0 +1,95 @@
+{
+    "comments": [
+        {
+            "author": "Michael D\u00fcrig",
+            "body": "Aforementioned patch",
+            "date": "2010-08-12T23:36:10.114+0000",
+            "id": 0
+        },
+        {
+            "author": "Stefan Guggisberg",
+            "body": "-1, i consider this rather a hack; i prefer to avoid in-transparent side effects.",
+            "date": "2010-08-13T08:00:02.393+0000",
+            "id": 1
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "The exact mechanism of how this is done can be debated, but I think it's a great idea that we could selectively relax constraint checks for trusted code inside jackrabbit-core. Something like this has the power to significantly simplify many parts of our codebase and avoid extra constructs like NodeStateEx or ProtectedItemModifier.\n\nAs an example, consider the current code snippet:\n\n    PropertyState propState;\n    if (!nodeState.hasPropertyName(NameConstants.JCR_LOCKOWNER)) {\n        propState = stateMgr.createNew(NameConstants.JCR_LOCKOWNER, nodeId);\n        propState.setType(PropertyType.STRING);\n        propState.setMultiValued(false);\n    } else {\n        propState = (PropertyState) stateMgr.getItemState(new PropertyId(nodeId, NameConstants.JCR_LOCKOWNER));\n    }\n    propState.setValues(new InternalValue[] { InternalValue.create(lockOwner) });\n    nodeState.addPropertyName(NameConstants.JCR_LOCKOWNER);\n    stateMgr.store(nodeState);\n\nWith a solution like the one Michael is proposing, this could be simplified to:\n\n    node.setProperty(Property.JCR_LOCKOWNER, lockOwner);\n\nI truly hope we'll find a consensus on how to implement this!\n",
+            "date": "2010-08-13T08:59:19.261+0000",
+            "id": 2
+        },
+        {
+            "author": "Stefan Guggisberg",
+            "body": "> The exact mechanism of how this is done can be debated, but I think it's a great idea that we could selectively relax constraint checks for trusted code inside jackrabbit-core.\n\nagreed. my -1 applies to the provided patch. ",
+            "date": "2010-08-13T09:29:41.671+0000",
+            "id": 3
+        },
+        {
+            "author": "Alexander Klimetschek",
+            "body": "I think a single \"checks-on/off\" toggle (which the patch adds IIUC) is the best way to do that - any more fine-granular mechanism makes it even more difficult. Also the places calling unchecked operations are clearly visible. So I would go with a +1.",
+            "date": "2010-08-13T09:49:16.599+0000",
+            "id": 4
+        },
+        {
+            "author": "Michael D\u00fcrig",
+            "body": "Stefan,\n\n> i prefer to avoid in-transparent side effects. \n\nIn general Jackrabbit is full of such side effects. wrt those, my approach is quite contained: I evaluate a closure in the scope of an environment. \n\nWhat would you suggest for implementing this? As Jukka pointed out, such a mechanism might be of great value as it promotes code reuse. I'd greatly prefer one well contained side effect instead of uncontrollable proliferation of duplicated low level code. ",
+            "date": "2010-08-13T10:34:21.533+0000",
+            "id": 5
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "The attached patch (JCR-2714-2.patch) is a somewhat modified version of Michael's solution. I figured that it's not really necessary to involve the SessionState in this (even though I originally pointed Michael in that direction), as we can use normal synchronization to ensure that the effect of relaxed checks only affect a single thread. This patch encapsulates this functionality inside ItemValidator and avoids the public enabledChecks access methods.",
+            "date": "2010-08-13T12:31:31.707+0000",
+            "id": 6
+        },
+        {
+            "author": "Stefan Guggisberg",
+            "body": "+1 for JCR-2714-2.patch\n\nthanks, jukka.\n\none minor issue, though. the method name\n'performUnchecked' is IMO misleading since\nchecks aren't disabled entirely. \n\n'performRelaxed' or just 'perform' is probably\nmore appropriate, WDYT?",
+            "date": "2010-08-13T12:52:27.514+0000",
+            "id": 7
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Agreed about the naming, good point.",
+            "date": "2010-08-13T12:58:26.390+0000",
+            "id": 8
+        },
+        {
+            "author": "Michael D\u00fcrig",
+            "body": "Thanks Jukka. This looks good to me. Although I'd prefer to have the performUnchecked method on SessionState I think your solution is better since it doesn't require to expose ItemValidator's state.",
+            "date": "2010-08-13T13:04:51.717+0000",
+            "id": 9
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "I committed the patch with performRelaxed() as the method name in revision 985185.",
+            "date": "2010-08-13T13:16:25.283+0000",
+            "id": 10
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Having such a method in ItemValidator means that we need to get rid of the public SessionImpl.getItemValidator() method. I did that in revision 985218 by instead using the more appropriate SessionContext.getItemValidator() method.",
+            "date": "2010-08-13T14:52:59.707+0000",
+            "id": 11
+        },
+        {
+            "author": "Michael D\u00fcrig",
+            "body": "Fixed at 985218.\nThanks Jukka",
+            "date": "2010-08-17T12:54:11.213+0000",
+            "id": 12
+        }
+    ],
+    "component": "jackrabbit-core",
+    "description": "I would like to be able to selectively disable checks in ItemValidator in the scope of an operation performed through methods of the SessionState class. Doing so would provide simple means for internally modifying (for example) protected items. Currently such modifications must be done 'manually' on the item state level. This approach is very error prone and not very DRY.\n\nWith my upcoming patch in place, setting a protected property would look like this:\n\nfinal Node parent = ...\nfinal Value value = ...\nSessionState sessionState = sessionContext.getSessionState();\n\nProperty property = sessionState.performUnchecked(new SessionOperation<Property>() {\n    public Property perform(SessionContext context) throws RepositoryException {\n        return parent.setProperty(\"foo\", value);\n    }\n}, ItemValidator.CHECK_CONSTRAINTS);\n\nThat is, users need to have access to the session context in order to disable checks which makes this only usable from inside Jackrabbit. ",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "JCR-2714",
+    "issuetypeClassified": "RFE",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Major",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "Selective disabling of checks in ItemValidator",
+    "systemSpecification": true,
+    "version": "2.2"
+}

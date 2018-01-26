@@ -1,0 +1,83 @@
+{
+    "comments": [
+        {
+            "author": "Shai Erera",
+            "body": "Hmm ... I see that MP's methods are package private, so nobody can really extend MP, but only LMP, right? I wonder why is that? I still need to come up w/ new method names because the code still needs to call the methods w/ the IndexWriter arg (for back-compat), but I wonder if we shouldn't make the methods public?",
+            "date": "2009-07-28T19:58:03.232+0000",
+            "id": 0
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "How about we:\n\n  * Simply change the methods.  Yes it's technically a break in back-compat, but since they are package private, and so advanced (I think very few people have customized their merge policy/scheduler), a compile time error on upgrade seems fine.\n\n  * Make the APIs public (perhaps add a unit test, outside of oal.index package, asserting that all that's required is in fact public)\n\n  * Mark the APIs as subject to change.",
+            "date": "2009-07-29T12:40:50.737+0000",
+            "id": 1
+        },
+        {
+            "author": "Shai Erera",
+            "body": "I don't mind doing that ... but note that LMP's methods are public (it overrides and declare them public) and so I was thinking that someone could potentially have written his own LMP (no one can write their own MP today). But if you're fine w/ me doing that, it's fine by me as well.\n\nBTW - I don't need to come up w/ new names after all, since by just adding the same method, w/o the IW arg changes its signature. But I agree that having just the right form makes more sense.",
+            "date": "2009-07-29T12:46:40.470+0000",
+            "id": 2
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "I think subclassing LMP is also extremely advanced, ie, it's OK to make an exception to our back-compat policy.",
+            "date": "2009-07-29T14:24:38.922+0000",
+            "id": 3
+        },
+        {
+            "author": "Shai Erera",
+            "body": "Adds a ctor w/ IndexWriter to MergePolicy, LogMergePolicy, and its extensions.\nFixed tests and IndexWriter code\nFixed tags\n\nAll tests pass",
+            "date": "2009-07-29T15:14:56.059+0000",
+            "id": 4
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Patch looks good Shai!  Only change I made was to have IndexWriter writer be final in MergePolicy.  I'll commit in a day or two...",
+            "date": "2009-07-30T09:36:19.105+0000",
+            "id": 5
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Thanks Shai!",
+            "date": "2009-08-01T09:23:08.302+0000",
+            "id": 6
+        },
+        {
+            "author": "Mark Miller",
+            "body": "bq. I think subclassing LMP is also extremely advanced, ie, it's OK to make an exception to our back-compat policy.\n\nI don't disagree, especially since MergePolicy was already marked as experimental and subject to change - but just as a history note: its not just subclasses it breaks - I'm sure its rare, but Solr instantiates a MergePolicy with newInstance, which now fails because you have to pass an IndexWriter.",
+            "date": "2009-08-04T00:04:29.423+0000",
+            "id": 7
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "bq. Solr instantiates a MergePolicy with newInstance, which now fails because you have to pass an IndexWriter.\n\nSigh.  Sorry :(  How to fix?  Can Solr seek a Constructor that takes an IndexWriter instance as its single arg, instead?",
+            "date": "2009-08-04T10:09:22.966+0000",
+            "id": 8
+        },
+        {
+            "author": "Shai Erera",
+            "body": "Yes I had to fix CreateIndexTask for that. We can add an empty ctor, but that would be a problem, as it will set the writer member to null. That's what I originally meant when I suggested to add the new behavior but not use it yet and deprecate the other methods and ctors.\n\nIs it a problem for Solr to follow the logic as in CreateIndexTask? I'm not asking from the technical perspective - that's obviously not a problem, but release-schedule wise? Maybe you can have a \"fixpack release\" which will be compliant w/ the 2.9 back-compat breaks?",
+            "date": "2009-08-04T10:50:34.780+0000",
+            "id": 9
+        },
+        {
+            "author": "Mark Miller",
+            "body": "Thanks guys - we can fix this in Solr no problem - the SolrIndexWriter is creating the policy, so its easy enough to pass it to the constructor. I hadn't evaluated a fix yet, was just pointing out the back compat break beyond package private stuff.\n\nCertainly an easy adjustment on Solr's end though, and it seems to me that back compat break was a fair one.",
+            "date": "2009-08-04T16:18:29.082+0000",
+            "id": 10
+        }
+    ],
+    "component": "core/index",
+    "description": "MergePolicy does not require an IW upon construction, but requires one to be passed as method arg to various methods. This gives the impression as if a single MP instance can be shared across various IW instances, which is not true for all MPs (if at all). In addition, LogMergePolicy uses the IW instance passed to these methods incosistently, and is currently exposed to potential NPEs.\n\nThis issue will change MP to require an IW instance, however for back-compat reasons the following changes will be made:\n# A new MP ctor w/ IW as arg will be introduced. Additionally, for back-compat a default ctor will also be declared which will assign null to the member IW.\n# Methods that require IW will be deprecated, and new ones will be declared.\n#* For back-compat, the new ones will not be made abstract, but will throw UOE, with a comment that they will become abstract in 3.0.\n# All current MP impls will move to use the member instance.\n# The code which calls MP methods will continue to use the deprecated methods, passing an IW even that it won't be necessary --> this is strictly for back-compat.\n\nIn 3.0, we'll remove the deprecated default ctor and methods, and change the code to not call the IW method variants anymore.\n\nI hope that I didn't leave anything out. I'm sure I'll find out when I work on the patch :).",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-1763",
+    "issuetypeClassified": "OTHER",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Minor",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "MergePolicy should require an IndexWriter upon construction",
+    "systemSpecification": true,
+    "version": ""
+}

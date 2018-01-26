@@ -1,0 +1,113 @@
+{
+    "comments": [
+        {
+            "author": "Michael McCandless",
+            "body": "Patches from Marc showing the issue (thanks Marc!).",
+            "date": "2011-10-13T15:47:48.337+0000",
+            "id": 0
+        },
+        {
+            "author": "Robert Muir",
+            "body": "we should run the comparisons as a public static void main i think instead of extending LuceneTestCase.\n\n4.0 could be getting SimpleText etc :)",
+            "date": "2011-10-13T16:04:04.331+0000",
+            "id": 1
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Same tests, just cut over to static void main instead.",
+            "date": "2011-10-13T16:13:10.027+0000",
+            "id": 2
+        },
+        {
+            "author": "Robert Muir",
+            "body": "3.x:\n\n    [junit] Time taken indexing: 114\n    [junit] Time taken closing: 20\n    [junit] Time taken whole process: 134\n\n4.x:\n\n    [junit] Time taken indexing: 133\n    [junit] Time taken closing: 1\n    [junit] Time taken whole process: 134\n\nSo for me, its the same speed.\n\nI didnt use the public static void main, i used the test as-is, except i disabled assertions and forced StandardCodec.\n",
+            "date": "2011-10-13T16:16:33.987+0000",
+            "id": 3
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "I actually see 3.x running slower:\n\nTrunk:\n{noformat}\n  Time taken indexing: 184\n  Time taken closing: 2\n  Time taken whole process: 187\n{noformat}\n\n3.x:\n{noformat}\nTime taken indexing: 205\n  Time taken closing: 40\n  Time taken whole process: 245\n{noformat}\n\nBut, this is because 3.x does a level 2 merge just before close, and\nthe close must wait for that merge to complete.  Whereas trunk never\ngets to the level 2 merge (only level 0/1), likely because trunk's RAM\nefficiency is a better and so it packs more docs into each level 0 segment.\n\nIf we pushed the number of doc up to maybe 1.1M then we should\nsimilarly see trunk trigger a level 2 merge.\n\nReally when benchmarking indexing it's best to just close the IW\nwithout waiting for merges; otherwise you're comparing apples &\noranges.\n",
+            "date": "2011-10-13T16:31:11.501+0000",
+            "id": 4
+        },
+        {
+            "author": "Marc Sturlese",
+            "body": "Seeing others results the \"problem\" seems to be merges are very slow on trunk on Snow Leopard (where I've been running the tests).\nI've attached the whole stdout for both executions. Soon will run the tests on a debian box and post the results too.\nHere are the results:\ntrunk\nTime taken indexing: 927\nTime taken closing: 283\nTime taken whole process: 1211\n\n3.4\nTime taken indexing: 303\nTime taken closing: 37\nTime taken whole process: 340\n",
+            "date": "2011-10-13T17:57:25.289+0000",
+            "id": 5
+        },
+        {
+            "author": "Robert Muir",
+            "body": "something is severely wrong on mac os X with NIOFSDirectory (when merging, on the read side).\n\nwith mmapdirectory, its fast.",
+            "date": "2011-10-13T18:08:32.534+0000",
+            "id": 6
+        },
+        {
+            "author": "Robert Muir",
+            "body": "simplefs is slow too.",
+            "date": "2011-10-13T18:24:38.263+0000",
+            "id": 7
+        },
+        {
+            "author": "Marc Sturlese",
+            "body": "I've tried snow leopard and MMap. Trunk went much better than before:\n\ntrunk\nTime taken indexing: 416\nTime taken closing: 1\nTime taken whole process: 417\n\n3.4:\nTime taken indexing: 321\nTime taken closing: 46 \nTime taken whole process: 368\n\n\n",
+            "date": "2011-10-13T18:40:02.994+0000",
+            "id": 8
+        },
+        {
+            "author": "Robert Muir",
+            "body": "it looks like the bug will especially affect any directory that uses bufferedindexinput (NIOFS/SimpleFS).\n\nThe problem is multitermsenum doesnt reuse the sub-docs&positionsenums, so for each term*segment we clone the input, and\nbufferedindexinput.clone() sets the clone's buffer to null.\n\nso across lots of low freq-terms we re-read 4096 bytes (MERGE_BUFFER_SIZE) to refill the buffer on each one...\n\nmmapdirectory is less affected because it has no buffer to re-read but seems like fixing the reusing would even help it...",
+            "date": "2011-10-13T19:10:46.485+0000",
+            "id": 9
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Patch, fixing the lack of reuse in MultiTermsEnum (used during merging).\n\nThe lack of re-use meant we were cloning 2 IndexInputs (frq/prx) per term being merged!  For NIOFSDir this then meant we would read the same 4K region of the file over and over and over again.\n\nI added a test to catch \"over-cloning\", but, the test sometimes fails when it gets pulsing codec because that codec does not properly reuse (a known issue that we should now fix!).",
+            "date": "2011-10-13T20:41:50.258+0000",
+            "id": 10
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "This seed will fail due to pulsing codec:\n{noformat}\notv TestForTooMuchCloning.test -seed 6407e19e4835e90d:-d7cdae0d4a378eb:-ee1a92b677887\n{noformat}\n",
+            "date": "2011-10-13T20:43:01.227+0000",
+            "id": 11
+        },
+        {
+            "author": "Robert Muir",
+            "body": "i opened LUCENE-3517 for the pulsing bug.\n\nBut i think we should fix this 'general bug' which affects all codecs first?\nI think LUCENE-3517 might involve attributes-policeman :)\n\nwe could do this:\n{noformat}\n    String bodyCodec = CodecProvider.getDefault().getFieldCodec(\"body\");\n    assumeFalse(\"PulsingCodec fails this test because of over-cloning\", bodyCodec.equals(\"Pulsing\") || bodyCodec.equals(\"MockRandom\"));\n{noformat}",
+            "date": "2011-10-13T21:18:27.398+0000",
+            "id": 12
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "New patch.\n\nI changed the test to just use random terms, and also added the\nworkaround for Pulsing's non-reuse.\n\nI discovered SimpleText also fails to properly reuse (it failed the\nnew test) and fixed that.\n\nI think it's ready!\n",
+            "date": "2011-10-14T12:05:46.401+0000",
+            "id": 13
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Thank you Marc and Erick!  This was a devious issue and severely impacted merge performance for non-MMapDir impls.",
+            "date": "2011-10-14T19:41:43.787+0000",
+            "id": 14
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "This bug was only present in 4.0.",
+            "date": "2011-10-24T22:46:15.787+0000",
+            "id": 15
+        }
+    ],
+    "component": "core/index",
+    "description": "Opening an issue to pursue the possible slowdown Marc Sturlese uncovered.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-3515",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "Possible slowdown of indexing/merging on 3.x vs trunk",
+    "systemSpecification": true,
+    "version": ""
+}

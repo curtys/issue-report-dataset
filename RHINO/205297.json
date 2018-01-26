@@ -1,0 +1,47 @@
+{
+    "comments": [
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 122990\n Java test case with call to LazilyLoadedCtor to trigger the problem\n\nTo test, compile and add to CLASSPATH Test class and then run the following\nscript in Rhino shell:\n\nPackages.Test.lazilyInit(this);\n\nprint(\"OK\");\n\nwhich should print OK but without the fix the the result is an exception.",
+            "date": "20030512T08:46:44",
+            "id": 0
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 122991\nFix",
+            "date": "20030512T08:47:30",
+            "id": 1
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "I committed fix to the main bramch and Rhino150R4_BRANCH as well since it is a\nregression since 1.5R3 even it is hard to trigger.\n",
+            "date": "20030512T16:59:52",
+            "id": 2
+        },
+        {
+            "author": "pschwartau@meer.net",
+            "body": "Verified FIXED. Igor: thank you for the testcase!\n\n\nBEFORE:\n[ ] java org.mozilla.javascript.tools.shell.Main -f test.js\njs: uncaught JavaScript exception: org.mozilla.javascript.WrappedException:\nWrappedException of null\n\nAFTER:\n[ ] java org.mozilla.javascript.tools.shell.Main -f test.js\nOK",
+            "date": "20030514T21:20:13",
+            "id": 3
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Targeting as resolved against 1.5R5",
+            "date": "20040213T11:42:46",
+            "id": 4
+        }
+    ],
+    "component": "Core",
+    "description": "My changes to ScriptableObject.setBySetter, see revision 1.56 that I put to fix\na potential race condition with one-time setters contains a bug that leads to\ninfinite recursion with rather specific usage of this feature.\n\n----------------------------\nrevision 1.56\ndate: 2002/12/03 12:38:55;  author: igor%mir2.org;  state: Exp;  lines: +115 -10\n6\n...\n2. Fixing a potential race condition in setBySetter when a setter slot becomes\nan ordinary slot in response to a setter returning a value.\n\nDuring execution of setBySetter a different thread can see initial null value in\nslot.value instead of the result of setter call as it is possible that JVM will\nfirst update slot.flags and only then slot.value for that thread. The fix\nreplaces the old getter slot  by an ordinary one under synchronized block for\nthat I added new getSlotPosition method and updated the rest of code accordingly.\n----------------------------\n\nThe problem with the changes is that lastAccess is not cleared in setBySetter\nand will contain the old setter so the next get access for the same property\nwill invoke the old getter which in case of LazilyLoadedCtor will invoke put and\nsetBySetter recursively.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "205297",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "-- normal",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "Infinite recursion with LazilyLoadedCtor",
+    "systemSpecification": false,
+    "version": "other"
+}

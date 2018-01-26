@@ -1,0 +1,47 @@
+{
+    "comments": [
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "A good suggestion. I'll change the one instance you point out and examine the \nother uses of getMethods.",
+            "date": "20000207T00:12:45",
+            "id": 0
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "Fixed:\nChecking in FunctionObject.java;\n/m/pub/mozilla/js/rhino/org/mozilla/javascript/FunctionObject.java,v  <--  Funct\nionObject.java\nnew revision: 1.12.2.2; previous revision: 1.12.2.1\ndone\n",
+            "date": "20000208T18:10:22",
+            "id": 1
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "From aw@softcom.com:\n\nRecently a change was made to FunctionObject.findMethods. It was changed to use\nClass.getDeclaredMethods instead of Class.getMethods.\nhttp://bugzilla.mozilla.org/show_bug.cgi?id=26454\n\nThe problem is, getDeclaredMethods returns all public, private, protected and\npackage access methods while getMethods only returns public methods. So when\nRhino is being run under a SecurityManager, it fails with a SecurityException\n(because it is trying to access private methods).\n\nSo\u00a0I\u00a0think\u00a0it\u00a0should\u00a0be\u00a0changed\u00a0back\u00a0to\u00a0getMethods.\n\njava -Djava.security.manager=java.lang.SecurityManager\norg.mozilla.javascript.tools.shell.Main examples\\NervousText.js\nException in thread \"main\" org.mozilla.javascript.WrappedException:\nWrappedException of access denied (java.lang.RuntimePermission\naccessDeclaredMembers )\nat org.mozilla.javascript.WrappedException.wrapException(WrappedException.java:111)\nat org.mozilla.javascript.Context.initStandardObjects(Context.java, Compiled Code)\n\u00a0\u00a0\u00a0\u00a0\u00a0\u00a0\u00a0\u00a0at\u00a0org.mozilla.javascript.tools.shell.Global.<init>(Global.java:74)\n\u00a0\u00a0\u00a0\u00a0\u00a0\u00a0\u00a0\u00a0at\u00a0org.mozilla.javascript.tools.shell.Main.exec(Main.java:88)\n\u00a0\u00a0\u00a0\u00a0\u00a0\u00a0\u00a0\u00a0at\u00a0org.mozilla.javascript.tools.shell.Main.main(Main.java:74)\n\n\nAndrew\n",
+            "date": "20000229T21:51:39",
+            "id": 2
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "I checked in changes that revert back to using getMethods(). I couldn't get\naround security exceptions, even using getModifiers to filter out everything but\nprivate members.\n\nHowever, I did put in some performance changes to cache the results of\ngetMethods(), so I hope that performance won't suffer.\n",
+            "date": "20000229T21:53:41",
+            "id": 3
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "I just checked in changes to go back to getDeclaredMethods. I was able to get it \nrunning with the security manager. \n\nMy previous checkin using getDeclaredMethods didn't check for private or \nprotected members. But even when I fixed that bug, I still got security \nexceptions. The problem was that I was using class compilation mode, which \nattempts to create a class loader. \n\nSo now I'm able to execute\n\njava -Djava.security.manager=java.lang.SecurityManager\norg.mozilla.javascript.tools.shell.Main -opt -1 examples\\NervousText.js\n\nwithout errors. Andrew, do you remove the optimizer package when you run with a \nsecurity manager so that you get interpretive mode without using \"-opt -1\"?",
+            "date": "20000301T19:02:22",
+            "id": 4
+        }
+    ],
+    "component": "Core",
+    "description": "The following piece of code comes from FunctionObject.findMethods().\nIt appears that this method wants the locally declared public methods on the \nclass passed in. Class.getMethods() is a relatively expensive operation (as my \nprofiler reports) since all superclasses have to be scanned going up the tree \nand put together in an array. This can be expensive when the class hierarchy is \ndeep. A more efficient method would be to call Class.getDeclaredMethods() and \nfilter by name (as you already do) and by modifier using the \nMethod.getModifiers() method.\nOr am I missing something ? I am using the latest rhino tip as of last week.\n\nRegards\nAndi..\n\n    // TODO: Make not public\n    /**\n     * Finds methods of a given name in a given class.\n     *\n     * <p>Searches <code>clazz</code> for methods with name\n     * <code>name</code>. Maintains a cache so that multiple\n     * lookups on the same class are cheap.\n     *\n     * @param clazz the class to search\n     * @param name the name of the methods to find\n     * @return an array of the found methods, or null if no methods\n     *         by that name were found.\n     * @see java.lang.Class#getMethods\n     */\n    public static Method[] findMethods(Class clazz, String name) {\n        Vector v = new Vector(5);\n        Method[] methods = clazz.getMethods();\n        for (int i=0; i < methods.length; i++) {\n            if (methods[i].getDeclaringClass() == clazz &&\n                methods[i].getName().equals(name)){\n                v.addElement(methods[i]);\n            }\n        }\n        if (v.size() == 0) {\n            return null;\n        }\n        Method[] result = new Method[v.size()];\n        v.copyInto(result);\n        return result;\n    }",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "26454",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "BUG",
+    "priority": "P3 normal",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "Use Class.getDeclaredMethods() instead of getMethods()",
+    "systemSpecification": true,
+    "version": "other"
+}

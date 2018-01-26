@@ -1,0 +1,95 @@
+{
+    "comments": [
+        {
+            "author": "Thomas Mueller",
+            "body": "The problem seems to be TransientRepository.session, which is a HashSet.",
+            "date": "2008-07-24T15:14:47.891+0000",
+            "id": 0
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "I guess we could use weak references in TransientRepository, but that probably requires some updating of how the loggedOut() events are handled.",
+            "date": "2008-07-25T09:36:30.332+0000",
+            "id": 1
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "Another idea is: Split SessionImpl into a 'end user class' and an 'core class' to allow garbage collection:\n\nclass SessionImpl implements Session {\n    private InternalJackrabbitSession session;\n    private Exception openStackTrace;\n \n    SessionImpl(..) {\n        session = ...\n        openStackTrace = new Exception(\"Stack Trace\");\n    }\n\n    public void finalize() {\n        if (!closed) {\n            LOG.error(\"Session not closed\", openStackTrace);\n            close();\n        }\n    }\n\n}\n\nclass SessionCore implements InternalJackrabbitSession {\n    ... basically what is now SessionImpl ...\n}\n\nOnly SessionCore would be kept in the map, not SessionImpl. The InternalJackrabbitSession interface would be simpler than the Session interface. There could be multiple InternalJackrabbitSession implementations (a embedded implementation, a client-server implementation, a clustering implementation).\n\nThis split of 'user facing session' and 'internal session' is probably what we want to achieve with the 'Jackrabbit SPI' as well.\n",
+            "date": "2008-07-25T16:35:20.141+0000",
+            "id": 2
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "This patch adds a UserSessionImpl (user facing session) that acts as a proxy/wrapper for a SessionImpl. The patch is just for reference. I don't plan to commit it, because there are some problems. For example if a session is not referenced any longer, but one of its nodes is, then the session can still get garbage (but should not).\n\nI will try the original idea: Instead of referencing SessionImpl directly, use WeakReference objects.",
+            "date": "2008-09-22T08:31:31.743+0000",
+            "id": 3
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "This is a prove-of-concept patch that solves the problem. \nIt uses weak references to SessionImpl in \nTransientRepository.sessions,\nStateChangeDispatcher.listeners, and\nStateChangeDispatcher.nsListeners.\n\nThe StateChangeDispatcher changes are a bit ugly,\nand SessionImpl.finalize needs to be changed.\n\nThe following test case works now:\n\n    Repository rep = new TransientRepository();\n    while(true) {\n      SimpleCredentials sc = new SimpleCredentials(\"\", new char[0]);\n      rep.login(sc);\n    }\n",
+            "date": "2008-09-22T14:35:40.335+0000",
+            "id": 4
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "This patch uses SoftReference instead of WeakReference, so leaks are detected a bit later. This patch passes the unit tests on my machine. Still it's not very nice, as I don't know what kind of ItemStateListener are registered in StateChangeDispatcher. Is there always a hard reference to required listeners?",
+            "date": "2008-09-23T15:37:04.252+0000",
+            "id": 5
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "Hopefully the final patch. Using WeakReferences again.",
+            "date": "2009-03-12T10:44:11.084+0000",
+            "id": 6
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "Committed in revision 752831 (trunk).\nThis is definitely a candidate for back-porting.",
+            "date": "2009-03-12T10:51:39.388+0000",
+            "id": 7
+        },
+        {
+            "author": "Stefan Guggisberg",
+            "body": "> Hopefully the final patch. Using WeakReferences again.\n\n+1 for this patch",
+            "date": "2009-03-12T10:51:49.496+0000",
+            "id": 8
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "OK, seems reasonable. Scheduling this for inclusion in 1.5.5 (not in 1.5.4 to avoid introducing extra changes there).\n\nIs there some way we could have a reliable test case for this? I know garbage collection is a bit tricky to test for.",
+            "date": "2009-03-12T11:02:07.452+0000",
+            "id": 9
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "Unit test committed in revision 757364 (trunk)",
+            "date": "2009-03-23T10:13:06.489+0000",
+            "id": 10
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "Close the session in SkipDeniedNodesTest, revision 761267 (trunk)",
+            "date": "2009-04-02T12:38:19.647+0000",
+            "id": 11
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Merged to the 1.5 branch in revision 767119.",
+            "date": "2009-04-21T11:41:45.080+0000",
+            "id": 12
+        }
+    ],
+    "component": "jackrabbit-core",
+    "description": "If an application opens many sessions and doesn't close them, they are never garbage collected. After some time, the virtual machine will run out of memory. This code will run out of memory after a few thousand logins:\n\nRepository rep = new TransientRepository();\nfor (int i = 0; ; i++) {\n  rep.login(new SimpleCredentials(\"\", new char[0]));\n}\n\nUsing a finalizer to close SessionImpl doesn't work, because it seems there are references from the (hard referenced part of the cache) to the SessionImpl objects. Maybe it is possible to remove those references, or change them to weak references.\n",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "JCR-1216",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "Unreferenced sessions should get garbage collected",
+    "systemSpecification": true,
+    "version": ""
+}

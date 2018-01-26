@@ -1,0 +1,89 @@
+{
+    "comments": [
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "Fixed. The name should now be created only when the conditional is executed.",
+            "date": "20001030T19:36:34",
+            "id": 0
+        },
+        {
+            "author": "pschwartau@meer.net",
+            "body": "Could someone help me out on this one? If I simply go into the JS shell,\n(SpiderMonkey or Rhino), I see this:\n\n\njs> typeof version\nfunction\n\n\nSo I don't follow what's going on here. It looks like \"version\" is an inbuilt \nfunction property of the global object. Isn't it supposed to be? How could the \ntestcase ever have fallen into the \"else\" case above? \n\n\nDavid, what was the failure message you were getting from the test? \nDid you have to alter the test in any way to see the failure? \nI just need to know how to test this \"before\" and \"after\" the fix.\n\n\nThanks - I'm lost on this one\n",
+            "date": "20001030T19:58:06",
+            "id": 1
+        },
+        {
+            "author": "dnavas@yahoo.com",
+            "body": "As far as I can tell, version() should only be a function if you're running \nV120.  In other versions, apparently version() is unbound.\n\nTo test this, try changing the reference to 'version' to something else -- \nsomething that isn't defined.  Rhino [15b1, at least -- Norris seemed to \nindicate the problem existed in 15r1 as well] defines the function in\nthe 'else' clause regardless of program flow.  BTW, when I run SeaMonkey [PR3],\nI get \"Error: version is not defined\" in the javascript console, which is what \nI expect to see, so I'm confused how you're seeing version() defined in \nSeaMonkey....\n",
+            "date": "20001030T20:12:39",
+            "id": 2
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "Phil, yes, the \"version\" function is defined in the shell, but not in the \nbrowser. That's actually what this piece of code is trying to do is detect\nwhether the code is executing inside the shell or the browser.\n\nDavid's suggestion about using a variable other than \"version\" is a good one.\n\nBTW, are you creating new test cases for this and all of david@orielly.com's \nbugs?",
+            "date": "20001030T20:28:10",
+            "id": 3
+        },
+        {
+            "author": "pschwartau@meer.net",
+            "body": "Thanks for the explanations -\n\nYes, I will be adding testcases this week. I've been behind in doing this\nwhile I've been doing the triaging, but expect to catch up this week.",
+            "date": "20001030T20:46:02",
+            "id": 4
+        },
+        {
+            "author": "pschwartau@meer.net",
+            "body": "Following David's suggestion, I'm using an arbitrary variable name in his test.\nUsing Rhino on WinNT built 2000-10-23, I now see the bug:\n\n\nTHIS TEST FAILED (USING FUNCTION LITERAL): \n\nvar res = (typeof(non_existing_function));\n\nif (res == 'function') \n{\n  print('\\ntest FAILED - typeof(non_existing_function) = '  +  res +  '\\n');\n} \nelse \n{       \n  var f = function non_existing_function() { return 0; };\n  print('\\ntest PASSED - typeof(non_existing_function) = '  +  res  +  '\\n');\n}\n\nOUTPUT: \ntest FAILED - typeof(non_existing_function) = function\n\n\n\n\nTHIS TEST PASSED (USING FUNCTION CONSTRUCTOR):\n\nvar res = (typeof(non_existing_function));\n\nif (res == 'function' ) \n{\n  print('\\ntest FAILED - typeof(non_existing_function) = '  +  res +  '\\n');\n} \nelse \n{       \n  non_existing_function =  new Function(\"return 0;\");\n  print('\\ntest PASSED - typeof(non_existing_function) = '  +  res  +  '\\n');\n}\n\nOUTPUT: \ntest PASSED - typeof(non_existing_function) = undefined\n ",
+            "date": "20001030T21:38:04",
+            "id": 5
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "It works for me with both the interpreted and compiled modes. Did you build\nwith the atest source?",
+            "date": "20001101T02:28:29",
+            "id": 6
+        },
+        {
+            "author": "pschwartau@meer.net",
+            "body": "No: I was using Rhino on WinNT built 2000-10-23 to benchmark \"before/after\".\nUsing Rhino on WinNT and Linux built 2000-10-31, both tests pass.\n\n\nI tried the tests against both the interpreted and compiled modes of Rhino.\n\n                      On WinNT:  JDK 1.2.2\n                      On Linux:  JDK 1.1.8\n\n\nMarking Verified. The tests will be added to the test suite.",
+            "date": "20001101T04:26:03",
+            "id": 7
+        },
+        {
+            "author": "dnavas@yahoo.com",
+            "body": "I could not for the life of me get this to work in compiled mode until I\nchanged the following in Codegen.java (around line 1350):\n\n<             // load boolean indicating whether fn name should be set in scope\n<             boolean setFnName = str != null && str.length() > 0 &&\n<                                 ((FunctionNode) def).getFunctionType() !=\n<                                     FunctionNode.FUNCTION_EXPRESSION;\n\nto:\n\n>             // load boolean indicating whether fn name should be set in scope\n>             boolean setFnName = str != null && str.length() > 0 &&\n>                                 ((FunctionNode) def).getFunctionType() ==\n>                                     FunctionNode.FUNCTION_STATEMENT;\n\nI think this was a typo...?\n",
+            "date": "20001211T18:10:14",
+            "id": 8
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "What's your test case? I always have to go back and puzzle over ECMA to\nfigure these out.",
+            "date": "20001211T19:00:36",
+            "id": 9
+        },
+        {
+            "author": "dnavas@yahoo.com",
+            "body": "I believe if you take Phil's case and remove the 'var f = ' in front of the \nfunction declaration, you'll see the failure.  Either the compiled version \nshouldn't fail, or the unoptimized version should.  Not sure which is right,\nbut if it's the latter, then there's a whole slew of testcases under \nmozilla/js/tests that need to be looked at :(\n\n-Dave\n",
+            "date": "20001211T19:08:08",
+            "id": 10
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "Checked in the suggested change--thanks.",
+            "date": "20001212T15:54:48",
+            "id": 11
+        }
+    ],
+    "component": "Core",
+    "description": "This causes /mozilla/js/tests/js1_2/Array/tostring_2.js to fail\nbecause the test thinks it's always running a 1.2 version of JS.\nTo wit:\n    var VERSION = \"JS_12\";\n\n    .\n    .\n    .\n    if ( typeof version == \"function\" ) {\n        writeLineToLog(\"version 120\");\n        version(120);\n        VERSION = \"120\";\n    } else {\n        writeLineToLog(typeof version);\n        function version() { return 0; };\n    }\n\n    testcases[tc++] = new TestCase ( SECTION,\n        \"a.toString()\",\n        ( VERSION == \"120\" ? \"[]\" : \"\" ),\n            a.toString() );\n\nThe current Interpreter creates a version() function always, and then\nruns the test to see if one already exists, which is the wrong order,\nsadly.",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "58479",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "P3 normal",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "functions defined within conditional phrases are always created.",
+    "systemSpecification": false,
+    "version": "other"
+}

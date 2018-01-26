@@ -1,0 +1,77 @@
+{
+    "comments": [
+        {
+            "author": "Doron Cohen",
+            "body": "Attached simple patch with the fix.\nAfter applying the patch need to also download commons-compress-1.2.jar and place it in under module/benchmark/lib and under solr/contrib/extraction/lib. \n\nCurrently several solr tests fails for me with this patch, probably not related to replacing the compress jar, as when running alone (-Dtestcase) they pass.",
+            "date": "2011-09-25T10:28:31.309+0000",
+            "id": 0
+        },
+        {
+            "author": "Chris Male",
+            "body": "Which tests are they?",
+            "date": "2011-09-25T10:38:40.393+0000",
+            "id": 1
+        },
+        {
+            "author": "Doron Cohen",
+            "body": "hmmm, this is strange.\n\nThese are the tests that failed with compress-1.2 for 'ant clean test' under solr:\n\n- org.apache.solr.handler.TestReplicationHandler\n    [junit] Tests run: 1, Failures: 1, Errors: 0, Time elapsed: 39.968 sec\n- org.apache.solr.handler.component.DebugComponentTest\n    [junit] Tests run: 2, Failures: 1, Errors: 0, Time elapsed: 1.219 sec\n- org.apache.solr.handler.component.TermVectorComponentTest\n    [junit] Tests run: 4, Failures: 1, Errors: 0, Time elapsed: 1 sec\n- org.apache.solr.request.JSONWriterTest\n    [junit] Tests run: 2, Failures: 1, Errors: 0, Time elapsed: 0.75 sec\n- org.apache.solr.response.TestCSVResponseWriter\n    [junit] Tests run: 1, Failures: 0, Errors: 0, Time elapsed: 0.719 sec\n- org.apache.solr.schema.BadIndexSchemaTest\n    [junit] Tests run: 5, Failures: 1, Errors: 0, Time elapsed: 1.187 sec\n- org.apache.solr.search.TestQueryUtils\n    [junit] Tests run: 1, Failures: 1, Errors: 0, Time elapsed: 1.14 sec\n- org.apache.solr.search.similarities.TestBM25SimilarityFactory\n    [junit] Tests run: 2, Failures: 1, Errors: 0, Time elapsed: 0.187 sec\n- org.apache.solr.servlet.DirectSolrConnectionTest\n    [junit] Tests run: 2, Failures: 1, Errors: 0, Time elapsed: 0.344 sec\n- org.apache.solr.update.processor.SignatureUpdateProcessorFactoryTest\n    [junit] Tests run: 4, Failures: 1, Errors: 0, Time elapsed: 3.984 sec\n\nI replaced 1.1 and they all passed. \nHowever replaced to compress-1.2 and now they all passed.\n\nI now see that I am on r1174072, I'll update and try again\n",
+            "date": "2011-09-25T11:06:44.715+0000",
+            "id": 2
+        },
+        {
+            "author": "Chris Male",
+            "body": "Maybe do a clean compile on the lucene sources too?",
+            "date": "2011-09-25T11:10:30.994+0000",
+            "id": 3
+        },
+        {
+            "author": "Doron Cohen",
+            "body": "Thanks Chris, almost sure I did a clean, will try again.",
+            "date": "2011-09-25T11:22:40.431+0000",
+            "id": 4
+        },
+        {
+            "author": "Doron Cohen",
+            "body": "Still it fails - this time running 'clean test' from trunk, all lucene tests pass, some of solr tests failed:\n\n- org.apache.solr.handler.TestReplicationHandler\n    [junit] Tests run: 1, Failures: 1, Errors: 0, Time elapsed: 43.703 sec\n- org.apache.solr.handler.component.DebugComponentTest\n    [junit] Tests run: 2, Failures: 1, Errors: 0, Time elapsed: 1 sec\n- org.apache.solr.handler.component.TermVectorComponentTest\n    [junit] Tests run: 4, Failures: 1, Errors: 0, Time elapsed: 1.375 sec\n- org.apache.solr.request.JSONWriterTest\n    [junit] Tests run: 2, Failures: 1, Errors: 0, Time elapsed: 1.078 sec\n- org.apache.solr.schema.BadIndexSchemaTest\n    [junit] Tests run: 5, Failures: 1, Errors: 0, Time elapsed: 1.266 sec\n- org.apache.solr.schema.RequiredFieldsTest\n    [junit] Tests run: 3, Failures: 1, Errors: 0, Time elapsed: 1.422 sec\n- org.apache.solr.search.QueryParsingTest\n    [junit] Tests run: 2, Failures: 1, Errors: 0, Time elapsed: 0.641 sec\n- org.apache.solr.search.SpatialFilterTest\n    [junit] Tests run: 3, Failures: 1, Errors: 0, Time elapsed: 1.438 sec\n- org.apache.solr.search.TestQueryTypes\n    [junit] Tests run: 1, Failures: 1, Errors: 0, Time elapsed: 0.953 sec\n- org.apache.solr.servlet.CacheHeaderTest\n    [junit] Tests run: 5, Failures: 1, Errors: 0, Time elapsed: 0.984 sec\n- org.apache.solr.spelling.SpellCheckCollatorTest\n    [junit] Tests run: 4, Failures: 1, Errors: 0, Time elapsed: 1.281 sec\n- org.apache.solr.update.DocumentBuilderTest\n    [junit] Tests run: 4, Failures: 1, Errors: 0, Time elapsed: 0.734 sec\n- org.apache.solr.util.SolrPluginUtilsTest\n    [junit] Tests run: 7, Failures: 1, Errors: 0, Time elapsed: 0.766 sec\n\nRunning alone, TestReplicationHandler for example passes.\nSame for DebugComponentTest.\nI am not sure what is happenning here.\nAttaching the test output in case someone wants take a look.",
+            "date": "2011-09-25T11:56:26.036+0000",
+            "id": 5
+        },
+        {
+            "author": "Robert Muir",
+            "body": "I know whats happening, a test failed (happens often with solr tests), but some assertions in the base solr test classes then cause every test following to fail.\n\nthis happened to me too, i'll commit a fix.",
+            "date": "2011-09-25T12:03:57.407+0000",
+            "id": 6
+        },
+        {
+            "author": "Doron Cohen",
+            "body": "ok great, thanks Robert, so this has nothing to do with the comprees jar update.\nI'll commit shortly.",
+            "date": "2011-09-25T17:58:30.243+0000",
+            "id": 7
+        },
+        {
+            "author": "Doron Cohen",
+            "body": "Fixed:\n- 1175475 - trunk\n- 1175528 - 3x",
+            "date": "2011-09-25T19:09:45.177+0000",
+            "id": 8
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Bulk close after release of 3.5",
+            "date": "2011-11-27T12:29:31.549+0000",
+            "id": 9
+        }
+    ],
+    "component": "modules/benchmark",
+    "description": "Commons Compress bug COMPRESS-127 was fixed in 1.2, so the workaround in benchmark's StreamUtils is no longer required. Compress is also used in solr. Replace with new jar in both benchmark and solr and get rid of that workaround.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-3457",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Minor",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "Upgrade to commons-compress 1.2",
+    "systemSpecification": true,
+    "version": ""
+}

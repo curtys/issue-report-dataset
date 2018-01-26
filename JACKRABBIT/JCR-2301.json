@@ -1,0 +1,161 @@
+{
+    "comments": [
+        {
+            "author": "Michael D\u00fcrig",
+            "body": "Initially the CND parser moved from core to spi-commons. See JCR-1516. \n\nThe parser is useful for both JCR and SPI. So there will always be an additional dependency. Since SPI implementations almost always depend on jcr-commons anyway, moving the parser might be a good idea. \n\nHowever, the different representations of Names, Types etc would have to be factored out. Currently the parser uses builders for constructing the types (QNodeDefinitionBuilder, QNodeTypeDefinitionBuilder, QPropertyDefinitionBuilder). These would need to be generalized. Both jcr-commons and spi-commons need to provide their specific versions for these builders. ",
+            "date": "2009-09-09T12:27:02.811+0000",
+            "id": 0
+        },
+        {
+            "author": "Alexander Klimetschek",
+            "body": "I can imagine a (copied/new) cnd parser that does not use the QNodeType/Node/PropertyDefinition classes at all. It would directly implement the JCR 2.0 NodeTypeDefinition + NodeTypeTemplate et al. classes and instantiate them. For parsing valid names, it could directly use the session's getNamespaceUri and getNamespacePrefix methods, without using spi's flexible NameResolver mechanism.\n\nAny problem that I missed?",
+            "date": "2009-09-09T12:57:14.339+0000",
+            "id": 1
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "IMHO a version in jcr-commons should *not* implement the Definition and Template classes. Instead it should use the standard JCR factory methods to build the type templates based on the parsed CND files.",
+            "date": "2009-09-09T13:01:51.934+0000",
+            "id": 2
+        },
+        {
+            "author": "Michael D\u00fcrig",
+            "body": "> Any problem that I missed? \nYes, SPI implementations need to read cnd files and create QNode... representations from them. ",
+            "date": "2009-09-09T13:11:49.526+0000",
+            "id": 3
+        },
+        {
+            "author": "Michael D\u00fcrig",
+            "body": "The process needs to be a bit more general. We need the parser to be able to generate QNodeTypeDefinitions (SPI usage) and NodeTypeDefinitions (JCR usage). So I suggest to split the parser into a front end for lexical/syntactical analysis and a back end for generating the specific representation. AFAIR the split is more or less there already (see usage of QNodeDefinitionBuilder, QNodeTypeDefinitionBuilder, QPropertyDefinitionBuilder). Only the back ends would have to be factored out. ",
+            "date": "2009-09-09T13:18:15.440+0000",
+            "id": 4
+        },
+        {
+            "author": "Alexander Klimetschek",
+            "body": "> Instead it should use the standard JCR factory methods to build the type templates\n\nAh, you are right, I missed them. Well, that makes it even simpler.\n\n> The process needs to be a bit more general.\n\nI think it would be ok to duplicate the parser code here, since it's stable and for the sake of library minification. That way the parser in spi-commons can be optimized for the spi use case, and the one in jcr-commons is as simple as possible.",
+            "date": "2009-09-09T13:23:02.019+0000",
+            "id": 5
+        },
+        {
+            "author": "Michael D\u00fcrig",
+            "body": "14 commits to jackrabbit-spi-commons\\src\\main\\java\\org\\apache\\jackrabbit\\spi\\commons\\nodetype\\compact in 2009 only doesn't seem too stable to me ;-)\n\nI dont like the idea of duplicate code here. I'd still go with factoring out the differences. ",
+            "date": "2009-09-09T13:49:32.907+0000",
+            "id": 6
+        },
+        {
+            "author": "Alexander Klimetschek",
+            "body": "> 14 commits ... in 2009 only doesn't seem too stable to me\n\nAll those commits were related to JCR 2.0 changes or general clean up, not fixing actual parsing bugs. I think moving all those QNode* classes over to jcr-commons is really a bit of overkill, if you can get them simply via NodeTypeManager.createNodeTypeTemplate() et al.\n\nOtherwise I think one could share the lexer and an abstract base class for CND reading that operates on JCR 2.0 NodeTypeTemplate interfaces (and gets them from an abstract method createNodeTypeTemplate(), same for node defs and property defs). If this will be used by spi-commons as well, it would be forced to have QNode* to extend from the new JCR 2.0 templates. Or one would provide yet another wrapper that implements both *Template and QNode* interfaces, internal to the spi cnd parser.",
+            "date": "2009-09-09T14:01:32.120+0000",
+            "id": 7
+        },
+        {
+            "author": "Michael D\u00fcrig",
+            "body": "Instead of using inheritance for parametrization of the parser I'd use composition as explained above:\n\nThe parser already uses a builder (QNodeTypeDefinitionsBuilder) to build the final representation. That is, the parser itself is rather independent of the spi classes. The builder is not. I suggest to change things along the line of\n\nclass CompactNodeTypeDefReader {...} \nto \nclass CompactNodeTypeDefReader<T> {...}\n\nThe constructor which now takes a QNodeTypeDefinitionsBuilder would then take a NodeTypeDefinitionsBuilder<T> and getNodeTypeDefinitions() would return List<T>. \n\nLike this jcr-commons and spi-commons both need to provide a builder which can be used with the parser. The parser itself can be reused amongst both modules. \n",
+            "date": "2009-09-09T14:26:01.157+0000",
+            "id": 8
+        },
+        {
+            "author": "Michael D\u00fcrig",
+            "body": "Proof of concept patch. \n\nClass CompactNodeTypeDefReader is parametrized now: \n\n  class CompactNodeTypeDefReader<T, N> \n\nwhere T is the types to build, and N the namespace mapping to use. CompactNodeTypeDefReader constructor takes a builder for these types. Builders must derived from AbstractItemTypeDefinitionsBuilder<T, N>. \n\nCompactNodeTypeDefReader, AbstractItemTypeDefinitionsBuilder and related classes do not have any SPI dependencies anymore\n\nMissing yet:\n- JavaDoc is hopefully out dated\n- everything still in spi-commons\n- CompactNodeTypeDefReader.read needs to move to utility class since it ties in spi dependencies. \n\n",
+            "date": "2009-09-10T09:55:05.016+0000",
+            "id": 9
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Just thinking, why does the CND reader even need to be able to directly create the Q objects?",
+            "date": "2009-09-10T10:02:58.399+0000",
+            "id": 10
+        },
+        {
+            "author": "Michael D\u00fcrig",
+            "body": "With my patch it isn't anymore. Creating the type representations is delegated to a builder. ",
+            "date": "2009-09-10T10:07:00.555+0000",
+            "id": 11
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Sure, but why do we need the builder layer instead of directly using the JCR 2.0 API?",
+            "date": "2009-09-10T10:10:38.799+0000",
+            "id": 12
+        },
+        {
+            "author": "Tobias Bocanegra",
+            "body": "..because you would loose the namespaces if pure NodeTypeDefinitions would be builded. but if the provided namespaces are exposed from the reader, thats probably ok.",
+            "date": "2009-09-10T10:17:36.627+0000",
+            "id": 13
+        },
+        {
+            "author": "Alexander Klimetschek",
+            "body": "I would also prefer usage of the JCR 2.0 API *Template interfaces. SPI could be rewritten to have the Q* interfaces extend from them. A subclass of the cnd parser in jcr-commons in spi-commons could then set the parsed variants of names and namespace mappings on the Q* objects.",
+            "date": "2009-09-10T11:58:27.155+0000",
+            "id": 14
+        },
+        {
+            "author": "Michael D\u00fcrig",
+            "body": "I still prefer to keep the parser independent. Although it adds some complexity (in particular AbstractItemTypeDefinitionsBuilder and its implementations), it adds a great deal of flexibility. Also that way, changes to client code is minimal. \n\nWith the proposed patch it is quite easy to parametrize the parser such that it generates a JCR 2.0 API *Template bases representation of the CND. Just implement an AbstractItemTypeDefinitionsBuilder<NodeTypeTemplate, N...> and pass it to CompactNodeTypeDefReader's constructor. \n\nAlso note that the parser is currently used to create two different representations of the CND (one in core, another in spi). AFAIU you want to use it to create yet another representation (JCR API node types/templates). Therefore I think it doesn't make sense to move the parser close to one specific representation. BTW it was moved from core to spi already (JCR-1516) because we then thought the spi representation would be the more general one. ",
+            "date": "2009-09-10T12:23:25.965+0000",
+            "id": 15
+        },
+        {
+            "author": "Michael D\u00fcrig",
+            "body": "JCR-2301.patch contains the same changes like the previous patch and in addition moves the parser to jcr-commons. In addition it adds ItemTemplatesBuilder which can be used with CompactNodeTypeDefReader to build NodeTypeTemplate instances from a CND. \n\n",
+            "date": "2009-09-10T17:38:46.301+0000",
+            "id": 16
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "I like this approach.",
+            "date": "2009-09-11T08:13:51.392+0000",
+            "id": 17
+        },
+        {
+            "author": "Alexander Klimetschek",
+            "body": "I would not object against this approach - the only thing I'd like to see is a simple CND reader (subclass) that works out of the box for JCR 2.0 *Templates without having to worry about any Builder classes. The reason is that we need a plain simple replacement for the deprecated register node types via InputStream of the Jackrabbit API.",
+            "date": "2009-09-11T08:41:54.729+0000",
+            "id": 18
+        },
+        {
+            "author": "Michael D\u00fcrig",
+            "body": "Ok, I'll add such an utility class then and commit the patch (next week). \n\nNote however that you will still have to either pass a Session or a Worspace or a NodeTypeManager, a ValueFactory, and possibly a NamespaceRegistry to such a utility class. ",
+            "date": "2009-09-11T10:20:23.173+0000",
+            "id": 19
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "Feedback on JCR-2301.patch:\n\n- can we move the Q*DefinitionsBuilder one package up? I think those are not only useful in context of CND reading but in general to build a Q*Definition instances.",
+            "date": "2009-09-11T10:28:36.422+0000",
+            "id": 20
+        },
+        {
+            "author": "Michael D\u00fcrig",
+            "body": "> - can we move the Q*DefinitionsBuilder one package up?\nOk ack. I'll do so.",
+            "date": "2009-09-11T10:35:30.873+0000",
+            "id": 21
+        },
+        {
+            "author": "Alexander Klimetschek",
+            "body": "> Note however that you will still have to either pass a Session or a Worspace or a NodeTypeManager, a ValueFactory, and possibly a NamespaceRegistry to such a utility class.\n\nSession should be fine.",
+            "date": "2009-09-11T10:51:11.626+0000",
+            "id": 22
+        },
+        {
+            "author": "Michael D\u00fcrig",
+            "body": "Fixed in revision: 814610  \n\nIn addition to the changes in the patch, I added the CndImporter utility class which can be used for importing CNDs. ",
+            "date": "2009-09-14T12:32:28.753+0000",
+            "id": 23
+        }
+    ],
+    "component": "jackrabbit-jcr-commons, jackrabbit-spi-commons, nodetype",
+    "description": "It would be nice if the CND parsing functionality in spi-commons could be made available in jcr-commons for use by JCR clients that shouldn't have to know anything about the SPI.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "JCR-2301",
+    "issuetypeClassified": "RFE",
+    "issuetypeTracker": "RFE",
+    "priority": "Major",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "CND support in jackrabbit-jcr-commons",
+    "systemSpecification": true,
+    "version": ""
+}

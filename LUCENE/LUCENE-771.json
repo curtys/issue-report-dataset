@@ -1,0 +1,65 @@
+{
+    "comments": [
+        {
+            "author": "Yonik Seeley",
+            "body": "Sounds good, I agree with all the changes you outlined.",
+            "date": "2007-01-12T20:48:59.897+0000",
+            "id": 0
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Thanks for the review Yonik!\n\nAnd thanks for pointing this out Marvin!\n\nI've committed this.",
+            "date": "2007-01-12T22:15:47.260+0000",
+            "id": 1
+        },
+        {
+            "author": "Doron Cohen",
+            "body": "I have a question on this change - though I didn't look at the code yet - we don't support backwards compatability with regard to existing lock files, right?  Specifically, if there exist an older version index with locks in tmp dir, and the Lucene lib is replaced for one client at a time, while other clients are running, there would be a problem, possible corruption. So who ever is migrating from an index before this change to an index with this change should make sure that all clients are upgraded at the time. At least all clients that may attempt to write.",
+            "date": "2007-01-13T00:43:48.077+0000",
+            "id": 2
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Yes, that is true.\n\nBut there are also quite a few other changes in 2.1 (eg the file format changes) that would also generally necessitate that all places that will share the given index, upgrade to 2.1 at once.",
+            "date": "2007-01-13T02:01:20.172+0000",
+            "id": 3
+        },
+        {
+            "author": "Doron Cohen",
+            "body": "Is that true? I thought that for previous format changes, the combination of - { (1) point-in-time index reading by readers (2) backwards compatibility (3) locks } - allowed not to require this. ",
+            "date": "2007-01-13T02:07:31.943+0000",
+            "id": 4
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "You're right, backwards compatibility will allow a 2.1 client to\nread/write to an older index, but as soon as a 2.1 client writes to\nthe index then all pre-2.1 readers won't be able to read it.  You're\nright that if these readers are not reopened then \"point in time\"\nwould allow them to keep running pre-2.1.\n\nSo I think you could individually update each reader to 2.1, but then\n(after readers are updated), all writers would need to go to 2.1 at\nonce, to make sure they all \"agree\" that the write lock is now in the\nindex.\n",
+            "date": "2007-01-13T03:34:52.710+0000",
+            "id": 5
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Woops, I committed a silly violation of the LockFactory abstraction\n(I'm removing files in FSDirectory when that should only occur inside\nthe LockFactory implementation.)  I'm re-opening and I'll get the\ncorrected fix in soon.\n\n",
+            "date": "2007-01-13T14:29:50.991+0000",
+            "id": 6
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Closing all issues that were resolved for 2.1.",
+            "date": "2007-02-27T18:10:39.605+0000",
+            "id": 7
+        }
+    ],
+    "component": "core/store",
+    "description": "Now that readers are read-only, we no longer need to store lock files\nin a different global lock directory than the index directory.  This\nhas been a source of confusion and caused problems to users in the\npast.\n\nFurthermore, once the write lock is stored in the index directory, it\nno longer needs the big digest prefix that was previously required\nto make sure lock files in the global lock directory, from different\nindexes, did not conflict.\n\nThis way, all files related to an index will appear in a single\ndirectory.  And you can easily list that directory to see if a\n\"write.lock\" is present to check whether a writer is open on the\nindex.\n\nNote that this change just affects how FSDirectory creates its default\nlockFactory if no lockFactory was specified.  It is still possible\n(just no longer the default) to pick a different directory to store\nyour lock files by pre-instantiating your own LockFactory.\n\nAs part of this I would like to remove LOCK_DIR and the no-argument\nconstructor, in SimpleFSLockFactory and NativeFSLockFactory.  I don't\nthink we should have the notion of a global default lock directory\nanymore.  This is actually an API change.  However, neither\nSimpleFSLockFactory nor NativeFSLockFactory haver been released yet,\nso I think this API removal is allowed?\n\nFinally I want to deprecate (but not yet remove, because this has been\nin the API for many releases) the static LOCK_DIR that's in\nFSDirectory.  But it's now entirely unused.\n\nSee here for discussion leading to this:\n\n  http://www.gossamer-threads.com/lists/lucene/java-dev/43940\n",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "LUCENE-771",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Minor",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "Change default write lock file location to index directory (not java.io.tmpdir)",
+    "systemSpecification": true,
+    "version": "2.1"
+}

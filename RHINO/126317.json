@@ -1,0 +1,47 @@
+{
+    "comments": [
+        {
+            "author": "pschwartau@meer.net",
+            "body": "This problem is causing the following new testcase to fail: \n\n        mozilla/js/tests/ecma_3/RegExp/15.10.6.2-2.js",
+            "date": "20020219T01:47:21",
+            "id": 0
+        },
+        {
+            "author": "pschwartau@meer.net",
+            "body": "The cases above where re.exec(str) returns 'Abc' instead of |null| \nmight be a consequence of bug 124508 against Rhino:\n\"regexp.lastIndex should be integer-valued double, not uint32\"\n\nBut I don't know if that's so, and I also don't know if that would\nexplain the crashes above. If it does, please dupe.",
+            "date": "20020219T01:56:36",
+            "id": 1
+        },
+        {
+            "author": "rogerl@formerly-netscape.com.tld",
+            "body": "Fix checked in - new engine implementation ported from SpiderMonkey.",
+            "date": "20020620T19:09:55",
+            "id": 2
+        },
+        {
+            "author": "pschwartau@meer.net",
+            "body": "Verified Fixed - the above testcase now passes in the rhino, rhinoi shells.",
+            "date": "20020620T21:03:20",
+            "id": 3
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Targeting as resolved against 1.5R4",
+            "date": "20040213T12:17:59",
+            "id": 4
+        }
+    ],
+    "component": "Core",
+    "description": "The tests below each involve a regexp with the global flag set, where \nre.lastIndex has been set to out-of-bounds values: i.e. < 0  or > str.length.\n\nIn such a case, ECMA specifies that re.exec(str) should return null.\n(and set re.lastIndex to 0). Here is what Rhino is currently doing: \n\n[] java org.mozilla.javascript.tools.shell.Main\nRhino 1.5 release 4 0000 00 00 (in progress)\n\njs> var re = /abc/gi;\njs> var str = 'AbcaBcabC';\njs> re.lastIndex = -1;\n-1\njs> re.exec(str);\nException in thread \"main\" java.lang.ArrayIndexOutOfBoundsException\n        at \norg.mozilla.javascript.regexp.NativeRegExp.matchRENodes(NativeRegExp.java:1855)\n        at \norg.mozilla.javascript.regexp.NativeRegExp.matchRegExp(NativeRegExp.java:1879)\n        at \norg.mozilla.javascript.regexp.NativeRegExp.executeRegExp(NativeRegExp.java:1925)\n\n                                etc.\n                                etc.\n\n\njs> var re = /abc/gi;\njs> var str = 'AbcaBcabC';\njs> re.lastIndex = 9999999;\n9999999\njs> re.exec(str);\nnull  <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< CORRECT\n\n\njs> var re = /abc/gi;\njs> var str = 'AbcaBcabC';\njs> re.lastIndex = Number.MAX_VALUE;\n1.7976931348623157e+308\njs> re.exec(str);\nAbc  <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< should be null!\n\n\njs> re.lastIndex = Math.pow(2,31);\n2147483648\njs> re.exec(str);\nException in thread \"main\" java.lang.ArrayIndexOutOfBoundsException\n        at \norg.mozilla.javascript.regexp.NativeRegExp.matchRENodes(NativeRegExp.java:1855)\n        at \norg.mozilla.javascript.regexp.NativeRegExp.matchRegExp(NativeRegExp.java:1879)\n        at \norg.mozilla.javascript.regexp.NativeRegExp.executeRegExp(NativeRegExp.java:1925)\n        at \n                                etc.\n                                etc.\n\n\njs> var re = /abc/gi;\njs> var str = 'AbcaBcabC';\njs> re.lastIndex = Math.pow(2,30);\n1073741824\njs> re.exec(str);\nnull  <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< CORRECT\n\n\njs> var re = /abc/gi;\njs> var str = 'AbcaBcabC';\njs> re.lastIndex = Math.pow(2,31);\n2147483648\njs> re.exec(str);\nException in thread \"main\" java.lang.ArrayIndexOutOfBoundsException\n        at \norg.mozilla.javascript.regexp.NativeRegExp.matchRENodes(NativeRegExp.java:1855)\n        at \norg.mozilla.javascript.regexp.NativeRegExp.matchRegExp(NativeRegExp.java:1879)\n        at \norg.mozilla.javascript.regexp.NativeRegExp.executeRegExp(NativeRegExp.java:1925)\n        at\n                                etc.\n                                etc.",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "126317",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "-- normal",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "Crash on re.exec(str) if re.lastIndex set to certain values",
+    "systemSpecification": true,
+    "version": "other"
+}

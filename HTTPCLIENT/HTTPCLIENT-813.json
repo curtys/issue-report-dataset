@@ -1,0 +1,59 @@
+{
+    "comments": [
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "I can reproduce the bug for HttpClient 3.x using the test case. However, the same code ported to 4.0 API seems to work for me without throwing any exception at all. See HttpTest2 attached.\n\nThe bug in HttpClient 3.x can be worked around by providing a better implementation of the ProtocolSocketFactory. \n\nOleg",
+            "date": "2009-01-08T15:14:35.206+0000",
+            "id": 0
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "HttpClient 3.x is nearing end of life. There is no point fixing it (unless some one volunteers to provide a complete patch in udiff format including test coverage).\n\nOleg",
+            "date": "2009-01-08T15:16:54.216+0000",
+            "id": 1
+        },
+        {
+            "author": "Zhihong Zhang",
+            "body": "You said 4.0 doesn't throw exception at all. That's not right behavior either. Since the input is invalid, it should throw a checked exception.\n\nWe want to switch to 4.0 but we have a policy not to use software in beta. Do you have an estimate on the official release?\n\nThanks for your quick response.\n\nZhihong",
+            "date": "2009-01-08T16:09:25.935+0000",
+            "id": 2
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "> You said 4.0 doesn't throw exception at all. That's not right behavior either. Since the input is invalid, it should throw a checked exception. \n\nYou may be right, but since JRE classes do not raise an exception, I do not think this is HttpClient's job to validate port numbers\n\n> Do you have an estimate on the official release? \n\nQ2 2009\n\nOleg",
+            "date": "2009-01-08T16:25:12.614+0000",
+            "id": 3
+        },
+        {
+            "author": "Zhihong Zhang",
+            "body": "Just tried 4.0. It replaces invalid port with default port in Scheme.resolvePort() without any errors. In my opinion, an exception should be thrown in this case.\n\n",
+            "date": "2009-01-09T15:13:05.043+0000",
+            "id": 4
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "That's certainly wrong. Reopening the issue.\n\nOleg",
+            "date": "2009-01-09T15:37:20.956+0000",
+            "id": 5
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Fixed in SVN trunk. Please verify.\n\nOleg",
+            "date": "2009-02-14T16:47:16.625+0000",
+            "id": 6
+        }
+    ],
+    "component": "HttpClient (classic)",
+    "description": "The HttpClient throws NullPointerException in the main thread when an invalid port (like 80001) is used in the URL. An IllegalArgumentException is thrown in TimeoutGuard thread.\n \nException in thread \"Timeout guard\" java.lang.IllegalArgumentException: port out of range:80001\n\tat java.net.InetSocketAddress.<init>(InetSocketAddress.java:118)\n\tat java.net.Socket.<init>(Socket.java:240)\n\tat org.apache.commons.httpclient.protocol.DefaultProtocolSocketFactory.createSocket(DefaultProtocolSocketFactory.java:80)\n\tat org.apache.commons.httpclient.protocol.ControllerThreadSocketFactory$1.doit(ControllerThreadSocketFactory.java:91)\n\tat org.apache.commons.httpclient.protocol.ControllerThreadSocketFactory$SocketTask.run(ControllerThreadSocketFactory.java:158)\n\tat java.lang.Thread.run(Thread.java:613)\nException in thread \"main\" java.lang.NullPointerException\n\tat org.apache.commons.httpclient.HttpConnection.open(HttpConnection.java:721)\n\tat org.apache.commons.httpclient.MultiThreadedHttpConnectionManager$HttpConnectionAdapter.open(MultiThreadedHttpConnectionManager.java:1361)\n\tat org.apache.commons.httpclient.HttpMethodDirector.executeWithRetry(HttpMethodDirector.java:387)\n\tat org.apache.commons.httpclient.HttpMethodDirector.executeMethod(HttpMethodDirector.java:171)\n\tat org.apache.commons.httpclient.HttpClient.executeMethod(HttpClient.java:397)\n\tat org.apache.commons.httpclient.HttpClient.executeMethod(HttpClient.java:323)\n\tat com.aol.test.HttpTest$PoolingHttpConnector.doGet(HttpTest.java:47)\n\tat com.aol.test.HttpTest.main(HttpTest.java:17)\n\nIt should throw a checked exception in main thread so caller can handle the error condition more gracefully.\n\nThe test program is attached. This is caused by a race condition and it's not always reproducible. Running in debugger shows a different behavior.\n\npackage com.aol.test;\n\nimport java.io.IOException;\n\nimport org.apache.commons.httpclient.HttpClient;\nimport org.apache.commons.httpclient.HttpStatus;\nimport org.apache.commons.httpclient.MultiThreadedHttpConnectionManager;\nimport org.apache.commons.httpclient.methods.GetMethod;\nimport org.apache.commons.httpclient.params.HttpConnectionManagerParams;\n\npublic class HttpTest {\n\t\n\tpublic static void main(String[] args) {\n\t\tPoolingHttpConnector conn = new PoolingHttpConnector();\n\t\t\n\t\ttry {\n\t\t\tString response = conn.doGet(\"http://www.aol.com:80001\");\n\t\t\tSystem.out.println(\"Response='\" + response + \"'\");\n\t\t} catch (IOException e) {\n\t\t\te.printStackTrace();\n\t\t}\n\t}\n\n\n\tstatic class PoolingHttpConnector {\n\t\t\n\t\tpublic static final int MAX_TOTAL_CONNECTIONS = 16;\n\t\tpublic static final int MAX_CONNECTIONS_PER_HOST = 8;\n\t\tpublic static final int CONNECT_TIMEOUT = 5000;\n\t\tpublic static final int SOCKET_TIMEOUT = 5000;\n\t\tpublic static final boolean TCP_NO_DELAY = true;\n\t\t\n\t    private static MultiThreadedHttpConnectionManager poolManager;\n\t    private static HttpConnectionManagerParams httpParams;\n\t    private static HttpClient httpClient;\n\t    private static boolean initialized = false;\n\t    \n\t\tpublic PoolingHttpConnector() \n\t\t{\n\t\t\tinitialize();\n\t\t}\n\n\t\tpublic String doGet(String url) throws IOException {\n\t\t\tGetMethod method = new GetMethod(url);\n\t\t\t\t\t\n\t\t\ttry {\n\t            int status = httpClient.executeMethod(method);\t            \n\t\t        String response = new String(method.getResponseBody());\n\t            \n\t            if (status != HttpStatus.SC_OK)\n\t            \tthrow new IOException(\"HTTP error: \" + response);\n\t            \n\t            return response;\n\t            \n\t\t\t} finally {\n\t            method.releaseConnection();\n\t\t\t}\n\t \t} \t\n\t\n\t\tprivate synchronized void initialize() {\t\n\t\t\tif (initialized)\n\t\t\t\treturn;\n\t\t\t\n\t        poolManager = new MultiThreadedHttpConnectionManager();\n\t        httpParams = new HttpConnectionManagerParams();\n\t        \n\t        httpParams.setMaxTotalConnections(MAX_TOTAL_CONNECTIONS);\n\t        httpParams.setDefaultMaxConnectionsPerHost(MAX_CONNECTIONS_PER_HOST);\n\t        httpParams.setTcpNoDelay(TCP_NO_DELAY);\n\t        httpParams.setSoTimeout(SOCKET_TIMEOUT);\n\t        httpParams.setConnectionTimeout(CONNECT_TIMEOUT);\n\t        \n\t        poolManager.setParams(httpParams);\n\t        httpClient = new HttpClient(poolManager);\n\n\t\t\tinitialized = true;\n\t\t}\n\t\t\n\t}\n}\n\n\n\n",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "HTTPCLIENT-813",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "HTTPCLIENT",
+    "project": "HTTPCLIENT",
+    "summary": "HttpClient throws NPE on Invalid Port when used with MultiThreadedHttpConnectionManager",
+    "systemSpecification": true,
+    "version": "3.1 (end of life)"
+}

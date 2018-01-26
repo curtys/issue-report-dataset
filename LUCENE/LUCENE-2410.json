@@ -1,0 +1,89 @@
+{
+    "comments": [
+        {
+            "author": "Michael McCandless",
+            "body": "Another thing we should fix -- PhraseQuery of a single term should rewrite to TermQuery.",
+            "date": "2010-05-11T20:11:33.345+0000",
+            "id": 0
+        },
+        {
+            "author": "Robert Muir",
+            "body": "just doing the easy part here, here's the rewrite patch.\nI checked, MultiPhraseQuery already has it.",
+            "date": "2010-05-12T03:13:00.189+0000",
+            "id": 1
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Looks great Robert -- I think you should go ahead & commit that and we'll work on the rest of these optos later.",
+            "date": "2010-05-12T09:37:04.131+0000",
+            "id": 2
+        },
+        {
+            "author": "Robert Muir",
+            "body": "Committed revisions 943493 (trunk), 943499 (3x)",
+            "date": "2010-05-12T13:59:15.373+0000",
+            "id": 3
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Attached initial rough patch, doing the 1st and 3rd bullets above.\nStill many nocommits, but all tests pass.\n\nI only did this for the exact case (I don't understand the sloppy\ncase!), so I modified ExactPhraseScorer to no longer subclass\nPhraseScorer and instead do everything on its own.\n\nI tested on a 20M doc Wikipedia index, best of 10 runs:\n\n||Query||No. hits||Trunk QPS||Patch QPS||Speedup||\n|United States|314K|4.29|11.04|2.6X faster|\n|United Kingdom Parliament|7K|20.33|58.57|2.9X faster|\n\nThe speedup is great :)\n\nHowever, there's one problem w/ the patch that I must fix (and will\nbring these gains down), which is it requires 2 int arrays sized to\nthe max position encountered during the search (which for a large doc\ncould be very large).  I think to make this committable I'd have to\nswitch to processing the positions in chunks (like BooleanScorer).\n",
+            "date": "2010-06-16T18:38:37.658+0000",
+            "id": 4
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "New patch attached, switches over to chunking (processing the positions 4096 at once).\n\nUnited States is now 10.66 QPS (2.5X speedup) and United Kingdom Parliament is now 54.93 QPS (2.7X speedup).\n\nI think it's ready to commit... I'll wait a few days.",
+            "date": "2010-06-17T09:48:47.504+0000",
+            "id": 5
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Attached patch w/ another optimization: if the freq of the 2 rarest terms in the phrase are \"closish\", then just use .nextDoc() instead of .advance() when ANDing.  This buys another 15% speedup (12.30 QPS, net 2.9X faster than trunk) on United States phrase query.\n\nAlso, I fixed MultiPhraseQuery to sort its clauses by approx docFreq; the optimization is approx in this case because we can't efficiently compute the docFreq of a position that's unioning > 1 term.",
+            "date": "2010-06-17T10:38:44.998+0000",
+            "id": 6
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "New patch -- makes the \"useAdvance\" per-Term, and, adds a safety fallback to .advance if too many .nextDocs are used.",
+            "date": "2010-06-17T16:17:37.693+0000",
+            "id": 7
+        },
+        {
+            "author": "Yonik Seeley",
+            "body": "Fantastic!  Phrase queries have often been a bottleneck.\n",
+            "date": "2010-06-17T16:46:32.333+0000",
+            "id": 8
+        },
+        {
+            "author": "Michael Busch",
+            "body": "Very nice, Mike!\n\nAnother improvement we could make for positional queries (phrases, span queries) would be skip lists on the positions, maybe in a different codec?  This would probably be a nice speedup for large docs.",
+            "date": "2010-06-17T17:55:33.964+0000",
+            "id": 9
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Alas.... I think I somehow screwed up my performance tests above.\n\nI'm testing search perf (working on LUCENE-2504), and in comparing search perf from 2.9.x -> 3.x, I only saw a ~20% speedup on the phrase query \"united states\", for a 5M doc Wikipedia index.  And, re-running the test on trunk pre and post this commit, I still see only ~20% gain.... still not sure what I did wrong.\n\nI'll update CHANGES.  Two steps forward, one step back... sigh.",
+            "date": "2010-07-05T22:35:57.676+0000",
+            "id": 10
+        },
+        {
+            "author": "Grant Ingersoll",
+            "body": "Bulk close for 3.1",
+            "date": "2011-03-30T15:50:08.680+0000",
+            "id": 11
+        }
+    ],
+    "component": "core/search",
+    "description": "Looking the scorers for PhraseQuery, I think there are some speedups\nwe could do:\n\n  * The AND part of the scorer (which advances to the next doc that\n    has all the terms), in PhraseScorer.doNext, should do the same\n    optimizing as BooleanQuery's ConjunctionScorer, ie sort terms from\n    rarest to most frequent.  I don't think it should use a linked\n    list/firstToLast() that it does today.\n\n  * We do way too much work now when .score() is not called, because\n    we go and find all occurrences of the phrase in the doc, whereas\n    we should stop only after finding the first and then go and count\n    the rest if .score() is called.\n\n  * For the exact case, I think we can use two int arrays to find the\n    matches.  The first array holds the count of how many times a term\n    in the phrase \"matched\" a phrase starting at that position.  When\n    that count == the number of terms in the phrase, it's a match.\n    The 2nd is a \"gen\" array (holds docID when that count was last\n    touched), to avoid clearing.  Ie when incrementing the count, if\n    the docID != gen, we reset count to 0.  I think this'd be faster\n    than the PQ we now use.  Downside of this is if you have immense\n    docs (position gets very large) we'd need 2 immense arrays.\n\nIt'd be great to do LUCENE-1252 along with this, ie factor\nPhraseScorer into two AND'd sub-scorers (LUCENE-1252 is open for\nthis).  The first one should be ConjunctionScorer, and the 2nd one\nchecks the positions (ie, either the exact or sloppy scorers).  This\nwould mean if the PhraseQuery is AND'd w/ other clauses (or, a filter\nis applied) we would save CPU by not checking the positions for a doc\nunless all other AND'd clauses accepted the doc.\n",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-2410",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Major",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "Optimize PhraseQuery",
+    "systemSpecification": true,
+    "version": ""
+}

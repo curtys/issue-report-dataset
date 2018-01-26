@@ -1,0 +1,29 @@
+{
+    "comments": [
+        {
+            "author": "szegedia@freemail.hu",
+            "body": "Unfortunately, this gets worse. apply() and call() are not the only cases of a JS->Java->JS transition. \n\nThere is the case of a JS-aware Java object, or a JavaAdapter being passed to Java code. However, since these require that the developer explicitly meddle with Java-specific functionality, we can accept this as a limitation. \n\nHowever, there are further pure-JS cases as well, namely all JS 1.6 array iterator methods: Array.every(), Array. filter(), Array. forEach(), Array. map(), Array. some(). It is clearly not feasible to treat these as special cases in the interpreter. It might be possible to provide an implementation of them written in JS, and when someone needs continuations support through these invocations, then redefine them using\n\n Array.prototype.every = function(fun /*, thisp*/)\n {\n    var len = this.length;\n    if (typeof fun != \"function\")\n      throw new TypeError();\n\n    var thisp = arguments[1];\n    for (var i = 0; i < len; i++)\n    {\n      if (i in this &&\n          !fun.call(thisp, this[i], i, this))\n        return false;\n    }\n\n    return true;\n  };\n\nand similar -- code seen here was lifted from <http://developer.mozilla.org/en/docs/Core_JavaScript_1.5_Reference:Objects:Array:every>\n\nAlso, unrelated to these, exotic stuff, like invoking apply on apply itself etc. clearly won't work as expected...",
+            "date": "20071128T08:26:56",
+            "id": 0
+        },
+        {
+            "author": "szegedia@freemail.hu",
+            "body": "cvs ci -m \"Fix for Bug 405654 \u2013 Execution exits interpreter on Function.apply and Function.call\" -l \"/Rhino/src/org/mozilla/javascript/BaseFunction.java\" \"/Rhino/src/org/mozilla/javascript/ScriptRuntime.java\" \"/Rhino/src/org/mozilla/javascript/Interpreter.java\"\n    Checking in src/org/mozilla/javascript/BaseFunction.java;\n    /cvsroot/mozilla/js/rhino/src/org/mozilla/javascript/BaseFunction.java,v  <--  BaseFunction.java\n    new revision: 1.65; previous revision: 1.64\n    done\n    Checking in src/org/mozilla/javascript/ScriptRuntime.java;\n    /cvsroot/mozilla/js/rhino/src/org/mozilla/javascript/ScriptRuntime.java,v  <--  ScriptRuntime.java\n    new revision: 1.284; previous revision: 1.283\n    done\n    Checking in src/org/mozilla/javascript/Interpreter.java;\n    /cvsroot/mozilla/js/rhino/src/org/mozilla/javascript/Interpreter.java,v  <--  Interpreter.java\n    new revision: 1.338; previous revision: 1.337\n    done\n\n",
+            "date": "20071128T10:15:43",
+            "id": 1
+        }
+    ],
+    "component": "Core",
+    "description": "when f.apply() or f.call() are invoked from the interpreter, the interpreter will call into Java code for IdFunctionObject.call() which will initiate another interpreter loop in case f is an interpreted function. This breaks continuations captured within the f.apply() or f.call().\n\nThe interpreter loop should recognize the special cases of Function.apply and Function.call, and if they are invoked on an InterpretedFunction within the same security domain, then execute the applied/called function within the current interpreter loop.",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "405654",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "BUG",
+    "priority": "-- normal",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "Execution exits interpreter on Function.apply and Function.call",
+    "systemSpecification": false,
+    "version": "1.6R6"
+}

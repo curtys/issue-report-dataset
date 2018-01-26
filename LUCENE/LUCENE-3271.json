@@ -1,0 +1,137 @@
+{
+    "comments": [
+        {
+            "author": "Robert Muir",
+            "body": "Thanks for working to clean this up! a few of my comments:\n{quote}\nsimilar.* -> suggest module\n{quote}\n\nSeems a little funky? I guess if we had a query-expansion module, I would think it belonged there.\n\n{quote}\nFieldCacheRewriteMethod -> This doesn't belong in this contrib or the queries module. I think we should push it to contrib/misc for the time being. It seems to have quite a few constraints on when its useful. If indeed CONSTANT_SCORE_AUTO rewrite is better, then I dont see a purpose for it.\n{quote}\n\nMy vote would actually be to move this to src/test! :) Yeah there are some scenarios where this thing could be faster, but really I thought it was just a good way to add seek to the doctermsindex termsenum. I do think it and its test would be a nice addition to src/test, if someone wants to use it the can always snag it from there... its that expert.\n\n{quote}\nFuzzyLikeThisQuery -> suggest module. This class seems a mess with its Similarity hardcoded. With all that said, it does seem to do what it claims and with some cleanup, it could be good.\n{quote}\n\nI actually made some comments about this query in the flexscoring branch: http://svn.apache.org/repos/asf/lucene/dev/branches/flexscoring/lucene/contrib/queries/src/java/org/apache/lucene/search/FuzzyLikeThisQuery.java\n\nIn my opinion, as a rewrite method (i think it would require 2, one for the variant that ignores TF), we could get better performance out of this with cleaner code... in other words you would just use ordinary FuzzyQuery and set this rewrite method for its scoring heuristic, or a BQ of FuzzyQueries if you are doing the expansion thing\n\n{quote}\nSlowCollated* -> They can stay in the module till we have a better place to nuke them.\n{quote}\n\nThis is all totally deprecated code that seems nice in contrib to reflect the fact that its not scalable...  I don't think its a huge issue where it goes due to the fact its deprecate and the name :)\n\nFinally, I wanted to say that its my opinion that we shouldn't put garbage in modules. Modules should be treated like core I think.... yet at the same time I totally support efforts to cleanup contrib, either removing sandy stuff or refactoring it where it belongs in a module.\n\nOne option could to create a sandbox directory either under lucene (it contains src/java and src/test but is totally an unorganized sandbox), or itself as a contrib temporarily (contrib/sandbox) and take a look at contrib and move stuff thats good into modules, but toss all the 'odd things' into this sandbox. \n",
+            "date": "2011-07-01T01:21:47.157+0000",
+            "id": 0
+        },
+        {
+            "author": "Chris Male",
+            "body": "{quote}\nbq. similar.* -> suggest module\n\nSeems a little funky? I guess if we had a query-expansion module, I would think it belonged there.\n{quote}\n\nMoreLikeThis makes suggestions :D But okay.  Do you have other thoughts for what could go into a query-expansion module?  If so, then I'll go with it.  I just know that MLT doesn't belong with the queries anymore.\n\n{quote}\nbq. FieldCacheRewriteMethod -> This doesn't belong in this contrib or the queries module. I think we should push it to contrib/misc for the time being. It seems to have quite a few constraints on when its useful. If indeed CONSTANT_SCORE_AUTO rewrite is better, then I dont see a purpose for it.\n\nMy vote would actually be to move this to src/test!  Yeah there are some scenarios where this thing could be faster, but really I thought it was just a good way to add seek to the doctermsindex termsenum. I do think it and its test would be a nice addition to src/test, if someone wants to use it the can always snag it from there... its that expert.\n{quote}\n\nsrc/test it is.\n\n{quote}\nIn my opinion, as a rewrite method (i think it would require 2, one for the variant that ignores TF), we could get better performance out of this with cleaner code... in other words you would just use ordinary FuzzyQuery and set this rewrite method for its scoring heuristic, or a BQ of FuzzyQueries if you are doing the expansion thing\n{quote}\n\nSo what are you suggesting? We could sandbox it for the time being (see my comments about sandbox below).\n\n{quote}\nFinally, I wanted to say that its my opinion that we shouldn't put garbage in modules. Modules should be treated like core I think.... yet at the same time I totally support efforts to cleanup contrib, either removing sandy stuff or refactoring it where it belongs in a module.\n{quote}\n\n+1 to all this.  I'm going to do a code cleanup on each of the classes to goes into the module. Test coverage will be looked into as well. At this stage I don't think any of the classes I've suggested moving to would be deemed garbage.\n\n{quote}\nOne option could to create a sandbox directory either under lucene (it contains src/java and src/test but is totally an unorganized sandbox), or itself as a contrib temporarily (contrib/sandbox) and take a look at contrib and move stuff thats good into modules, but toss all the 'odd things' into this sandbox.\n{quote}\n\nI actually really like the idea of a sandbox.  I think for simplicity, its best to make it a contrib.  That way we can easily get it up and running.  It also won't 'stain' anything that isn't already stained.\n\nAs part of this work, I'll push the SlowCollated* stuff to the sandbox, along with FuzzyLikeThis.",
+            "date": "2011-07-01T02:39:14.167+0000",
+            "id": 1
+        },
+        {
+            "author": "Chris Male",
+            "body": "Patch that moves the contents of similar.* (MoreLikeThis) to .mlt in the queries module.\n\nUpdates dependencies, everything passes.",
+            "date": "2011-07-13T11:20:33.471+0000",
+            "id": 2
+        },
+        {
+            "author": "Chris Male",
+            "body": "Command for MLT patch:\n\n{code}\nsvn --parents move lucene/contrib/queries/src/java/org/apache/lucene/search/similar/MoreLikeThis*.java modules/queries/src/java/org/apache/lucene/queries/mlt/\nsvn --parents move lucene/contrib/queries/src/java/org/apache/lucene/search/similar/package.html modules/queries/src/java/org/apache/lucene/queries/mlt/\nsvn --parents move lucene/contrib/queries/src/test/org/apache/lucene/search/similar/TestMoreLikeThis.java modules/queries/src/test/org/apache/lucene/queries/mlt/TestMoreLikeThis.java\nsvn delete lucene/contrib/queries/src/java/org/apache/lucene/search/similar/\n{code}",
+            "date": "2011-07-13T11:20:52.708+0000",
+            "id": 3
+        },
+        {
+            "author": "Chris Male",
+            "body": "Better patch which fixes frustrating xml-query-parser javadoc issue.\n\nCommitting now.",
+            "date": "2011-07-14T02:05:46.671+0000",
+            "id": 4
+        },
+        {
+            "author": "Chris Male",
+            "body": "MLT moved Committed revision 1146542.",
+            "date": "2011-07-14T02:07:29.300+0000",
+            "id": 5
+        },
+        {
+            "author": "Chris Male",
+            "body": "Back on the wagon again.\n\nPatch moves the regex.* to the queries module.\n\nCommand coming up.\n\nEverything compiles, passes.",
+            "date": "2011-08-14T13:46:03.121+0000",
+            "id": 6
+        },
+        {
+            "author": "Chris Male",
+            "body": "Command for regex patch:\n\n{code}\nsvn move --parents lucene/contrib/queries/src/java/org/apache/lucene/search/regex/* modules/queries/src/java/org/apache/lucene/queries/regex/\nsvn move --parents lucene/contrib/queries/src/test/org/apache/lucene/search/regex/* modules/queries/src/test/org/apache/lucene/queries/regex/\nsvn move --parents lucene/contrib/queries/lib/* modules/queries/lib/\nsvn delete lucene/contrib/queries/src/test/org/apache/lucene/search/regex\nsvn delete lucene/contrib/queries/src/java/org/apache/lucene/search/regex\n{code}",
+            "date": "2011-08-14T13:46:45.798+0000",
+            "id": 7
+        },
+        {
+            "author": "Robert Muir",
+            "body": "is regex a 'good' query? maybe we should put Slow in front of its name?",
+            "date": "2011-08-14T16:17:35.099+0000",
+            "id": 8
+        },
+        {
+            "author": "Chris Male",
+            "body": "Funny you say that, I was just thinking the same thing over night.  I might actually change my direction and sandbox it as it really is incredibly inefficient.",
+            "date": "2011-08-15T01:38:14.518+0000",
+            "id": 9
+        },
+        {
+            "author": "Chris Male",
+            "body": "I'll leave the regex stuff aside for a bit.\n\nNew patch which moves remainder of good queries to their new homes.  Most are moved to the queries module.\n\nThis just leaves the bad eggs in the queries contrib.  I'll move them out next.",
+            "date": "2011-08-15T03:07:22.719+0000",
+            "id": 10
+        },
+        {
+            "author": "Chris Male",
+            "body": "Command for patch:\n\n{code}\nsvn move lucene/contrib/queries/src/java/org/apache/lucene/search/FieldCacheRewriteMethod.java lucene/src/test/org/apache/lucene/search/\nsvn move lucene/contrib/queries/src/test/org/apache/lucene/search/TestFieldCacheRewriteMethod.java lucene/src/test/org/apache/lucene/search/\nsvn move lucene/contrib/queries/src/java/org/apache/lucene/search/BooleanFilter.java modules/queries/src/java/org/apache/lucene/queries/\nsvn move lucene/contrib/queries/src/test/org/apache/lucene/search/BooleanFilterTest.java modules/queries/src/test/org/apache/lucene/queries/\nsvn move lucene/contrib/queries/src/java/org/apache/lucene/search/FilterClause.java modules/queries/src/java/org/apache/lucene/queries/\nsvn move lucene/contrib/queries/src/java/org/apache/lucene/search/TermsFilter.java modules/queries/src/java/org/apache/lucene/queries/\nsvn move lucene/contrib/queries/src/test/org/apache/lucene/search/TermsFilterTest.java modules/queries/src/test/org/apache/lucene/queries/\nsvn move lucene/contrib/queries/src/java/org/apache/lucene/search/BoostingQuery.java modules/queries/src/java/org/apache/lucene/queries/\nsvn move lucene/contrib/queries/src/java/org/apache/lucene/search/ChainedFilter.java modules/queries/src/java/org/apache/lucene/queries/\nsvn move lucene/contrib/queries/src/java/org/apache/lucene/search/DuplicateFilter.java modules/queries/src/java/org/apache/lucene/queries/\nsvn move lucene/contrib/queries/src/test/org/apache/lucene/search/BoostingQueryTest.java modules/queries/src/test/org/apache/lucene/queries/\nsvn move lucene/contrib/queries/src/test/org/apache/lucene/search/ChainedFilterTest.java modules/queries/src/test/org/apache/lucene/queries/\nsvn move lucene/contrib/queries/src/test/org/apache/lucene/search/DuplicateFilterTest.java modules/queries/src/test/org/apache/lucene/queries/\n{code}",
+            "date": "2011-08-15T03:08:11.564+0000",
+            "id": 11
+        },
+        {
+            "author": "Robert Muir",
+            "body": "In order to fix LUCENE-3378, I need to do part of this patch (move the FieldCacheRewriteMethod tests).\n\nI'll apply this locally to a separate checkout and then update the patch and instructions (as I figure you are close to committing)",
+            "date": "2011-08-17T13:22:07.954+0000",
+            "id": 12
+        },
+        {
+            "author": "Chris Male",
+            "body": "Okay! I'll be committing this in about 12hrs or so.",
+            "date": "2011-08-17T13:26:35.193+0000",
+            "id": 13
+        },
+        {
+            "author": "Robert Muir",
+            "body": "updated patch... i think it might be identical to the old one actually! \n\nbut here are the revised instructions:\n{noformat}\nsvn move lucene/contrib/queries/src/java/org/apache/lucene/search/BooleanFilter.java modules/queries/src/java/org/apache/lucene/queries/\nsvn move lucene/contrib/queries/src/test/org/apache/lucene/search/BooleanFilterTest.java modules/queries/src/test/org/apache/lucene/queries/\nsvn move lucene/contrib/queries/src/java/org/apache/lucene/search/FilterClause.java modules/queries/src/java/org/apache/lucene/queries/\nsvn move lucene/contrib/queries/src/java/org/apache/lucene/search/TermsFilter.java modules/queries/src/java/org/apache/lucene/queries/\nsvn move lucene/contrib/queries/src/test/org/apache/lucene/search/TermsFilterTest.java modules/queries/src/test/org/apache/lucene/queries/\nsvn move lucene/contrib/queries/src/java/org/apache/lucene/search/BoostingQuery.java modules/queries/src/java/org/apache/lucene/queries/\nsvn move lucene/contrib/queries/src/java/org/apache/lucene/search/ChainedFilter.java modules/queries/src/java/org/apache/lucene/queries/\nsvn move lucene/contrib/queries/src/java/org/apache/lucene/search/DuplicateFilter.java modules/queries/src/java/org/apache/lucene/queries/\nsvn move lucene/contrib/queries/src/test/org/apache/lucene/search/BoostingQueryTest.java modules/queries/src/test/org/apache/lucene/queries/\nsvn move lucene/contrib/queries/src/test/org/apache/lucene/search/ChainedFilterTest.java modules/queries/src/test/org/apache/lucene/queries/\nsvn move lucene/contrib/queries/src/test/org/apache/lucene/search/DuplicateFilterTest.java modules/queries/src/test/org/apache/lucene/queries/\n{noformat}",
+            "date": "2011-08-17T13:46:14.576+0000",
+            "id": 14
+        },
+        {
+            "author": "Chris Male",
+            "body": "Committed revision 1158997.\n\nMoving on to deal with the remaining contents.",
+            "date": "2011-08-18T02:37:09.831+0000",
+            "id": 15
+        },
+        {
+            "author": "Chris Male",
+            "body": "We've move the good queries, I'll deal with the remainder in a separate issue.",
+            "date": "2011-08-18T08:15:21.624+0000",
+            "id": 16
+        },
+        {
+            "author": "Robert Muir",
+            "body": "I think the DuplicateFilter should go back to sandbox for now, this one does not work correctly for a multi-segment index?",
+            "date": "2011-08-18T09:29:58.539+0000",
+            "id": 17
+        },
+        {
+            "author": "Chris Male",
+            "body": "Okay, will make a patch.",
+            "date": "2011-08-18T09:33:24.687+0000",
+            "id": 18
+        },
+        {
+            "author": "Chris Male",
+            "body": "I've added moving DuplicateFilter to LUCENE-3381.",
+            "date": "2011-08-18T12:31:53.259+0000",
+            "id": 19
+        }
+    ],
+    "component": "",
+    "description": "With the Queries module now filled with the FunctionQuery stuff, we should look at closing down contrib/queries.  While not a huge contrib, it contains a number of pretty useful classes and some that should go elsewhere.\n\nHeres my proposed plan:\n\n- similar.* -> suggest module\n- regex.* -> queries module\n- BooleanFilter -> queries module under .filters package\n- BoostingQuery -> queries module\n- ChainedFilter -> queries module under .filters package\n- DuplicateFilter -> queries module under .filters package\n- FieldCacheRewriteMethod -> This doesn't belong in this contrib or the queries module.  I think we should push it to contrib/misc for the time being.  It seems to have quite a few constraints on when its useful.  If indeed CONSTANT_SCORE_AUTO rewrite is better, then I dont see a purpose for it.\n- FilterClause -> class inside BooleanFilter\n- FuzzyLikeThisQuery -> suggest module. This class seems a mess with its Similarity hardcoded.  With all that said, it does seem to do what it claims and with some cleanup, it could be good.\n- TermsFilter -> queries module under .filters package\n- SlowCollated* -> They can stay in the module till we have a better place to nuke them.\n\nOne of the implications of the above moves, is that the xml-query-parser, which supports many of the queries, will need to have a dependency on the queries module.  But that seems unavoidable at this stage.\n\n\n\n",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-3271",
+    "issuetypeClassified": "REFACTORING",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Major",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "Move 'good' contrib/queries classes to Queries module",
+    "systemSpecification": true,
+    "version": ""
+}

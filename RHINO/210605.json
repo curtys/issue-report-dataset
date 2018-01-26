@@ -1,0 +1,89 @@
+{
+    "comments": [
+        {
+            "author": "pschwartau@meer.net",
+            "body": "cc'ing Igor -",
+            "date": "20030625T15:26:40",
+            "id": 0
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 126809\nConsistent exception handling \n\nThis big patch changes exception handling in Rhino in the following way:\n\n1. JavaScriptException is used only to represent exceptions thrown by the\nscript throw statement. Previously the class was used as well to wrap instances\nof Throwable that script can catch.\n\n2. WrappedException is always used to wrap instances of Throwable that script\ncan catch by the catch statement. The new method\nScriptRutime.throwAsUncheckedException() that replaces\nWrappedException.wrapException() will either re-throw the exception wrapped as\nWrappedException or re-throw it as is. The method unwrap\nInvocationTargetExceptions and if its target is Error instance, it is re-thrown\nas is. In this way the script catch statement will never see instances of Error\nincluding ThreadDeath.\n\n3. Since the change effectively means that the script catch can see instances\nof JavaScriptException, EcmaError and WrappedException, the new method\nScriptRutime.getCatchObject is used to extract JS object that is passed as the\ncatch argument. For JavaScriptException and EcmaError the method simply\nextracts the corresponding JS object. For WrappedException the method wraps the\noriginal exception as a LiveConnect object. In this way a potentially expensive\nLiveConnect wrapping is avoided if the exception is never caught by a script.\n\nInterpreter.interpret and optimizer/Codegen.generateCatchBlock is updated to\nuse the new method.",
+            "date": "20030701T09:43:58",
+            "id": 1
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 126817\nPatch updates with more comments",
+            "date": "20030701T12:06:11",
+            "id": 2
+        },
+        {
+            "author": "hannesw@gmail.com",
+            "body": "Thanks Igor. I'm running the patched version, everything looks right now.",
+            "date": "20030701T13:37:36",
+            "id": 3
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "I committed the patch.",
+            "date": "20030702T16:37:55",
+            "id": 4
+        },
+        {
+            "author": "hannesw@gmail.com",
+            "body": "This bug has resurfaced with revision 1.173 of Context.java committed on\n01/16/2004: By removing the lines \n\n    if (e instanceof Error) { \n        throw (Error)e;                                                     \n    }\n\nfrom Context.throwAsUncheckedException(), java.lang.Errors are thrown as\nWrappedExceptions, which will be cought by JavaScript catch statements.",
+            "date": "20040128T13:44:42",
+            "id": 5
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "That was caused by my attempt to get script source/line number information for\nall exceptions including LinkageError and StackOverflow. For I now I will revert\nthe check for Error instances and after 1.5R1.5 release implement better solution.",
+            "date": "20040128T20:29:12",
+            "id": 6
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Should be fixed in 1.5R5",
+            "date": "20040128T20:31:32",
+            "id": 7
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 140103\nFix to restore special handling of Error",
+            "date": "20040128T22:11:52",
+            "id": 8
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "I committed the fix.",
+            "date": "20040129T17:23:35",
+            "id": 9
+        },
+        {
+            "author": "hannesw@gmail.com",
+            "body": "Thanks Igor. From your comments it seems like 1.5R5 is just around the corner,\nwhich is also good to hear.",
+            "date": "20040129T17:51:56",
+            "id": 10
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Trageting as resolved against 1.5R5",
+            "date": "20040213T11:34:59",
+            "id": 11
+        }
+    ],
+    "component": "Core",
+    "description": "User-Agent:       Mozilla/5.0 (X11; U; Linux i686; en-US; rv:1.4) Gecko/20030529\nBuild Identifier: \n\nIf a java method is called through reflection by\norg.mozilla.javascript.NativeJavaMethod.call(), all instances of\njava.lang.Throwable thrown while executing that method are caught by a\nsurrounding JavaScript try/catch statement.\n\nReproducible: Always\n\nSteps to Reproduce:\n1. Compile this class and add it to your classpath:\npublic class Test {\n    public static void stop() {\n        Thread.currentThread().stop();\n    }\n}\n\n2. Execute this script: \ntry {\n        Packages.Test.stop();\n} catch (x) {\n        java.lang.System.err.println(\"cought: \"+x);\n}\n\nActual Results:  \nThe following line is printed: \ncought: java.lang.ThreadDeath\n\nExpected Results:  \nJavaScript shouldn't be able to catch the java.lang.ThreadDeath.\n\nThe cause of the problem seems to be that all Errors/Throwables are caught by\nNativeJavaMethod.call() wrapped inside a InvocationTargetException, which is\nthen again wrapped inside a JavaScriptException. I guess the right thing would\nbe to unwrap and check the Throwable wrapped by the InvocationTargetException\nand either wrap that in the JavaScriptException or rethrow it. The following\ncode in line 272 of NativeJavaMethod fixes the problem for me:\n\n        } catch (InvocationTargetException e) {\n            Throwable t = e.getTargetException();\n            if (!(t instanceof Exception)) {\n                Thread.currentThread().stop(t);\n            }\n            throw JavaScriptException.wrapException(cx, scope, e);\n        }\n\nI'm not sure if this is the way to go, though, and I don't understand why\nNativeJavaMethod behaves differently than FunctionObject, which handles\nInvocationTargetExceptions in the same way.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "210605",
+    "issuetypeClassified": "OTHER",
+    "issuetypeTracker": "BUG",
+    "priority": "-- normal",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "Script catches all Throwables when inside reflected Java method",
+    "systemSpecification": true,
+    "version": "other"
+}

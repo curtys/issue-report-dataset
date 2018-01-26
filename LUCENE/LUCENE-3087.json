@@ -1,0 +1,77 @@
+{
+    "comments": [
+        {
+            "author": "Pierre Goss\u00e9",
+            "body": "correction patch with junit tests",
+            "date": "2011-05-11T13:48:45.453+0000",
+            "id": 0
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Thank you for the patch with test case Pierre!\n\nSo this bug only applies if you store offset but not positions in your term vectors (TermVector.WITH_OFFSET).  Previously we would always set posIncr=1, now (with your patch) we set it to 0 if the offset didn't change vs the prior token.  I think this seems reasonable -- we have to fallback on heuristics since positions were not stored.",
+            "date": "2011-05-12T10:43:11.585+0000",
+            "id": 1
+        },
+        {
+            "author": "Pierre Goss\u00e9",
+            "body": "Thanks for taking a look at this Michael.\n\nIn fact, I should be in the case of TermVector.WITH_POSITIONS_OFFSETS, using this parameters in my solr Shema.xml\n<field name=\"...\" type=\"...\" indexed=\"true\" stored=\"true\" compressed=\"true\" omitNorms=\"true\" termVectors=\"true\" termPositions=\"true\" termOffsets=\"true\"/>\n\nSomehow, I end up in TokenSources with argument tokenPositionsGuaranteedContiguous to false, which falls back to using offsets instead of positions.\n\nMaybe this is because of my overlapping tokens, maybe not, I'll have to take a couple of hours sometime to figure this out. At first sight, however it seams this parameter is always set to false when calling TokenSource.getTokenStream with an IndexReader because some code to use field infos is missing.\n\nSome work to do here, maybe, sometime. :)",
+            "date": "2011-05-12T14:14:04.844+0000",
+            "id": 2
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Ahh, interesting.\n\nSo... maybe we should fix the code so that if in fact positions were included in the TVs, we use them?  Else, we fallback to the offset check to guess at the posIncr?  Could that work?",
+            "date": "2011-05-12T15:46:30.181+0000",
+            "id": 3
+        },
+        {
+            "author": "Pierre Goss\u00e9",
+            "body": "Yes, that would be the best.\n\nBut I'm not sure how to do that :\n- Check for positions in token stream ? Not sure it \"guaranties\" anything. :)\n- add some kind of additionnal properties to the TermFreqVector returned by the IndexReader.getTermFreqVector() since it already access fields info ? Not sure it has'nt too much impact.\n- Ask the index for field infos from TokenSources.getTokenStream ? Not sure it is the place but looks like the less dangerous option.\n\nI haven't much time 'till the end of month to take a serious look at this, but I'll try to take some time next month.",
+            "date": "2011-05-12T15:58:38.344+0000",
+            "id": 4
+        },
+        {
+            "author": "Robert Muir",
+            "body": "bq. So... maybe we should fix the code so that if in fact positions were included in the TVs, we use them? Else, we fallback to the offset check to guess at the posIncr? Could that work?\n\nBut this patch is still good right? We introduce this heuristic when positions are not available (or when highlighter pretends they are not).\n\nFrom my very vague understanding of highlighting, when overlapping positions or gaps in the position increment exist (tokenPositionsGuaranteedContiguous=false), the highlighter uses this algorithm intentionally (there are comments in the code indicating this position-based algorithm would fail otherwise).\n\nWe could try to improve that on a followup issue?",
+            "date": "2011-05-12T16:05:11.019+0000",
+            "id": 5
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "bq. We could try to improve that on a followup issue?\n\n+1, I agree: progress not perfection!\n\nSo I'll commit this patch and then open a follow on issue...\n\nThanks Pierre!",
+            "date": "2011-05-12T16:28:20.528+0000",
+            "id": 6
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "OK I opened LUCENE-3091.",
+            "date": "2011-05-12T17:07:53.785+0000",
+            "id": 7
+        },
+        {
+            "author": "Robert Muir",
+            "body": "Bulk closing for 3.2",
+            "date": "2011-06-03T16:37:15.418+0000",
+            "id": 8
+        },
+        {
+            "author": "vishal parekh",
+            "body": "i am facing same problem in solr 3.5",
+            "date": "2013-06-07T12:37:58.700+0000",
+            "id": 9
+        }
+    ],
+    "component": "modules/highlighter",
+    "description": "Fields with overlapping token are not highlighted in search results when searching exact phrases, when using TermVector.WITH_OFFSET.\n\nThe document builded in MemoryIndex for highlight does not preserve positions of tokens in this case. Overlapping tokens get \"flattened\" (position increment always set to 1), the spanquery used for searching relevant fragment will fail to identify the correct token sequence because the position shift.\n\nI corrected this by adding a position increment calculation in sub class StoredTokenStream. I added junit test covering this case.\n\nI used the eclipse codestyle from trunk, but style add quite a few format differences between repository and working copy files. I tried to reduce them, but some linewrapping rules still doesn't match.\n\nCorrection patch joined",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-3087",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Minor",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "highlighting exact phrase with overlapping tokens fails.",
+    "systemSpecification": true,
+    "version": "2.9.4, 3.1"
+}

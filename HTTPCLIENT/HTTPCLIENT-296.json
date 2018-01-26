@@ -1,0 +1,161 @@
+{
+    "comments": [
+        {
+            "author": "Michael Becke",
+            "body": "Created an attachment (id=9084)\nPatch 1\n",
+            "date": "2003-11-13T11:03:11.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "+1 to check the patch in\n\nOleg",
+            "date": "2003-11-14T03:18:58.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Patch applied.\n\nMike",
+            "date": "2003-11-14T10:28:55.000+0000",
+            "id": 2
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "I believe there's no reason to keep this bug report open anymore\n\nOleg",
+            "date": "2003-11-16T04:18:37.000+0000",
+            "id": 3
+        },
+        {
+            "author": "Michael Becke",
+            "body": "I left it open to remind me to investigate this problem with digest authentication.  I haven't been \nable to test it out, but I believe we have the same problem with digest.  Has anyone tried digest \nwith non-ASCII characters?\n\nMike",
+            "date": "2003-11-17T11:23:43.000+0000",
+            "id": 4
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Mike,\nI set up Apache http server 2.0.48 on Win2K (Prof), enabled digest\nauthentication for a directory, and created an user account with a password\ncontaining German umlauts. I hit the URL with Mozilla Firebird 0.7 and attempted\nto authenticate using the password. It did not work. I may know why.\n\nIf the RFC 2617 is to be strictly adhered to, only ASCII characters in passwords\nshould be allowed for basic & digest authentication \n\nRFC 2617, Section 2: Basic Authentication Scheme\n<quote>\n      basic-credentials = base64-user-pass\n      base64-user-pass  = <base64 [4] encoding of user-pass,\n                          except not limited to 76 char/line>\n      user-pass   = userid \":\" password\n      userid      = *<TEXT excluding \":\">\n      password    = *TEXT\n</quote>\n\nRFC 822 defines TEXT as \n<quote>\n     text        =  <any CHAR, including bare    ; => atoms, specials,\n                     CR & bare LF, but NOT       ;  comments and\n                     including CRLF>             ;  quoted-strings are\n                                                 ;  NOT recognized.\n</quote>\n\nRFC 822 defines TEXT as \n<quote>\n                                                 ; (  Octal, Decimal.)\n     CHAR        =  <any ASCII character>        ; (  0-177,  0.-127.)\n</quote>\n\nHowever, I do think that in this instance the spec is too restrictive and we\nshould be using ISO-8859-1 instead of ASCII. So, I reopen the bug. Sorry for\nhaving closed it prematurely ",
+            "date": "2003-11-18T05:38:23.000+0000",
+            "id": 5
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Oleg,\n\nNo worries about closing the bug.  I was a little slow in getting to it.\n\nI agree.  I think we should be using 8859-1 instead of ASCII.  The following section from RFC 2616 \nseems to imply that TEXT should be 8859-1, though it is a little vague:\n\nThe TEXT rule is only used for descriptive field contents and values that are not intended to be \ninterpreted by the message parser. Words of *TEXT MAY contain characters from character sets \nother than ISO- 8859-1 [22] only when encoded according to the rules of RFC 2047draft [14].\n\nTEXT := <any OCTET except CTLs, but including LWS>\n\n\nEither way I think digest needs to be fixed.  I will create a patch.\n\nMike",
+            "date": "2003-11-18T08:19:52.000+0000",
+            "id": 6
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Well, I've spent a lot more time working on this than I would have thought.  It seems there may not \nbe a good, universal solution for this problem.  Originally I was thinking that we should just switch \nover to 8859-1 for digest user names and passwords, like we did for basic authentication. After \nsome more researching and testing it seems that this may not be the correct answer.  \n\nTo test this problem I'm using Apache HTTPD 2.0.40. I tried using Tomcat, but was unable to get it \nworking with Digest.  It seems that Apache uses UTF-8 to encode the user name and password.  \nNot only does this mean that UTF-8 must be used when calculating the digest, it also means that \nthe Authorization header must be sent as UTF-8.  This is due to the fact that the digest username \nis sent as a header parameter.  When using Basic authentication I was unable to use non-ASCII \ncharacters with Apache.\n\nI found the following two threads that discuss the problem with non-ASCII charsets and HTTP \nauthentication, unfortunately neither of them seem to come to a complete conclusion:\n\n<http://lists.w3.org/Archives/Public/ietf-http-wg-old/1998SepDec/0040.html>\n<http://lists.w3.org/Archives/Public/ietf-http-wg/2003AprJun/0002.html>\n\nI will attach shortly two patches that I used to test this problem, one for UTF-8 and the other for \nISO-8859-1.  Unless we can come up with a better solution for this I suggest that we stick to ASCII \nfor 2.0 and add a configuration item for 2.1 that determines that charset to use for authentication.\n\nWhat does everyone think?\n\nMike\n\n",
+            "date": "2003-11-23T05:40:10.000+0000",
+            "id": 7
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Created an attachment (id=9242)\n8859-1 patch\n",
+            "date": "2003-11-23T05:50:08.000+0000",
+            "id": 8
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Created an attachment (id=9243)\nUTF-8 patch\n",
+            "date": "2003-11-23T05:50:39.000+0000",
+            "id": 9
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Created an attachment (id=9244)\nSimple test class\n",
+            "date": "2003-11-23T05:51:15.000+0000",
+            "id": 10
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Mike,\nI do not like the idea of using non-ASCII characters in 'Authorization' headers,\nat least in those headers only. Probably we should introduce an option to encode\nHTTP headers using ISO-8859-1 or UTF-8 to accommodate for all sorts of\nnot-so-compliant behaviors with regards to HTTP header content. This said, I do\nthink that digest scheme user names are not meant to have non-ASCII content, as\nit would constitute a gross violation of the RFC2616. But I do admit that it can\nbe subject to different interpretations\n\nI am +1 to stick to ASCII for the 2.0 release, as least for user names\n\nOleg",
+            "date": "2003-11-23T06:42:35.000+0000",
+            "id": 11
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Oleg,\n\nI agree, setting a different charset for a single header is not good.  If we were to implement this for \nreal I think we would want a config option for all the headers.  The only question then would be if \nwe want to allow another different charset for for the username/password before they are \ndigested/base64 encoded.\n\nThough using charsets other than ASCII for user names/password does not jibe well with RFC \n2616/17, there is no standard solution for handling these cases.  Is seems that different vendors \nhave made different choices for supporting non-ASCII values in credentials.  To be a good client I \nthink we need to be flexible in how we support authentication.\n\nAs for 2.0 do you think we should roll back the support for 8859-1 values in basic authentication?\n\nMike",
+            "date": "2003-11-23T07:19:10.000+0000",
+            "id": 12
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "> The only question then would be if we want to allow another different \n> charset for for the username/password before they are \n> digested/base64 encoded.\n\nI think that should go without saying\n\n> As for 2.0 do you think we should roll back the support for 8859-1 values in \n> basic authentication?\n\nWhat if we used ISO-8859-1 to encode the password in the digest scheme instead? ",
+            "date": "2003-11-23T07:31:44.000+0000",
+            "id": 13
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Created an attachment (id=9437)\npatch - digest encoding 2.0\n",
+            "date": "2003-12-08T11:40:07.000+0000",
+            "id": 14
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Created an attachment (id=9438)\npatch - encoding HEAD\n",
+            "date": "2003-12-08T11:40:46.000+0000",
+            "id": 15
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Attached above are two patches.  One that makes ISO-8859-1 the charset for digest \nauthentication in 2.0 and another that adds params for configuring HTTP element and credential \ncharset.  Please take a look and let me know what you think.\n\nMike",
+            "date": "2003-12-08T11:44:08.000+0000",
+            "id": 16
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Mike,\nJust a few ideas:\n\n* I think the parameter list of the AuthScheme#authenticate method is getting a\nbit too complex. Initially when designing AuthScheme interface I wanted to avoid\nits tight coupling with HttpMethod interface. However, since there seems to be\nno way around passing HttpMethod parameters to AuthScheme objects, I see no\nreason for simply not taking HttpMethod interface as input which would also give\nus access to method's path and method name information\n\nSo, how about this?\n\nAuthScheme#authenticate(Credentials credentials, HttpMethod method) \n  throws AuthenticationException;\n\n* EncodingUtil renders HttpConstants superfluous. HttpConstants begs to be\ndeprecated and EncodingUtil should be used consistently throughout HttpClient\nbase instead. Keeping both classes makes things unnecessarily confusing.\n\n* I feel HTTP_ELEMENT_CHARSET can simply be used instead of CREDENTIAL_CHARSET. \n\nOtherwise +1 from me\n\nOleg",
+            "date": "2003-12-09T22:47:12.000+0000",
+            "id": 17
+        },
+        {
+            "author": "Michael Becke",
+            "body": "> So, how about this?\n>\n> AuthScheme#authenticate(Credentials credentials, HttpMethod method) throws\n> AuthenticationException;\n\nI agree I think that is much better.  I will make the change.\n\n> * EncodingUtil renders HttpConstants superfluous. HttpConstants begs to be\n> deprecated and EncodingUtil should be used consistently throughout HttpClient\n> base instead. Keeping both classes makes things unnecessarily confusing.\n\nYes, HttpConstants has become a little useless.  Once this patch has been applied I will take this \non as a separate task.\n\n> * I feel HTTP_ELEMENT_CHARSET can simply be used instead of CREDENTIAL_CHARSET. \n\nI would prefer to keep them separate.  Though I think the majority of the cases will only use \nHTTP_ELEMENT_CHARSET, I can definitely imagine a case where the credentials would require a \ndifferent charset than the headers.  I know that in some server configurations authorization is \nhandled separately from other content.  What do you think?\n\nMike",
+            "date": "2003-12-10T08:40:10.000+0000",
+            "id": 18
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Created an attachment (id=9479)\npatch 2 - encoding HEAD\n",
+            "date": "2003-12-10T11:28:33.000+0000",
+            "id": 19
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Attached above is another version of the HEAD patch.  This one just changes the AuthScheme \nsignature to authenticate(Credentials credentials, HttpMethod method).\n\nMike",
+            "date": "2003-12-10T11:29:56.000+0000",
+            "id": 20
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "> I would prefer to keep them separate.  Though I think the majority of \n> the cases will only use HTTP_ELEMENT_CHARSET, I can definitely imagine \n> a case where the credentials would require a different charset than \n> the headers.  I know that in some server configurations authorization \n> is handled separately from other content.  What do you think?\n\nMy only concern is that imcompatible HTTP_ELEMENT_CHARSET and CREDENTIAL_CHARSET\nmay (potentially) break Digest authentication. However, this is nothing more\nthan guessing on my part, so I certainly do not mind keeping CREDENTIAL_CHARSET. \n\n+1 from me to be committed\n\nOleg",
+            "date": "2003-12-10T16:34:41.000+0000",
+            "id": 21
+        },
+        {
+            "author": "Michael Becke",
+            "body": "> My only concern is that imcompatible HTTP_ELEMENT_CHARSET and CREDENTIAL_CHARSET\n> may (potentially) break Digest authentication. However\n\nYes, you are correct.  There is a potential problem with digest if the username charset is not \ncompatible with the element charset.  The DigestScheme Javadocs have a comment regarding this.  \n\nI will apply the patch tonight.\n\nMike",
+            "date": "2003-12-10T21:42:45.000+0000",
+            "id": 22
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Patch applied.\n\nMike",
+            "date": "2003-12-11T10:49:39.000+0000",
+            "id": 23
+        }
+    ],
+    "component": "HttpClient (classic)",
+    "description": "http://marc.theaimsgroup.com/?t=106866959500001&r=1&w=2",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "HTTPCLIENT-296",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "HTTPCLIENT",
+    "project": "HTTPCLIENT",
+    "summary": "Basic Authentification fails with non-ASCII username/password characters",
+    "systemSpecification": true,
+    "version": ""
+}

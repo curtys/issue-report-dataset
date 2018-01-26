@@ -1,0 +1,95 @@
+{
+    "comments": [
+        {
+            "author": "Jon Moore",
+            "body": "This definitely deserves some thought, although the proposed fix would break backwards compatibility by modifying HttpCacheEntry, so we probably want to find a different solution.\n",
+            "date": "2012-02-14T15:01:13.717+0000",
+            "id": 0
+        },
+        {
+            "author": "Jon Moore",
+            "body": "Ok, I think the right solution here is the following:\n\n1. Turn the ContentEncodingHttpClient into a decorator, taking a backend HttpClient as a constructor dependency. Backwards compatibility can be achieved by supplying a DefaultHttpClient if one is not provided.\n2. This now permits users to use both bits of functionality by wiring up as ContentEncodingHttpClient -> CachingHttpClient -> DefaultHttpClient.\n\nThoughts?\n",
+            "date": "2012-03-03T16:06:32.277+0000",
+            "id": 1
+        },
+        {
+            "author": "Jon Moore",
+            "body": "Ugh, didn't realize the ContentEncodingHttpClient extended DefaultHttpClient. Still researching.\n",
+            "date": "2012-03-03T18:21:07.729+0000",
+            "id": 2
+        },
+        {
+            "author": "Jon Moore",
+            "body": "Here's another thought: perhaps the DecompressingEntity should remove the Content-Length header if it exists? It already returns -1 for getContentLength() as it accurately indicates the length of decompressed body is unknown. I think if we did this, then you could successfully plug a ContentEncodingHttpClient as the backend for the CachingHttpClient. Since it would appear that the DecompressingEntity is modifying the response to keep it semantically unchanged (e.g. by removing Content-Encoding as well), this might actually be what we want.\n\n",
+            "date": "2012-03-03T18:31:25.091+0000",
+            "id": 3
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "> Ugh, didn't realize the ContentEncodingHttpClient extended DefaultHttpClient. Still researching. \n\nContentEncodingHttpClient can be deprecated if necessary.\n\nMaking DecompressingEntity remove Content-Length header also sounds acceptable. \n\nSee what makes more sense.\n\nOleg",
+            "date": "2012-03-03T19:24:26.953+0000",
+            "id": 4
+        },
+        {
+            "author": "Manish Tripathi",
+            "body": "Removing Content-Length is basically what I did as a quick hack to solve the issue on my end. However, I believe that it is not at all a perfect solution. The reason being that without Content-Length header it would be impossible to perform entity validity checks. For instance, if the entity was partially downloaded and decompressor was able to decompress partial content successfully, the cache would return partial (=invalid) content to the requesting code. Right now this problem is mitigated by comparing Content-Length value to actual length of the entity.\n\nI personally like the first idea much better (to make ContentEncodingHttpClient a wrapper around HttpClient). Apart from being a solution to this issue, such approach is conceptually more correct than extending DefaultHttpClient, in my opinion. I must say that this idea also crossed my mind, but when I looked at the implementation of ContentEncodingHttpClient and how deeply it integrates with implementation of various aspects of the client, I dropped the idea. Though I still believe it is the best aproach.",
+            "date": "2012-03-03T19:33:26.832+0000",
+            "id": 5
+        },
+        {
+            "author": "Jon Moore",
+            "body": "I think the issue is that you can't have length checks if the ContentEncodingHttpClient (however it is implemented) is \"under\" the CachingHttpClient; rather you want the ContentEncodingHttpClient to sit \"on top of\" the CachingHttpClient. So I think I'm going to go with the following:\n\n1. Remove Content-Length at DecompressingEntity.\n2. Implement a new decorator equivalent to ContentEncodingHttpClient.\n3. Deprecate the existing ContentEncodingHttpClient.\n",
+            "date": "2012-03-04T11:17:11.926+0000",
+            "id": 6
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Jon,\n\nI just realized that absence of the Content-Length header is likely to have an impact on DefaultConnectionReuseStrategy. Is there a chance we could keep the Content-Length header? Alternatively we will also have to provide a custom ConnectionReuseStrategy implementation for ContentEncodingHttpClient or its equivalent.\n\nOleg",
+            "date": "2012-03-04T11:53:28.191+0000",
+            "id": 7
+        },
+        {
+            "author": "Jon Moore",
+            "body": "Ok, in that case, I think we can just do:\n1. Implement new CompressionDecorator.\n2. Deprecate ContentEncodingHttpClient.\n3. Document known behavior and provide recommendations around compression + caching.\n",
+            "date": "2012-03-04T14:10:23.323+0000",
+            "id": 8
+        },
+        {
+            "author": "Jon Moore",
+            "body": "Ok, I just checked a CompressionDecorator into trunk that can be wired in either under or over the CachingHttpClient. Ended up not needing to change the existing ContentEncodingHttpClient, although I did reuse the request and response interceptors. The decorator removes the Content-Length header if it uncompresses things; will go back to verify the impact on DefaultConnectionReuseStrategy.\n",
+            "date": "2012-03-15T17:05:45.589+0000",
+            "id": 9
+        },
+        {
+            "author": "Jon Moore",
+            "body": "@Oleg: I just wired up the CompressionDecorator around a DefaultHttpClient and the connections seem to be reused just fine, per wire logging + context logging. The DefaultConnectionKeepAliveStrategy doesn't seem to look at the Content-Length header. Am I missing something?\n",
+            "date": "2012-03-15T17:38:12.052+0000",
+            "id": 10
+        },
+        {
+            "author": "Jon Moore",
+            "body": "This should clearly go into 4.2, at least. Oleg, what's your thought on backporting? Do we have plans for a 4.1.4 release anytime soon (or sooner than 4.2 GA)? I think this is technically not a bug, per se, because everything still works correctly HTTP-wise. I'll default to backporting it next week unless folks have opinions it's not worth it.\n",
+            "date": "2012-03-15T17:55:24.472+0000",
+            "id": 11
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "@Jon:\n> I just wired up the CompressionDecorator around a DefaultHttpClient and the connections seem to be reused just fine, per wire logging + context logging. \n> The DefaultConnectionKeepAliveStrategy doesn't seem to look at the Content-Length header. Am I missing something? \n\nIndeed, DefaultConnectionKeepAliveStrategy does not look at the Content-Length header, but the DefaultConnectionReuseStrategy does. The strategy considers connections reusable only if the last message length is delineated either with Content-Length or Transfer-Encoding header.\n\nhttp://hc.apache.org/httpcomponents-core-ga/httpcore/xref-test/org/apache/http/impl/TestDefaultConnectionReuseStrategy.html#89 \n\nHowever, we are all good, since the headers are removed by the decorator, and not by the protocol interceptor (before ConnectionReuseStrategy is called), as I initially assumed. The decorator correctly updates the message after the backend has already completed its execution.   \n\nGreat job!\n\nOleg\n\nPS: I do not think we should backport this feature. There unlikely to be any more releases from the 4.1.x branch. The stable branch should be for critical bug fixes only.",
+            "date": "2012-03-16T13:41:35.747+0000",
+            "id": 12
+        }
+    ],
+    "component": "HttpClient (classic)",
+    "description": "org.apache.http.impl.client.cache.CacheValidityPolicy.contentLengthHeaderMatchesActualLength() returns false for entities decompressed by ContentEncodingHttpClient, because the length of decompressed entity stored in cache will be different from the length specified in the response header.\nConsequently, gzipped/deflated entities will never be satisfied from the cache.\n\nProposed fix: introduce new field in HttpCacheEntry() - actualContentLength, and populate it with the actual content length rigth before the cache entry is stored in the cache. Change the org.apache.http.impl.client.cache.CacheValidityPolicy.contentLengthHeaderMatchesActualLength() method to compare\nentry.getResource().length() with entry.getActualContentLength()\n",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "HTTPCLIENT-1164",
+    "issuetypeClassified": "RFE",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "HTTPCLIENT",
+    "project": "HTTPCLIENT",
+    "summary": "Compressed entities are not being cached properly",
+    "systemSpecification": true,
+    "version": ""
+}

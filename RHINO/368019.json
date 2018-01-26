@@ -1,0 +1,107 @@
+{
+    "comments": [
+        {
+            "author": "crowderbt@gmail.com",
+            "body": "\"/\" is the opening and closing character of the regular expression literal, to use it within an expression you must escape it with a backslash.  This is not a work-around, but expected behavior.  This is specified by ECMA-262 in section 7.8.5 (the syntax productions)",
+            "date": "20070411T22:24:45",
+            "id": 0
+        },
+        {
+            "author": "brendan@mozilla.org",
+            "body": "We support the IE quirk that allows unescaped backslash in character class, contra ECMA-262 Edition 3. The following works for me in Firefox 2 and the js shell built from the 1.8 branch, 1.8.0 branch, and trunk:\n\nmyregex = /[/]/;\n\nReporter, can you please attach a testcase and give the exact user agent in which it fails for you?\n\n/be",
+            "date": "20070412T03:52:09",
+            "id": 1
+        },
+        {
+            "author": "work@bradclarke.com",
+            "body": "The source of the bug report (and therefore the user agent) is HtmlUnit:\n\nhttps://sourceforge.net/tracker/?func=detail&atid=448266&aid=1640568&group_id=47038\n\nJust curious: Is this a difference between spidermonkey and rhino or does firefox pre-process the quirk?",
+            "date": "20070525T18:01:18",
+            "id": 2
+        },
+        {
+            "author": "asashour@yahoo.com",
+            "body": "May I post this test case using Rhino 1.6R5:\n\n----------------------------------------------------------\n        final Context cx = Context.enter();\n        final Scriptable scope = cx.initStandardObjects();\n        cx.evaluateString( scope, \"myregex = /[/]/;\", \"source1\", 1, null);\n        Context.exit();\n----------------------------------------------------------",
+            "date": "20070628T12:21:52",
+            "id": 3
+        },
+        {
+            "author": "sudhan.moghe@gmail.com",
+            "body": "Problem is occurring because of following while loop in readRegExp() method of org.mozilla.javascript.TokenStream.java class.\n\nwhile ((c = getChar()) != '/') {\n    if (c == '\\n' || c == EOF_CHAR) {\n        ungetChar(c);\n        throw parser.reportError(\"msg.unterminated.re.lit\");\n    }\n    if (c == '\\\\') {\n        addToString(c);\n        c = getChar();\n    }\n\n    addToString(c);\n}\n\n\nI am not an expert in Regular Expression so can't say whether it is a bug or not. But I am facing problem because of this. I am developing a testing tool using HtmlUnit for one of our clients and he is having following code in his JavaScripts.\n\nif( str.match(/[*+-./]/) ) \n\nI have requested him to change the scripts. But that script is part of a framework and lot of applications depend on that framework. If the request is rejected then I will have to handle it in above mentioned code.\n\nI am thinking of pushing '[' (and may be '(') on stack and consuming '/' if stack is not empty. Do I need to handle anything more than this? I know that it will work in my case but is it generic enough? If it is then I will post updated code here.\n\nThanks & Regards,\nSudhan\n\n",
+            "date": "20080108T06:52:33",
+            "id": 4
+        },
+        {
+            "author": "crowderbt@gmail.com",
+            "body": "Sudhan Moghe:  I don't think your comment is correctly associated with the rest of this bug, you should probably file a new bug.\n\nThanks",
+            "date": "20080108T08:58:43",
+            "id": 5
+        },
+        {
+            "author": "sudhan.moghe@gmail.com",
+            "body": "Yes, it is.\nWhat I have posted is the code from Rhino that is parsing the regex.\nmy case is \n\nif( str.match(/[*+-./]/) ) \n\nwhich is similar to \n/[/]/\n\nas you can see from the rhino code, parsing of regex stops when it encounters second '/'. \nAfter this point parser expects ')' in my case and ';' in the case reported in the bug. But it encounters ']' and throws error.\n\n",
+            "date": "20080114T05:24:47",
+            "id": 6
+        },
+        {
+            "author": "crowderbt@gmail.com",
+            "body": "You should escape your \"/\" with a \"\\\".  This is not a bug.",
+            "date": "20080114T06:33:03",
+            "id": 7
+        },
+        {
+            "author": "brendan@mozilla.org",
+            "body": "(In reply to comment #8)\n> You should escape your \"/\" with a \"\\\".  This is not a bug.\n\nWait, we changed SpiderMonkey to match IE JScript and *not* require a backslash for this case. Why tell Rhino users to pound sand?\n\nThis is obviously a misfiled Rhino bug. ES4 matches the de-facto standard and I'm sure Rhino owners/peers will track that.\n\n/be",
+            "date": "20080114T06:59:12",
+            "id": 8
+        },
+        {
+            "author": "sudhan.moghe@gmail.com",
+            "body": "(In reply to comment #8)\nI am not saying that it is a bug but the problem is that the JavaScript is not under my control and I can not modify it to escape '/'.\nI am developing a testing tool using HtmlUnit which internally uses Rhino. And my tool wont work unless this issue is fixed. I can handle it as I have suggested in Comment #5. I just wanted to know whether that is a proper handling or do I need to handle more cases? And what are the chances of that getting included in Rhino code.\n\nThanks & Regards,\nSudhan\n\n",
+            "date": "20080118T13:34:43",
+            "id": 9
+        },
+        {
+            "author": "mguillemot@yahoo.fr",
+            "body": "If Rhino maintainers don't want to include this per default to respect Ecma spec, then what do you think of an additional feature option in Context to allow it?",
+            "date": "20080118T13:45:30",
+            "id": 10
+        },
+        {
+            "author": "brendan@mozilla.org",
+            "body": "Recommend that Rhino match SpiderMonkey and other browser engines, and anticipate JS2/ES4, by allowing unescaped / in character class.\n\n/be",
+            "date": "20080119T03:07:37",
+            "id": 11
+        },
+        {
+            "author": "szegedia@freemail.hu",
+            "body": "I think that tracking open brackets would work as you suggested in Comment #5. If you have patched the code already and can post a patch, it'd be appreciated.",
+            "date": "20080122T22:35:03",
+            "id": 12
+        },
+        {
+            "author": "mguillemot@yahoo.fr",
+            "body": "Created attachment 314351\nPatch handling / with []\n\nThis patch fixes the problem for me and doesn't break any additional tests from the junit-all target (as already said, a good state of the tests would help to avoid regression and discover issues fixed as side effects)",
+            "date": "20080408T15:36:36",
+            "id": 13
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "Fixed.",
+            "date": "20080502T12:57:44",
+            "id": 14
+        }
+    ],
+    "component": "Compiler",
+    "description": "User-Agent:       Mozilla/5.0 (Windows; U; Windows NT 5.1; en-US; rv:1.8.1.1) Gecko/20061204 Firefox/2.0.0.1\nBuild Identifier: js-1.6R2\n\nIf you have an html page that contains javascript code of:\n\n<script>\nmyregex = /[/]/;\n</script>\n\nthen you get an error of expected ';'.\n\nAs far as I am aware [/] is valid for regular expressions in javascript (it works in IE6 & Firefox).\n\n\nA work around is:\n<script>\nmyregex = /\\//;\n</script>\n\nor\n\n<script>\nmyregex = new RegEx(\"[/]\");\n</script>\n\nReproducible: Always\n\nSteps to Reproduce:\nUsed htmlunit (http://htmlunit.sf.net) to parse page containing the following script:\n<script>\nmyregex = /[/]/;\n</script>\nActual Results:  \nERROR com.gargoylesoftware.htmlunit.ScriptEngine  - error: message=[missing ; before statement] sourceName=[http://localhost:6060/sms/JavaScript/common.js] line=[1] lineSource=[var testRegex = /[/]/;] lineOffset=[20]\n\nExpected Results:  \nNo error?",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "368019",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "-- normal",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "regular expression (regex) parses /[/]/ incorrectly",
+    "systemSpecification": true,
+    "version": "head"
+}

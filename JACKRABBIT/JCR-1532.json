@@ -1,0 +1,89 @@
+{
+    "comments": [
+        {
+            "author": "Stefan Guggisberg",
+            "body": "JCR-1039 fixed the issue for the BundleDbPersistenceManager only.\n\nAFAIK the derby issue (ERROR 40XD0) occurs when, while consuming an InputStream from a ResultSet, another stmt is executed on the same connection. futthrermore, the data read must exceed a certain size. \n\ni guess this could happen when using DatabasePersistenceManager with externalBlobs=false. \n\ncould you please post your PersistenceManager configuration?   ",
+            "date": "2008-04-11T08:58:24.373+0000",
+            "id": 0
+        },
+        {
+            "author": "Yoav Landman",
+            "body": "Your assumption about externalBlobs is right:\n\n        <PersistenceManager class=\"org.apache.jackrabbit.core.persistence.db.DerbyPersistenceManager\">\n            <!--<param name=\"url\" value=\"jdbc:derby:${wsp.home}/db;create=true\"/>-->\n            <param name=\"url\" value=\"jdbc:derby:${rep.home}/db;create=true\"/>\n            <param name=\"schemaObjectPrefix\" value=\"${wsp.name}_\"/>\n            <param name=\"externalBLOBs\" value=\"false\"/>\n            <param name=\"schema\" value=\"/jcr/derby\"/>\n        </PersistenceManager>",
+            "date": "2008-04-11T11:40:31.468+0000",
+            "id": 1
+        },
+        {
+            "author": "Stefan Guggisberg",
+            "body": "fixed in r 647147.\n\nthanks for reporting this issue!",
+            "date": "2008-04-11T12:43:45.572+0000",
+            "id": 2
+        },
+        {
+            "author": "Yoav Landman",
+            "body": "Thank you for resolving it so quickly :)",
+            "date": "2008-04-12T23:34:21.170+0000",
+            "id": 3
+        },
+        {
+            "author": "Yoav Landman",
+            "body": "Perhaps we were glad too soon :(\nI patched 1.4.2-core as the only real change is internal logic in DatabasePersistenceManager and this class is similar in 1.5 and 1.4.2 (also had to change the POM to include the commons-io dependency, but that's basic).\n\nAfter doing that, I am getting the following read exceptions, such as:\n\n2008-04-13 00:03:27,857 [ERROR] persistence.db.DatabasePersistenceManager  - failed to read property state: b69dcff2-6b33-4cde-8b4e-37916aee698b/{http://www.jcp.org/jcr/1.0}data\njavax.jcr.RepositoryException: Error creating file: ERROR 40XD0: Container has been closed.: ERROR 40XD0: Container has been closed.\n        at org.apache.jackrabbit.core.value.InternalValue.create(InternalValue.java:270)\n        at org.apache.jackrabbit.core.persistence.util.Serializer.deserialize(Serializer.java:296)\n        at org.apache.jackrabbit.core.persistence.db.DatabasePersistenceManager.load(DatabasePersistenceManager.java:407)\n        at org.apache.jackrabbit.core.state.SharedItemStateManager.loadItemState(SharedItemStateManager.java:1177)\n        at org.apache.jackrabbit.core.state.SharedItemStateManager.getNonVirtualItemState(SharedItemStateManager.java:1102)\n        at org.apache.jackrabbit.core.state.SharedItemStateManager.getItemState(SharedItemStateManager.java:249)\n        at org.apache.jackrabbit.core.state.LocalItemStateManager.getPropertyState(LocalItemStateManager.java:118)\n        at org.apache.jackrabbit.core.state.LocalItemStateManager.getItemState(LocalItemStateManager.java:150)\n        at org.apache.jackrabbit.core.state.XAItemStateManager.getItemState(XAItemStateManager.java:226)\n        at org.apache.jackrabbit.core.state.SessionItemStateManager.getItemState(SessionItemStateManager.java:186)\n        at org.apache.jackrabbit.core.ItemManager.createItemInstance(ItemManager.java:564)\n        at org.apache.jackrabbit.core.ItemManager.getItem(ItemManager.java:395)\n        at org.apache.jackrabbit.core.NodeImpl.getProperty(NodeImpl.java:2548)\n        ...\n        [clipped]\n        ...\n        at org.quartz.simpl.SimpleThreadPool$WorkerThread.run(SimpleThreadPool.java:529)\nCaused by: java.io.IOException: ERROR 40XD0: Container has been closed.\n        at org.apache.derby.impl.store.raw.data.OverflowInputStream.fillByteHolder(Unknown Source)\n        at org.apache.derby.impl.store.raw.data.BufferedByteHolderInputStream.read(Unknown Source)\n        at java.io.DataInputStream.read(DataInputStream.java:134)\n        at java.io.FilterInputStream.read(FilterInputStream.java:111)\n        at java.io.FilterInputStream.read(FilterInputStream.java:111)\n        at java.io.FilterInputStream.read(FilterInputStream.java:90)\n        at org.apache.jackrabbit.core.value.BLOBValue.<init>(BLOBValue.java:108)\n        at org.apache.jackrabbit.core.value.InternalValue.create(InternalValue.java:268)\n        ... 32 more\n\n\nMoreover, I now started to receive write exceptions as well, such as:\n\n2008-04-13 00:02:00,066 [ERROR] persistence.db.DatabasePersistenceManager  - failed to write property state: 57c5083e-7ff2-4b5f-86c0-bad6bd56475c/{http://www.jcp.org/jcr/1.0}data\njava.io.IOException: ERROR 40XD0: Container has been closed.\n        at org.apache.derby.impl.store.raw.data.OverflowInputStream.fillByteHolder(Unknown Source)\n        at org.apache.derby.impl.store.raw.data.BufferedByteHolderInputStream.read(Unknown Source)\n        at java.io.DataInputStream.read(DataInputStream.java:134)\n        at java.io.FilterInputStream.read(FilterInputStream.java:111)\n        at java.io.FilterInputStream.read(FilterInputStream.java:111)\n        at java.io.FilterInputStream.read(FilterInputStream.java:90)\n        at org.apache.jackrabbit.core.value.BLOBValue.<init>(BLOBValue.java:108)\n        at org.apache.jackrabbit.core.value.InternalValue.create(InternalValue.java:268)\n        at org.apache.jackrabbit.core.persistence.util.Serializer.serialize(Serializer.java:223)\n        at org.apache.jackrabbit.core.persistence.db.DatabasePersistenceManager.store(DatabasePersistenceManager.java:486)\n        at org.apache.jackrabbit.core.persistence.AbstractPersistenceManager.store(AbstractPersistenceManager.java:75)\n        at org.apache.jackrabbit.core.persistence.db.DatabasePersistenceManager.store(DatabasePersistenceManager.java:283)\n        at org.apache.jackrabbit.core.state.SharedItemStateManager$Update.end(SharedItemStateManager.java:704)\n        at org.apache.jackrabbit.core.state.SharedItemStateManager.update(SharedItemStateManager.java:873)\n        at org.apache.jackrabbit.core.state.LocalItemStateManager.update(LocalItemStateManager.java:324)\n        at org.apache.jackrabbit.core.state.XAItemStateManager.update(XAItemStateManager.java:313)\n        at org.apache.jackrabbit.core.state.LocalItemStateManager.update(LocalItemStateManager.java:300)\n        at org.apache.jackrabbit.core.state.SessionItemStateManager.update(SessionItemStateManager.java:317)\n        at org.apache.jackrabbit.core.ItemImpl.save(ItemImpl.java:1250)\n        at org.apache.jackrabbit.core.SessionImpl.save(SessionImpl.java:897)\n        ...\n        [clipped]\n        ...\n        at java.lang.Thread.run(Thread.java:595)\n",
+            "date": "2008-04-15T06:24:49.773+0000",
+            "id": 4
+        },
+        {
+            "author": "Yoav Landman",
+            "body": "Unfortunately one of my biggest users is currently crashing on this bug.",
+            "date": "2008-04-15T06:28:47.746+0000",
+            "id": 5
+        },
+        {
+            "author": "Yoav Landman",
+            "body": "Attaching my patched DatabasePersistenceManager\n(based on http://svn.apache.org/repos/asf/jackrabbit/tags/jackrabbit-core-1.4.2/src/main/java/org/apache/jackrabbit/core/persistence/db/DatabasePersistenceManager.java#647406)",
+            "date": "2008-04-15T06:33:59.098+0000",
+            "id": 6
+        },
+        {
+            "author": "Stefan Guggisberg",
+            "body": "i tried to reproduce the issue on trunk but was unable to do so.\n\ncould you please create/attach a simple test case which can be used to reproduce the issue?\n\nwhat derby version are you using?\n\nare you using any jackrabbit extensions/customizations?\n\nthanks\nstefan ",
+            "date": "2008-04-21T16:25:13.448+0000",
+            "id": 7
+        },
+        {
+            "author": "Yoav Landman",
+            "body": "The Derby version is 10.3.1.4. Not using any extensions/customizations except for the patched DB PM.\nCurrently I do not have a reproducible test case, but the same exceptions have been reported by 2 independent users running with the patch.\nI will attempt to create a test case for this, however.\nI might just switch to using the new DS with a Bundle PM in order to overcome this, since it is a show stopper for me.",
+            "date": "2008-04-21T16:41:03.481+0000",
+            "id": 8
+        },
+        {
+            "author": "Stefan Guggisberg",
+            "body": "i noticed that you're using a newer derby version (10.3.1.4), jackrabbit currently uses 10.2.1.6.\n\ni tried to reproduce the issue using the same, newer, derby version... \nunfortunately i am still unable to reproduce it.\n\ncould you please provide more information on when the issue occurs? e.g. what's the size of the \nbinary causing the issue?",
+            "date": "2008-04-25T10:25:28.241+0000",
+            "id": 9
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Any updates on this? Looks like we're missing a reproducible test case of the followup issues.\n\nI suggest we re-resolve this as Fixed for 1.5 based on the fix in revision 647147 and open separate issues for the other problems once we have a test case for them.",
+            "date": "2008-10-08T10:27:23.731+0000",
+            "id": 10
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Resolved as Fixed.",
+            "date": "2008-10-17T10:42:23.774+0000",
+            "id": 11
+        }
+    ],
+    "component": "jackrabbit-core",
+    "description": "This seems very similar to JCR-1039, only I am getting it on 1.4 using the regular DatabasePersistenceManager.\nWas the fix for JCR-1039 in 1.3.3 merged to 1.4.x?\n\nHere is the relevant part of the exception:\n\nINFO | jvm 1 | 2008/04/10 14:00:37 | Caused by: javax.jcr.RepositoryException: failed to retrieve item state of item fb648866-a236-42aa-8039-df68f26dd2ad/{http://www.jcp.org/jcr/1.0}data: failed to read property state: fb648866-a236-42aa-8039-df68f26dd2ad/{http://www.jcp.org/jcr/1.0}data: failed to read property state: fb648866-a236-42aa-8039-df68f26dd2ad/{http://www.jcp.org/jcr/1.0}data\nINFO | jvm 1 | 2008/04/10 14:00:37 | at org.apache.jackrabbit.core.ItemManager.createItemInstance(ItemManager.java:570)\nINFO | jvm 1 | 2008/04/10 14:00:37 | at org.apache.jackrabbit.core.ItemManager.getItem(ItemManager.java:395)\nINFO | jvm 1 | 2008/04/10 14:00:37 | at org.apache.jackrabbit.core.NodeImpl.getProperty(NodeImpl.java:2553)\nINFO | jvm 1 | 2008/04/10 14:00:37 | at org.artifactory.jcr.JcrFile.getStream(JcrFile.java:133)\nINFO | jvm 1 | 2008/04/10 14:00:37 | ... 55 more\nINFO | jvm 1 | 2008/04/10 14:00:37 | Caused by: org.apache.jackrabbit.core.state.ItemStateException: failed to read property state: fb648866-a236-42aa-8039-df68f26dd2ad/{http://www.jcp.org/jcr/1.0}data\nINFO | jvm 1 | 2008/04/10 14:00:37 | at org.apache.jackrabbit.core.persistence.db.DatabasePersistenceManager.load(DatabasePersistenceManager.java:406)\nINFO | jvm 1 | 2008/04/10 14:00:37 | at org.apache.jackrabbit.core.state.SharedItemStateManager.loadItemState(SharedItemStateManager.java:1161)\nINFO | jvm 1 | 2008/04/10 14:00:37 | at org.apache.jackrabbit.core.state.SharedItemStateManager.getNonVirtualItemState(SharedItemStateManager.java:1086)\nINFO | jvm 1 | 2008/04/10 14:00:37 | at org.apache.jackrabbit.core.state.SharedItemStateManager.getItemState(SharedItemStateManager.java:248)\nINFO | jvm 1 | 2008/04/10 14:00:37 | at org.apache.jackrabbit.core.state.LocalItemStateManager.getPropertyState(LocalItemStateManager.java:118)\nINFO | jvm 1 | 2008/04/10 14:00:37 | at org.apache.jackrabbit.core.state.LocalItemStateManager.getItemState(LocalItemStateManager.java:150)\nINFO | jvm 1 | 2008/04/10 14:00:37 | at org.apache.jackrabbit.core.state.XAItemStateManager.getItemState(XAItemStateManager.java:226)\nINFO | jvm 1 | 2008/04/10 14:00:37 | at org.apache.jackrabbit.core.state.SessionItemStateManager.getItemState(SessionItemStateManager.java:175)\nINFO | jvm 1 | 2008/04/10 14:00:37 | at org.apache.jackrabbit.core.ItemManager.createItemInstance(ItemManager.java:564)\nINFO | jvm 1 | 2008/04/10 14:00:37 | ... 58 more\nINFO | jvm 1 | 2008/04/10 14:00:37 | Caused by: javax.jcr.RepositoryException: Error creating temporary file: ERROR 40XD0: Container has been closed.: ERROR 40XD0: Container has been closed.\nINFO | jvm 1 | 2008/04/10 14:00:37 | at org.apache.jackrabbit.core.value.BLOBInTempFile.<init>(BLOBInTempFile.java:69)\nINFO | jvm 1 | 2008/04/10 14:00:37 | at org.apache.jackrabbit.core.value.BLOBInTempFile.getInstance(BLOBInTempFile.java:103)\nINFO | jvm 1 | 2008/04/10 14:00:37 | at org.apache.jackrabbit.core.value.InternalValue.getBLOBFileValue(InternalValue.java:630)\nINFO | jvm 1 | 2008/04/10 14:00:37 | at org.apache.jackrabbit.core.value.InternalValue.create(InternalValue.java:265)\nINFO | jvm 1 | 2008/04/10 14:00:37 | at org.apache.jackrabbit.core.persistence.util.Serializer.deserialize(Serializer.java:296)\nINFO | jvm 1 | 2008/04/10 14:00:37 | at org.apache.jackrabbit.core.persistence.db.DatabasePersistenceManager.load(DatabasePersistenceManager.java:397)\nINFO | jvm 1 | 2008/04/10 14:00:37 | ... 66 more\nINFO | jvm 1 | 2008/04/10 14:00:37 | Caused by: java.io.IOException: ERROR 40XD0: Container has been closed.\nINFO | jvm 1 | 2008/04/10 14:00:37 | at org.apache.derby.impl.store.raw.data.OverflowInputStream.fillByteHolder(Unknown Source)\nINFO | jvm 1 | 2008/04/10 14:00:37 | at org.apache.derby.impl.store.raw.data.BufferedByteHolderInputStream.read(Unknown Source)\nINFO | jvm 1 | 2008/04/10 14:00:37 | at java.io.DataInputStream.read(DataInputStream.java:132)\nINFO | jvm 1 | 2008/04/10 14:00:37 | at java.io.FilterInputStream.read(FilterInputStream.java:116)\nINFO | jvm 1 | 2008/04/10 14:00:37 | at java.io.FilterInputStream.read(FilterInputStream.java:116)\nINFO | jvm 1 | 2008/04/10 14:00:37 | at java.io.SequenceInputStream.read(SequenceInputStream.java:191)\nINFO | jvm 1 | 2008/04/10 14:00:37 | at java.io.InputStream.read(InputStream.java:85)\nINFO | jvm 1 | 2008/04/10 14:00:37 | at org.apache.jackrabbit.core.value.BLOBInTempFile.<init>(BLOBInTempFile.java:61)\nINFO | jvm 1 | 2008/04/10 14:00:37 | ... 71 more",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "JCR-1532",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Blocker",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "ERROR 40XD0: Container has been closed exception with Derby DB",
+    "systemSpecification": true,
+    "version": "1.4"
+}

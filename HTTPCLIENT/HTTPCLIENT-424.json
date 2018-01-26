@@ -1,0 +1,77 @@
+{
+    "comments": [
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Created an attachment (id=14201)\nPatch (take 1)\n\nWell, this is the only solution I can think of which would not require an API\nchange. This is not the nicest solution, but the least intrusive one.\nHttpClient 4.0 will have a better framework for tackling problems like this\none.\n\nLet me know what you think\n\nOleg",
+            "date": "2005-02-08T07:25:41.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Hi Oleg,\n\nNot pretty but it works.  The only missing thing is the Javadocs for AuthState.is/setPreemptive().\n\nMike",
+            "date": "2005-02-08T12:14:54.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Ortwin Gl\u00fcck",
+            "body": "Feasible to solve it like that. Bad luck this bug hit in so late. Ouch, that\nhurt. We may have to add documentation about how to select a different scheme\nfor preemti. auth. to the Authentication Guide.",
+            "date": "2005-02-08T17:19:48.000+0000",
+            "id": 2
+        },
+        {
+            "author": "Aaron Hamid",
+            "body": "Is it necessary to enforce a specific Authscheme at all?  Ideally I think there\nshould be no \"special cases\" as to what schemes support preemptive auth or not\n(and theoretically one should be able to register several schemes which are\npreemptive).\n\nHow about just:\n\n-         if (this.authScheme != null) {\n-            throw new IllegalStateException(\"Authentication state already\ninitialized\");\n-        this.authScheme = AuthPolicy.getAuthScheme(\"basic\");\n         this.preemptive = true;\n  }\n\nThere is already logic in HttpMethodDirector to detect whether credentials are\npre-emptively accessible:\n\nauthenticateHost/Proxy:\n\nCredentials credentials = this.state.getCredentials(authscope);\nif (credentials != null) {\n...\n} else {\n  if (method.getHostAuthState().isPreemptive()) {\n    LOG.warn(\"Preemptive authentication requested but no default \" +\n      \"credentials available\"); \n  }\n}\n",
+            "date": "2005-02-08T23:30:03.000+0000",
+            "id": 3
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "> Is it necessary to enforce a specific Authscheme at all?  Ideally I think \n> there should be no \"special cases\" as to what schemes support preemptive \n> auth or not (and theoretically one should be able to register several \n> schemes which are preemptive).\n\nAaron, \n\n(1) Preemptive auth is a hangover from the old HTTP/1.0, which we unfortunately\nhave to support. Ideally all authentication schemes should simply be able\nproperly challenge the client, if it fails to provide credentials with the\ninitial request. I do not understand why Kerberos seems unable to do so, but I\nknow next to nothing about Kerberos\n\n(2) Unfortunately the preemptive authentication has to be treated as a \"special\ncase\", because the server simply may not support that particular auth scheme and\nmay request the client to authenticate using a different scheme. In all other\ncases the server is not supposed to change the authentication scheme used in the\nmiddle of the authentication process. \n\nYou are very welcome to provide a fully functional patch to address the\nlimitation. Otherwise, I am planning to revisit the problem in the course of 4.0\ndevelopment\n\nOleg",
+            "date": "2005-02-09T00:50:19.000+0000",
+            "id": 4
+        },
+        {
+            "author": "Aaron Hamid",
+            "body": "> (1) Preemptive auth is a hangover from the old HTTP/1.0, which we\n> unfortunately have to support. Ideally all authentication schemes should\n> simply be able properly challenge the client, if it fails to provide\n> credentials with the initial request. I do not understand why Kerberos\n> seems unable to do so, but I know next to nothing about Kerberos\n\nWell, of course we are \"able\" to do so, it is merely superfluous if we know\nahead of time the authentication scheme that will be required and will send our\ncredentials along with every request.  I don't understand why this is considered\ndeprecated behavior.  It is simply an unnecessary step if the client \"doesn't\nfail\" to provide the credentials with the initial request, and I don't see the\nchallenge mandated in the HTTP spec.  All our requests will always have\ncredentials.  The challenge provides no additional cryptographic security (I'm\nnot sure where it does in BASIC or DIGEST either, but in any case that also\nppears not to be specified in the HTTP spec). (regarding Kerberos: credentials\nare established on the client and server in an entirely out of band mechanism\nprior to any communication whatsoever, so the payload is simply immaterial to\nthe application protocol, in this case HTTP; you can envision it as a\none-time-use password that always changes and is not replayable)\n\n> (2) Unfortunately the preemptive authentication has to be treated as a\n> \"special case\", because the server simply may not support that particular\n> auth scheme and may request the client to authenticate using a different\n> scheme. In all other cases the server is not supposed to change the\n> authentication scheme used in the middle of the authentication process. \n\nI imagine this scenario is identical to the scenario in which the server\nrequests an authentication type the client does not (or will not) support.  In\neither case, if neither parties are able to fulfill the other's requirements,\nthe request will fail, which is the desired behavior.  (e.g. I would certainly\nnot desire a situation wherein one party requires a highly secure authentication\nmethod, yet is forced into a less secure method by the other party.)\n\n> You are very welcome to provide a fully functional patch to address the\n> limitation. Otherwise, I am planning to revisit the problem in the course\n> of 4.0\n\nI will see what I can come up with.",
+            "date": "2005-02-09T01:14:20.000+0000",
+            "id": 5
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "> I don't understand why this is considered deprecated behavior.\n\nMy understanding is that \"expect-continue\" handshake was designed primarily to\nrender the preemptive authentication superfluous. I admin I may err in my\nassumption, though.\n\n> I will see what I can come up with.\n\nIn my opinion the authentication framework was the most complex piece of logic I\nhave ever written for HttpClient. I took me almost half a year to get it working\nwith all possible combination of authentication schemes (Basic vs Digest vs\nNTLM) / host authentication and(or) proxy authentication / HTTPS tunnelling vs\ndirect HTTP / connection 'keep-alive' vs connection 'close') /\nCredentialsProvider vs HttpState / preemptive vs 'expect-continue'. \n\nThe challenge is not to get it working with Kerberos but rather to ensure that\nthe framework still works properly in all possible combinations mentioned above. \n\nLuckily we now have a fairly decent test case coverage, but there's no easy way\nto unit-test the NTLM authentication (which is by far the most complex), so I am\na little reluctant to see changes of such magnitude so late in the release process.\n\nAnyways, a well written, thoroughly tested patch will never be turned down\n\nOleg",
+            "date": "2005-02-09T02:05:02.000+0000",
+            "id": 6
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Pushed to 4.0",
+            "date": "2005-02-12T05:34:31.000+0000",
+            "id": 7
+        },
+        {
+            "author": "Aaron Hamid",
+            "body": "I have found that I can achieve what I desire in either of two ways:\n\n1) hack AuthState to not set the scheme back to basic when setPreemptive(), and\nthen specifically set my custom AuthScheme on the method\n2) simply use HostParams.getDefaultParams() to register my DEFAULT_HEADERS with\nmy authentication headers pre-filled\n\nThe latter is obviously much easier and straightforward.  I don't know why I\ndidn't realize this before. :(",
+            "date": "2005-03-23T02:24:01.000+0000",
+            "id": 8
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "I am very pleasantly surprised at how easy it turned out to add support for preemptive authentication using DIGEST. \n\nHttpClient 4.0 rocks!!!!\n\nDIGEST preemptive:\n\nhttp://svn.apache.org/repos/asf/httpcomponents/httpclient/trunk/module-client/src/examples/org/apache/http/examples/client/ClientPreemptiveDigestAuthentication.java\n\nBASIC preemptive:\n\nhttp://svn.apache.org/repos/asf/httpcomponents/httpclient/trunk/module-client/src/examples/org/apache/http/examples/client/ClientPreemptiveBasicAuthentication.java\n\nOleg",
+            "date": "2008-05-23T16:57:53.456+0000",
+            "id": 9
+        }
+    ],
+    "component": "HttpClient (classic)",
+    "description": "Pre-emptive authentication is hardcoded to be restricted to the BASIC\nauthentication scheme.  To fully support custom authentication schemes,\npre-emptive authentication should be made configurable, either globally, or on a\nper-scheme basis.  A potential compromise may be to require AuthSchemes to\nreport whether they support pre-emptive capability if we wish to explicitly\nexclude certain schemes from pre-emptive authentication.\n\n(reported against 3.0 RC 1)",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "HTTPCLIENT-424",
+    "issuetypeClassified": "RFE",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "HTTPCLIENT",
+    "project": "HTTPCLIENT",
+    "summary": "setAuthPreemptive restricted to BASIC AuthScheme",
+    "systemSpecification": true,
+    "version": "3.0 Beta 1"
+}

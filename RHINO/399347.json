@@ -1,0 +1,53 @@
+{
+    "comments": [
+        {
+            "author": "szegedia@freemail.hu",
+            "body": "You're referring to RFC 4329, right? Yes, this is justified -- I can see how we'd want to be conformant with that... However, we need to think about some additional implications though first. I'm late for my morning gym, but will elaborate more in few hours.",
+            "date": "20071024T07:22:03",
+            "id": 0
+        },
+        {
+            "author": "szegedia@freemail.hu",
+            "body": "Okay. So, we have the following cases:\n\n1. Source message has explicit charset parameter in its Content-type. We use the explicit charset. No-brainer.\n\n2. Source message has Content-type application/javascript or application/ecmascript. We use the RFC 4329 section 4.2. \"Character Encoding Scheme Detection\" to detect the charset.\n\n3. Source message has Content-type text/javascript or text/ecmascript. I have no idea what to do here. RFC 4329 7.1 and 8.1 both say \"Encoding considerations: The same as the considerations in section 3.1 of [RFC3023].\" RFC 3023 is the XML media types RFC, I happen to know this one rather well. In section 3.1 it says:\n\n--- quote ---\nConformant with [RFC2046], if a text/xml entity is received with the charset parameter omitted, MIME processors and XML processors MUST use the default charset value of \"us-ascii\"[ASCII].  In cases where the XML MIME entity is transmitted via HTTP, the default charset value is still \"us-ascii\". (Note: There is an inconsistency between this specification and HTTP/1.1, which uses ISO-8859-1[ISO8859] as the default for a historical reason. Since XML is a new format, a new default should be chosen for better I18N. US-ASCII was chosen, since it is the intersection of UTF-8 and ISO-8859-1 and since it is already used by MIME.)\n--- quote ends ---\n\nSo, we have several strategies for text/* content type. We can assume us-ascii, (RFC 3023 would mandate we do that) we can assume ISO-8859-1 in case the URL scheme is http or https, or we can assume UTF-8. Since text/javascript and text/ecmascript content types are obsoleted anyway, I'd suggest we fall back on us-ascii when we encounter these content types without an explicit charset. I believe that's the intent of RFC 3023 (and of RFC 4329 too, since it delegates to it).\n\n4. Source has no associated content type (i.e. comes from a local file from a filesystem that has no concept of content types). I'd say this should be left to the application, and provide Rhino API for app to specify the content type and/or charset. \n\nIn the special case where the application is either jsc or shell, we just assume application/javascript to be the content type when file extension is .js and application/ecmascript when the file extension is .es, and maybe introduce a \"-encoding\" command line switch (similar to the one javac has) for explicitly specifying a different charset.\n\nHow does all of this sound?",
+            "date": "20071024T10:06:00",
+            "id": 1
+        },
+        {
+            "author": "szegedia@freemail.hu",
+            "body": "Ok, I added the following functionality to Rhino shell:\n\n1. An -enc command line argument, i.e. \"-enc utf-8\" is now supported to specify default encoding.\n2. When source is read from an URL and it has a \";charset=\" declaration in Content-type, that is used.\n3. When source is read from an URL without charset declaration in content type, or is read from a local file, then RFC 4329 4.2.2. logic is used to automatically recognize UTF-32LE, UTF-32BE, UTF-8, UTF-16LE, and UTF-16BE encodings.\n4. If no encodings can be automatically recognized, the command line \"-enc\" value is used, if it exists.\n5. If -enc does not exist, but the source is a URL and content type is application/*, UTF-8 is assumed\n6. If -enc does not exist, but the source is a URL and content type is text/*, US-ASCII is assumed\n7. In the remaining case (source is local file, no encoding was autodetected, and no -enc parameter was specified), we use file.encoding system property as the character encoding.\n\nConsole input is handled more simply:\n1. if there is -enc, it is used\n2. Otherwise, file.encoding system property is used as the character encoding.",
+            "date": "20081018T09:15:55",
+            "id": 2
+        },
+        {
+            "author": "szegedia@freemail.hu",
+            "body": "    Checking in toolsrc/org/mozilla/javascript/tools/resources/Messages.properties;\n    /cvsroot/mozilla/js/rhino/toolsrc/org/mozilla/javascript/tools/resources/Messages.properties,v  <--  Messages.properties\n    new revision: 1.36; previous revision: 1.35\n    done\n    RCS file: /cvsroot/mozilla/js/rhino/toolsrc/org/mozilla/javascript/tools/shell/ParsedContentType.java,v\n    done\n    Checking in toolsrc/org/mozilla/javascript/tools/shell/ParsedContentType.java;\n    /cvsroot/mozilla/js/rhino/toolsrc/org/mozilla/javascript/tools/shell/ParsedContentType.java,v  <--  ParsedContentType.java\n    initial revision: 1.1\n    done\n    Checking in toolsrc/org/mozilla/javascript/tools/shell/ShellContextFactory.java;\n    /cvsroot/mozilla/js/rhino/toolsrc/org/mozilla/javascript/tools/shell/ShellContextFactory.java,v  <--  ShellContextFactory.java\n    new revision: 1.12; previous revision: 1.11\n    done\n    Checking in toolsrc/org/mozilla/javascript/tools/shell/Main.java;\n    /cvsroot/mozilla/js/rhino/toolsrc/org/mozilla/javascript/tools/shell/Main.java,v  <--  Main.java\n    new revision: 1.77; previous revision: 1.76\n    done",
+            "date": "20081018T09:17:44",
+            "id": 3
+        },
+        {
+            "author": "szegedia@freemail.hu",
+            "body": "Additionally, shell no longer chokes on BOM:\n\n    Checking in toolsrc/org/mozilla/javascript/tools/shell/Main.java;\n    /cvsroot/mozilla/js/rhino/toolsrc/org/mozilla/javascript/tools/shell/Main.java,v  <--  Main.java\n    new revision: 1.78; previous revision: 1.77\n    done\n\nI still need to look into adding the same smarts to jsc.",
+            "date": "20081018T09:36:33",
+            "id": 4
+        },
+        {
+            "author": "szegedia@freemail.hu",
+            "body": "Okay, I extracted intelligent character encoding handling into a separate class used by both shell and jsc.\nI also added -encoding switch to jsc, and renamed it from -enc to -encoding in shell too. The reason is that javac uses \"-encoding\" as well.\n\n    Checking in toolsrc/org/mozilla/javascript/tools/jsc/Main.java;\n    /cvsroot/mozilla/js/rhino/toolsrc/org/mozilla/javascript/tools/jsc/Main.java,v  <--  Main.java\n    new revision: 1.16; previous revision: 1.15\n    done\n    RCS file: /cvsroot/mozilla/js/rhino/toolsrc/org/mozilla/javascript/tools/SourceReader.java,v\n    done\n    Checking in toolsrc/org/mozilla/javascript/tools/SourceReader.java;\n    /cvsroot/mozilla/js/rhino/toolsrc/org/mozilla/javascript/tools/SourceReader.java,v  <--  SourceReader.java\n    initial revision: 1.1\n    done\n    Checking in toolsrc/org/mozilla/javascript/tools/resources/Messages.properties;\n    /cvsroot/mozilla/js/rhino/toolsrc/org/mozilla/javascript/tools/resources/Messages.properties,v  <--  Messages.properties\n    new revision: 1.37; previous revision: 1.36\n    done\n    Checking in toolsrc/org/mozilla/javascript/tools/shell/Main.java;\n    /cvsroot/mozilla/js/rhino/toolsrc/org/mozilla/javascript/tools/shell/Main.java,v  <--  Main.java\n    new revision: 1.79; previous revision: 1.78\n    done",
+            "date": "20081018T18:58:49",
+            "id": 5
+        }
+    ],
+    "component": "Core",
+    "description": "User-Agent:       Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 1.1.4322; .NET CLR 2.0.50727; InfoPath.1)\nBuild Identifier: 1.6R7\n\nSeveral places in the code use classes/constructors for URL/file streams/readers which use the default encoding.  I think specs at least default to UTF-8, or if not (in the case of IE) only do UTF-8.  Anyway, here are the things to search on which will get you to the offending areas:\n\n- \"new FileReader\", drop use of this class totally\n- \"new InputStreamReader\", always pass in an encoding\n- \"Kit.readStream\", check the use of what gets passed in and returned\n- \"Kit.readReader\", check the use of what gets passed in and returned\n\nExample changes I had to make (jsc/Main, shell/Main, shell/Global):\n- \"new FileReader(f)\" to \"new InputStreamReader(new FileInputStream(f), \"UTF-8\")\"\n- \"new InputStreamReader(is)\" to \"new InputStreamReader(is, \"UTF-8\")\"\n- \"result = new String(data)\" to \"result = new String(data, \"UTF-8\")\"\n\nI would assume a good behavior across all of Rhino would be to try to get an encoding from the charset header when a URL is used.  If that doesn't exist or it is a file, default to UTF-8.  I didn't go the distance in shell/Main.readFileOrUrl to parse the Content-Type header if its' a URL, but the comment \"XXX: Use 'charset=' argument of Content-Type if URL?\" alludes to this already.\n\nReproducible: Always\n\nSteps to Reproduce:\n1. Create any JS file in Notepad and save as UTF-8.\n2. Run JSC and Shell on it.\n3.\nActual Results:  \nBoth will choke saying that they encountered an illegal character.\n\nExpected Results:  \nClean parse.",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "399347",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "BUG",
+    "priority": "-- normal",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "The JSC and Shell tools choke on UTF-8 BOM",
+    "systemSpecification": false,
+    "version": "other"
+}

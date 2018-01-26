@@ -1,0 +1,47 @@
+{
+    "comments": [
+        {
+            "author": "Jeff Dever",
+            "body": "This behaviour has changed slightly since alpha1.  The current behaviour is as\nfollows: \n    if (!isIpAddress(host)) {\n        if (port == 80) {\n            setRequestHeader(\"Host\", host);\n        } else {\n            setRequestHeader(\"Host\", host + \":\" + port);\n        }\n    } else {\n        setRequestHeader(\"Host\", \"\");\n    }\n\nSo if the host is an actual hostname, and is not port 80, then the port will be\nconcatenated to the hostname seperated with a colon.\n\nIf the host is an ipaddress, then the host header is added but with a blank\nvalue.\n\n<cite href=\"http://www.ietf.org/rfc/rfc2616.txt\">\n   A client MUST include a Host header field in all HTTP/1.1 request\n   messages . If the requested URI does not include an Internet host\n   name for the service being requested, then the Host header field MUST\n   be given with an empty value. An HTTP/1.1 proxy MUST ensure that any\n   request message it forwards does contain an appropriate Host header\n   field that identifies the service being requested by the proxy. All\n   Internet-based HTTP/1.1 servers MUST respond with a 400 (Bad Request)\n   status code to any HTTP/1.1 request message which lacks a Host header\n   field.\n</cite>\n",
+            "date": "2002-07-27T08:44:34.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Jeff Dever",
+            "body": "Marked as fixed by mistake.  Awaiting Bruce Duncan to acknowledge the previous\ncomment.",
+            "date": "2002-07-27T08:49:39.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Xiaowei Jiang",
+            "body": "The existing fix still have a problem: it doesn't handle the default port \nnumber correctly. The default port number is 80 for http and 443 for https.\n\nThe following is a fix for this problem:\n\n\n    protected void addHostRequestHeader(HttpState state, HttpConnection conn) \nthrows IOException, HttpException {\n        // Per 19.6.1.1 of RFC 2616, it is legal for HTTP/1.0 based\n        // applications to send the Host request-header.\n        // TODO: Add the ability to disable the sending of this header for \nHTTP/1.0 requests.\n\n        String host = conn.getHost();\n        int port = conn.getPort();\n\n        if (!requestHeaders.containsKey(\"host\") && !isIpAddress(host)) {\n            if(conn.isSecure()) {\n                if(443 != port) {\n                    host += \":\" + port;\n                }\n            }\n            else {\n                if(80 != port) {\n                    host += \":\" + port;\n                }\n            }\n            setRequestHeader(\"Host\", host);\n        }\n    }",
+            "date": "2002-07-27T08:52:06.000+0000",
+            "id": 2
+        },
+        {
+            "author": "Jeff Dever",
+            "body": "Created an attachment (id=2579)\nFix\n",
+            "date": "2002-08-02T18:42:49.000+0000",
+            "id": 3
+        },
+        {
+            "author": "Jeff Dever",
+            "body": "Patch applied.  Test cases added and passed to reflect the new logic.",
+            "date": "2002-08-02T18:44:33.000+0000",
+            "id": 4
+        }
+    ],
+    "component": "HttpClient (classic)",
+    "description": "The Host request header is always added with just the hostname used for the \nconnection.  If the port is different than 80 it needs to be included as well, \nwith a colon separating it from the hostname.  This problem is especially \napparent when you use the httpclient to connect to tomcat 4 and then use \nHttpUtils to create a full URL representing the request.  HttpUtils pulls the \nhost and port from the Host header.  When commons-httpclient is used HttpUtils \nnever includes the port since it was never in the Host header.",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "HTTPCLIENT-85",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "HTTPCLIENT",
+    "project": "HTTPCLIENT",
+    "summary": "Host request header does not contain port",
+    "systemSpecification": false,
+    "version": "2.0 Alpha 1"
+}

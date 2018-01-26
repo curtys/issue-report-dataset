@@ -1,0 +1,41 @@
+{
+    "comments": [
+        {
+            "author": "Marcel  May",
+            "body": "Patch for DatabasePersistenceManager and DatabaseFileSystem.java",
+            "date": "2007-07-05T19:02:33.947+0000",
+            "id": 0
+        },
+        {
+            "author": "Stefan Guggisberg",
+            "body": "the patch for DatabaseFileSystem actually changes the behavior, i guess that's a mistake.\nit should probably read\n\n--- src/main/java/org/apache/jackrabbit/core/fs/db/DatabaseFileSystem.java\t(revision 553455)\n+++ src/main/java/org/apache/jackrabbit/core/fs/db/DatabaseFileSystem.java\t(working copy)\n@@ -954,7 +945,9 @@\n      */\n     protected void initConnection() throws Exception {\n         con = getConnection();\n-        con.setAutoCommit(true);\n+        if (!con.getAutoCommit()) {\n+            con.setAutoCommit(true);\n+        }\n",
+            "date": "2007-07-06T13:13:05.137+0000",
+            "id": 1
+        },
+        {
+            "author": "Marcel  May",
+            "body": "Yes, thanks.\n\nFor DatabasePersistenceManager there is no auto commit enabled, for DatabaseFileSystem auto commit is enabled.\n\nI wrote the other day a mail to the dev list about TX handling and JTA as some impl parts and the spec are confusing me (see http://mail-archives.apache.org/mod_mbox/jackrabbit-dev/200707.mbox/%3c4691F684.4080703@consol.de%3e).",
+            "date": "2007-07-09T17:54:06.798+0000",
+            "id": 2
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Fixed in revision 605515.",
+            "date": "2007-12-19T11:44:15.484+0000",
+            "id": 3
+        }
+    ],
+    "component": "jackrabbit-core",
+    "description": "Invoking setAutoCommit() on a db connection fails if the connection is managed.\n\nI propose as a workaround to check if the auto commit must be set previous to setting it (a trivial patch will be provided).\n\nThis can happen eg. if you use JNDI (eg JNDIDatabasePersistenceManager) to fetch the connection on JBoss, and the persistent manager tries to reconnect (see stack trace below).\n\n05 Jul 09:54:24 ERROR sePersistenceManager| failed to re-establish connection\njava.sql.SQLException: You cannot set autocommit during a managed transaction!\n        at org.jboss.resource.adapter.jdbc.BaseWrapperManagedConnection.setJdbcAutoCommit(BaseWrapperManagedConnection.java:482)\n        at org.jboss.resource.adapter.jdbc.WrappedConnection.setAutoCommit(WrappedConnection.java:322)\n        at org.apache.jackrabbit.core.persistence.db.DatabasePersistenceManager.initConnection(DatabasePersistenceManager.java:731)\n        at org.apache.jackrabbit.core.persistence.db.DatabasePersistenceManager.reestablishConnection(DatabasePersistenceManager.java:806)\n        at org.apache.jackrabbit.core.persistence.db.DatabasePersistenceManager.executeStmt(DatabasePersistenceManager.java:852)\n        at org.apache.jackrabbit.core.persistence.db.DatabasePersistenceManager.exists(DatabasePersistenceManager.java:647)\n        at org.apache.jackrabbit.core.state.SharedItemStateManager.hasNonVirtualItemState(SharedItemStateManager.java:1102)\n        at org.apache.jackrabbit.core.state.SharedItemStateManager.hasItemState(SharedItemStateManager.java:289)\n        at org.apache.jackrabbit.core.state.LocalItemStateManager.hasItemState(LocalItemStateManager.java:180)\n        at org.apache.jackrabbit.core.state.XAItemStateManager.hasItemState(XAItemStateManager.java:252)\n        at org.apache.jackrabbit.core.state.SessionItemStateManager.getItemState(SessionItemStateManager.java:174)",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "JCR-1013",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "Connection.setAutoCommit(...) fails if connection is managed for JNDIDatabasePersistenceManager",
+    "systemSpecification": true,
+    "version": "1.3, 1.3.1, 1.3.3"
+}

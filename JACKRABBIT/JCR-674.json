@@ -1,0 +1,53 @@
+{
+    "comments": [
+        {
+            "author": "Jan Kuzniak",
+            "body": "Hello there!\n\nAfter short investigation we at Cognifide think that we know what the problem is :-)\n\nNot only values that should be base64 are not exported, but also node and property names that have invalid characters in it (e.g. most characters below 0x0020) are exported using entities (that is still invalid). We are currently implementing patch for the first issue (base64).\n\nAnd a little more about invalid node/property names: it seems like the difference lies between Session.exportDocumentView and Session.exportSystemView. The first one seems to be doing it correctly. However the second does not use ISO9075 class that is responsible for encoding. Simply connecting exportSystemView to ISO9075 should make it (we are also going to implement this).\n\nAny comments on this approach? Patch is coming soon (we hope).\n\n--\nRegards,\n Liliana and Jan",
+            "date": "2006-12-21T11:36:03.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Jan Kuzniak",
+            "body": "One more thought: maybe we should split this issue into 2:\n- leave values encoding (to base64) here,\n- create new issue for names encoding in Session.exportSystemView.\n\nWhat do you think about it?",
+            "date": "2006-12-21T13:30:58.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Agreed, the encoding of names is a separate issue. Actually a pretty tricky one...\n\nPlease open a separate issue for property names and let's keep this issue focused on property values.",
+            "date": "2006-12-21T21:24:12.000+0000",
+            "id": 2
+        },
+        {
+            "author": "Jan Kuzniak",
+            "body": "I have a question about adding namespaces to repository. We have to use \"xsi\" and \"xsd\" namespaces during XML generation (see JSR170 1.0.1 -> 6.4.1.7). Currently all namespaces in the XML seem to come from repository namespaces - is that true? \n\nWe are a bit confused about adding xsi and xsd to \"reservedNamespaces\" collection. Currently Javadoc for javax.jcr.NamespaceRegistry.registerNamespace says nothing about xsi and xsd namespaces and suggests that they are perfectly legal to be added by a user:\n\"Attempting to re-assign a built-in prefix (<code>jcr</code>, <code>nt</code>, <code>mix</code>,<code>sv</code>, <code>xml</code>, or the empty prefix) to a new URI will throw a <code>NamespaceException</code>\".\n\nCan we just and xsi and xsd namespaces to reservedNamespaces or will it raise compatibility issues?  If it is not a good solution then where would you suggest to put code responsible for adding those namespaces to XML?\n\n--\nRegards,\n Liliana and Jan",
+            "date": "2007-01-02T15:04:09.476+0000",
+            "id": 3
+        },
+        {
+            "author": "Julian Reschke",
+            "body": "Implemented base64 encoding of non-binary properties containing non-XML characters (for export) with revision 533070.",
+            "date": "2007-04-27T12:04:13.550+0000",
+            "id": 4
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Resolved as fixed for Jackrabbit 1.4.\n\nSee JCR-1228 for the request to add support for properly importing such base64 encoded values.",
+            "date": "2007-11-21T23:52:55.395+0000",
+            "id": 5
+        }
+    ],
+    "component": "jackrabbit-core, jackrabbit-spi, JCR 1.0.1, xml",
+    "description": "As noted in the current JCR 1.0.1 maintenance draft, sections 6.4.1,\n6.4.2.6, XML export of string properties that contain invalid XML\ncharacters isn't well-defined currently, since those characters are\nnot permissible in XML.  The proposed fix is to use base64\nencoding for such values in System View.\n\nMost characters below #x20 are examples of this.  Currently, these\nare escaped numerically in output (such as (amp)#0; )  but\nsuch escape sequences can't be parsed by the XML\nimport methods.\n\nThe current behavior is particularly problematic, because the user\ndoesn't know the output is corrupt until later, when they try to import it\nand get InvalidSerializedDataException.\n\nIf for some reason the base64 option is delayed, it might\nmake sense, as an interim solution, to fail on export\nor to somehow patch import to relax its parsing and allow\nthese escape codes.",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "JCR-674",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Minor",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "String properties with invalid XML characters export as invalid XML",
+    "systemSpecification": true,
+    "version": "0.9, 1.0, 1.0.1, 1.1, 1.1.1, 1.2.1, 1.2.2, 1.2.3, 1.3, 1.3.1, 1.3.3"
+}

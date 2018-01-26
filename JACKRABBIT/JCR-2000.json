@@ -1,0 +1,143 @@
+{
+    "comments": [
+        {
+            "author": "Jukka Zitting",
+            "body": "Attached a patch that solves the issue for environments where the transaction manager does not use separate threads for preparing and committing a transaction (see JCR-1334). Support for JCR-1334 requires updating also the version manager lock to support switching the lock ownership from one thread to another.",
+            "date": "2009-03-02T10:57:06.062+0000",
+            "id": 0
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Here's a new version of the patch that solves also the JCR-1334 issues. I'll run some more tests on it before committing to trunk and the 1.5 branch.",
+            "date": "2009-03-02T11:55:09.734+0000",
+            "id": 1
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "I still see lockups when running ConcurrentVersioningWithTransactionsTest.\n\nWe should eventually run those concurrency tests on a daily basis. All that's needed is:\n\nmvn -Dtest=DailyIntegrationTest test\n\nIs this kind of daily test possible with our hudson instance?",
+            "date": "2009-03-02T12:35:56.936+0000",
+            "id": 2
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Yep, I'm seeing the same problem. Working on it now.\n\nOnce solved, I'll configure Hudson to periodically run the more extensive integration tests.",
+            "date": "2009-03-02T13:23:31.169+0000",
+            "id": 3
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "As far as I can tell, the lockups are caused by the test case forcibly terminating long-lived threads. The Thread.stop() call does unlock any object monitors the thread has locked, but will leave the explicit lock objects locked.\n\nThe proposed change extends the scope of the versioning lock used in transactions, and thus affects the performance of concurrent commits. This is probably the cause of the timeouts of the test case being reached.",
+            "date": "2009-03-03T12:39:59.339+0000",
+            "id": 4
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "There are other lockups too. However, the test code violates the \"Don't mix concurrent transactional and non-transactional writes to a single workspace\" guideline mentioned in http://jackrabbit.apache.org/concurrency-control.html.\n\nI've disabled the Thread.stop() calls and the mixed normal and transactional saves, which seems to avoid all the problems. I'll run a bigger randomized test over the night to see whether any problems remain.",
+            "date": "2009-03-03T15:10:49.297+0000",
+            "id": 5
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Yes, that seems to have fixed the issues. I'll commit the changes and give people some time to check this out before cutting the 1.5.4 release with the fix.",
+            "date": "2009-03-04T09:25:32.038+0000",
+            "id": 6
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "> As far as I can tell, the lockups are caused by the test case forcibly terminating long-lived threads.\n\nI disagree. The tasks in ConcurrentVersioningWithTransactionsTest time out one year in the future. Actually an unreasonable value ;), should be rather in the area of a couple of minutes, to make sure the test terminates at some point if a deadlock occurs. RandomOperationTest indeed uses a lower timeout of 60 seconds. If that's a problem, we should rather increase that value to e.g. 5 minutes.\n\n> However, the test code violates the \"Don't mix concurrent transactional and non-transactional writes to a single workspace\" guideline\n\nHmm, I understand, but the above mentioned test works just fine in the 1.4 branch.\n\nPrzemo, does you application use XA transactions mixed with regular writes?",
+            "date": "2009-03-04T10:18:13.430+0000",
+            "id": 7
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "The thread deaths I saw were caused by the RandomOperationTest class killing them. At least in a few cases the threads were still holding on locks, which made the test block indefinitely in the cleanup phase after all test threads had been killed.\n\nWhy do we need the thread killing in the first place? A normal join() call with no timeout should be fine enough. If there's a deadlock, then a manually generated thread dump is much more accurate (it contains all the locks held) than the stack traces that the test case now dumps.\n\n> Hmm, I understand, but the above mentioned test works just fine in the 1.4 branch.\n\nThe proposed change here extends the scope of the versioning lock acquired in a transaction commit, which makes this deadlock (A: commit() -> versioning lock -> workspace lock; B: save() -> workspace lock -> versioning lock) more likely to happen, but the deadlock scenario already existed before, it probably just was never triggered due to lucky timing.",
+            "date": "2009-03-04T10:44:10.423+0000",
+            "id": 8
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Attached a patch (thread-join.patch) that replaces the thread timeouts with an unbounded Thread.join() call.",
+            "date": "2009-03-04T11:24:07.007+0000",
+            "id": 9
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "> Why do we need the thread killing in the first place? A normal join() call with no timeout should be fine enough\n\nRight, that would work well when one runs the test on a local machine. I had some build infrastructure in mind, where I want a report after the tests finished, which means termination must be guaranteed.\n\n",
+            "date": "2009-03-04T12:17:52.741+0000",
+            "id": 10
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "I think something like the build timeout plugin for Hudson is better for catching runaway CI builds.",
+            "date": "2009-03-04T12:26:24.029+0000",
+            "id": 11
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "Ah, cool. I didn't know there is something like that...",
+            "date": "2009-03-04T12:37:50.239+0000",
+            "id": 12
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Anyway, I don't feel too strongly about the join() issue. I suspect that the thread deaths I was seeing earlier were probably caused by an earlier deadlock blocking the threads that then were forcibly killed by the timeout mechanism, hiding the original cause of the problem.",
+            "date": "2009-03-04T12:43:21.385+0000",
+            "id": 13
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Applied the patch (latest JCR-2000.patch) in revision 750011. Merged it and the related test case changes (749953 and 749965) to the 1.5 branch in revision 750013.\n\nI'll still run some tests on the 1.5 branch before resolving this as fixed.",
+            "date": "2009-03-04T14:17:30.312+0000",
+            "id": 14
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Hmm, I'm still seeing some lockups. Investigating...",
+            "date": "2009-03-05T08:41:21.106+0000",
+            "id": 15
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "The last problem appears to be an extra synchronization block in LocalItemStateManager, which prevents the SearchManager from accessing content when synchronous observation events are received. The relevant parts of the thread dump are:\n\n\"Thread-605\" prio=10 tid=0xa6d8e400 nid=0xdba waiting for monitor entry [0xa430c000..0xa430cfa0]\n   java.lang.Thread.State: BLOCKED (on object monitor)\n\tat org.apache.jackrabbit.core.state.LocalItemStateManager.getItemState(LocalItemStateManager.java:153)\n\t- waiting to lock <0xad21eda0> (a org.apache.jackrabbit.core.state.LocalItemStateManager)\n\tat org.apache.jackrabbit.core.state.SessionItemStateManager.getItemState(SessionItemStateManager.java:182)\n\tat org.apache.jackrabbit.core.SearchManager$1.nextNodeState(SearchManager.java:442)\n\tat org.apache.jackrabbit.core.SearchManager$1.next(SearchManager.java:435)\n\tat org.apache.commons.collections.iterators.TransformIterator.next(TransformIterator.java:87)\n\tat org.apache.commons.collections.IteratorUtils.toList(IteratorUtils.java:829)\n\tat org.apache.commons.collections.IteratorUtils.toList(IteratorUtils.java:805)\n\tat org.apache.jackrabbit.core.query.lucene.SearchIndex.updateNodes(SearchIndex.java:588)\n\tat org.apache.jackrabbit.core.SearchManager.onEvent(SearchManager.java:478)\n\tat org.apache.jackrabbit.core.observation.EventConsumer.consumeEvents(EventConsumer.java:244)\n\tat org.apache.jackrabbit.core.observation.ObservationDispatcher.dispatchEvents(ObservationDispatcher.java:201)\n\tat org.apache.jackrabbit.core.observation.EventStateCollection.dispatch(EventStateCollection.java:447)\n\tat org.apache.jackrabbit.core.observation.DelegatingObservationDispatcher.dispatch(DelegatingObservationDispatcher.java:127)\n\tat org.apache.jackrabbit.core.observation.DelegatingObservationDispatcher.dispatchEvents(DelegatingObservationDispatcher.java:99)\n\tat org.apache.jackrabbit.core.observation.EventStateCollection.dispatch(EventStateCollection.java:447)\n\tat org.apache.jackrabbit.core.state.SharedItemStateManager$Update.end(SharedItemStateManager.java:749)\n\tat org.apache.jackrabbit.core.state.XAItemStateManager.commit(XAItemStateManager.java:172)\n\tat org.apache.jackrabbit.core.version.XAVersionManager.commit(XAVersionManager.java:497)\n\tat org.apache.jackrabbit.core.TransactionContext.commit(TransactionContext.java:206)\n\t- locked <0xb3b33ea0> (a org.apache.jackrabbit.core.TransactionContext)\n\tat org.apache.jackrabbit.core.XASessionImpl.commit(XASessionImpl.java:346)\n\tat org.apache.jackrabbit.core.UserTransactionImpl.commit(UserTransactionImpl.java:150)\n\tat org.apache.jackrabbit.core.ConcurrentVersioningWithTransactionsTest$1.execute(ConcurrentVersioningWithTransactionsTest.java:86)\n\tat org.apache.jackrabbit.core.AbstractConcurrencyTest$Executor.run(AbstractConcurrencyTest.java:164)\n\tat java.lang.Thread.run(Thread.java:619)\n\n\"Thread-604\" prio=10 tid=0xa6d8d400 nid=0xdb9 in Object.wait() [0xa435d000..0xa435e020]\n   java.lang.Thread.State: WAITING (on object monitor)\n\tat java.lang.Object.wait(Native Method)\n\t- waiting on <0xad159240> (a EDU.oswego.cs.dl.util.concurrent.WriterPreferenceReadWriteLock$ReaderLock)\n\tat java.lang.Object.wait(Object.java:485)\n\tat EDU.oswego.cs.dl.util.concurrent.WriterPreferenceReadWriteLock$ReaderLock.acquire(Unknown Source)\n\t- locked <0xad159240> (a EDU.oswego.cs.dl.util.concurrent.WriterPreferenceReadWriteLock$ReaderLock)\n\tat org.apache.jackrabbit.core.state.DefaultISMLocking$ReadLockImpl.<init>(DefaultISMLocking.java:96)\n\tat org.apache.jackrabbit.core.state.DefaultISMLocking$ReadLockImpl.<init>(DefaultISMLocking.java:89)\n\tat org.apache.jackrabbit.core.state.DefaultISMLocking.acquireReadLock(DefaultISMLocking.java:51)\n\tat org.apache.jackrabbit.core.state.SharedItemStateManager.acquireReadLock(SharedItemStateManager.java:1416)\n\tat org.apache.jackrabbit.core.state.SharedItemStateManager.getItemState(SharedItemStateManager.java:253)\n\tat org.apache.jackrabbit.core.state.LocalItemStateManager.getNodeState(LocalItemStateManager.java:93)\n\tat org.apache.jackrabbit.core.state.LocalItemStateManager.getItemState(LocalItemStateManager.java:158)\n\t- locked <0xad21eda0> (a org.apache.jackrabbit.core.state.LocalItemStateManager)\n\tat org.apache.jackrabbit.core.state.SessionItemStateManager.getItemState(SessionItemStateManager.java:182)\n\tat org.apache.jackrabbit.core.HierarchyManagerImpl.getItemState(HierarchyManagerImpl.java:150)\n\tat org.apache.jackrabbit.core.HierarchyManagerImpl.getPath(HierarchyManagerImpl.java:393)\n\tat org.apache.jackrabbit.core.CachingHierarchyManager.getPath(CachingHierarchyManager.java:229)\n\tat org.apache.jackrabbit.core.lock.LockManagerImpl.getPath(LockManagerImpl.java:701)\n\tat org.apache.jackrabbit.core.lock.LockManagerImpl.getLockInfo(LockManagerImpl.java:439)\n\tat org.apache.jackrabbit.core.lock.XAEnvironment.getLockInfo(XAEnvironment.java:234)\n\tat org.apache.jackrabbit.core.lock.XALockManager.checkLock(XALockManager.java:184)\n\tat org.apache.jackrabbit.core.ItemValidator.checkLock(ItemValidator.java:382)\n\tat org.apache.jackrabbit.core.ItemValidator.checkCondition(ItemValidator.java:305)\n\tat org.apache.jackrabbit.core.ItemValidator.checkModify(ItemValidator.java:267)\n\tat org.apache.jackrabbit.core.NodeImpl.internalAddNode(NodeImpl.java:726)\n\tat org.apache.jackrabbit.core.NodeImpl.internalAddNode(NodeImpl.java:683)\n\tat org.apache.jackrabbit.core.NodeImpl.addNode(NodeImpl.java:2055)\n\t- locked <0xb3be44a0> (a org.apache.jackrabbit.core.NodeImpl)\n\tat org.apache.jackrabbit.core.ConcurrentVersioningWithTransactionsTest$1.execute(ConcurrentVersioningWithTransactionsTest.java:83)\n\tat org.apache.jackrabbit.core.AbstractConcurrencyTest$Executor.run(AbstractConcurrencyTest.java:164)\n\tat java.lang.Thread.run(Thread.java:619)\n\nI'm not sure yet why the SearchManager is accessing a *LocalItemStateManager* here, it should only ever access the SharedItemStateManager instance.",
+            "date": "2009-03-05T11:19:12.088+0000",
+            "id": 16
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "The culprit seems to be the system search manager, that (like LockManager above) uses the SessionItemStateManager of the system session for looking up items. The attached patch (search-on-sism.patch) makes the system search manager use the underlying SharedItemStateManager instance instead of the SessionItemStateManager.",
+            "date": "2009-03-05T11:55:26.304+0000",
+            "id": 17
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "The last problem above is a bit outside the scope of this issue, so I created JCR-2008 for that and resolved the issue by committed the proposed fix in both svn trunk and the 1.5 branch.\n\nResolving this as Fixed.",
+            "date": "2009-03-05T12:25:44.336+0000",
+            "id": 18
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "One more thing, detected in a test run I left for the night. The VersionItemStateProvider.hasNodeReferences() call inside the scope of a workspace lock conflicts with the versioning lock held by another thread. The conflict can be seen in the following thread dump:\n\nHOLDS WORKSPACE LOCK, WAITS FOR VERSIONING LOCK\n\"Thread-577\" prio=10 tid=0x0859ac00 nid=0x6e86 in Object.wait() [0xa487a000..0xa487af20]\n   java.lang.Thread.State: WAITING (on object monitor)\n\tat java.lang.Object.wait(Native Method)\n\t- waiting on <0xad082b20> (a EDU.oswego.cs.dl.util.concurrent.WriterPreferenceReadWriteLock$ReaderLock)\n\tat java.lang.Object.wait(Object.java:485)\n\tat EDU.oswego.cs.dl.util.concurrent.WriterPreferenceReadWriteLock$ReaderLock.acquire(Unknown Source)\n\t- locked <0xad082b20> (a EDU.oswego.cs.dl.util.concurrent.WriterPreferenceReadWriteLock$ReaderLock)\n\tat org.apache.jackrabbit.core.state.DefaultISMLocking$ReadLockImpl.<init>(DefaultISMLocking.java:86)\n\tat org.apache.jackrabbit.core.state.DefaultISMLocking$ReadLockImpl.<init>(DefaultISMLocking.java:80)\n\tat org.apache.jackrabbit.core.state.DefaultISMLocking.acquireReadLock(DefaultISMLocking.java:44)\n\tat org.apache.jackrabbit.core.state.SharedItemStateManager.acquireReadLock(SharedItemStateManager.java:1403)\n\tat org.apache.jackrabbit.core.state.SharedItemStateManager.hasNodeReferences(SharedItemStateManager.java:350)\n\tat org.apache.jackrabbit.core.version.VersionItemStateProvider.hasNodeReferences(VersionItemStateProvider.java:142)\n\tat org.apache.jackrabbit.core.state.SharedItemStateManager.hasNodeReferences(SharedItemStateManager.java:369)\n\tat org.apache.jackrabbit.core.state.SharedItemStateManager$Update.addReference(SharedItemStateManager.java:898)\n\tat org.apache.jackrabbit.core.state.SharedItemStateManager$Update.addReferences(SharedItemStateManager.java:883)\n\tat org.apache.jackrabbit.core.state.SharedItemStateManager$Update.updateReferences(SharedItemStateManager.java:866)\n\tat org.apache.jackrabbit.core.state.SharedItemStateManager$Update.begin(SharedItemStateManager.java:560)\n\tat org.apache.jackrabbit.core.state.SharedItemStateManager.beginUpdate(SharedItemStateManager.java:1056)\n\tat org.apache.jackrabbit.core.state.SharedItemStateManager.update(SharedItemStateManager.java:1086)\n\tat org.apache.jackrabbit.core.state.LocalItemStateManager.update(LocalItemStateManager.java:337)\n\tat org.apache.jackrabbit.core.state.XAItemStateManager.update(XAItemStateManager.java:347)\n\tat org.apache.jackrabbit.core.state.LocalItemStateManager.update(LocalItemStateManager.java:312)\n\tat org.apache.jackrabbit.core.state.SessionItemStateManager.update(SessionItemStateManager.java:313)\n\tat org.apache.jackrabbit.core.ItemImpl.save(ItemImpl.java:1105)\n\t- locked <0xb0cc9e00> (a org.apache.jackrabbit.core.XASessionImpl)\n\tat org.apache.jackrabbit.core.SessionImpl.save(SessionImpl.java:846)\n\tat org.apache.jackrabbit.core.NodeImpl.checkout(NodeImpl.java:3340)\n\tat org.apache.jackrabbit.core.ConcurrentVersioningWithTransactionsTest$2.execute(ConcurrentVersioningWithTransactionsTest.java:119)\n\tat org.apache.jackrabbit.core.AbstractConcurrencyTest$Executor.run(AbstractConcurrencyTest.java:164)\n\tat java.lang.Thread.run(Thread.java:619)\n\nHOLDS VERSIONING LOCK, WAITS FOR WORKSPACE LOCK\n\"Thread-571\" prio=10 tid=0xa7991400 nid=0x6e80 in Object.wait() [0xa4ddb000..0xa4ddbe20]\n   java.lang.Thread.State: WAITING (on object monitor)\n\tat java.lang.Object.wait(Native Method)\n\t- waiting on <0xad082c28> (a EDU.oswego.cs.dl.util.concurrent.WriterPreferenceReadWriteLock$WriterLock)\n\tat java.lang.Object.wait(Object.java:485)\n\tat EDU.oswego.cs.dl.util.concurrent.WriterPreferenceReadWriteLock$WriterLock.acquire(Unknown Source)\n\t- locked <0xad082c28> (a EDU.oswego.cs.dl.util.concurrent.WriterPreferenceReadWriteLock$WriterLock)\n\tat org.apache.jackrabbit.core.state.DefaultISMLocking$1.<init>(DefaultISMLocking.java:55)\n\tat org.apache.jackrabbit.core.state.DefaultISMLocking.acquireWriteLock(DefaultISMLocking.java:52)\n\tat org.apache.jackrabbit.core.state.SharedItemStateManager.acquireWriteLock(SharedItemStateManager.java:1419)\n\tat org.apache.jackrabbit.core.state.SharedItemStateManager.access$200(SharedItemStateManager.java:116)\n\tat org.apache.jackrabbit.core.state.SharedItemStateManager$Update.begin(SharedItemStateManager.java:547)\n\tat org.apache.jackrabbit.core.state.SharedItemStateManager.beginUpdate(SharedItemStateManager.java:1056)\n\tat org.apache.jackrabbit.core.state.XAItemStateManager.prepare(XAItemStateManager.java:156)\n\tat org.apache.jackrabbit.core.TransactionContext.prepare(TransactionContext.java:154)\n\t- locked <0xb0f06868> (a org.apache.jackrabbit.core.TransactionContext)\n\tat org.apache.jackrabbit.core.XASessionImpl.prepare(XASessionImpl.java:324)\n\tat org.apache.jackrabbit.core.UserTransactionImpl.commit(UserTransactionImpl.java:121)\n\tat org.apache.jackrabbit.core.ConcurrentVersioningWithTransactionsTest$2.execute(ConcurrentVersioningWithTransactionsTest.java:117)\n\tat org.apache.jackrabbit.core.AbstractConcurrencyTest$Executor.run(AbstractConcurrencyTest.java:164)\n\tat java.lang.Thread.run(Thread.java:619)\n\n\nThe VersionItemStateManager already avoids this conflict in the way it overrides the setNodeReferences() method, but it should do the same also for the get/hasNodeReferences() methods that are invoked by SharedItemStateManager when persisting normal workspace content.\n",
+            "date": "2009-03-05T18:17:18.918+0000",
+            "id": 19
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Fixed the last issue as described in revision 750536. Merged the fix to the 1.5 branch in revision 750539.\n\nEverything seems good again, but I'll schedule another test run over the night to catch any other regressions.",
+            "date": "2009-03-05T18:39:52.075+0000",
+            "id": 20
+        }
+    ],
+    "component": "jackrabbit-core, transactions",
+    "description": "As reported in the followup to JCR-1979, there's a case where two transactions may be concurrently inside a commit. This is bad as it breaks the main assumption in http://jackrabbit.apache.org/concurrency-control.html about all transactions first acquiring the versioning write lock.\n\nLooking deeper into this I find that the versioning write lock is only acquired if the transaction being committed contains versioning operations. This is incorrect as all transactions in any case need to access the version store when checking for references.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "JCR-2000",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "Deadlock on concurrent commits",
+    "systemSpecification": true,
+    "version": "1.5.3"
+}

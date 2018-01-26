@@ -1,0 +1,125 @@
+{
+    "comments": [
+        {
+            "author": "Mark Miller",
+            "body": "I think I've everything but the PhraseQuery issue - thats a tough one though, and extends to MultiPhraseQuery and SpanQuery.",
+            "date": "2009-10-27T13:25:24.954+0000",
+            "id": 0
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "I have a patch here which moves the explain part from the scorer to the weight. Almost all test pass, only a few. I can post this here, and maybe you fix the rmaining issues.",
+            "date": "2009-10-27T13:32:11.263+0000",
+            "id": 1
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Only TestPayloadTermQuery fails with wrong explanations.\n\nThis patch also adds lots of @Override, because only by this I can test that I do not override a no longer available method.",
+            "date": "2009-10-27T13:34:03.362+0000",
+            "id": 2
+        },
+        {
+            "author": "Mark Miller",
+            "body": "*cough* hack *cough*.\n\nIf we went this way, we should prob also hack termweight#explain too so that i can still use the cache.",
+            "date": "2009-10-27T13:35:04.224+0000",
+            "id": 3
+        },
+        {
+            "author": "Mark Miller",
+            "body": "Okay, Uwe - perhaps we can merge and get something nice - I didn't do anything with contrib with my patch as well.",
+            "date": "2009-10-27T13:36:33.804+0000",
+            "id": 4
+        },
+        {
+            "author": "Mark Miller",
+            "body": "Okay, nice - looks like we are pretty similar - you just pulled some more cruft that I didn't and pulled the phrasequery/spanquery stuff up a level it looks. My hack was to keep them were they are, make them package private, and just cast the scorer ;)\n\nI'd say lets go with your patch and just fix that test.",
+            "date": "2009-10-27T13:40:48.718+0000",
+            "id": 5
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "An updated patch, I added the termDocs==null case in the TermQuery explanation (you did it correctly).\n\nIf you can somehow fix the PayloadTermQuery, I would be happy. By the way, I have to cast the scorers, too, to get the current freq value (I added a method to these scorers to get them).",
+            "date": "2009-10-27T13:45:28.225+0000",
+            "id": 6
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "{quote}\n*cough* hack *cough*.\nIf we went this way, we should prob also hack termweight#explain too so that i can still use the cache.\n{quote}\n\nThe cache was of no use for TermWeight.explain, because the explain method created a new Scorer.",
+            "date": "2009-10-27T13:47:41.912+0000",
+            "id": 7
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "bq. I'd say lets go with your patch and just fix that test.\n\nIs the test wrong or my code?",
+            "date": "2009-10-27T13:48:20.483+0000",
+            "id": 8
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "I reanimated the TestNearSpan test. TestTermScorer.testExplain cannot be reanimated, because it tests the lower level tfExplanation only and it is not easy to get from the Weight.\n\nContrib builds and tests without problems.\n\nSo only one failing test :-)",
+            "date": "2009-10-27T14:31:11.405+0000",
+            "id": 9
+        },
+        {
+            "author": "Mark Miller",
+            "body": "Its because of the loss of whats going on in PayloadTermQuery - we also lose some custom info from PayloadNearQuery - on first blush it seems best just to leave the exp in the scorer for Span queries - its still gone from Scorer so I don't see it as much of a problem myself - havn't thought on it much yet though.\n\nI guess we could pull all that custom info up to the weight through the span/payload stuff - but then each has to duplicate a bunch of the info from the SpanWeight - it seems nicer just to leave things as they are, let the Scorer do it, and cast. What do you think?",
+            "date": "2009-10-27T14:33:23.312+0000",
+            "id": 10
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Looks good. I also thought about it and I also think, whe should just leave an explain() in SpanScorer, maybe we should make it package-protected or protected, because it is no longer public.\n\nIn my last patch I only reanimated the TestNearSpan test.",
+            "date": "2009-10-27T14:38:14.597+0000",
+            "id": 11
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Added the test to your patch.\n\nI also made explain() in SpanScorer protected.",
+            "date": "2009-10-27T14:47:47.693+0000",
+            "id": 12
+        },
+        {
+            "author": "Mark Miller",
+            "body": "Nice on protected - i wanted to package private it, but couldnt because of the payloads package - good call.",
+            "date": "2009-10-27T14:55:22.035+0000",
+            "id": 13
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "...had the same idea - and problem.",
+            "date": "2009-10-27T14:57:44.891+0000",
+            "id": 14
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Attached the backwards branch patch.",
+            "date": "2009-10-27T15:10:03.441+0000",
+            "id": 15
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "All tests pass, I think it is now ready to commit. Will commit in a day.",
+            "date": "2009-10-27T17:27:12.800+0000",
+            "id": 16
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Committed revision: 830377\n\nThanks Mark!",
+            "date": "2009-10-27T22:30:03.917+0000",
+            "id": 17
+        }
+    ],
+    "component": "core/search",
+    "description": "This is the only remaining deprecation in core, but is not so easy to handle, because lot's of code in core still uses the explain() method in Scorer. So e.g. in PhraseQuery, the explain method has to be moved from Scorer to the Weight.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-2011",
+    "issuetypeClassified": "OTHER",
+    "issuetypeTracker": "OTHER",
+    "priority": "Major",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "Remove deprecated Scorer.explain(int) method",
+    "systemSpecification": true,
+    "version": ""
+}

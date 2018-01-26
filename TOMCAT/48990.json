@@ -1,0 +1,95 @@
+{
+    "comments": [
+        {
+            "author": null,
+            "body": "Looks like your build environment is not set up correctly. Both the current and the previous Tomcat 6 build managers use Linux to build the releases.",
+            "date": "20100325T21:32:33",
+            "id": 0
+        },
+        {
+            "author": null,
+            "body": "\nReopening with better description of how to recreate the issue. I've updated the subject to better fit the issue, namely failure to build when skipping the installer.\n\nSteps:\n\nDownload source.\nUnpack.\nModify build.properties to change where downloads go.\nModify build.properties to set skip.installer to true (otherwise there is a wine error).\n`ant download`\n`ant`\n`ant -f extras.xml`\n`ant -f dist.xml`\n\nError:\n\napache-tomcat-6.0.26-src/dist.xml:454: /home/hyandell/apps/apache-tomcat-6.0.26-src/output/dist/bin/x64 not found.",
+            "date": "20100325T21:45:18",
+            "id": 1
+        },
+        {
+            "author": null,
+            "body": "Noting that this is not a problem with 7.0 from trunk. Previous problems are with the official src.tar.gz downloads for 5.5.x and 6.0.x.",
+            "date": "20100326T20:37:49",
+            "id": 2
+        },
+        {
+            "author": null,
+            "body": "Created attachment 25477\nAlternative patch\n\nskip.installer should do just that. No need to skip the .zip distros.",
+            "date": "20100524T13:26:19",
+            "id": 3
+        },
+        {
+            "author": null,
+            "body": "Alternative patch proposed for 6.0.x",
+            "date": "20100524T13:28:05",
+            "id": 4
+        },
+        {
+            "author": null,
+            "body": "With your patch (applied to 6.0.26), I get an error that it can't find the commons-daemon-1.0.1/windows/prunsrv.exe file to copy. \n\nLooking at the unpacked commons-daemon-1.0.1 from http://archive.apache.org/dist/commons/daemon/binaries/commons-daemon-1.0.1.tar.gz, I don't see a windows directory there.",
+            "date": "20100526T19:20:22",
+            "id": 5
+        },
+        {
+            "author": null,
+            "body": "That would be because the build uses commons daemon 1.0.2",
+            "date": "20100526T19:34:59",
+            "id": 6
+        },
+        {
+            "author": null,
+            "body": "\nGotya. I'm still on 6.0.26 with 1.0.1, but the patch looks good from visual inspection.",
+            "date": "20100526T19:49:59",
+            "id": 7
+        },
+        {
+            "author": null,
+            "body": "Fixed in 6.0.x and will be in 6.0.27 onwards",
+            "date": "20100606T19:46:33",
+            "id": 8
+        },
+        {
+            "author": null,
+            "body": "Created attachment 25537\n2010-06-07_tc55_bug48990.patch\n\nLooking at comment #3 and how the build file is implemented, it looks that it is a problem for 5.5 as well.\n\nI am attaching patch that fixes this issue in Tomcat 5.5 (backport of r952023) AND introduces support for \"skip.installer\" property.\n\nDefining the \"skip.installer\" property will allow to skip creating the installer when running Tomcat 5.5 build on Windows.",
+            "date": "20100606T22:24:03",
+            "id": 9
+        },
+        {
+            "author": null,
+            "body": "Testing with just \"skip.installer\" part of the above tc5.5 patch, I should say that I do not see any build failures.\n\nI.e., the Unix builds of 5.5.28 should build successfully. The only thing is that zip/tar.gz files created by such build will differ with the ones created on Windows in that they do not include the following files and folders:\n\nbin/tomcat5.exe\nbin/tomcat5w.exe\nbin/tcnative-1.dll\nbin/i64/\nbin/i64/tomcat5.exe\nbin/i64/tcnative-1.dll\nbin/x64/\nbin/x64/tomcat5.exe\nbin/x64/tcnative-1.dll\n\nThe effect of the above tc5.5 patch (attachment 25537) is that\nA) it will align zip/tar.gz files created by building a release on Unix with the ones on Windows.\nThe ones on Unix will not omit the above said exe/dll files.\nB) it will provide support for \"skip.installer\" property\n\n\nReopening, changing Product, Version to track it in Tomcat 5.5.",
+            "date": "20100606T23:50:58",
+            "id": 10
+        },
+        {
+            "author": null,
+            "body": "The patch was proposed for 5.5.",
+            "date": "20100606T23:57:55",
+            "id": 11
+        },
+        {
+            "author": null,
+            "body": "This has been fixed in 5.5.x and will be included in 5.5.30 onwards.",
+            "date": "20100622T05:05:04",
+            "id": 12
+        }
+    ],
+    "component": "Catalina",
+    "description": "When building on Linux, I get the following error:\n\n\"apache-tomcat-6.0.24-src/output/dist/bin/x64 not found.\"\n\nI avoid this with the following patch (using the execute.installer condition as a 'if-windows' option as is done in the 'clean' target). \n\n\n--- dist.xml            2010-01-26 05:20:44.000000000 +0000\n+++ dist.xml            2010-01-26 05:21:02.000000000 +0000\n@@ -419,7 +419,7 @@\n   </target>\n\n   <!-- Packages the core windows zip distros -->\n-  <target name=\"package-winzip\">\n+  <target name=\"package-winzip\" if=\"execute.installer\">\n     <fixcrlf srcdir=\"${tomcat.dist}\" includes=\"*.txt,LICENSE,NOTICE\" eol=\"crlf\" encoding=\"ISO-8859-1\" fixlast=\"false\" />\n     <fixcrlf srcdir=\"${tomcat.dist}/conf\" eol=\"crlf\" encoding=\"ISO-8859-1\" fixlast=\"false\" />\n\n\nFrom inspection I believe the issue still applies in the 6.0 trunk and in the unreleased 7.0 build.xml file.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "48990",
+    "issuetypeClassified": "OTHER",
+    "issuetypeTracker": "BUG",
+    "priority": "P2 normal",
+    "product": "Tomcat 5",
+    "project": "TOMCAT",
+    "summary": "Build fails on Linux when skip.installer set to true",
+    "systemSpecification": true,
+    "version": "5.5.28"
+}

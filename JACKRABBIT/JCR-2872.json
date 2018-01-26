@@ -1,0 +1,47 @@
+{
+    "comments": [
+        {
+            "author": "Thomas Mueller",
+            "body": "Another option (also somewhat ugly) is to create / change the modified date of a specially named marker file \"<identifier>.mod\" - so while changing the modified date of the original file is not possible, at least it's possible to change the modified date of this marker file (which has length 0). Before deleting data store files, the marker file needs to be checked of course.",
+            "date": "2011-02-01T15:24:41.039+0000",
+            "id": 0
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "Another option that works for me is:\n\nRandomAccessFile r = new RandomAccessFile(name, \"rw\");\nr.setLength(r.length());\nr.close();\n\nI think that's the solution I will implement (unless somebody has a better idea).",
+            "date": "2011-02-01T15:42:20.732+0000",
+            "id": 1
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "Would you run this code only when the setLastModified() call does not succeed?",
+            "date": "2011-02-01T16:08:11.421+0000",
+            "id": 2
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "> Would you run this code only when the setLastModified() call does not succeed? \n\nYes.",
+            "date": "2011-02-01T16:30:54.039+0000",
+            "id": 3
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "Committed in the trunk and 2.2 branch.",
+            "date": "2011-02-02T10:00:02.678+0000",
+            "id": 4
+        }
+    ],
+    "component": "jackrabbit-core",
+    "description": "If the file is open for reading, Windows doesn't allow to change the last modified time using File.setLastModified():\n\norg.apache.jackrabbit.core.data.DataStoreException: Failed to update record\nmodified date: 2ac72495fd1e270777821b8a872903c79c84a8d9\n        at org.apache.jackrabbit.core.data.FileDataStore.addRecord(FileDataStore.java:250)\n        at org.apache.jackrabbit.core.value.BLOBInDataStore.getInstance(BLOBInDataStore.java:119)\n        at org.apache.jackrabbit.core.value.InternalValue.getBLOBFileValue(InternalValue.java:619)\n        at org.apache.jackrabbit.core.value.InternalValue.create(InternalValue.java:369)\n        at org.apache.jackrabbit.core.value.InternalValueFactory.create(InternalValueFactory.java:94)\n        at org.apache.jackrabbit.core.value.ValueFactoryImpl.createBinary(ValueFactoryImpl.java:74)\n\nTest case and possible workaround:\n\nimport java.io.File;\nimport java.io.FileInputStream;\nimport java.io.RandomAccessFile;\npublic class Test {\n    public static void main(String... args) throws Exception {\n        String name = \"test.txt\";\n        File test = new File(name);\n        RandomAccessFile r = new RandomAccessFile(name, \"rw\");\n        r.write(0);\n        r.close();\n        long mod = test.lastModified();\n        Thread.sleep(3000);\n        FileInputStream in = new FileInputStream(name);\n        if (!test.setLastModified(test.lastModified()+1)) {\n        \tif (!test.canWrite()) {\n        \t\tSystem.out.println(\"Can't write to \" + name);\n        \t} else {\n            \tSystem.out.println(\"canWrite ok\");\n            \tr = new RandomAccessFile(name, \"rw\");\n            \tint old = r.read();\n            \tr.seek(0);\n            \tr.write(old);\n            \tr.close();\n        \t}\n        } else {\n        \tSystem.out.println(\"setLastModified ok\");\n        }\n        System.out.println(\"Modified old: \" + mod);\n        System.out.println(\"Modified now: \" + test.lastModified());\n        in.close();\n        System.out.println(\"input closed\");\n        if (!test.setLastModified(test.lastModified()+1)) {\n        \tif (!test.canWrite()) {\n        \t\tSystem.out.println(\"Can't write to \" + name);\n        \t} else {\n            \tSystem.out.println(\"canWrite ok\");\n        \t}\n        } else {\n        \tSystem.out.println(\"setLastModified ok\");\n        }\n        new File(name).delete();\n    }\n}\n",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "JCR-2872",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "DataStore: changing the modified date fails if the file is open for reading (Windows only)",
+    "systemSpecification": true,
+    "version": ""
+}

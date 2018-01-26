@@ -1,0 +1,239 @@
+{
+    "comments": [
+        {
+            "author": "Sascha Theves",
+            "body": "I also get the error when trying to copy nodes that were created with jackrabbit 1.5.0.",
+            "date": "2009-12-11T09:08:25.317+0000",
+            "id": 0
+        },
+        {
+            "author": "Stefan Guggisberg",
+            "body": "the NPE is thrown here:\n\n                PropDefId defId = srcChildState.getDefinitionId();\n                PropDef def = ntReg.getPropDef(defId);\n=>                if (def.getDeclaringNodeType().equals(NameConstants.MIX_LOCKABLE)) {\n\n\ndid you change any node type declarations?",
+            "date": "2009-12-11T09:17:23.713+0000",
+            "id": 1
+        },
+        {
+            "author": "Sascha Theves",
+            "body": "No I didn`t change any node type declarations. I only upgraded my jackrabbit libs to 1.6.0 and thats it.",
+            "date": "2009-12-11T09:42:30.922+0000",
+            "id": 2
+        },
+        {
+            "author": "Sascha Theves",
+            "body": "When I switch back to jackrabbit 1.5.0 the error is gone.",
+            "date": "2009-12-11T09:50:11.386+0000",
+            "id": 3
+        },
+        {
+            "author": "Stefan Guggisberg",
+            "body": "ok, this is probably caused by a declaration change of the built-in node types in version 1.6.\n\nis there any chance you can find out the PropertyId of the property causing the exception?\ni guess you'd have to debug jackrabbit and place a NPE breakpoint.",
+            "date": "2009-12-11T09:59:23.193+0000",
+            "id": 4
+        },
+        {
+            "author": "Sascha Theves",
+            "body": "The PropertyId is \"75a473e2-3ddf-459d-8460-f05b7ce864f3/{http://www.jcp.org/jcr/1.0}isCheckedOut\" and the the PropDefId is \"1284956073\" (do not know if this matters).",
+            "date": "2009-12-11T10:13:45.321+0000",
+            "id": 5
+        },
+        {
+            "author": "Sascha Theves",
+            "body": "I also get the following warning sometimes:\n\nItemManager - property at /path/to/node/jcr:isCheckedOut has invalid definitionId (1284956073)",
+            "date": "2009-12-11T10:16:34.351+0000",
+            "id": 6
+        },
+        {
+            "author": "Stefan Guggisberg",
+            "body": "thanks, now i can see what's causing the problem. \n\nin version 1.6 the declarations of some built-in node types have changed\n(actually the declarations have changed from JCR 1.0 to JCR 2.0).\n\ni.e.\n\njcr:isCheckedOut used to be declared by mix:versionable. \nin jackrabbit 1.6 it is declared by mix:simpleVersionable\nand mix:versionable now extends mix:simpleVersionable.\n\n\na quick fix for this issue would be to gracefully handle this \n'incompatibility' by guarding against NPE and trying to \ndetermine/assign the 'correct' definition during the copy\noperation.   \n\n",
+            "date": "2009-12-11T13:19:29.870+0000",
+            "id": 7
+        },
+        {
+            "author": "Sascha Theves",
+            "body": "Are there any other incompatibilities in the 1.6.0 version? Or should a migration from 1.5.0 to 1.6.0 be possible by exchanging the jackrabbit Jars only?",
+            "date": "2009-12-14T14:14:02.644+0000",
+            "id": 8
+        },
+        {
+            "author": "Sascha Theves",
+            "body": "Set the fix version to 1.6.1.",
+            "date": "2009-12-14T14:14:48.693+0000",
+            "id": 9
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Postponing to a later 1.6.x release since we don't yet have a patch to fix this issue.",
+            "date": "2010-01-15T17:47:13.176+0000",
+            "id": 10
+        },
+        {
+            "author": "Sascha Theves",
+            "body": "That means Jackrabbit 1.6.x is incompatible with any previous versions. That should be mentioned in the ReadMe or somewhere else where the users can find it. Your data is corrupt after an upgrade to Jackrabbit 1.6.0 and that corruption can not be fixed. That is very critical for production environments. For us it means we can not use Jackrabbit 1.6.0 at all.",
+            "date": "2010-01-26T15:25:12.792+0000",
+            "id": 11
+        },
+        {
+            "author": "Sascha Theves",
+            "body": "Is there a way to manually fix the problem? We have downgraded our repository to Jackrabbit 1.5 and are still unable to use the Workspace.copy() function. Any ideas?",
+            "date": "2010-02-25T10:11:58.612+0000",
+            "id": 12
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "I committed a workaround to the NPE in revision 927393 and merged it to the 1.6 branch in revision 927395. This should solve at least the exact problem as reported, though I'm not sure if the confused node type information would cause other problems down the line.",
+            "date": "2010-03-25T13:37:28.225+0000",
+            "id": 13
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Resolving as fixed based on the above fix.",
+            "date": "2010-04-27T13:14:26.460+0000",
+            "id": 14
+        },
+        {
+            "author": "Paul Jara",
+            "body": "I applied the fix by Jukka Zitting to version 1.6.1, recompiled, and deployed to servers that are having this issue. I'm still seeing the NPE even with the swapped equality test.",
+            "date": "2010-04-27T22:43:56.580+0000",
+            "id": 15
+        },
+        {
+            "author": "Sascha Theves",
+            "body": "The patch is not a fix of the bug. It just fixes the NPE but the problem relies on the changed notetype definitions which are incompatible with the previous ones. That means that jackrabbit 2.x and 1.6.x are incompatible with previous releases and that should be mentioned somewhere.\n\nHowever, it seems that the patch does not fix all NPEs caused by the changed notetype definitions as Paul mentioned.\n\nIs there a way to manually fix the problem?",
+            "date": "2010-04-28T06:34:09.547+0000",
+            "id": 16
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Paul, can you post the exact stack trace you're getting?",
+            "date": "2010-04-28T08:45:16.114+0000",
+            "id": 17
+        },
+        {
+            "author": "Gr\u00e9gory Joseph",
+            "body": "Just for the record, exporting and reimporting impacted nodes fixed the problem for us.",
+            "date": "2010-04-28T09:38:59.575+0000",
+            "id": 18
+        },
+        {
+            "author": "Sascha Theves",
+            "body": "If exporting and importing fixes the problem, then that could be done by jackrabbit itself or not? So maybe you could provide a fix for this issue that does this automatically? ",
+            "date": "2010-04-28T10:01:52.319+0000",
+            "id": 19
+        },
+        {
+            "author": "Paul Jara",
+            "body": "Here is the stack trace I'm getting (note that it says line 1835 because I commented out the old line of code at line 1834 instead of replacing it).\n\n2010-04-27 17:39:51,998 ERROR info.magnolia.module.exchangesimple.ReceiveFilter : \njava.lang.NullPointerException\n        at org.apache.jackrabbit.core.BatchedItemOperations.copyNodeState(BatchedItemOperations.java:1835)\n        at org.apache.jackrabbit.core.BatchedItemOperations.copy(BatchedItemOperations.java:423)\n        at org.apache.jackrabbit.core.WorkspaceImpl.internalCopy(WorkspaceImpl.java:444)\n        at org.apache.jackrabbit.core.WorkspaceImpl.clone(WorkspaceImpl.java:646)\n        at info.magnolia.module.exchangetransactional.CopyUtil.clone(CopyUtil.java:79)\n        at info.magnolia.module.exchangetransactional.XAReceiveFilter.remove(XAReceiveFilter.java:292)\n        at info.magnolia.module.exchangetransactional.XAReceiveFilter.receive(XAReceiveFilter.java:87)\n        at info.magnolia.module.exchangesimple.ReceiveFilter.doFilter(ReceiveFilter.java:123)\n        at info.magnolia.module.exchangetransactional.XAReceiveFilter.doFilter(XAReceiveFilter.java:60)\n        at info.magnolia.cms.filters.AbstractMgnlFilter.doFilter(AbstractMgnlFilter.java:70)\n        at info.magnolia.cms.filters.MgnlFilterChain.doFilter(MgnlFilterChain.java:82)\n        at info.magnolia.cms.security.BaseSecurityFilter.doFilter(BaseSecurityFilter.java:61)\n        at info.magnolia.cms.filters.AbstractMgnlFilter.doFilter(AbstractMgnlFilter.java:70)\n        at info.magnolia.cms.filters.MgnlFilterChain.doFilter(MgnlFilterChain.java:82)\n        at info.magnolia.cms.security.LogoutFilter.doFilter(LogoutFilter.java:89)\n        at info.magnolia.cms.filters.OncePerRequestAbstractMgnlFilter.doFilter(OncePerRequestAbstractMgnlFilter.java:62)\n        at info.magnolia.cms.filters.MgnlFilterChain.doFilter(MgnlFilterChain.java:82)\n        at info.magnolia.cms.security.auth.login.LoginFilter.doFilter(LoginFilter.java:80)\n        at info.magnolia.cms.filters.AbstractMgnlFilter.doFilter(AbstractMgnlFilter.java:70)\n        at info.magnolia.cms.filters.MgnlFilterChain.doFilter(MgnlFilterChain.java:82)\n        at info.magnolia.enterprise.registration.RegistrationFilter.doFilter(RegistrationFilter.java:50)\n        at info.magnolia.cms.filters.AbstractMgnlFilter.doFilter(AbstractMgnlFilter.java:70)\n        at info.magnolia.cms.filters.MgnlFilterChain.doFilter(MgnlFilterChain.java:82)\n        at info.magnolia.cms.filters.MgnlFilterChain.doFilter(MgnlFilterChain.java:84)\n        at info.magnolia.cms.filters.CosMultipartRequestFilter.doFilter(CosMultipartRequestFilter.java:87)\n        at info.magnolia.cms.filters.AbstractMgnlFilter.doFilter(AbstractMgnlFilter.java:70)\n        at info.magnolia.cms.filters.MgnlFilterChain.doFilter(MgnlFilterChain.java:82)\n        at info.magnolia.cms.filters.ContentTypeFilter.doFilter(ContentTypeFilter.java:90)\n        at info.magnolia.cms.filters.AbstractMgnlFilter.doFilter(AbstractMgnlFilter.java:70)\n        at info.magnolia.cms.filters.MgnlFilterChain.doFilter(MgnlFilterChain.java:82)\n        at info.magnolia.cms.filters.ContextFilter.doFilter(ContextFilter.java:87)\n        at info.magnolia.cms.filters.AbstractMgnlFilter.doFilter(AbstractMgnlFilter.java:70)\n        at info.magnolia.cms.filters.MgnlFilterChain.doFilter(MgnlFilterChain.java:82)\n        at info.magnolia.cms.filters.CompositeFilter.doFilter(CompositeFilter.java:64)\n        at info.magnolia.cms.filters.AbstractMgnlFilter.doFilter(AbstractMgnlFilter.java:70)\n        at info.magnolia.cms.filters.MgnlMainFilter.doFilter(MgnlMainFilter.java:96)\n        at info.magnolia.cms.filters.MgnlMainFilter.doFilter(MgnlMainFilter.java:199)\n        at org.apache.catalina.core.ApplicationFilterChain.internalDoFilter(ApplicationFilterChain.java:215)\n        at org.apache.catalina.core.ApplicationFilterChain.doFilter(ApplicationFilterChain.java:188)\n        at org.apache.catalina.core.StandardWrapperValve.invoke(StandardWrapperValve.java:213)\n        at org.apache.catalina.core.StandardContextValve.invoke(StandardContextValve.java:172)\n        at org.apache.catalina.core.StandardHostValve.invoke(StandardHostValve.java:127)\n        at org.apache.catalina.valves.ErrorReportValve.invoke(ErrorReportValve.java:117)\n        at org.apache.catalina.core.StandardEngineValve.invoke(StandardEngineValve.java:108)\n        at org.apache.catalina.connector.CoyoteAdapter.service(CoyoteAdapter.java:174)\n        at org.apache.coyote.http11.Http11AprProcessor.process(Http11AprProcessor.java:835)\n        at org.apache.coyote.http11.Http11AprProtocol$Http11ConnectionHandler.process(Http11AprProtocol.java:640)\n        at org.apache.tomcat.util.net.AprEndpoint$Worker.run(AprEndpoint.java:1286)\n        at java.lang.Thread.run(Thread.java:636)\n\nI decided to modify the code to catch the exception and this is the exception that is thrown later on down the code:\n\n2010-04-27 18:07:17,419 ERROR info.magnolia.module.exchangesimple.ReceiveFilter : \njava.lang.NullPointerException\n        at org.apache.jackrabbit.core.BatchedItemOperations.copyPropertyState(BatchedItemOperations.java:1933)\n        at org.apache.jackrabbit.core.BatchedItemOperations.copyNodeState(BatchedItemOperations.java:1845)\n        at org.apache.jackrabbit.core.BatchedItemOperations.copy(BatchedItemOperations.java:423)\n        at org.apache.jackrabbit.core.WorkspaceImpl.internalCopy(WorkspaceImpl.java:444)\n        at org.apache.jackrabbit.core.WorkspaceImpl.clone(WorkspaceImpl.java:646)\n        at info.magnolia.module.exchangetransactional.CopyUtil.clone(CopyUtil.java:79)\n        at info.magnolia.module.exchangetransactional.XAReceiveFilter.remove(XAReceiveFilter.java:292)        at info.magnolia.module.exchangetransactional.XAReceiveFilter.receive(XAReceiveFilter.java:87)\n        at info.magnolia.module.exchangesimple.ReceiveFilter.doFilter(ReceiveFilter.java:123)\n        at info.magnolia.module.exchangetransactional.XAReceiveFilter.doFilter(XAReceiveFilter.java:60)\n        at info.magnolia.cms.filters.AbstractMgnlFilter.doFilter(AbstractMgnlFilter.java:70)\n        at info.magnolia.cms.filters.MgnlFilterChain.doFilter(MgnlFilterChain.java:82)\n        at info.magnolia.cms.security.BaseSecurityFilter.doFilter(BaseSecurityFilter.java:61)\n        at info.magnolia.cms.filters.AbstractMgnlFilter.doFilter(AbstractMgnlFilter.java:70)\n        at info.magnolia.cms.filters.MgnlFilterChain.doFilter(MgnlFilterChain.java:82)\n        at info.magnolia.cms.security.LogoutFilter.doFilter(LogoutFilter.java:89)\n        at info.magnolia.cms.filters.OncePerRequestAbstractMgnlFilter.doFilter(OncePerRequestAbstractMgnlFilter.java:62)\n        at info.magnolia.cms.filters.MgnlFilterChain.doFilter(MgnlFilterChain.java:82)\n        at info.magnolia.cms.security.auth.login.LoginFilter.doFilter(LoginFilter.java:80)\n        at info.magnolia.cms.filters.AbstractMgnlFilter.doFilter(AbstractMgnlFilter.java:70)\n        at info.magnolia.cms.filters.MgnlFilterChain.doFilter(MgnlFilterChain.java:82)\n        at info.magnolia.enterprise.registration.RegistrationFilter.doFilter(RegistrationFilter.java:50)\n        at info.magnolia.cms.filters.AbstractMgnlFilter.doFilter(AbstractMgnlFilter.java:70)\n        at info.magnolia.cms.filters.MgnlFilterChain.doFilter(MgnlFilterChain.java:82)        at info.magnolia.cms.filters.MgnlFilterChain.doFilter(MgnlFilterChain.java:84)\n        at info.magnolia.cms.filters.CosMultipartRequestFilter.doFilter(CosMultipartRequestFilter.java:87)\n        at info.magnolia.cms.filters.AbstractMgnlFilter.doFilter(AbstractMgnlFilter.java:70)\n        at info.magnolia.cms.filters.MgnlFilterChain.doFilter(MgnlFilterChain.java:82)\n        at info.magnolia.cms.filters.ContentTypeFilter.doFilter(ContentTypeFilter.java:90)\n        at info.magnolia.cms.filters.AbstractMgnlFilter.doFilter(AbstractMgnlFilter.java:70)\n        at info.magnolia.cms.filters.MgnlFilterChain.doFilter(MgnlFilterChain.java:82)\n        at info.magnolia.cms.filters.ContextFilter.doFilter(ContextFilter.java:87)\n        at info.magnolia.cms.filters.AbstractMgnlFilter.doFilter(AbstractMgnlFilter.java:70)\n        at info.magnolia.cms.filters.MgnlFilterChain.doFilter(MgnlFilterChain.java:82)\n        at info.magnolia.cms.filters.CompositeFilter.doFilter(CompositeFilter.java:64)\n        at info.magnolia.cms.filters.AbstractMgnlFilter.doFilter(AbstractMgnlFilter.java:70)\n        at info.magnolia.cms.filters.MgnlMainFilter.doFilter(MgnlMainFilter.java:96)\n        at info.magnolia.cms.filters.MgnlMainFilter.doFilter(MgnlMainFilter.java:199)\n        at org.apache.catalina.core.ApplicationFilterChain.internalDoFilter(ApplicationFilterChain.java:215)\n        at org.apache.catalina.core.ApplicationFilterChain.doFilter(ApplicationFilterChain.java:188)\n        at org.apache.catalina.core.StandardWrapperValve.invoke(StandardWrapperValve.java:213)\n        at org.apache.catalina.core.StandardContextValve.invoke(StandardContextValve.java:172)\n        at org.apache.catalina.core.StandardHostValve.invoke(StandardHostValve.java:127)\n        at org.apache.catalina.valves.ErrorReportValve.invoke(ErrorReportValve.java:117)\n        at org.apache.catalina.core.StandardEngineValve.invoke(StandardEngineValve.java:108)\n        at org.apache.catalina.connector.CoyoteAdapter.service(CoyoteAdapter.java:174)\n        at org.apache.coyote.http11.Http11AprProcessor.process(Http11AprProcessor.java:835)\n        at org.apache.coyote.http11.Http11AprProtocol$Http11ConnectionHandler.process(Http11AprProtocol.java:640)\n        at org.apache.tomcat.util.net.AprEndpoint$Worker.run(AprEndpoint.java:1286)\n        at java.lang.Thread.run(Thread.java:636)\n",
+            "date": "2010-04-28T14:52:28.977+0000",
+            "id": 20
+        },
+        {
+            "author": "Paul Jara",
+            "body": "Gr\u00e9gory and Sascha, I too would be interested in doing an export and import of data using just JackRabbit if that is possible. Can somebody kindly point me to some instructions to do so?",
+            "date": "2010-04-28T14:53:43.275+0000",
+            "id": 21
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Reopening. I'm working on a backwards compatibility test for this and a solution that would automatically fix the node types broken by the upgrade.",
+            "date": "2010-04-29T10:02:11.128+0000",
+            "id": 22
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "I now (see revision 939290) have a test case that creates a repository with a versionable node in Jackrabbit < 1.6 and then opens the repository in Jackrabbit >= 1.6 and copies the node. Unfortunately I'm still unable to reproduce the original problem. After the repository upgrade the jcr:isCheckedOut property is correctly reported as being declared by the mix:simpleVersionable type.\n\nAny ideas on what I should do to reproduce this?",
+            "date": "2010-04-29T12:00:48.202+0000",
+            "id": 23
+        },
+        {
+            "author": "Paul Jara",
+            "body": "Let me know if I can be of any help. How we stumbled on this bug is we had started out with a clean repository created with Magnolia CMS 4.0.1. Some of the nodes may have been created using this version of the software. The CMS has since been upgraded to the following versions (95% certain of the accuracy here): 4.0.2, 4.1.1, 4.1.2, 4.3.1. There would have been nodes created with each version.",
+            "date": "2010-04-29T19:26:08.016+0000",
+            "id": 24
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Could you for example attach a system view export of the troublesome nodes and a copy of the custom_nodetypes.xml file from within the repository directory? You can blank out any sensitive data if needed. I'm especially interested in the exact node type information of the troublesome nodes.",
+            "date": "2010-04-29T20:19:39.195+0000",
+            "id": 25
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "See also JCR-2170 for related work. Perhaps we need to backport those changes to the 1.6 branch.",
+            "date": "2010-04-30T10:14:04.831+0000",
+            "id": 26
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "I have now (as of revision 943301) backported/reimplemented most of the JCR-2170 changes in the 1.6 branch. These changes should also solve this  issue. At least I was no longer able to reproduce the problem with the repository Paul sent me.\n\nNote that this revision includes a backward-compatible change in how item states are serialized, which makes the repository unreadable by earlier Jackrabbit 1.6.x versions. I'll see if I can prevent this incompatibility as patch releases should be both backward- and forward-compatible with all releases from the same maintenance branch (e.g. in addition to normal upgrades, it should be OK to also switch back from 1.6.2 to 1.6.1).",
+            "date": "2010-05-11T21:43:15.358+0000",
+            "id": 27
+        },
+        {
+            "author": "Paul Jara",
+            "body": "I just wanted to say THANK YOU! I will have a chance to look at this in more depth over the course of the next few days. But I didn't want to wait too long before saying thanks. I really, personally appreciate how quickly you addressed this matter. I'll be in touch over the next couple of days.\n\nRegards,\n\n-Paul\n\n\n\n\n",
+            "date": "2010-05-13T00:00:44.706+0000",
+            "id": 28
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Preventing the forwards-compatibility problem (caused by the item definition identifiers no longer being serialized as a part of item states, see JCR-2170) is somewhat complicated and would come with some performance overhead, so I'm resolving this as fixed as-is and adding a warning about this to the release notes.\n\nIt would be great if someone other than me could also test the latest build from the 1.6 branch before we make the release. Nightly 1.6.2-SNAPSHOT builds are available from the snapshot repository at https://repository.apache.org/content/groups/snapshots-group/.",
+            "date": "2010-05-13T15:47:53.914+0000",
+            "id": 29
+        },
+        {
+            "author": "Paul Jara",
+            "body": "I have started testing on my end with the 1.6.2 snapshot from May 14. I am not done yet, but so far so good. I replaced the 1.6.1 JARs that came with a CMS I was using with the snapshot versions and have yet to see the problems we had with the previous version. I will keep you posted about my progress but will probably keep testing in a development environment into the middle of next week before giving it the thumbs up.",
+            "date": "2010-05-14T15:31:46.503+0000",
+            "id": 30
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Excellent, thanks!",
+            "date": "2010-05-14T15:48:25.142+0000",
+            "id": 31
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Have you encountered any problems with this fix? If not, I'm planning to finally cut the 1.6.2 release later this week.",
+            "date": "2010-05-26T08:13:01.910+0000",
+            "id": 32
+        },
+        {
+            "author": "Paul Jara",
+            "body": "The original problem seems to be addressed which is good news. Another problem, which might not be related to this one, appears to have cropped up in its place however. Our CMS grinds to a halt and stops serving up requests. The problem seems to have started since I deployed the new JackRabbit JARs to the production servers. In the past couple of weeks, our servers have only been able to run for a few days at most before one of them just stops serving requests (Tomcat takes the request but never actually sends a response). Is there anything in those nightly 1.6.2-SNAPSHOTs that may have contributed to this problem? There doesn't appear to be anything in the server logs that is helping me diagnose the problem. But when I go to shutdown Tomcat, I get a bunch of messages like this in the catalina.out:\n\n\"INFO: Waiting for N instance(s) to be deallocated\" where N is some large number like >100.\n\nI was notified tonight that our website was \"down\". We have a couple of servers and each Tomcat instance had stopped serving requests. So on each server, I stopped Tomcat, deleted all the JackRabbit indexes for each workspace associated with our CMS, and restarted. Upon the restart on both servers, I got a slew of these messages:\n\n\"A property claimed to start before zero, at -512! Resetting it to zero, and hoping for the best\"\n\nHowever, I restarted again and everything seems back to normal. Do you think this fix and the problem I'm now seeing are related? Or is it just some bad luck that the problem seems to have begun around the time that we found a fix here?",
+            "date": "2010-05-28T03:20:54.682+0000",
+            "id": 33
+        },
+        {
+            "author": "Stefan Guggisberg",
+            "body": "@paul:\n\ngoogle is your friend... ;)\n\nFWIW,\n\n> \"INFO: Waiting for N instance(s) to be deallocated\" where N is some large number like >100. \n\nthis is a tomcat specific message. i don't know whether it's actually caused by a jackrabbit problem\nin your case, but google returns lots of hits, e.g. \nhttp://markmail.org/message/6edcdicnknwdqjxc\n\n> \"A property claimed to start before zero, at -512! Resetting it to zero, and hoping for the best\" \n\nhttp://tinyurl.com/2w3n85f ;)",
+            "date": "2010-05-28T10:06:16.055+0000",
+            "id": 34
+        },
+        {
+            "author": "Paul Jara",
+            "body": "Thanks Stefan. Yes I've Googled both of those error message before but I figured that it was worth mentioning both of them as they only appeared after the fixed JARs were in place. Unfortunately, the tomcat deallocation problem is not one that seems to have one solution. In general, the message appears to refer to servlets that are still running which would normally not be a JackRabbit induced problem. My question is, would there be any code in the specific fix for this problem that might actually induce this sort of problem with TomCat? I'm trying to isolate all of the variables that changed over the past two weeks on the production servers to see which change may have brought about this problem. There weren't very many changes, so this particular JAR deployment stands out as something I should look at.",
+            "date": "2010-05-28T20:48:52.752+0000",
+            "id": 35
+        },
+        {
+            "author": "Gr\u00e9gory Joseph",
+            "body": "Hi,\n\nI'm currently on a holiday and will return to the office on the 6th of October. Your message was not forwarded, and will be taken care of upon my return at the latest. In urgent cases, please contact <info@magnolia-cms.com>.\n\n-- \nKind Regards,\n\nGr\u00e9gory Joseph\nMagnolia International Ltd.\n\n----------------------------------------------------------------------\ngregory.joseph@magnolia-cms.com\nhttp://www.magnolia-cms.com\nMagnolia\u00ae  - Simple Enterprise Content Management\n----------------------------------------------------------------------\n\n",
+            "date": "2011-09-23T14:40:25.739+0000",
+            "id": 36
+        }
+    ],
+    "component": "jackrabbit-core",
+    "description": "I get a NullpointerException when using Workspace.copy():\n\njava.lang.NullPointerException\nat org.apache.jackrabbit.core.BatchedItemOperations.copyNodeState(BatchedItemOperations.java:1834)\nat org.apache.jackrabbit.core.BatchedItemOperations.copyNodeState(BatchedItemOperations.java:1806)\nat org.apache.jackrabbit.core.BatchedItemOperations.copyNodeState(BatchedItemOperations.java:1806)\nat org.apache.jackrabbit.core.BatchedItemOperations.copy(BatchedItemOperations.java:423)\nat org.apache.jackrabbit.core.WorkspaceImpl.internalCopy(WorkspaceImpl.java:444)\nat org.apache.jackrabbit.core.WorkspaceImpl.copy(WorkspaceImpl.java:666)\nat xxx.MyClass.myMeth(MyClass.java)\n\nIt seems that it happens not all the time. The error occurs since we use Jackrabbit 1.6.0. We do not get the error with previous versions. It seems that we only get the error when trying to copy nodes that were created with Jackrabbit 1.4 and copied with Jackrabbit 1.6.",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "JCR-2433",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Blocker",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "NPE when copying nodes with Workspace.copy()",
+    "systemSpecification": true,
+    "version": "1.6"
+}

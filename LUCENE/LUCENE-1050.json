@@ -1,0 +1,89 @@
+{
+    "comments": [
+        {
+            "author": "Michael McCandless",
+            "body": "Simple patch implementing above approach.  I plan to commit in a day or two.",
+            "date": "2007-11-10T14:50:06.217+0000",
+            "id": 0
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "I just committed this.",
+            "date": "2007-11-15T21:13:09.276+0000",
+            "id": 1
+        },
+        {
+            "author": "Grant Ingersoll",
+            "body": "I'm getting an exception here, when using in Solr to create the Spell checking index.\n\nIt seems the SpellChecker is telling the IndexReader to delete the lockFile, but the lockFile doesn't exist.\n\nSEVERE: org.apache.lucene.store.LockReleaseFailedException: failed to delete <path to>/solr/data/spell/write.lock\n        at org.apache.lucene.store.SimpleFSLock.release(SimpleFSLockFactory.java:149)\n        at org.apache.lucene.index.IndexReader.unlock(IndexReader.java:882)\n        at org.apache.lucene.search.spell.SpellChecker.clearIndex(SpellChecker.java:287)\n        at org.apache.solr.handler.SpellCheckerRequestHandler.rebuild(SpellCheckerRequestHandler.java:390)\n        at org.apache.solr.handler.SpellCheckerRequestHandler.handleRequestBody(SpellCheckerRequestHandler.java:272)\n        at org.apache.solr.handler.RequestHandlerBase.handleRequest(RequestHandlerBase.java:117)\n        at org.apache.solr.core.SolrCore.execute(SolrCore.java:902)\n\nI don't know much about the locking mechanism, but it seems like this should check to see if the lockFile exists before trying to delete it.\n\nI am running this on OS X.\n",
+            "date": "2008-01-17T01:29:48.764+0000",
+            "id": 2
+        },
+        {
+            "author": "Hoss Man",
+            "body": "Grant: my take on this is that SpellChecker.clearIndex is in the wrong.  it shouldn't be calling unlock unless it has reason to think there is a \"stale lock\" that needs to be closed -- ie: this is a bug in SpellChecker that you have only discovered because this bug LUCENE-1050 was fixed.\n\nI would suggest a new issue for tracking, and a patch in which SpellChecker.clearIndex doesn't call unlock unless isLocked returns true.  Even then, it might make sense to catch and ignore LockReleaseFailedException and let whatever resulting exception may originate from \"new IndexWriter\" be returned.\n",
+            "date": "2008-01-17T03:31:38.519+0000",
+            "id": 3
+        },
+        {
+            "author": "Yonik Seeley",
+            "body": "FYI, I just verified that Solr does this correctly for the main index (since we'll be upgrading lucene versions soon)\n{code}\n        if (IndexReader.isLocked(dir)) {\n          log.warning(logid+\"WARNING: Solr index directory '\" + getIndexDir() + \"' is locked.  Unlocking...\");\n          IndexReader.unlock(dir);\n        }\n{code}\n",
+            "date": "2008-01-17T04:33:12.336+0000",
+            "id": 4
+        },
+        {
+            "author": "Grant Ingersoll",
+            "body": "I agree, it can be fixed by the SpellChecker, but it still seems like an error to throw an exception just b/c you try to delete something that doesn't exist, especially since the release() mechanism doesn't say what will happen if it is called when a lock doesn't exist.\n\nThe fix in the lock is really simple, too:\n{code}\nif (lockFile.exists() && !lockFile.delete()){\n   throw...\n}\n{code}\n\nI vote for fixing both cases.",
+            "date": "2008-01-17T12:18:45.975+0000",
+            "id": 5
+        },
+        {
+            "author": "Grant Ingersoll",
+            "body": "This should be fixed in 2.3.",
+            "date": "2008-01-17T12:19:16.502+0000",
+            "id": 6
+        },
+        {
+            "author": "Grant Ingersoll",
+            "body": "Hmm, it seems putting in lockFile.exists() check causes the test to fail...\nTestcase: testFSDirectoryTwoCreates(org.apache.lucene.store.TestLockFactory):       FAILED\n    [junit] writer2.close() should have hit LockReleaseFailedException\n    [junit] junit.framework.AssertionFailedError: writer2.close() should have hit LockReleaseFailedException\n    [junit]     at org.apache.lucene.store.TestLockFactory.testFSDirectoryTwoCreates(TestLockFactory.java:193)\n\nBut, I guess I don't understand why it is failing there, since, based on the comments it says writer2 _SHOULD_ be able to obtain the lock, so why would it then be expected to fail to release it if it already owns it?\n\nI guess I get to learn about locks now...",
+            "date": "2008-01-17T13:16:11.690+0000",
+            "id": 7
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "I agree, we should fix it so that if you call release but you do not hold the lock then no exception is thrown.\n\nBut, if you cal l release and you do hold the lock and the release fails then we should throw the exception.\n\nIn fact, NativeFSLockFactory already handles it this way.\n\nGrant, you just have to change that test to not assert that the writer2.close hit an exception, because according to these new semantics, it should NOT hit an exception since it is releasing a lock that it no longer holds.  If you fix that do all other tests pass?",
+            "date": "2008-01-17T13:29:35.041+0000",
+            "id": 8
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "{quote}\nGrant, you just have to change that test to not assert that the writer2.close hit an exception, because according to these new semantics, it should NOT hit an exception since it is releasing a lock that it no longer holds. If you fix that do all other tests pass?\n{quote}\n\nActually, I'd make that stronger: you should invert the assertion in that test.  Ie, assert that no exception is hit on writer2.close(), to make sure double-releasing a lock never throws an exception in the future.",
+            "date": "2008-01-17T13:49:26.873+0000",
+            "id": 9
+        },
+        {
+            "author": "Grant Ingersoll",
+            "body": "OK, this patch works and passes the test.  I will commit to trunk and branch sometime after 12 EST today, so that we can still do the release.",
+            "date": "2008-01-17T14:00:20.715+0000",
+            "id": 10
+        },
+        {
+            "author": "Grant Ingersoll",
+            "body": "Committed on 612869 and 612868 (branch and trunk)",
+            "date": "2008-01-17T17:01:58.746+0000",
+            "id": 11
+        }
+    ],
+    "component": "core/store",
+    "description": "Spinoff from here:\n\n    http://www.gossamer-threads.com/lists/lucene/java-user/54438\n\nThe Lock.release for SimpleFSLockFactory ignores the return value of lockFile.delete().  I plan to throw a new LockReleaseFailedException, subclassing from IOException, when this returns false.  This is a very minor change to backwards compatibility because all methods in Lucene that release a lock already throw IOException.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-1050",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Minor",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "SimpleFSLockFactory ignores error on deleting the lock file",
+    "systemSpecification": true,
+    "version": "2.2"
+}

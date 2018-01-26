@@ -1,0 +1,89 @@
+{
+    "comments": [
+        {
+            "author": "Jeff Dever",
+            "body": "While I agree that there should be a way to get the response headers, I don't\nagree with the proposed method prototype.  According the relevent RFCs, mulitple\nheaders of the same name are permitted, but they are also allowed to be freely\ncompressed into a comma seperated list.  \n\nReally the Header class should be responsible for providing access to these list\nelements.",
+            "date": "2002-07-30T07:32:34.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Jeff Dever",
+            "body": "The particular problem with multiple authenticate headers has been fixed.  \nSee: http://nagoya.apache.org/bugzilla/show_bug.cgi?id=11219\n\nThere may be other cases where multivalued headers are not handled correctly.  \nHttpClient parsing needs a complete rewrite of parsing by utilizing regular \nexpressions.\n\nUnless there is some other particular problem with multiple headers, this bug \nshould be pushed to target milestone 2.1.",
+            "date": "2002-08-08T02:48:54.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Created an attachment (id=4706)\nProposed solution, try 1\n",
+            "date": "2003-02-04T11:23:13.000+0000",
+            "id": 2
+        },
+        {
+            "author": "Michael Becke",
+            "body": "The above patch is a first attempt at solving this problem.\n\nWhat's new:\n - HeaderGroup, a new class for storing headers.  This class supports multiple\nheaders with the same name and it remembers header order.  I'm not a huge fan of\nthe name, but it was the best I could come up with.\n - HeaderParser, a new class for parsing headers.  Header parsing code was\nduplicated in HttpMethodBase and ChunkedInputStream and was placed here.\n - HttpMethod has 3 new methods.  getRequestHeaderGroup(),\ngetResponseHeaderGroup(), and getResponseFooterGroup().  This will break an\nexisting extension of HttpMethod.\n - Some of the methods for accessing headers in HttpMethod have been deprecated.\n - Classes in the general codebase that use the newly deprecated methods have\nbeen fixed.  Some of the test cases are still using deprecated methods.\n - SimpleHttpConnection and SimpleHttpMethod have been changed to work correctly\nwith the new header storage method.\n\nPlease take a look and let me know what you think.\n",
+            "date": "2003-02-04T11:31:56.000+0000",
+            "id": 3
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Created an attachment (id=4792)\nProposed solution, try 2\n",
+            "date": "2003-02-09T07:12:53.000+0000",
+            "id": 4
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Attached previously is a second attempt at fixing this problem.  Here's what's new:\n\n - HttpMethod no longer has any changes\n - @since 2.0beta1 tags have been added\n - absolute @see and @link tags been made relative\n - a static HttpConnection.readLine(InputStream) method has been added and is\nbeing used by HttpConnection and HeaderParser.\n - HeaderGroup.getCondensedHeader() now always returns a new Header\n\nEnjoy,\n\nMike",
+            "date": "2003-02-09T07:18:04.000+0000",
+            "id": 5
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Created an attachment (id=4798)\nProposed solution, try 3\n",
+            "date": "2003-02-10T00:59:33.000+0000",
+            "id": 6
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Attached previously is a third attempt at fixing this problem.  Here's what's new:\n\n - HttpMethodBase.get*HeaderGroup() methods are now protected\n - HeaderParser is now in utils package\n - use of footer terminology has been changed to trailer headers where appropriate\n\nEnjoy,\n\nMike",
+            "date": "2003-02-10T01:01:52.000+0000",
+            "id": 7
+        },
+        {
+            "author": "Jeff Dever",
+            "body": "Created an attachment (id=4799)\nProposed solution, try 4\n",
+            "date": "2003-02-10T10:12:35.000+0000",
+            "id": 8
+        },
+        {
+            "author": "Jeff Dever",
+            "body": "I took the patch a bit farther to store the headers in both a map and a list. \nThe list is order preserving, as with Mike's patch, but the map gives nice\naccess to the elements as was the original.  The map entries are lists\nthemselves, lists of headers with all the same name which is used as the\nlowercase key.\n\nThis might be a bit overboard, but its a best of both worlds approach.  Uses a\nbit more memory for the hashtable and lists, but there are no copies made of the\nheaders themsleves so all the datastructures just contain pointers.  The most\ncomplex code is in the remove methods.\n\nDo you think that this is too out there?",
+            "date": "2003-02-10T10:17:58.000+0000",
+            "id": 9
+        },
+        {
+            "author": "Jeff Dever",
+            "body": "The try 4 patch was corrupted.  try 3 patch was committed to the repository.",
+            "date": "2003-02-11T11:25:00.000+0000",
+            "id": 10
+        },
+        {
+            "author": "Jeff Dever",
+            "body": "*** HTTPCLIENT-101 has been marked as a duplicate of this bug. ***",
+            "date": "2003-02-11T11:27:38.000+0000",
+            "id": 11
+        }
+    ],
+    "component": "HttpClient (classic)",
+    "description": "Some times, web servers send back multiple headers with the same key. e.g.\n\nWWW-Authenticate: Negotiate\nWWW-Authenticate: NTLM\nWWW-Authenticate: Basic realm=\"kmdc5\"\n\nTo handle this correctly, we should add a method \n\npublic java.util.Iterator getResponseHeaders(java.lang.String name)\n\njust as in javax.servlet.http.HttpServletRequest.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "HTTPCLIENT-83",
+    "issuetypeClassified": "RFE",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Minor",
+    "product": "HTTPCLIENT",
+    "project": "HTTPCLIENT",
+    "summary": "handle multivalue headers correctly",
+    "systemSpecification": false,
+    "version": "2.0 Alpha 1"
+}

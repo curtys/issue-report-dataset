@@ -1,0 +1,41 @@
+{
+    "comments": [
+        {
+            "author": null,
+            "body": "I disagree.  Tomcat should be more robust than to allow a rogue webapp to \nplace it into an inconsistant state.",
+            "date": "20051206T04:20:58",
+            "id": 0
+        },
+        {
+            "author": null,
+            "body": "I've committed a slightly modified version of your patch to SVN trunk.  \nHopefully it will make the cutoff to be included in 5.5.14.",
+            "date": "20051206T04:25:56",
+            "id": 1
+        },
+        {
+            "author": null,
+            "body": "(In reply to comment #1)\n> I disagree.  Tomcat should be more robust than to allow a rogue webapp to \n> place it into an inconsistant state.\n\nOh cool :) Whatever you want Bill. Yet another patch which will not be in my\ntree, I suppose.",
+            "date": "20051206T11:00:21",
+            "id": 2
+        },
+        {
+            "author": null,
+            "body": "(In reply to comment #3)\n> Oh cool :) Whatever you want Bill. Yet another patch which will not be in my\n> tree, I suppose.\n\nAfter reviewing it, I'm actually taking in the patch, since it's a decent cleanup.\n\n(In reply to comment #1)\n> I disagree.  Tomcat should be more robust than to allow a rogue webapp to \n> place it into an inconsistant state.\n\nThere's a mode like that, and it happens using the security manager. This bug\nreport is actually a user list question.\n",
+            "date": "20051206T11:27:38",
+            "id": 3
+        }
+    ],
+    "component": "Unknown",
+    "description": "I spent awhile analyzing why our application was having a problem. We have an\nunusual case - a product that was its own web server adapted to live under\nJBoss/Tomcat. Now that we're running under Tomcat I decided that some new\nbrowser UI should use JSF, but after I was running with JSF I started having\noccasional problems with exceptions.\n\nAfter tracking this down I finally understood the problem. We are probably (I'll\nbe tracking this down next) accessing an HttpServletRequest outside of the\nstandard loop that the dispatcher puts it through. I will grant a priori that\nthis is invalid and we shouldn't be doing so. \n\nHowever, the underlying issue is that methods in the request object end up\ncalling MessageBytes.toString. Our particular case calls the getScheme() method.\nThis wouldn't be a problem, but after recycle is called, the MessageBytes object\nis \"null\". But if you call toString(), it returns false from isNull, and that\n*is* a problem. My broken app should not be able to put this underlying data\nstructure into an invalid state by calling a getter. \n\nAs a result of no longer being \"null\" from the isNull perspective, the\ndispatcher no longer sets the scheme on the new request, which breaks the next\nrequest that uses that request object.\n\nI'd suggest two changes:\n\n1) recycle the request right before use to limit the extent of the threading window\n2) fix the toString method to not change the object's state for the null case\n\nFor #2, something like this might suffice, and is much safer than the current code:\n\n    public String toString() {\n\tif( hasStrValue ) return strValue;\n\n\tswitch (type) {\n\tcase T_CHARS:\n\t    hasStrValue=true;\n\t    strValue=charC.toString();\n\t    return strValue;\n\tcase T_BYTES:\n            hasStrValue=true;\n\t    strValue=byteC.toString();\n\t    return strValue;\n\t}\n\treturn null;\n    }",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "37803",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "P3 normal",
+    "product": "Tomcat 5",
+    "project": "TOMCAT",
+    "summary": "MessageBytes makes it easy to have state problems",
+    "systemSpecification": true,
+    "version": "5.5.9"
+}

@@ -1,0 +1,35 @@
+{
+    "comments": [
+        {
+            "author": null,
+            "body": "This has been fixed in trunk and proposed for 6.0.x and 5.5.x",
+            "date": "20080329T07:48:48",
+            "id": 0
+        },
+        {
+            "author": null,
+            "body": "This has been fixed in 6.0.x and will be included in the next release.",
+            "date": "20080405T10:55:23",
+            "id": 1
+        },
+        {
+            "author": null,
+            "body": "This has been fixed in 5.5.x and will be included in 5.5.27 onwards.",
+            "date": "20080730T10:50:30",
+            "id": 2
+        }
+    ],
+    "component": "Catalina",
+    "description": "The authorization implementation in RealmBase, in the hasResourcePermission method is not fully servlet specification compliant. The spec (both 2.4 and 2.5) states:\n\n\"...\nA security constraint that does not contain an authorization constraint shall combine with authorization constraints that name or imply roles to allow unauthenticated access. \nThe special case of an authorization constraint that names no roles shall combine with any other constraints to override their affects and cause access to be precluded.\n...\"\n\nIn Tomcat this works fine as long as there aren't weird (but legal!) combinations or security-constraints on the same URLs.\n\nExample:\n\n  <security-constraint>\n    <web-resource-collection>\n      <url-pattern>/someUrl/*</url-pattern>\n      <http-method>POST</http-method>\n    </web-resource-collection>\n    <!-- no auth-constraint, to allow everyone -->\n  </security-constraint>\n\n  <security-constraint>\n    <web-resource-collection>\n      <url-pattern>/someUrl/*</url-pattern>\n      <http-method>POST</http-method>\n    </web-resource-collection>\n    <!-- no roles, to allow noone -->\n    <auth-constraint />\n  </security-constraint>\n\n(if we ignore that this kind of configuration is pretty pointless,)\nthe spec dictates that a POST to /someUrl/index.html should be denied access.\nTomcat grants it. (both 5.5.23 and 6.0.14 do)\n\n\nExample 2:\n\n  <security-constraint>\n    <web-resource-collection>\n      <url-pattern>/someUrl/*</url-pattern>\n      <http-method>POST</http-method>\n    </web-resource-collection>\n    <!-- no roles, to allow noone -->\n    <auth-constraint />\n  </security-constraint>\n\n  <security-constraint>\n    <web-resource-collection>\n      <url-pattern>/someUrl/*</url-pattern>\n      <http-method>POST</http-method>\n    </web-resource-collection>\n    <auth-constraint>\n      <role-name>*</role-name>\n    </auth-constraint>\n  </security-constraint>\n\nNow it gets interesting. In \"strict\" mode, access to /someUrl/index.html is denied (regardless of the web.xml-configured security roles and the roles the user has).\nIn \"auth-only\" mode, access is always granted, and in \"strict auth-only\" mode access is granted if there are no web.xml-configured security roles.\nNow these modes are a Tomcat addition to the spec, but I feel access should have been denied in all modes, both to stay in line with the spec and to keep the behaviour predictable.",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "44529",
+    "issuetypeClassified": "OTHER",
+    "issuetypeTracker": "BUG",
+    "priority": "P2 minor",
+    "product": "Tomcat 5",
+    "project": "TOMCAT",
+    "summary": "RealmBase authorization via hasResourcePermission not fully servlet spec compliant",
+    "systemSpecification": true,
+    "version": "5.5.26"
+}

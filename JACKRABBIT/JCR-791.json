@@ -1,0 +1,47 @@
+{
+    "comments": [
+        {
+            "author": "Marcel Reutegger",
+            "body": "Here's what I've done so far:\n\n- Introduced a MultiIndexReader interface that allows to access the sub index readers.\n- CachingMultiReader and SearchIndex.CombinedIndexReader now implement MultiIndexReader\n- Created a MultiScorer which spans multiple sub scorers and combines. The MultiScorer exposes the sub scorers as if there is just a single scorer.\n- Changed MatchAllWeight to create individual scorers for each sub IndexReader contained in a MultiIndexReader and finally combines them into a MultiScorer.\n- Introduced a BitSet cache in MatchAllScorer\n\nI then conducted the following tests:\n\nSetup:\n\n- 50'000 nodes\n- resultFetchSize: 50\n- respectDocumentOrder: false\n\n100 queries: //element(*, nt:unstructured)[@foo]\n (only size of NodeIterator is read, no node access)\n\nResults:\n\n1) with jackrabbit 1.2.3:\n    82078 ms\n\n2) with MatchAllScorer per index segment\n  combined with MultiScorer without caching:\n    10297 ms\n\n3) with MatchAllScorer per index segment\n  combined with MultiScorer with caching:\n     6156 ms\n\nMy conclusion is that the the lucene MultiTermDocs implementation adds significant cost when a single MatchAllScorer is used in test scenario 1). And it actually makes sense. If a single MatchAllScorer is used, lucene has to merge sort the @foo terms of several index segments, while in the test scenarios 2) and 3) no merge sort is needed for the @foo terms.\n\nWith the changes the query performance even seems good enough even without caching. \n\nI'm tempted to only check the changes without caching because the additional performance improvement with caching does not seem to warrant the memory consumption of the cache: 2) decreases the query time compared to the current implementation by 87% while 3) decreases query time by 92%.",
+            "date": "2007-03-16T11:12:52.979+0000",
+            "id": 0
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "Changed summary to describe what should be improved and not how.",
+            "date": "2007-03-16T13:52:11.579+0000",
+            "id": 1
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "Committed the enhancement without the cache in MatchAllScorer. The performance improvement is IMO sufficient enough with just the MultiScorer.\n\nAt revision: 518979",
+            "date": "2007-03-16T14:10:26.387+0000",
+            "id": 2
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "MatchAllScorer diff, which introduces a BitSet cache.",
+            "date": "2007-03-19T09:05:28.548+0000",
+            "id": 3
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "Performance test case for queries with 'not null' condition.",
+            "date": "2007-03-19T09:06:34.333+0000",
+            "id": 4
+        }
+    ],
+    "component": "query",
+    "description": "The BitSets created in MatchAllScorer should be cached per IndexReader. This enhancement should also take care that the supplied IndexReader may in fact be a CombinedIndexReader or a CachingMultiReader with multiple contained IndexReaders. To achieve a good cache efficiency the BitSets must be cached per contained IndexReader and combined later.\n\nSee also thread on dev list: http://thread.gmane.org/gmane.comp.apache.jackrabbit.devel/10976",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "JCR-791",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Minor",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "Improve performance of MatchAllScorer",
+    "systemSpecification": true,
+    "version": ""
+}

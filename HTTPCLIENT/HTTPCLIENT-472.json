@@ -1,0 +1,119 @@
+{
+    "comments": [
+        {
+            "author": "Eric Johnson",
+            "body": "Created an attachment (id=15409)\nAdd equals and hashCode to Credentials implementations.\n",
+            "date": "2005-06-15T09:56:04.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Roland Weber",
+            "body": "Hello Eric,\n\nmy first thought was that credentials should not be comparable, since that\nmight be a way for an attacker to obtain secret information. But since our\ncredentials return the password anyway, having an implementation for equals\nreally doesn't harm.\n\nCode looks good to me. Maybe add a hint in the JavaDocs for equals() that\nhost name comparison is case sensitive? (I assume it is.)\n\ncheers,\n  Roland\n",
+            "date": "2005-06-15T16:13:36.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "In case of NTCredentials I think the host, domain and possibly user name\ncomparison should be case insensitive\n\nOleg",
+            "date": "2005-06-15T17:39:01.000+0000",
+            "id": 2
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Created an attachment (id=15415)\nPatch (NT user name, host and domain comparison is case insensitive)\n\nHow about this?\n\nOleg",
+            "date": "2005-06-15T18:02:56.000+0000",
+            "id": 3
+        },
+        {
+            "author": "Roland Weber",
+            "body": "Hi Oleg,\n\nfunctionally ok, but I just can't stand creating temporary objects.\nThe toLowerCase() conversions in each call to hashCode or equals()\nfeel so wrong to me.\nConverting the attributes automatically when the object is created\nmight catch some users unaware. Keeping a second set of attributes\nin lower case just for comparison and hashcoding looks like the way\nto go, but that probably isn't done anywhere else in HttpClient.\n\nErics version works as long as an application supplies credentials\nin a consistent way. I kind of feel that should be good enough.\n\ncheers,\n  Roland",
+            "date": "2005-06-15T19:58:14.000+0000",
+            "id": 4
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Fair enough. The patch is fine with me \"as is\" as long as the fact of user name,\nhost and domain attributes being case sensitive is reflected in the javadoc for\n#equals method\n\nOleg",
+            "date": "2005-06-15T20:25:04.000+0000",
+            "id": 5
+        },
+        {
+            "author": "Eric Johnson",
+            "body": "Created an attachment (id=15421)\nUpdated version with Javadoc changes\n\nJavadoc updated as per comments.",
+            "date": "2005-06-16T02:25:34.000+0000",
+            "id": 6
+        },
+        {
+            "author": "Eric Johnson",
+            "body": "You're tough.  I went over my patch with a fine-toothed comb before I submitted\nit, and you still found good points to discuss.  Another argument for the\ncase-sensitive version of the equals check - it seems odd to me to have\nNTCredentials change the treatment of UsernamePasswordCredentials from\ncase-sensitive to case-insensitive.\n\nDifferent point:\nUsernamePasswordCredentials upc = new UsernamePasswordCredentials(\"n\", \"p\");\nNTCredentials ntc = new NTCredentials(\"n\", \"p\", \"h\", \"d\");\n\nusing the above, you get the following with my patch:\nupc.equals(ntc) --> true\nntc.equals(upc) --> false.\n\nWhat's the best way to work around this?  Changing the test in \nUsernamePasswordCredentials.equals(), so that it does\n o.getClass() == this.getClass()\n\nwould work, but is that the best way?\n",
+            "date": "2005-06-16T02:40:25.000+0000",
+            "id": 7
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "(In reply to comment #8)\ncase-sensitive to case-insensitive.\n> \n> Different point:\n> UsernamePasswordCredentials upc = new UsernamePasswordCredentials(\"n\", \"p\");\n> NTCredentials ntc = new NTCredentials(\"n\", \"p\", \"h\", \"d\");\n> \n> using the above, you get the following with my patch:\n> upc.equals(ntc) --> true\n> ntc.equals(upc) --> false.\n> \n> What's the best way to work around this?  Changing the test in \n> UsernamePasswordCredentials.equals(), so that it does\n>  o.getClass() == this.getClass()\n> \n> would work, but is that the best way?\n> \n\nEric,\nI think this problem cannot be fully solved by devising a very elaborate equals\nmethod that works in all cases, because the concept of credentials equality can\nbe (often is) context dependent. Having a specific Comparator for a specific\ncontext should be the way to go. \n\nI believe the patch is good to be checked in\n\nOleg\n",
+            "date": "2005-06-19T19:34:04.000+0000",
+            "id": 8
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Folks, any objections to committing this patch?\n\nOleg",
+            "date": "2005-06-21T02:43:02.000+0000",
+            "id": 9
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Since Mike raised some objections on the dev mailing list, I think this issue\nmay need more time to be resolved. Targeted for RC4 pending more input\n\nOleg",
+            "date": "2005-06-21T17:19:48.000+0000",
+            "id": 10
+        },
+        {
+            "author": "Eric Johnson",
+            "body": "Created an attachment (id=15501)\nMade equals() commutative, added test cases\n\nOne last try - Followed my own suggestion based on Mike's feedback. Added test\ncases.",
+            "date": "2005-06-22T01:30:00.000+0000",
+            "id": 11
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Eric,\nSorry about being such a pain. Should not we be doing if (o.getClass() ==\nthis.getClass()) in the NTCredentials#equals as well, at the very least for the\nconsistency sake, if nothing else?\n\nOleg",
+            "date": "2005-06-22T02:06:39.000+0000",
+            "id": 12
+        },
+        {
+            "author": "Eric Johnson",
+            "body": "I think that would just be extra code.  NTCredentials uses super.equals() to\ninvoke UsernamePasswordCredentials, which does the getClass() comparison.",
+            "date": "2005-06-22T04:06:52.000+0000",
+            "id": 13
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "You are right. I missed that point. I am +1\n\nOleg",
+            "date": "2005-06-22T04:20:13.000+0000",
+            "id": 14
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Works for me.\n\nMike",
+            "date": "2005-06-22T11:05:44.000+0000",
+            "id": 15
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Patch committed.\n\nOleg",
+            "date": "2005-06-23T04:42:23.000+0000",
+            "id": 16
+        }
+    ],
+    "component": "HttpClient (classic)",
+    "description": "I tripped across a scenario where I wanted to compare credentials, so I could\nknow to discard connection state (and thus any associated cookies).\n\nPatch to follow shortly.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "HTTPCLIENT-472",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Minor",
+    "product": "HTTPCLIENT",
+    "project": "HTTPCLIENT",
+    "summary": "No equals operation for Credentials implementations",
+    "systemSpecification": true,
+    "version": "3.0 RC2"
+}

@@ -1,0 +1,173 @@
+{
+    "comments": [
+        {
+            "author": "Robert Muir",
+            "body": "attached is a patch. at most it only improves performance around 10% for Latin-1 text.\nI haven't benchmarked non-Latin test yet.\n\nEven if its better, I am not sure we want to do this (is the performance worth the complexity?), but all the tests pass.\n",
+            "date": "2010-02-14T14:49:51.533+0000",
+            "id": 0
+        },
+        {
+            "author": "Robert Muir",
+            "body": "I tested this with Hindi text as well, it gives no benefit there. So it only helps english, will leave the patch out here in case someone has a better idea :)\n",
+            "date": "2010-02-14T15:31:45.582+0000",
+            "id": 1
+        },
+        {
+            "author": "Robert Muir",
+            "body": "I discussed this situation with Mike McCandless and I think we might have something of a plan.\n\nFor reference, here is the problem: \n* In flex the terms are byte[] (typically UTF-8)\n* Automaton transitions work on UTF-16 intervals (char)\n* RunAutomaton is an array-compiled form that also works on UTF-16 (char[])\n* Because of this, we have a lot of unicode conversion overhead between byte[] and char[] hurting performance.\n\nHere is the current idea:\n* Switch Automaton to work on UTF-32 intervals (int)\n* Create a method to convert a UTF-32 Automaton to an equivalent UTF-8 Automaton.\n* Create a UTF-8 RunAutomaton that works on byte[]\n* We could also create a UTF-32 RunAutomaton that works on codepoints, for use in analysis, etc.\n\nThis would have some nice benefits besides performance, \nfor example a wildcard operator of \"?\" or regex operator of \".\" would match a real unicode codepoint, \nnot a single code unit like it always has. So if somehow we can make this work, we would have better\nperformance and better unicode support.\n\nThe trick is to do this UTF-32 DFA -> UTF-8 DFA conversion efficiently, especially keeping determinism,\nand not causing some nasty explosion\n",
+            "date": "2010-04-02T18:05:30.076+0000",
+            "id": 2
+        },
+        {
+            "author": "Earwin Burrfoot",
+            "body": "I probably missed something.\n\nWhy can't you create UTF-8 Automaton from the get go?",
+            "date": "2010-04-02T23:25:49.057+0000",
+            "id": 3
+        },
+        {
+            "author": "Robert Muir",
+            "body": "bq. Why can't you create UTF-8 Automaton from the get go?\n\nBecause high-level, users want automaton transitions to represent real characters \n(eg regular expressions, wildcards, etc) and do not much care about bytes!\n\nSo the utf-16 Automaton/RunAutomaton pair makes sense for the library...\n\nBut utf-32 is still easy to work with high-level (we just represent codepoint intervals instead of codeunit),\nand utf-8 is faster for working with lucene.\n",
+            "date": "2010-04-02T23:30:37.367+0000",
+            "id": 4
+        },
+        {
+            "author": "Earwin Burrfoot",
+            "body": "So? You aren't making some generic automaton library, are you?\nGet these user regexes/wildcards/etc, convert them to utf-8, build utf-8 automaton, run it against lucene data.",
+            "date": "2010-04-02T23:40:48.864+0000",
+            "id": 5
+        },
+        {
+            "author": "Earwin Burrfoot",
+            "body": "I mean, high-level, users don't care about your automaton at all, much less transitions. They want their regexes and wildcards to work.",
+            "date": "2010-04-02T23:44:14.802+0000",
+            "id": 6
+        },
+        {
+            "author": "Robert Muir",
+            "body": "{quote}\nSo? You aren't making some generic automaton library, are you?\nGet these user regexes/wildcards/etc, convert them to utf-8, build utf-8 automaton, run it against lucene data. \n{quote}\n\nThis just pushes the complexity into the parsers. and yes, it makes sense to support high-level (char[]) operations\nwith automaton too, such as analysis.\n\nI encourage you to take a look at the existing code. In general a lot of parsers (see wildcard and regex) are implemented \nwith primitive automata like 'makeAnyChar'. 'makeAnyByte' makes no sense.\n\nSo its generic in the sense that fuzzy, regex, wildcard, all of our users are defined on unicode characters. high\nlevel operations such as parsing, intersection, and union belong in utf16 or utf32 space, not with bytes.\n\nbytes is an implementation detail, and we shouldnt operate on UTF-8 except behind the scenes.",
+            "date": "2010-04-02T23:45:34.067+0000",
+            "id": 7
+        },
+        {
+            "author": "Robert Muir",
+            "body": "bq. I mean, high-level, users don't care about your automaton at all, much less transitions. They want their regexes and wildcards to work.\n\nbut you have it backwards. users want their regexes and wildcards to work. they want wildcard \"?\" or regex \".\" to match unicode\ncharacters, not bytes. no one cares about bytes.",
+            "date": "2010-04-02T23:47:20.340+0000",
+            "id": 8
+        },
+        {
+            "author": "Earwin Burrfoot",
+            "body": "Hmmmmm.\n\nI'd say that your highlevel operations like intersection and union remain exactly the same regardless of the alphabet you're operating on.\nThe primitive automata, like AnyChar will have to cease being so primitive and generate a pair of states instead of one, but that's essentially it - after primitive automatas are fixed to recognize utf-8 bytes, you don't even have to change parsing code that much.\n\nThe only true problem I see is that you lose the ability to operate on char[]. But then, I ask that again, do you write a generic library, or you borrowed automata code from one with a single aim of having fast lucene queries?",
+            "date": "2010-04-02T23:52:41.794+0000",
+            "id": 9
+        },
+        {
+            "author": "Robert Muir",
+            "body": "{quote}\nHmmmmm.\n\nI'd say that your highlevel operations like intersection and union remain exactly the same regardless of the alphabet you're operating on.\nThe primitive automata, like AnyChar will have to cease being so primitive and generate a pair of states instead of one, but that's essentially it - after primitive automatas are fixed to recognize utf-8 bytes, you don't even have to change parsing code that much.\n\nThe only true problem I see is that you lose the ability to operate on char[]. But then, I ask that again, do you write a generic library, or you borrowed automata code from one with a single aim of having fast lucene queries?\n{quote}\n\nWell this is a borrowed library, but that doesnt really matter. The trick is that UTF-16 and UTF-32 are much more efficient for the kind of processing the high-level component needs: doing things like NFA->DFA conversion and minimization. Its much better to do some of these quadratic algorithms on high-level unicode instead of byte, and get a minimal DFA. At the same time the intervals represent real things, so its debuggable, etc.\n\nSo to me it makes perfect sense to change the transition's min/max from 'char' to 'int', which is trivial and won't require me to rewrite all the primitive automata. Things like NFA-DFA conversion will be actually faster, never slower for some text.\n\nThis gives us the opportunity to 'compile' to UTF-8 or UTF-32 RunAutomata (although for the latter we cannot use the classmap trick since the alphabet will be large). This way, it can be used effectively at both a high and low level, and the code is easy to maintain.\n\nI can debug the code now with things like toString and toDot, I certainly cannot do this if the high-level code is changed to byte/UTF-8. It would be completely unmaintainable, and most likely slower overall due to doing quadratic things like determinism on exploded UTF-8 automata.\n",
+            "date": "2010-04-03T00:01:42.130+0000",
+            "id": 10
+        },
+        {
+            "author": "Robert Muir",
+            "body": "as i looked at this, i noticed some unused functionality (numeric fractions and the like).\n\nattached is a patch to remove it. I plan to commit soon.",
+            "date": "2010-04-05T12:07:14.250+0000",
+            "id": 11
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Attached patch for first cut at APIs to convert a UTF32 automaton to UTF8.\n\nThere's a test case that verifies the conversion is working correctly.  It seems to be working.\n\nThis patch is just the low level API, ie, converting one edge containing a UTF32 range.  I still need to fix it to convert an entire UTF32 DFA... should be straightforward.\n\nAlso, I need to merge with Robert's int (UTF32) cutover and a UTF8RunAutomaton.",
+            "date": "2010-04-05T19:46:50.102+0000",
+            "id": 12
+        },
+        {
+            "author": "Robert Muir",
+            "body": "attached is a totally scary patch to convert the entire automaton lib to utf-32...\n(i didnt mess with any search code and obviously it wont even compile with this patch)\n",
+            "date": "2010-04-05T21:43:54.273+0000",
+            "id": 13
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Patch w/ first cut at method to cutover whole UTF32 DFA -> UTF8 DFA (and... call determinize on it ;) ).",
+            "date": "2010-04-05T21:57:54.571+0000",
+            "id": 14
+        },
+        {
+            "author": "Robert Muir",
+            "body": "this is mike's patch + my patch + quick hack attempt... most but not all tests are passing :)",
+            "date": "2010-04-06T02:54:38.098+0000",
+            "id": 15
+        },
+        {
+            "author": "Robert Muir",
+            "body": "ok I think i made some serious progress here, but i did find a bug in the utf32 -> utf8 dfa convertor.\nThe problem is it does not handle at least the case where the initial state is an accept state.\nI created a testcase for this (TestUTF32SpecialCase), and included the python code back, as i figure you will probably fix it there first.\n\nI deleted the surrogate-seeking tests, like other nuances, if we switch to byte[] these won't behave the same, as these regexps \nare no longer defined.\n\nremaining is to switch the slow fuzzy to use codepoint calculations (to be consistent with the fast one).\nby the way, its really silly we have to unicode-convert just to get length in chars for that score calculation... ugh!\n",
+            "date": "2010-04-06T04:31:05.739+0000",
+            "id": 16
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "bq. The problem is it does not handle at least the case where the initial state is an accept state.\n\nOK this is a simple fix in the UTF32ToUTF8.convert method -- I didn't set isAccept on the initial state -- new patch attached that fixes this.",
+            "date": "2010-04-06T09:25:11.148+0000",
+            "id": 17
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Checkpointing progress from Robert & I on this issue...\n\nThe conversion is now done in Java.",
+            "date": "2010-04-23T13:09:55.003+0000",
+            "id": 18
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Last patch was a bit stale -- this one is current, and all tests pass.",
+            "date": "2010-04-23T15:35:18.879+0000",
+            "id": 19
+        },
+        {
+            "author": "Robert Muir",
+            "body": "So here are the advantages of the current patch:\n* full unicode support (Regular Expression, Wildcard, Fuzzy). for example, wildcard ? means codepoint, not code unit.\n* support for matching all unicode forms easily (utf8, utf16, utf32). \n* easy to support both native utf8 terms sort order, but also utf8-in-utf16 like we have now. this is not feasible with the existing utf16 representation.\n* easy to safely do dfa operations on Automaton. this is because there are no surrogates anymore. for example we can safely reverse any automaton to take advantage of Solr's leading wildcard support (e.g. support \"leading\" regexps, too)\n* better compatibility with lucene, because automaton is in sync with the terms format (byte). This could lead to future optimizations like TermsEnum exposing the 'shared prefix' of a term with the previous enumerated term.\n\nUnfortunately, there are currently a few disadvantages with the patch, but I think we can resolve these:\n* The linear fuzzy terms enum, from the old code, needs to be fixed and consistent and use utf32 calculations, too.\n* for huge dfas (eg fuzzy) there is some cost to the conversion, around 5ms one-time cost on my machine for very long strings. perhaps we can optimize some code here, its not blowing up though.\n\nSo in my opinion, the first thing should be resolved before committing, and the second is nice-to-have and shouldn't block the improvement.\n",
+            "date": "2010-04-23T15:57:28.626+0000",
+            "id": 20
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "New patch (from Robert & I) -- I think this one is ready to commit!\n\nThe rest of FuzzyQuery (eg LinearFuzzyTermsEnum) is now cutover to\ncode points (not UTF16 code units), and we've optimized various\nmethods in the automaton package (especially det).  Performance of\nautomaton/fuzzy queries looks on par or a bit faster, compared to\ntrunk.\n",
+            "date": "2010-04-30T21:32:27.695+0000",
+            "id": 21
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "New patch (from Robert & I) -- I think this one is ready to commit!\n\nThe rest of FuzzyQuery (eg LinearFuzzyTermsEnum) is now cutover to\ncode points (not UTF16 code units), and we've optimized various\nmethods in the automaton package (especially det).  Performance of\nautomaton/fuzzy queries looks on par or a bit faster, compared to\ntrunk.\n",
+            "date": "2010-04-30T21:34:24.328+0000",
+            "id": 22
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Latest patch (from Robert!) -- strengthens tests, fixes one but in how common suffix was created for AutomatonTermsEnum, cleanup.",
+            "date": "2010-05-02T13:38:15.312+0000",
+            "id": 23
+        },
+        {
+            "author": "Robert Muir",
+            "body": "I think we are good to go here... we should look at getting this in soon, as it will then allow us to cutover to UTF-8 sort order.\n",
+            "date": "2010-05-02T22:14:10.937+0000",
+            "id": 24
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "The Generics-Police and Java-5-Police fixed compilation errors/warnings in revision 940743.",
+            "date": "2010-05-04T06:41:26.563+0000",
+            "id": 25
+        }
+    ],
+    "component": "core/search",
+    "description": "Currently, when enumerating terms, automaton must convert entire terms from flex's native utf-8 byte[] to char[] first, then step each char thru the state machine.\n\nwe can make this more efficient, by allowing the state machine to run on byte[], so it can return true/false faster.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-2265",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Minor",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "improve automaton performance by running on byte[]",
+    "systemSpecification": true,
+    "version": "4.0-ALPHA"
+}

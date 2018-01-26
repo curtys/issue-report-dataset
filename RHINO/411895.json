@@ -1,0 +1,47 @@
+{
+    "comments": [
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "Performing some unscientific instruction sampling (i.e., pausing Rhino\nwhile running your test in the debugger and looking at the stack), it\nlooks like we're spending most of our time in\ncom.sun.org.apache.xerces.internal.jaxp.DocumentBuilderImpl.parse().\nSo I don't have much idea how to improve this short of switching to\nyet another XML parser.\n\nI did notice that we were creating a DocumentBuilder from scratch\nevery time, so I created a simple DocumentBuilder pool. This saved\nabout 23% on your test case, which is a nice speedup but still leaves\nus a couple of orders of magnitude slower than SpiderMonkey for this\ncase. \n\nChecking in xmlimplsrc/org/mozilla/javascript/xmlimpl/XmlProcessor.java;\n/cvsroot/mozilla/js/rhino/xmlimplsrc/org/mozilla/javascript/xmlimpl/XmlProcessor.java,v  <--  XmlProcessor.java\nnew revision: 1.10; previous revision: 1.9\ndone\n\n",
+            "date": "20080111T15:02:42",
+            "id": 0
+        },
+        {
+            "author": "hyperstruct+bugzilla@gmail.com",
+            "body": "(In reply to comment #1)\n> Performing some unscientific instruction sampling (i.e., pausing Rhino\n> while running your test in the debugger and looking at the stack), it\n> looks like we're spending most of our time in\n> com.sun.org.apache.xerces.internal.jaxp.DocumentBuilderImpl.parse().\n> So I don't have much idea how to improve this short of switching to\n> yet another XML parser.\n\nIn the fine tradition of speaking and demonstrating foolishness rather\nthan staying silent and just giving the impression of it, I'll ask, is\nthere any chance XML objects could be created at parse time and then\ncloned as necessary?  I've played with that in Erlang\n(http://hyperstruct.net/2007/6/26/literal-xml-in-erlang-with-parse-transform-2)\nand while I'm not familiar with Spidermonkey internals,\nhttp://lxr.mozilla.org/mozilla/source/js/src/jsparse.c#6204 makes me\nthink that something similar might be going on.\n\n> I did notice that we were creating a DocumentBuilder from scratch\n> every time, so I created a simple DocumentBuilder pool. This saved\n> about 23% on your test case, which is a nice speedup but still leaves\n> us a couple of orders of magnitude slower than SpiderMonkey for this\n> case.\n\nActually my test case went from ~50 seconds to ~8.  In my book that's\nmore than \"nice\". :-)\n",
+            "date": "20080111T16:26:54",
+            "id": 1
+        },
+        {
+            "author": "inonit@inonit.com",
+            "body": "(In reply to comment #2)\n> is\n> there any chance XML objects could be created at parse time and then\n> cloned as necessary?\n\nIt's certainly possible.  It's possible it won't help much, or that it would even hurt -- that the actual String parsing is not the bottleneck here.  The underlying XML parser controls whether cloning is going to be faster than parsing a document from a String.  And we are pretty much required to treat that as a black box because an application can replace the default XML parser using JAXP.  Xerces is undoubtedly the most common case, though (and then probably Crimson, which used to be the JDK's native parser, but I don't know what version they switched).",
+            "date": "20080111T22:29:39",
+            "id": 2
+        },
+        {
+            "author": "mbd@dbc.dk",
+            "body": "Added at patch at github https://github.com/mozilla/rhino/pull/9\n\nThe patch from bug 411895#1 works fine in a singlethreaded context, but kills performance\nin a multithreaded situationen, because the creation of the DocumentBuilder\nnow takes place inside the synchronized method.\n\nThis patch, uses a ConcurrentLinkedQueue to\nbuffer/cache multiple instances of DocumentBuilder. When\ngetDocumentBuilderFromPool is called, the queue is checked for an available\nbuilder, if none is available, one is created, but outside any\nlocks/synchronized objects. When returnDocumentBuilderToPool is called, the\nbuilder is inserted into the pool.\n\nThe approach is simple, and has the potential drawback, that eventually, there will be\nas many DocumentBuilders left in the pool, as there ever was a concurrent need\nto use. However, in many multithreaded applications, this will be what is\nneeded. In singlethreaded applications there will only be a single\ndocumentBuilder created, and the overhead of using a ConcurrentLinkedQueue is\nneglible.\n\n(Please pull the patch from github - thanks).",
+            "date": "20110824T09:16:28",
+            "id": 3
+        },
+        {
+            "author": "hannesw@gmail.com",
+            "body": "I just ran the test script again and compared to a recent Spidermonkey build it is now 4x slower on Java 6 server HotSpot VM and 2x slower on Java 7 server VM. This is independent from the patch linked in the previous comment btw, so whatever dragged Rhino down seems to have been fixed elsewhere.",
+            "date": "20111007T09:26:40",
+            "id": 4
+        }
+    ],
+    "component": "E4X",
+    "description": "From the newsgroup.  Since the infrastructures for SpiderMonkey and Rhino are so different, it's not clear that it would be easy to improve this performance differential, but investigating it seems sensible.\n\nFrom: Massimiliano Mirra <hyperstr...@gmail.com>\nNewsgroups: mozilla.dev.tech.js-engine.rhino\nSubject: performance problem with e4x\nDate: Fri, 11 Jan 2008 03:50:47 -0800 (PST)\n\nI came across this while writing a templating engine for Helma.\n\n\"js.jar\" is built from a fresh cvs.mozilla.org checkout,\n\"js-noxmlbeams.jar\" is the same without\norg/mozilla/javascript/xml/impl/xmlbeans/ (thus using\n.../javascript/xmlimpl/), \"js\" is spidermonkey 1.8, java is j2se6,\ntime is in msecs:\n\nbard@yokai:/tmp/w/seethrough_helma$ java -Djava.compiler=NONE -jar\njs.jar -opt 9 e4x_bm.js\ntimes per run: 10000\nrun #0 total time: 42596\nrun #1 total time: 48355\nrun #2 total time: 51056\nrun #3 total time: 52297\nbard@yokai:/tmp/w/seethrough_helma$ java -Djava.compiler=NONE -jar js-\nnoxmlbeans.jar -opt 9 e4x_bm.js\ntimes per run: 10000\nrun #0 total time: 38487\nrun #1 total time: 45523\nrun #2 total time: 43726\nrun #3 total time: 46889\nbard@yokai:/tmp/w/seethrough_helma$ js e4x_bm.js\ntimes per run: 10000\nrun #0 total time: 18\nrun #1 total time: 6\nrun #2 total time: 19\nrun #3 total time: 6\nbard@yokai:/tmp/w/seethrough_helma$ cat e4x_bm.js\nfunction bm(fn, times) {\n    times=times||100;\n    var start=Date.now();\n    for(var i=0;i<times;i++)\n        fn();\n    return (Date.now() - start);\n}\n\nvar runs = 4;\nvar times = 10000;\n\nprint('times per run: ' + times);\n\nfor(var i=0;i<runs; i++) {\n    var total = bm(function(){ <test/> }, times);\n    print('run #' + i + ' total time: ' + total);\n}",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "411895",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "BUG",
+    "priority": "-- minor",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "Creating E4X XML objects is 2000x slower than SpiderMonkey",
+    "systemSpecification": true,
+    "version": "head"
+}

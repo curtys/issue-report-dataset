@@ -1,0 +1,137 @@
+{
+    "comments": [
+        {
+            "author": "Doron Cohen",
+            "body": "Attached fix for this:\n\n- assertionsEnabled() method added to LTC. \n\n- tests that were no op were fixed to actually test that the assertion failed.\n\n- after the fix, in trunk, analyzer's final'ness assertion tests failed because being final (class or method) is no longer needed in trunk. So these tests were removed in TestAssertions.\n-- note: should not remove these tests when merging to 3x.\n\n- TestSegmentMerger also failed with this fix - because it used the stale IW's SegmentInfos to create a compound segment. Fixed by reading a fresh SIS.\n\n- only one test (TestAssertions.testbasics()) fails if assertions are not enabled. The other tests do not fail (though they do execute). I think that this was intended in the code, thought since it did not work it is hard to tell...\n\nThis is ready to commit.",
+            "date": "2011-10-25T12:33:56.095+0000",
+            "id": 0
+        },
+        {
+            "author": "Chris Male",
+            "body": "Thanks for catching the Analyzer final assertion test issue.",
+            "date": "2011-10-25T12:39:38.637+0000",
+            "id": 1
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "+1 to commit!",
+            "date": "2011-10-25T12:51:23.625+0000",
+            "id": 2
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "I'm confused here -- the changes to TestSegmentMerger look like they'll allow the test to pass when assertions are disabled?\n\n(Whereas today if you run that test w/o assertions you get a failure, albeit a confusing one).",
+            "date": "2011-10-25T12:55:44.489+0000",
+            "id": 3
+        },
+        {
+            "author": "Robert Muir",
+            "body": "maybe make assertionsEnabled() static in LuceneTestCase, and add assertTrue(assertionsEnabled()) in LuceneTestCase's beforeClass?\n\nThis way all tests will fail if assertions are not enabled.\n\nThe other day I committed an accidental change to common-build that disabled assertions, and it was a little confusing to track down.",
+            "date": "2011-10-25T12:59:54.019+0000",
+            "id": 4
+        },
+        {
+            "author": "Doron Cohen",
+            "body": "bq. (Whereas today if you run that test w/o assertions you get a failure, albeit a confusing one).\n\nActually today when you run the tests - with assertions, without assertions, - you get no failures at all - which is what I was trying to fix here (unless I missed something seriously) - because:\n- the original tests, after deciding to fail, invoked fail()\n- this threw AssertionError\n- but it was ignored as part of their wrong logic. \n\nbq. I'm confused here \u2013 the changes to TestSegmentMerger look like they'll allow the test to pass when assertions are disabled?\n\nRight, I fixed it such that *only if* assertions are enabled, they verify that the expected assertion errors are not thrown, so they allow you to run tests also without enabling assertions. See my comment above \"only one test...\". I take it that this kind of flexibility is not required. So will change it so that these tests will fail if assertions are not enabled.\n\nbq. The other day I committed an accidental change to common-build that disabled assertions, and it was a little confusing to track down.\n\nI see, so we make the entire test framework to fail if assertions are not enabled.\nI'll update the patch.",
+            "date": "2011-10-25T14:22:57.046+0000",
+            "id": 5
+        },
+        {
+            "author": "Doron Cohen",
+            "body": "Updated patch as suggested, thanks guys for reviewing and your helpful comments.",
+            "date": "2011-10-25T15:14:48.722+0000",
+            "id": 6
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "{quote}\nActually today when you run the tests - with assertions, without assertions, - you get no failures at all - which is what I was trying to fix here (unless I missed something seriously) - because:\n\n* the original tests, after deciding to fail, invoked fail()\n* this threw AssertionError\n* but it was ignored as part of their wrong logic.\n{quote}\n\nAhh, OK, I missed that fail() throws AssertionError which this then caught & ignored.  OK.  Patch looks good!",
+            "date": "2011-10-25T16:01:14.010+0000",
+            "id": 7
+        },
+        {
+            "author": "Doron Cohen",
+            "body": "Fixed: \n- r1188777 - trunk\n- r1188801 - 3x\n\nMike, Uwe, Robert, thanks for reviewing!\n",
+            "date": "2011-10-25T17:13:01.191+0000",
+            "id": 8
+        },
+        {
+            "author": "Dawid Weiss",
+            "body": "Err... how is this different:\n{code}\nassert Boolean.FALSE.booleanValue();\n{code}\nfrom \n{code}\nassert false;\n{code}\n\nIs there any compile-time code elimination? I ask specifically because I've implemented a dedicated validator for this purpose in RandomizedRunner here:\n\nhttps://github.com/carrotsearch/randomizedtesting/blob/master/runner/src/main/java/com/carrotsearch/randomizedtesting/validators/EnsureAssertionsEnabled.java\n\nand this seems to work just fine (checked with and without -ea).",
+            "date": "2011-10-25T17:19:28.806+0000",
+            "id": 9
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "It may no longer apply to Java 6 javac, but when I implemented this test for the first time (was Java 4 or Java 5) the \"assert false;\" made javac angry - it simply refused to compile this (some error like unreachable statement blabla). This was the only way to get this running, copied from some code example on the net (I think it was the assertion guide shipped with Java 1.4).",
+            "date": "2011-10-25T17:27:09.441+0000",
+            "id": 10
+        },
+        {
+            "author": "Yonik Seeley",
+            "body": "Tests run from intellij now fail saying that assertions are not enabled.  Anyone know the right way to change \"ant idea\" so that assertions are enabled by default?\n\nAlso, we've often done performance tests as unit tests in the past.  Is there an easy way to disable this \"assertions enabled\" test?",
+            "date": "2011-10-26T13:03:15.090+0000",
+            "id": 11
+        },
+        {
+            "author": "Steve Rowe",
+            "body": "bq. Tests run from intellij now fail saying that assertions are not enabled. Anyone know the right way to change \"ant idea\" so that assertions are enabled by default?\n\nAll of the pre-defined run configurations (one for each module) enable assertions via the \"-ea\" cmdline param.  Not sure how to globally enable assertions in IntelliJ.",
+            "date": "2011-10-26T13:09:01.006+0000",
+            "id": 12
+        },
+        {
+            "author": "Erik Hatcher",
+            "body": "IJ has a default setup for \"JUnit\" execution, and putting in VM arg of \"-ea\" should do the trick.",
+            "date": "2011-10-26T13:18:25.170+0000",
+            "id": 13
+        },
+        {
+            "author": "Dawid Weiss",
+            "body": "You can also enable assertions just for the class/package which checks if assertions are enabled, Yonik. This should make the check pass and disable all other assertions (for benchmarking). I don't remember the syntax off the top of my head though.",
+            "date": "2011-10-26T13:26:29.707+0000",
+            "id": 14
+        },
+        {
+            "author": "Steve Rowe",
+            "body": "bq. IJ has a default setup for \"JUnit\" execution, and putting in VM arg of \"-ea\" should do the trick.\n\nThanks, Erik - I just committed this change to the IntelliJ IDEA configuration under {{dev-tools/}}:\n\n- r1189527: trunk\n- r1189529: branch_3x ",
+            "date": "2011-10-26T23:11:20.236+0000",
+            "id": 15
+        },
+        {
+            "author": "Doron Cohen",
+            "body": "bq. I just committed this change to the IntelliJ IDEA configuration\n\nThanks for fixing for IntelliJ!",
+            "date": "2011-10-27T06:23:28.045+0000",
+            "id": 16
+        },
+        {
+            "author": "Doron Cohen",
+            "body": "{quote}\nbq.Also, we've often done performance tests as unit tests in the past. Is there an easy way to disable this \"assertions enabled\" test?\n\nYou can also enable assertions just for the class/package which checks if assertions are enabled, Yonik. This should make the check pass and disable all other assertions (for benchmarking). I don't remember the syntax off the top of my head though.\n{quote}\n\nYonik, is this sufficient for running the perf tests? \nOtherwise I can add a -D flag for disabling testing this in LTC.",
+            "date": "2011-10-27T06:29:23.485+0000",
+            "id": 17
+        },
+        {
+            "author": "Doron Cohen",
+            "body": "For easier perf testing I added a -D flag to tell LTC not to fail each and every test if Java assertions are not enabled:\n\n{noformat}\n-Dtests.asserts.gracious=true\n{noformat}\n\n(Tests requiring Java assertions - e.g. TestAssertions - will still fail, on purpose.)\n\n- r1189655 - trunk\n- r1189663 - 3x",
+            "date": "2011-10-27T08:48:29.932+0000",
+            "id": 18
+        },
+        {
+            "author": "Yonik Seeley",
+            "body": "Thanks Doron, that works!",
+            "date": "2011-10-27T10:37:27.837+0000",
+            "id": 19
+        }
+    ],
+    "component": "general/test",
+    "description": "Follow-up from LUCENE-3501",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-3506",
+    "issuetypeClassified": "OTHER",
+    "issuetypeTracker": "BUG",
+    "priority": "Minor",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "tests for verifying that assertions are enabled do nothing since they ignore AssertionError",
+    "systemSpecification": true,
+    "version": ""
+}

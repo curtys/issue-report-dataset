@@ -1,0 +1,71 @@
+{
+    "comments": [
+        {
+            "author": "Robert Muir",
+            "body": "updated patch with improvements for\nthe preflex case (when they return -1).",
+            "date": "2012-01-25T00:29:00.842+0000",
+            "id": 0
+        },
+        {
+            "author": "Andrzej Bialecki ",
+            "body": "I think the add() methods as implemented in this patch are of limited usefulness... The reason I created a pair of similar classes in SOLR-1632 was to avoid creating new objects by allowing modification of int/long members in place, which is useful when aggregating partial stats. So I think a more useful implementation of add() could look like this:\n\n{code}\npublic void add(CollectionStatistics other) {\n  assert this.field.equals(other.field);\n  this.maxDoc += other.maxDoc;\n  this.docCount += other.docCount;\n  this.sumTotalTermFreq += other.sumTotalTermFreq;\n  this.sumDocFreq += other.sumDocFreq;\n}\n{code}\n\nRegarding the handling of -1: this code doesn't handle the case when only one stats is -1, which may happen in distributed scenario. I think in such case a -1 value should be treated as 0, i.e. it should not \"reset\" the accumulated value from other shards to -1, right?",
+            "date": "2012-01-25T01:39:26.100+0000",
+            "id": 1
+        },
+        {
+            "author": "Robert Muir",
+            "body": "{quote}\nSo I think a more useful implementation of add() could look like this:\n{quote}\n\nBut I don't think we should just immediately make the stats classes mutable without thinking things through more, I'm not sure there is really any problem creating new objects (we should benchmark this, before making things mutable). \n\nmaybe we should not have add() here then at all and let the consumer take care of this themselves.\n\n{quote}\nshould be treated as 0, i.e. it should not \"reset\" the accumulated value from other shards to -1, right?\n{quote}\n\ni think it must not be treated as 0, the same way its handled by default in TermContext if some segments are 3.x: it means this statistic is simply not supported. \n\nIn other words, if any segment across any shard returns -1, the cumulative stat should always be -1: it means its not supported by the codec.\n\nThe similarities that use these new statistics already look for -1 and have fallback mechanisms for this case.\n",
+            "date": "2012-01-25T01:47:19.647+0000",
+            "id": 2
+        },
+        {
+            "author": "Andrzej Bialecki ",
+            "body": "bq. maybe we should not have add() here then at all and let the consumer take care of this themselves.\n\nFair point, I'd rather remove it.\n\nbq. i think it must not be treated as 0\n\nOk, it makes sense in local (multi reader) situations but in distributed scenario it may be still acceptable to lose just a part of the statistics from one shard while keeping the stats from other shards.\n\nWhich would be yet another reason to drop the add() methods :)",
+            "date": "2012-01-25T01:59:05.299+0000",
+            "id": 3
+        },
+        {
+            "author": "Robert Muir",
+            "body": "{quote}\nOk, it makes sense in local (multi reader) situations but in distributed scenario it may be still acceptable to lose just a part of the statistics from one shard while keeping the stats from other shards.\n{quote}\n\nI really think we should not do this: it can result in NaN/Inf/negative scores to have 'invalid'\nstatistics (this causes serious problems!), but we have (and test) that all the sims fallback\ngracefully for the -1 case.\n\n-1 means 'preflex codec does not support the stat'. Once we no longer have to worry about 3.x\nindexes, we no longer need to worry about -1.",
+            "date": "2012-01-25T02:05:14.695+0000",
+            "id": 4
+        },
+        {
+            "author": "Robert Muir",
+            "body": "updated patch: this is just int->long conversion... at least we should be able to agree on this :)\n\nwe should still figure out how to make this summation easier and safer (especially for the \"preflex-returns-1\" case)",
+            "date": "2012-01-25T02:08:35.235+0000",
+            "id": 5
+        },
+        {
+            "author": "Robert Muir",
+            "body": "just a simple example for what i meant about the -1 case:\n\nLets assume you have two shards, and one returns -1 for totalTermFreq().\n\nIf you were using BasicModelIF, which scores as:\n{code}\ntf_norm * log(1 + (maxdoc + 1)/(totalTermFreq + 0.5))\n{code}\n\nits far better to actually use -1 than a 'partial/incorrect' totalTermFreq,\nbecause in that case the formula will fall back to totalTermFreq=docFreq...\nit also must do this in case frequencies are omitted (omitTF), and for that\ncase the formula is still correct: but either way its falling back nicely to\nIDF:\n\n{code}\ntf_norm * log(1 + (maxdoc + 1)/(docFreq + 0.5))\n{code}\n\nYeah, i totally forgot about this being -1 in the omitTF case, so we should\nstill really think this summation through and make it easy to prevent mistakes,\nbecause i gather omitTF isn't going anywhere... grrr",
+            "date": "2012-01-25T02:17:49.795+0000",
+            "id": 6
+        },
+        {
+            "author": "Robert Muir",
+            "body": "Patch synced up to trunk.\n\nas far as the unrelated -1/add()/summation stuff i added assertions to do basic bounds checking of these stats (found a bug in simpletext), so I think thats a good step for now about concerns of summation: at least we will probably catch any bad bugs.\n\nBut this patch just changes int->long and I think we can move forward with it.",
+            "date": "2012-01-25T16:36:55.404+0000",
+            "id": 7
+        },
+        {
+            "author": "Robert Muir",
+            "body": "Committed the switch of int->long.\n\nFor now the summation stuff is still up to the caller... seems unfriendly, but maybe it should stay that way, but at least we have asserts that the stats aren't out of bounds.\n",
+            "date": "2012-01-27T13:06:22.538+0000",
+            "id": 8
+        }
+    ],
+    "component": "",
+    "description": "As noted by Yonik and Andrzej on SOLR-1632, this would be useful for distributed scoring.\n\nwe can also add a sugar method add() to both of these to make it easier to sum.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-3722",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Major",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "make similarities/term/collectionstats take long (for > 2B docs)",
+    "systemSpecification": true,
+    "version": "4.0-ALPHA"
+}

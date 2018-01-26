@@ -1,0 +1,65 @@
+{
+    "comments": [
+        {
+            "author": "Robert Muir",
+            "body": "here's the patch: I don't think we really need the *Wrapper class, nor does it need to be in core (this could be contrib or something instead).\n\n",
+            "date": "2010-12-28T05:06:15.460+0000",
+            "id": 0
+        },
+        {
+            "author": "Robert Muir",
+            "body": "Here's some results from my silly wildcard benchmarker (I think luceneutil doesnt yet have a keyword title or similar field for this):\n\n(using 10M docs with single valued numeric field, so 10M terms too)\n\nin general its a stupid rewrite method, unless your users are typing in truly horrific queries and then its better.\n\n||Pattern||no. matching docs||avgms (filter)||avgms (fieldcache)||\n|N?N?N?N|1000|35.9|52.5|\n|?NNNNNN|10|3.1|44.2|\n|??NNNNN|100|5.5|45.6|\n|???NNNN|1000|44.7|48.5|\n|????NNN|10000|141.8|67.9|\n|NN??NNN|100|3.6|41.5|\n|NN?N\\*|10000|5.3|42.7|\n|?NN\\*|100000|25.9|50.8|\n|\\*N|1000000|1639.2|446.8|\n|\\*N\\*|5217031|2089.4|701.2|\n|\\*NN\\*|590040|1811.6|674.8|\n",
+            "date": "2010-12-28T05:44:14.205+0000",
+            "id": 1
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Hah, cool!\n\nThe question is, does it really works correct with multivalued fields? I have to recapitulate the TermsIndex, but the method fcsi.getOrd(doc) returns only the term ord of the first term found in index for that document? For numeric queries with single-value fields thats fine, but for wildcards on analyzed fields? Maybe I miss something, but I am not sure if it works correct...\n\nRobert: Help me please :-) *g*",
+            "date": "2010-12-28T11:40:38.734+0000",
+            "id": 2
+        },
+        {
+            "author": "Robert Muir",
+            "body": "The question is, does it really works correct with multivalued fields?\n\nof course not, its no different than any of the other fieldcache*filter stuff we have now.\nexcept that stuff is an aweful lot more code... do we really need all those specializations in fieldcacherangefilter?\n",
+            "date": "2010-12-28T13:11:49.639+0000",
+            "id": 3
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "This is a great speedup for the hard wildcard queries!\n\nI think we should commit it, but jdoc the limitations (eg single valued).\n\nI'll add a \"whole title\" field to luceneutil so we can more naturally test wildcards...",
+            "date": "2011-01-03T11:43:50.394+0000",
+            "id": 4
+        },
+        {
+            "author": "Robert Muir",
+            "body": "OK, I'll work on getting it into contrib. \n\nI think its best to put it there because its generally slower (only faster in certain circumstances), \nand at the moment the app has to supply the 'query planning logic' to make good use of it.\n",
+            "date": "2011-01-03T13:29:46.176+0000",
+            "id": 5
+        },
+        {
+            "author": "Robert Muir",
+            "body": "here's the patch for contrib... i think its ready to commit.\n\ni also added some basic testing of the seek() in the doctermsindex's termsenum.\n",
+            "date": "2011-01-04T15:24:04.728+0000",
+            "id": 6
+        },
+        {
+            "author": "Robert Muir",
+            "body": "Committed revision 1055130.",
+            "date": "2011-01-04T18:23:18.179+0000",
+            "id": 7
+        }
+    ],
+    "component": "",
+    "description": "For some MultiTermQueries, like RangeQuery we have a FieldCacheRangeFilter etc (in this case its particularly optimized).\n\nBut in the general case, since LUCENE-2784 we can now have a rewrite method to rewrite any MultiTermQuery \nusing the FieldCache, because MultiTermQuery's getEnum no longer takes IndexReader but Terms, and all the \nFilteredTermsEnums are now just real TermsEnum decorators.\n\nIn cases like low frequency queries this is actually slower (I think this has been shown for numeric ranges before too),\nbut for the really high-frequency cases like especially ugly wildcards, regexes, fuzzies, etc, this can be several times faster \nusing the FieldCache instead, since all the terms are in RAM and automaton can blast through them quicker.\n",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-2836",
+    "issuetypeClassified": "RFE",
+    "issuetypeTracker": "RFE",
+    "priority": "Major",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "FieldCache rewrite method for MultiTermQueries",
+    "systemSpecification": true,
+    "version": ""
+}

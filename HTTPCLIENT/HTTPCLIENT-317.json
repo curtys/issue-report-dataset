@@ -1,0 +1,89 @@
+{
+    "comments": [
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Just wondering if you have taken a look at the MultipartPostMethod? Currently it\nonly implements RFC1867, but in most cases that should be sufficient, I believe.\n\nhttp://jakarta.apache.org/commons/httpclient/apidocs/org/apache/commons/httpclient/methods/MultipartPostMethod.html",
+            "date": "2004-02-20T21:39:25.000+0000",
+            "id": 0
+        },
+        {
+            "author": "peter",
+            "body": "Yes of course I had a look to MultipartPostMethod.\nI agree that in most cases it is enough to use just MultipartPostMethod class.\nThat's probably because multipart/related encoding in some way is an extention \nof multipart/form data.\nBut it is not possible to send data easely that uses features introduced in \nMultipart/Related data\n\nHere are the main problems why it is not possible:\n\n(problem1)- 'multipart related part' in comparison with 'multipart form data \nrelated part' has additional Content-ID header that \n\ncan be used as the reference from other multipart related parts;\n   send(OutputStream out) method of Part class doesn't send Content-ID header;\n\nso HTTP Client will send something like \n\n--example-2\n     Content-Type: Text/x-Okie; charset=iso-8859-1;\n\n     {doc}\n     This picture was taken by an automatic camera mounted ...\n     {image file=cid:ID-2}\n     {para}\n     Now this is an enlargement of the area ...\n     {image file=cid:ID-3}\n     {/doc}\n\ninstead of\n\n--example-2\n     Content-Type: Text/x-Okie; charset=iso-8859-1;\n     Content-ID: ID-1\n\n     {doc}\n     This picture was taken by an automatic camera mounted ...\n     {image file=cid:ID-2}\n     {para}\n     Now this is an enlargement of the area ...\n     {image file=cid:ID-3}\n     {/doc}\n\n\n(problem2)- addRequestHeaders(HttpState state, HttpConnection conn)  method of \nMultipartPostMethod class\n writes to a \"Content-Type\" something like : \n\"multipart/form-data, boundary=AaB03x\" \nand thit is correct for multipart form data(rfc 1867), but for multipart \nrelated data(according to rfc 2387) this \n\nmethod should generate something like:\n\"multipart/related; boundary=AaB03x; start=\"ID-1\" type=\"Text/x-Okie\"\nwhere  'start' ant 'type' parameters are the content-ID and type of the \ncompound object's root body part;\n\nThere are another small diferences as well(see rfc 2387).\n\nIt looks like the easiest way to make Http Client support multipart/related \ndata is to add two classes : e.g. \n\nMultipartRelatedMethod that extends MultipartPostMethod and implements \naddRequestHeaders(HttpState state, \n\nHttpConnection conn) method according to rfc 2387 and MultipartRelatedPart \nclass that extends Part class and \nimplements send(OutputStream out) method according to rfc 2387. Of course \nclasses(for all multipart related parts)\nshould have MultipartRelatedPart as super class.\n\nCould you please comment on this. If you know another way how to overcome this \nproblem please tell me. \n\n\n\n",
+            "date": "2004-02-21T00:44:48.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Peter,\nI see the point. Unfortunately there's not much we can help you with at the\nmoment. I personally see implementation of the 'multipart/related' content\nhandling as being out of scope for HttpClient, as least for a few major releases\nto come. Currently there are efforts underway to develop a generic Multipart\nMime library within the Jakarta Commons Codec project:\n\nhttp://cvs.apache.org/viewcvs.cgi/jakarta-commons-sandbox/codec-multipart/\n\nWe certainly plan to integrate the Multipart Mime functionality once it becomes\navailable as a part of stable commons-codec release. That may take a while,\nthough. For the time being I am afraid you'll have to handle multipart/related\ncontent encoding manually. \n\nOleg\n",
+            "date": "2004-02-21T01:15:41.000+0000",
+            "id": 2
+        },
+        {
+            "author": "peter",
+            "body": "Oleg,\n\nThank you for response.\nOk, I'll implement it myself.\nIt's not that much work.\n\nPeter.\n\n",
+            "date": "2004-02-24T16:21:27.000+0000",
+            "id": 3
+        },
+        {
+            "author": "Michael Vorburger",
+            "body": "This followowing two classes I just wrote do the trick for me reg. the 2 problems above... not sure this is fully sufficient? Might help somebody else. Regards, Michael Vorburger.\n\nclass MultipartRelatedRequestEntity extends MultipartRequestEntity {\n\n\t\tpublic MultipartRelatedRequestEntity(Part[] parts, HttpMethodParams params) {\n\t\t\tsuper(parts, params);\n\t\t}\n\n\t\tpublic String getContentType()\n\t\t{\n\t\t\tString header = super.getContentType();\n\t\t\tint ix = header.indexOf( \"boundary\" );\n\t\t\tString mimeType = \"application/soap+xml\"; // or \"text/xml\\\", or doesn't actually matter? \n\t\t\treturn \"multipart/related; type=\\\"\" + mimeType + \"\\\"; start=\\\"\" + ROOTPART_NAME + \"\\\"; \"  + header.substring( ix );\n\t\t}\n\t}\n\n\tprivate static class MultipartRelatedStringPart extends StringPart {\n\n\t    protected static final String CONTENT_ID = \"Content-ID: <\";\n\t    protected static final byte[] CONTENT_ID_BYTES = EncodingUtil.getAsciiBytes(CONTENT_ID);\n\n\t    protected static final String GT = \">\";\n\t    protected static final byte[] GT_BYTES = EncodingUtil.getAsciiBytes(GT);\n\n\t\tpublic MultipartRelatedStringPart(String name, String value) {\n\t\t\tsuper(name, value);\n\t\t}\n\n\t\tpublic MultipartRelatedStringPart(String name, String value, String charset) {\n\t\t\tsuper(name, value, charset);\n\t\t}\n\n\t    protected void sendDispositionHeader(OutputStream out) throws IOException {\n\t        out.write(CONTENT_ID_BYTES);\n\t        out.write(EncodingUtil.getAsciiBytes(getName()));\n\t        out.write(GT_BYTES);\n\t    }\n\t}\n",
+            "date": "2007-11-07T00:03:05.929+0000",
+            "id": 4
+        },
+        {
+            "author": "Ortwin Gl\u00fcck",
+            "body": "Michael,\n\n> String mimeType = \"application/soap+xml\"; // or \"text/xml\\\", or doesn't actually matter?\n> return \"multipart/related; type=\\\"\" + mimeType + \"\\\"; start=\\\"\" + ROOTPART_NAME + \"\\\"; \" + header.substring( ix );\n\n\nAFAIK it makes no sense to specify a type attribute. The MIME type of this part is multipart/related, period. It is a container whose body (beofre the boundary) is usually just empty (or contains a dummy string), and there is no need to specify the type of this emtpyness. \n\nIt is also incorrect to reuse the MIME boundary of the parent. It is a new container and must therefore start with a new boundary string (and close the boundary after the container ends).\n\n",
+            "date": "2007-11-07T08:21:03.602+0000",
+            "id": 5
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Fixed. See HttpMime\n\nOleg",
+            "date": "2008-11-26T12:56:02.055+0000",
+            "id": 6
+        },
+        {
+            "author": "Peter Klotz",
+            "body": "It would be fixed in HttpMime, could you please explain how?\n\nBecause if I even look into HttpMime 4.1 alpha2 in trunk\nthere is nothing that generates the Content-ID header in the parts with HttpMultipartMode.STRICT only Content-Type, Content-Disposition and Content-Transfer-Encoding. But Content-ID is NEEDED e.g. in Servicemix as target.\nso the above mentioned problem is still open in the latest version but the workaround only would work in 3.1 (legacy)\n",
+            "date": "2010-02-04T17:34:34.692+0000",
+            "id": 7
+        },
+        {
+            "author": "Peter Klotz",
+            "body": "OK, I fixed the problem with a new sub-class for FormBodyPart that adds the Content-ID header called SOAPBodyPart\nI only would need someone to commit this, as one cannot use MinimalField outside the httpcomponent package, for whatever reason.\n\n---\npackage org.apache.http.entity.mime;\n\nimport org.apache.http.annotation.NotThreadSafe;\n\nimport org.apache.http.entity.mime.content.ContentBody;\nimport org.apache.james.mime4j.descriptor.ContentDescriptor;\n\n/**\n * An extension of the mime4j standard {@link BodyPart} class that \n * automatically populates the header with standard fields based \n * on the content description of the enclosed body.\n * \n *\n * @since 4.0\n */\n@NotThreadSafe // Entity is @NotThreadSafe\npublic class SOAPBodyPart extends FormBodyPart {\n\n    public SOAPBodyPart(final String name, final ContentBody body) {\n        super(name, body);\n\n        generateContentID(body);\n    }\n    \n  protected void generateContentID(final ContentDescriptor desc) \n  {\n    StringBuilder buf = new StringBuilder();\n    buf.append(\"<\").append(getName()).append(\">\");\n    getHeader().addField(new MinimalField(\"Content-ID\", buf.toString()));\n  }\n}\n",
+            "date": "2010-02-04T18:09:30.820+0000",
+            "id": 8
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "MinimalField is a public class. I do not see why this code should be added to HttpMime.\n\nOleg",
+            "date": "2010-02-05T17:42:51.056+0000",
+            "id": 9
+        },
+        {
+            "author": "Eugene Fedotov",
+            "body": "Though the MinimalField *class* is public, its *constructor* is still package private.",
+            "date": "2013-08-25T17:14:40.718+0000",
+            "id": 10
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Fixed in SVN trunk and targeted for inclusion in 4.3.\n\nOleg",
+            "date": "2013-08-26T07:33:34.880+0000",
+            "id": 11
+        }
+    ],
+    "component": "HttpClient (classic)",
+    "description": "It is not possible to sent data easely as a multipart/related content-type (as \ndiscribed in rfc 2387) using Http Client.",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "HTTPCLIENT-317",
+    "issuetypeClassified": "RFE",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Minor",
+    "product": "HTTPCLIENT",
+    "project": "HTTPCLIENT",
+    "summary": "HTTP Client doesn't support multipart/related content-type",
+    "systemSpecification": true,
+    "version": "2.0 Final"
+}

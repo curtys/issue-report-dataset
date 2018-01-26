@@ -1,0 +1,77 @@
+{
+    "comments": [
+        {
+            "author": "Jukka Zitting",
+            "body": "Proposed patch with the following supported URI types:\n\n    jndi:... for o.a.j.core.jndi.RepositoryFactoryImpl\n    file://... for o.a.j.core.RepositoryFactoryImpl\n    http(s)://... for o.a.j.jcr2spi.Jcr2spiRepositoryFactory with o.a.j.spi2davex.Spi2davexRepositoryServiceFactory\n\nMore elaborate support (URI parameter support, autodetection of file:// or http:// repository types, etc.) can be added as needed.",
+            "date": "2009-10-22T14:46:25.217+0000",
+            "id": 0
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "I committed the patch and a followup change that introduced an o.a.j.commons.GenericRepositoryFactory class that implements the repository URI functionality (and JNDI lookups) as a standard RepositoryFactory.",
+            "date": "2009-10-23T10:44:30.331+0000",
+            "id": 1
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "Instead of hard-coding the prefix-to-factory mapping, we could add a way for factories to 'register' one more multiple URL prefixes. Similar to JDBC, http://java.sun.com/javase/6/docs/api/java/sql/DriverManager.html#registerDriver(java.sql.Driver) - instead of an explicit \"register\" method, the factory could return the list of prefixes it supports.",
+            "date": "2009-10-26T09:15:31.081+0000",
+            "id": 2
+        },
+        {
+            "author": "Felix Meschberger",
+            "body": "How come I think of the OSGi ServiceRegistry would be faboulous helper for this kind of extensibility ... ;-)",
+            "date": "2009-10-26T09:34:27.589+0000",
+            "id": 3
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "> OSGi ServiceRegistry\n\nSee the title \"simple repository access\". If I want a simple solution, I _definitely_ don't want to use OSGi.",
+            "date": "2009-10-26T09:38:47.249+0000",
+            "id": 4
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Instead of a new registry, we could actually just let each specific repository factory to interpret the org.apache.jackrabbit.repository.uri parameter in addition to any custom parameters they may support.\n\nFor example, the jackrabbit-core repository factory could look up a file:// URI and only return an instantiated repository if the given path points to a Jackrabbit repository directory. Another repository factory could then also support file:// URIs that point to other types of files or directories.\n\nThe nice thing about this approach is that we wouldn't need another registry mechanism, as the normal service provider system already used by repository factories would be good enough.",
+            "date": "2009-10-26T09:44:58.947+0000",
+            "id": 5
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "> Instead of a new registry, we could actually just let each specific repository factory to interpret the org.apache.jackrabbit.repository.uri [...]\n\n+1",
+            "date": "2009-10-26T10:57:16.382+0000",
+            "id": 6
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "> let each factory interpret org.apache.jackrabbit.repository.uri\n\n+1",
+            "date": "2009-10-26T11:11:06.751+0000",
+            "id": 7
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "> let each factory interpret org.apache.jackrabbit.repository.uri \n\nThis is now implemented with the new jcr2dav component and the jackrabbit-core changes in revision 897836.\n\nAny new RepositoryFactory implementations that want to work with JcrUtils.getRepository(String uri) should implement similar processing for the org.apache.jackrabbit.repository.uri configuration parameter.",
+            "date": "2010-01-11T11:16:58.201+0000",
+            "id": 8
+        },
+        {
+            "author": "Dario Louzado",
+            "body": "Currently, using version 2.0.0, how can I connect to a remote Jackrabbit WebDav repository?\n",
+            "date": "2010-04-16T17:28:20.537+0000",
+            "id": 9
+        }
+    ],
+    "component": "jackrabbit-jcr-commons",
+    "description": "As discussed on the mailing list, it would be nice to have a trivially simple way (one line of code) to connect to a repository. The RepositoryFactory interface in JCR 2.0 defines a way for clients to get a repository reference without a direct implementation dependency, but a client still needs extra code to handle the Service Provider lookup and the iteration through all the available repository factories.\n\nTo simplify client code I'd like to introduce a JcrUtils.getRepository(Map<String, String>) method that takes care of the tasks mentioned above:\n\n    Map<String, String> parameters = ...; // repository settings\n    Repository repository = JcrUtils.getRepository(parameters);\n\nAs a further simplification, I'd also like to introduce a JcrUtils.getRepository(String) method that builds the parameter map based on a given \"repository URI\".\n\n    Repository repository = JcrUtils.getRepository(\"file:///path/to/repository\");\n\n    Repository repository = JcrUtils.getRepository(\"http://localhost:8080/server\");\n\nThe set of supported URI types is still to be defined.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "JCR-2360",
+    "issuetypeClassified": "RFE",
+    "issuetypeTracker": "RFE",
+    "priority": "Minor",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "JcrUtils.getRepository(...) for simple repository access",
+    "systemSpecification": true,
+    "version": ""
+}

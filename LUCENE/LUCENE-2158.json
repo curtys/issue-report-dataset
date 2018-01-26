@@ -1,0 +1,23 @@
+{
+    "comments": [
+        {
+            "author": "Michael McCandless",
+            "body": "Attached patch.\n\nJake/John, hopefully this explains what you guys were seeing in stress testing Lucene NRT!",
+            "date": "2009-12-15T10:05:19.651+0000",
+            "id": 0
+        }
+    ],
+    "component": "core/index",
+    "description": "OK, I found a sneaky case where NRT can temporarily lose deletions.\nThe deletions aren't permanently lost - they are seen on the next\nopened NRT reader.\n\nIt happens like this (in IW.getReader):\n\n  * First flush() is called, to flush added docs & materialize the\n    deletes.\n\n  * The very next statement enters a sync'd block to open the reader,\n    but, if indexing rate is very high, and threads get scheduled\n    \"appropriately\", a \"natural\" flush (due to RAM buffer being full\n    or flush doc count being reached) could be hit before the sync\n    block is entered, in which case that 2nd flush won't materialize\n    the deletes associated with it, and the returned NRT reader will\n    only see its adds until it's next reopened.\n\nThe fix is simple -- we should materialize deletes inside the sync\nblock, not during the flush.\n",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-2158",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Minor",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "NRT can temporarily lose deletions at high indexing rates",
+    "systemSpecification": true,
+    "version": ""
+}

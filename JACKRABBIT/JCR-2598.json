@@ -1,0 +1,155 @@
+{
+    "comments": [
+        {
+            "author": "Stephan Huttenhuis",
+            "body": "- Because it is difficult determine all the causes (multiple ItemStateManagers and locking) I propose to do a final consistency check on the ChangeLog in the SharedItemStateManager and to throw an exception if an inconsistency is detected.\n\n- A race condition is exists when moving and deleting nodes with the same name. The index passed to removeChildNode(Name nodeName, int index) may not be valid anymore because another session deleted or moved another child node. Instead of using name + index use id to make sure that the correct node is removed.\n\n\nSee proposed patch (based on the trunk). After the patch the repository is consistent and only a few messages are shown (see Output after patch.txt)\n",
+            "date": "2010-04-09T13:40:24.566+0000",
+            "id": 0
+        },
+        {
+            "author": "Stefan Guggisberg",
+            "body": "thanks fr the patch!\n\n> - Because it is difficult determine all the causes (multiple ItemStateManagers and locking) I propose to do a final consistency check on the ChangeLog in the SharedItemStateManager and to throw an exception if an inconsistency is detected.\n\nwhat is the performance impact of the proposed change? i am somehow concerned that write performance would suffer significantly.\n\n> - A race condition is exists when moving and deleting nodes with the same name. The index passed to removeChildNode(Name nodeName, int index) may not be valid anymore because another session deleted or moved another child node. Instead of using name + index use id to make sure that the correct node is removed.\n\nlooks good\n",
+            "date": "2010-04-09T14:29:52.349+0000",
+            "id": 1
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Could you also attach the new ConcurrencyTest3 test case?",
+            "date": "2010-04-15T15:59:17.466+0000",
+            "id": 2
+        },
+        {
+            "author": "Stephan Huttenhuis",
+            "body": "I have attached the unit test.\n\nA Java property could be introduced to enable/disable the checks. This way a  choice can be made between consistency and performance. ",
+            "date": "2010-04-16T08:00:26.300+0000",
+            "id": 3
+        },
+        {
+            "author": "Stephan Huttenhuis",
+            "body": "I performed a small performance test using the attached unit test. I measured the System.currentTimeMillis() before and after a call to validateHierarchy. My test machine has the following specs: Windows XP Pro SP3 / Intel Core2 CPU 6300 @1.86GHz / 3 GB RAM.\n\nThe unit test has the following parameters:\niterations : amount of test runs\nthread size: amount of threads during a run\nrun size   : amount of session saves per thread\naction size: actions of a thread per session save\n\nThe consistency check has the following performance impact per session save:\niterations/thread size/run size/action size: performance impact\n1/5/100/100:   0-16 ms (5 concurrent threads that each do 100 session saves with 100 operations)\n1/5/100/1000:  0-63 ms\n\n1/5/10/1000:   0-16 ms\n1/5/10/10000 : 0-156 ms\n1/5/10/100000: 0-219 ms\n\nI have added a new patch which uses a Java property to enabled to checks (default is no checks). IMHO the performance impact is reasonably small and this combined with a Java property which defaults to false I think this is a good addition.",
+            "date": "2010-04-19T09:41:38.910+0000",
+            "id": 4
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Patch applied in revision 955229, thanks!\n\nI'm still seeing some exceptions in the test case, so I'm leaving this open until we figure out how to best get rid of them.",
+            "date": "2010-06-16T13:54:47.833+0000",
+            "id": 5
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "The remaining problems got fixed in JCR-2579.\n\nI merged these changes also to the 2.1 branch for the 2.1.1 release.",
+            "date": "2010-06-16T17:22:43.483+0000",
+            "id": 6
+        },
+        {
+            "author": "Claus K\u00f6ll",
+            "body": "Would be fine to have this changes in 1.6.3 too.",
+            "date": "2010-06-17T12:26:46.136+0000",
+            "id": 7
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Merged to the 2.0 branch in revision 982274.\n\nI'll take a look at backporting this also to 1.6.3.",
+            "date": "2010-08-04T14:55:48.363+0000",
+            "id": 8
+        },
+        {
+            "author": "Claus K\u00f6ll",
+            "body": "Should we add the ConcurrencyTest3 to a TestSuite ?\nAs i can see the Testcase will not be executed at the Moment...",
+            "date": "2010-10-01T06:52:59.014+0000",
+            "id": 9
+        },
+        {
+            "author": "Claus K\u00f6ll",
+            "body": "Merged to the 1.6 branch in revision 1003428.",
+            "date": "2010-10-01T08:21:06.870+0000",
+            "id": 10
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "> Should we add the ConcurrencyTest3 to a TestSuite?\n\nAFAICT there are no assertions in the test case, so for now it only makes sense to run the test manually on demand.\n\nShould the test case be modified to automatically detect and report failures, then it would be good to have it as a part of the test suite. However, since the test is pretty expensive, it should only be run within the integrationTesting profile.\n",
+            "date": "2010-10-06T13:48:41.408+0000",
+            "id": 11
+        },
+        {
+            "author": "Geoffroy Schneck",
+            "body": "Comment from CQ user : \n\nIs there any setup where it's not recommended to set this property org.apache.jackrabbit.core.state.validatehierarchy to true ? \n\nIf not, why not making setting it true by default ? ",
+            "date": "2012-03-08T10:39:08.128+0000",
+            "id": 12
+        },
+        {
+            "author": "Julian Reschke",
+            "body": "\"Is there any setup where it's not recommended to set this property org.apache.jackrabbit.core.state.validatehierarchy to true ? \"\n\nIt comes with a severe performance hit.",
+            "date": "2012-03-08T12:39:43.776+0000",
+            "id": 13
+        },
+        {
+            "author": "Geoffroy Schneck",
+            "body": "Thanks for the quick feedback.\n\nIn previous entry from April 19th I could see \"IMHO the performance impact is reasonably small\" . This is a bit confusing\n\nSince this parameter is quite useful and sometimes recommended to prevent repositories inconsistencies, it could be great to have more detailled performance test results, that the jackrabbit (and CQ) users could use to take the decision to enable it or not..",
+            "date": "2012-03-09T10:06:03.008+0000",
+            "id": 14
+        },
+        {
+            "author": "Sam Stange",
+            "body": "I was able to run ConcurrencyTest3.java with NO exceptions with and without the validatehierarchy flag. I'm running the unit test with a repository.xml file using a derby persistencemanager and jackrabbit-core 2.6.2.",
+            "date": "2015-04-30T20:04:18.049+0000",
+            "id": 15
+        },
+        {
+            "author": "Unico Hommes",
+            "body": "Hi [~stanges],\n\nSeveral bugs in this area have been identified and fixed since this issue was created. See for instance JCR-3501, JCR-3290, and JCR-3289. I spent a lot of effort to try to root out the various causes of repository inconsistencies and think most if not all of them have been fixed. We have very thorough tests that cover all possible combinations of operations with multiple sessions and cluster nodes alternating and we cannot reproduce any scenario anymore which results in repository inconsistencies. Our customers hardly ever encounter them anymore. In the event that an inconsistency does occur, the consistency checker has seen a lot of improvements. See JCR-3269, JCR-3267, JCR-3265, JCR-3263, and JCR-3525. I think this issue can be closed.",
+            "date": "2015-05-04T13:24:24.989+0000",
+            "id": 16
+        },
+        {
+            "author": "Sam Stange",
+            "body": "Hi Unico,\n\nThank you for the response. I have a client that experienced a repository corruption at the root node (cafebabe-cafe-babe-cafe-babecafebabe). Essentially, it was not fixable (via console, other methodologies) without have to go to a back-up. Our client wants us to prove validatehierarchy is going to prevent this from happening again. I was hoping the unit test would validate the setting, but it was unable to do so. Is there any way to verify this setting will prevent a repository corruption? ",
+            "date": "2015-05-04T13:53:40.914+0000",
+            "id": 17
+        },
+        {
+            "author": "Unico Hommes",
+            "body": "Hi Sam,\n\nI can't think of a way to test that. Did you try the consistency checker in fix mode to fix the inconsistency your client experienced? It should have been able to fix the root node as far as I know.",
+            "date": "2015-05-04T14:15:04.940+0000",
+            "id": 18
+        },
+        {
+            "author": "Sam Stange",
+            "body": "We tried to run the consistency checker in fix mode, but our attempt failed. For us, running the consistency checker took 2 days to complete, and only resulted in an error when it attempted to fix the inconsistent nodes. We've been trying to reproduce the scenario that would have caused this scenario, but haven't been able to do so. We've identified a lot of, \"it could be this or that\", but nothing has been able to reproduce the corruption.",
+            "date": "2015-05-04T14:25:53.303+0000",
+            "id": 19
+        },
+        {
+            "author": "Unico Hommes",
+            "body": "You mentioned version 2.6.2 before. Is that the version you ran the consistency checker on? If so, and you still have that database lying around somewhere, may I suggest you try out [our standalone checker tool|http://www.onehippo.org/library/administration/maintenance/checking-and-fixing-repository-inconsistencies.html] on it. If nothing else, it might save you some trouble in the future.",
+            "date": "2015-05-04T16:32:59.059+0000",
+            "id": 20
+        },
+        {
+            "author": "Sam Stange",
+            "body": "Thanks Unico for the link to the standalone checker. We already reverted to a point in time back-up, so it would be rather difficult to run the tool at this point. Could you explain what the validatehierarchy parameter is checking and how it prevents repository corruptions? ",
+            "date": "2015-05-05T20:08:02.875+0000",
+            "id": 21
+        },
+        {
+            "author": "Unico Hommes",
+            "body": "Hi Sam,\nThe validateHierarchy flag checks the consistency of the changelog about to be committed to the persistence store, so it should do what you wanted: prevent inconsistent node states to enter the database. However I can't vouch for its correctness or completeness as I am not the author and have no experience with this setting.",
+            "date": "2015-05-06T18:56:03.142+0000",
+            "id": 22
+        }
+    ],
+    "component": "jackrabbit-core",
+    "description": "Run the attached unit test. Several concurrent sessions add, move, and remove nodes. Then the index is removed and the repository is again started. The repository is in an inconsistent state and the index cannot be rebuild. Also a lot of exceptions occur. See (see Output before patch.txt). Note that the unit test also suffers from the deadlock of issue http://issues.apache.org/jira/browse/JCR-2525 about half the time.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "JCR-2598",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "Saving concurrent sessions executing random operations causes a corrupt JCR",
+    "systemSpecification": true,
+    "version": "1.6.1, 2.0"
+}

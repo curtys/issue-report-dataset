@@ -1,0 +1,47 @@
+{
+    "comments": [
+        {
+            "author": "Roland Weber",
+            "body": "In this case, it is not a bug. The background thread being started does not depend on the completed initialization of the pool instance. That part of the code needs to be changed anyway, so I'll move it to an extra method when the time comes. I hope that will be enough to silence findbugs.\n\ncheers,\n  Roland\n",
+            "date": "2008-02-01T18:05:39.695+0000",
+            "id": 0
+        },
+        {
+            "author": "Sebb",
+            "body": "The RefQueueWorker constructor is passed \"this\" as a parameter, and uses that to call handleReference().\n\nEven if the class is not extended, this is a bug, because the constructor has not finished, and therefore the object may not have been completely constructed.\n\nThe \"this\" reference must not be used by another thread until the constructor returns. The started thread may use it before the constructor returns.\n\n[See p41 of Java Concurrency in Practice for more details]",
+            "date": "2008-02-02T12:28:23.096+0000",
+            "id": 1
+        },
+        {
+            "author": "Roland Weber",
+            "body": "Hi Sebastian,\n\nthe started thread implements a callback when connections or the connection manager are garbage collected. There are no connections that can be GCed before the constructor returns, and the connection manager is hard referenced from the call stack. Hence, the callback cannot be triggered unless somebody puts maliciously stupid code into derived class constructors.\n\nThe reason why I start the thread immediately after creating the reference queue is to make sure that the reference queue is being handled. If I split this in two methods, somebody will create the reference queue without starting the thread, thereby creating a memory leak.\n\nAnyway, I moved the code for creating both reference queue and callback thread to an extra method that has to be called after creating the connection pool. I hope this addresses your requirements as well as mine. The price to pay is that derived classes can no longer populate the pool in the constructor if they want to support connection GC, since the reference queue must be known when creating a pool entry.\n\nPlease review the change (revision 618019).\n\ncheers,\n  Roland\n",
+            "date": "2008-02-03T17:12:57.199+0000",
+            "id": 2
+        },
+        {
+            "author": "Sebb",
+            "body": "Seems OK to me as far as multi-threadedness is concerned.\n\nProbably ought to start documenting fields such as numConnections with the @GuardedBy annotation.\nThis is not a standard annotation, so the build would need to be updated to depend on the jar.\n\n",
+            "date": "2008-02-03T17:57:53.512+0000",
+            "id": 3
+        },
+        {
+            "author": "Roland Weber",
+            "body": "Hi Sebastian,\n\nI would prefer to continue with TSCCM refactoring and bringing it to a somewhat consistent state before starting with the goldplating. But if you want to get started on this stuff, just go ahead. Oleg should be able to help you with modifying the Maven build, I'll take care of my local Ant build when necessary. I just hope the jar you mentioned is only a build-time dependency.\n\ncheers,\n  Roland\n",
+            "date": "2008-02-03T18:03:50.385+0000",
+            "id": 4
+        }
+    ],
+    "component": "HttpClient (classic)",
+    "description": "AbstractConnPool constructor calls thread.Start()\n\nFindbugs says:\n\nConstructor invokes Thread.start()\n\nThe constructor starts a thread. This is likely to be wrong if the class is ever extended/subclassed, since the thread will be started before the subclass constructor is started.\n\nThe class is not final (and the constructor is protected) which suggests that the class is intended to be extended...",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "HTTPCLIENT-740",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Trivial",
+    "product": "HTTPCLIENT",
+    "project": "HTTPCLIENT",
+    "summary": "AbstractConnPool constructor calls thread.Start()",
+    "systemSpecification": true,
+    "version": ""
+}

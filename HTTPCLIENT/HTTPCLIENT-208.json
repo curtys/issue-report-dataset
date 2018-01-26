@@ -1,0 +1,161 @@
+{
+    "comments": [
+        {
+            "author": "Bin Chen",
+            "body": "Created an attachment (id=6276)\nfailed log for Netscape proxy.\n",
+            "date": "2003-05-08T23:43:19.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Bin Chen",
+            "body": "Created an attachment (id=6277)\nworking log when using expect header\n",
+            "date": "2003-05-08T23:44:44.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Bin Chen",
+            "body": "Created an attachment (id=6278)\nModified ClientApp test program\n",
+            "date": "2003-05-08T23:45:25.000+0000",
+            "id": 2
+        },
+        {
+            "author": "Bin Chen",
+            "body": "Created an attachment (id=6279)\nTeh property file used in test program.\n",
+            "date": "2003-05-08T23:46:34.000+0000",
+            "id": 3
+        },
+        {
+            "author": "Bin Chen",
+            "body": "Created an attachment (id=6280)\nlog for POST failure when setRequestBody not called\n",
+            "date": "2003-05-08T23:47:30.000+0000",
+            "id": 4
+        },
+        {
+            "author": "Bin Chen",
+            "body": "Created an attachment (id=6281)\nlog for POST failure when setRequestBody (\"\") called, no \"except\"\n",
+            "date": "2003-05-08T23:48:49.000+0000",
+            "id": 5
+        },
+        {
+            "author": "Bin Chen",
+            "body": "Created an attachment (id=6282)\nlog for POST failure when setRequestBody (\"\") called, use \"except\"\n",
+            "date": "2003-05-08T23:49:29.000+0000",
+            "id": 6
+        },
+        {
+            "author": "Jeff Dever",
+            "body": "Note regarding empty request body: \nAccording to rcf2616, a message body (or transfer encoded message body) is \nallowed to be empty.  I would suggest that no call to setRequestBody should be \nrequired, and both setRequestBody(\"\") and setRequestBody(null) should be \nacceptable which would of course send a empty body.",
+            "date": "2003-05-09T00:01:21.000+0000",
+            "id": 7
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Is this with alpha-3 or a nightly build?\n\nMike",
+            "date": "2003-05-09T00:14:22.000+0000",
+            "id": 8
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Sorry, ignore that last one.\n\nMike",
+            "date": "2003-05-09T00:14:55.000+0000",
+            "id": 9
+        },
+        {
+            "author": "Bin Chen",
+            "body": "It is nightly build 0507.",
+            "date": "2003-05-09T00:19:56.000+0000",
+            "id": 10
+        },
+        {
+            "author": "Bin Chen",
+            "body": "I found this from the RFC 2616:\n\n8.2.4 Client Behavior if Server Prematurely Closes Connection\n\n   If an HTTP/1.1 client sends a request which includes a request body,\n   but which does not include an Expect request-header field with the\n   \"100-continue\" expectation, and if the client is not directly\n   connected to an HTTP/1.1 origin server, and if the client sees the\n   connection close before receiving any status from the server, the\n   client SHOULD retry the request.  If the client does retry this\n   request, it MAY use the following \"binary exponential backoff\"\n   algorithm to be assured of obtaining a reliable response:\n\n      1. Initiate a new connection to the server\n\n      2. Transmit the request-headers\n\n      3. Initialize a variable R to the estimated round-trip time to the\n         server (e.g., based on the time it took to establish the\n         connection), or to a constant value of 5 seconds if the round-\n         trip time is not available.\n\n      4. Compute T = R * (2**N), where N is the number of previous\n         retries of this request.\n\n      5. Wait either for an error response from the server, or for T\n         seconds (whichever comes first)\n\n      6. If no error response is received, after T seconds transmit the\n         body of the request.\n\n      7. If client sees that the connection is closed prematurely,\n         repeat from step 1 until the request is accepted, an error\n         response is received, or the user becomes impatient and\n         terminates the retry process.\n\n",
+            "date": "2003-05-09T00:24:22.000+0000",
+            "id": 11
+        },
+        {
+            "author": "Bin Chen",
+            "body": "About empty boby:\n\nI noticed httpClient is NOT sending the 0 content-length when the body is \neither null or empty.  The RFC says: \"Any Content-Length greater than or equal \nto zero is a valid value.\".  Should httpClient send the 0 content-length header?",
+            "date": "2003-05-09T00:47:00.000+0000",
+            "id": 12
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "There are two issues in this report that should be tackled separately as they\nare not logically related\n\n1.) The first issue is not a bug. The Netscape proxy is absolutely correct about\nclosing the connection as soon as it discovers that authentication credentials\nare either missing or invalid. HttpClient in its turn SHOULD check for such\ncondition but it MUST NOT. The 'Expect: 100-continue' handshake has been\ndesigned to specifically address this problem. Unfortunately the handshake\ncannot be activated per default as many other proxies (notably squid) can't\nproperly cope with 'Expect: 100-continue' handshake.\n\nStill, we should make HttpClient monitor the connection for incoming data when\nsubmitting entity enclosing requests. HttpClient should stop transmitting data\nif the target server is already sending back a response. This should be regarded\nas an improvement, not a bug fix, though. \n\nThe issue has been already reported:\n\nhttp://nagoya.apache.org/bugzilla/show_bug.cgi?id=14036\n\nIts resolution is targeted for 2.1 release\n\n2.) HttpClient does not properly handle empty entity enclosing requests. This is\nclearly a bug and must be fixed as soon as possible.\n\nI'll be working on a fix.\n\nOleg",
+            "date": "2003-05-09T01:32:04.000+0000",
+            "id": 13
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Created an attachment (id=6284)\nPatch (take 1)\n",
+            "date": "2003-05-09T04:36:55.000+0000",
+            "id": 14
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Looks good to me.  Moving addContentLengthRequestHeader() to\nEntityEnclosingMethod was a good idea.\n\nMike",
+            "date": "2003-05-09T05:29:57.000+0000",
+            "id": 15
+        },
+        {
+            "author": "Jeff Dever",
+            "body": "Good, but we should not change the HttpMethodBase.addContentLengthRequestHeader\nmethod.  The override in EntityEnclosingMethod suits the purpose well.  Anyone\nelse that is already extending HttpMethodBase may be relying on this behaviour\nso it should be left in the base class.",
+            "date": "2003-05-09T06:32:58.000+0000",
+            "id": 16
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Created an attachment (id=6293)\nPatch (take 2)\n",
+            "date": "2003-05-09T15:09:49.000+0000",
+            "id": 17
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Jeff,\nI do find it potentially error-prone that\nHttpMethodBase#addContentLengthRequestHeader adds 'Transfer-encoding: chunked'\nheader not really knowing if chunk encoding is implemented by its sub-class or\nif it is applicable to this method at all. \n\nOleg",
+            "date": "2003-05-09T15:15:24.000+0000",
+            "id": 18
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Created an attachment (id=6331)\nPatch (take 3)\n",
+            "date": "2003-05-13T03:23:19.000+0000",
+            "id": 19
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "The new patch is intended to address Jeff's and Mike's concerns. Feedback welcome.\n\nOleg\n\n",
+            "date": "2003-05-13T03:26:46.000+0000",
+            "id": 20
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Looks good. Only one question. Should HttpMethodBase also include the logic for\nhandling 0 length bodies?\n\nMike",
+            "date": "2003-05-15T01:49:19.000+0000",
+            "id": 21
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Mike,\nIn my opinion HttpMethodBase should not include any logic for\nhandling content length. That should be the responsibility of entity enclosing \nsub classes.\n\nOleg ",
+            "date": "2003-05-15T02:19:54.000+0000",
+            "id": 22
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Patch committed\n\nOleg.",
+            "date": "2003-05-16T01:09:23.000+0000",
+            "id": 23
+        }
+    ],
+    "component": "HttpClient (classic)",
+    "description": "Description:\n\nWhen using httpClient to POST to a http url through a Netscape proxy server, \nthe httpClient failed due to read error when reading status line.  The log seem \nto indicate that the proxy is talking HTTP/1.0 and does not expect the POST \ndata to come.  I am using a modified version of the ClientApp from examples.  I \nwill attach both the test program and log files.\n\nWorkaround:\n\nIf use PostMethod.setUseExpect (true), it will work.  But in many cases, it \nwould be slower.\n\nRelated issues:\n\nIn doing the test, I also found out that the httpClient PostMehtod does not \nwork when the request body is NOT set (not calling setRequestBody).  It also \ndoes not work with empty body (setRequestBody (\"\")).  The attached \nclientApp.properties file has flags to test each case and I will attach the \nlogs as well.  Excuse my ignorance, I do not know for sure what the HTTP spec. \nsays about the body in the POST method.  But at least if the caller/app is \nwrong in not setting the body, some exception should be thrown.  It could also \nbe my server's problem, please let me know if that is the case (I am using \nweblogic server 6.1).",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "HTTPCLIENT-208",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "HTTPCLIENT",
+    "project": "HTTPCLIENT",
+    "summary": "Netscape proxy problem wtih POST",
+    "systemSpecification": true,
+    "version": ""
+}

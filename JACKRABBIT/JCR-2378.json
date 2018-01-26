@@ -1,0 +1,47 @@
+{
+    "comments": [
+        {
+            "author": "Alexander Klimetschek",
+            "body": "Patch that both fixes the NPE in ObservationManagerImpl (throws early now) and adds the try/catch to the finalizer.",
+            "date": "2009-11-02T15:26:16.779+0000",
+            "id": 0
+        },
+        {
+            "author": "Alexander Klimetschek",
+            "body": "Patch available.",
+            "date": "2009-11-02T15:27:11.375+0000",
+            "id": 1
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "+0 I would prefer to see a solution to the root cause (shutdown not working properly when repository startup fails) instead of a workaround, but until such a solution is available I think doing something like this is a good alternative.",
+            "date": "2009-11-02T15:34:36.000+0000",
+            "id": 2
+        },
+        {
+            "author": "Alexander Klimetschek",
+            "body": ">  I would prefer to see a solution to the root cause\n\nYes, but I think there is too much involved to capture all possible problems (easily). Therefore I think this is just good defensive programming. I'll change the wording and add \"unexpected\" rather than \"likely to fail\".\n\nAlso created a separate issue for the NPE: JCR-2380",
+            "date": "2009-11-02T15:57:19.932+0000",
+            "id": 3
+        },
+        {
+            "author": "Alexander Klimetschek",
+            "body": "Added the finalizer change in revision 831932.",
+            "date": "2009-11-02T16:02:31.485+0000",
+            "id": 4
+        }
+    ],
+    "component": "jackrabbit-core",
+    "description": "If an exception happens during initialization of the repository, it might be overlayed by an exception thrown in the finalize handler of the RepositoryImpl constructor (see line 382 ff in [1]). The latter exception wins and the original exception is lost (if you don't have a log). This makes it hard to figure out the real problem.\n\nThis problem is actually a bit self-enforcing: if something goes wrong during startup, the code in the shutdown() method that is called is actually very prone to fail as it might not expect such a broken-startup state. In my case the overlaying NPE happened in ObservationManagerImpl.getRegisteredEventListeners, where this.dispatcher was unexpectedly null [2].\n\nI think both places should be fixed (NPE guard in ObservationManagerImpl constructor for \"dispatcher\") and a try/catch block in the finalizer, just logging the exception:\n\n    } finally {\n        if (!succeeded) {\n            try {\n                // repository startup failed, clean up...\n                shutdown();\n            } catch (Throwable t) {\n                // shutdown() likely to fail now, as startup was broken...\n                log.error(\"In addition to startup fail, another problem occurred while shutting down the repository again.\", e);\n            }\n        }\n    }\n\n\n[1] http://svn.apache.org/viewvc/jackrabbit/trunk/jackrabbit-core/src/main/java/org/apache/jackrabbit/core/RepositoryImpl.java?view=markup\n\n[2] Overlaying exception's stacktrace:\nCaused by: java.lang.NullPointerException\n\tat org.apache.jackrabbit.core.observation.ObservationManagerImpl.getRegisteredEventListeners(ObservationManagerImpl.java:143)\n\tat org.apache.jackrabbit.core.SessionImpl.removeRegisteredEventListeners(SessionImpl.java:1190)\n\tat org.apache.jackrabbit.core.SessionImpl.logout(SessionImpl.java:1215)\n\tat org.apache.jackrabbit.core.RepositoryImpl$WorkspaceInfo.doDispose(RepositoryImpl.java:2153)\n\tat com.day.crx.core.CRXRepositoryImpl$CRXWorkspaceInfo.doDispose(CRXRepositoryImpl.java:1095)\n\tat org.apache.jackrabbit.core.RepositoryImpl$WorkspaceInfo.dispose(RepositoryImpl.java:2108)\n\tat org.apache.jackrabbit.core.RepositoryImpl.doShutdown(RepositoryImpl.java:1146)\n\tat com.day.crx.core.CRXRepositoryImpl.doShutdown(CRXRepositoryImpl.java:845)\n\tat org.apache.jackrabbit.core.RepositoryImpl.shutdown(RepositoryImpl.java:1098)\n\tat org.apache.jackrabbit.core.RepositoryImpl.<init>(RepositoryImpl.java:387)\n\tat com.day.crx.core.CRXRepositoryImpl.<init>(CRXRepositoryImpl.java:201)\n\tat com.day.crx.core.CRXRepositoryImpl.create(CRXRepositoryImpl.java:190)\n\t... 28 more\n",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "JCR-2378",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Minor",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "Avoid exceptions thrown in finalize handler of RepositoryImpl constructor",
+    "systemSpecification": true,
+    "version": "2.0-alpha11"
+}

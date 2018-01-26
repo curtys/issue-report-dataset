@@ -1,0 +1,53 @@
+{
+    "comments": [
+        {
+            "author": "Roman Puchkovskiy",
+            "body": "This is a Maven project. To run tests, unpack and run 'mvn test'.\nTest contains two methods: one of them does not use transactions (passes), another uses transactions (fails).",
+            "date": "2008-05-09T14:41:55.578+0000",
+            "id": 0
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "The sequence of checking the various places where an ItemState can reside is not correct in XAItemStateManager.\n\nE.g. in getItemState() first checks the transaction change log if it contains an item. If the item is not known to the change log the base class (LocalItemStateManager) is called. This means the change logs and item state managers are checked in the following sequence:\n\n1) transaction change log\n2) local change log\n3) shared item state manager\n\nThis is actually wrong and should rather be:\n\n1) local change log\n2) transaction change log\n3) shared item state manager\n\nThe test fails because the property for the version label \"2\" is marked deleted in the transaction change log, while at the same time is added in the local change log. Because the sequence of the checks is wrong, the version label property is incorrectly reported as destroyed.",
+            "date": "2008-05-13T14:41:27.474+0000",
+            "id": 1
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "Proposed fix.\n\nAll tests pass, including daily integration tests.\n\nPlease review.",
+            "date": "2008-05-13T15:43:59.798+0000",
+            "id": 2
+        },
+        {
+            "author": "Roman Puchkovskiy",
+            "body": "My tests pass too, and application works correctly in point where this issue is concerned. Tested with jackrabbit-core-1.4.4 with patch applied.",
+            "date": "2008-05-14T06:16:28.499+0000",
+            "id": 3
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "Committed patch in revision: 656240",
+            "date": "2008-05-14T11:39:57.872+0000",
+            "id": 4
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Merged to the 1.4 branch in revision 661624.",
+            "date": "2008-05-30T10:02:14.065+0000",
+            "id": 5
+        }
+    ],
+    "component": "versioning",
+    "description": "Following sequence causes failure:\n1. first transaction:\n  1.1 create versionable node\n  1.2 create version 1 of this node\n2. second transaction:\n  2.1 create version 2 of this node\n  2.2 assign a label to version 2\n3. third transaction:\n  3.1 restore a node to version 1\n  3.2 remove version 2\n  3.3 make version 3 of  same node\n  3.4 assign same label (which was assigned to version 2) to version 3 -> fails\n\nSame sequence which does not use transactions at all works fine.\nGoing to attach a test case.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "JCR-1587",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "When trying to reuse version label in transaction, exception is thrown",
+    "systemSpecification": true,
+    "version": "core 1.4.3, core 1.4.4"
+}

@@ -1,0 +1,35 @@
+{
+    "comments": [
+        {
+            "author": "Marcel Reutegger",
+            "body": "Fixed as proposed in svn revision: 469123",
+            "date": "2006-10-30T11:28:25.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "The fix still tries to store the jcr:system node state in the regular workspace persistence manager.",
+            "date": "2006-10-31T13:36:56.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "The jcr:system node is now created within the same method as the root node of the workspace: SharedItemStateManager.createRootNodeState().\n\nIn contrast to the previous initialization in RepositoryImpl.initWorkspace() the jcr:system node is created with just the two child node entries (one for jcr:versionStorage and one for jcr:nodeTypes), but the two child node state are not acutally created there because both are virtual states and already exist.\n\nFixed in revision: 469480\n",
+            "date": "2006-10-31T13:51:50.000+0000",
+            "id": 2
+        }
+    ],
+    "component": "",
+    "description": "When a node type is registered on a repository that has never been started before an error is written to the log:\n\n26.10.2006 10:36:02 *ERROR* [main] VirtualNodeTypeStateManager: Unable to index new nodetype: javax.jcr.ItemNotFoundException (VirtualNodeTypeStateManager.java, line 159)\n\nSteps to reproduce:\n\n> maven test:clean\n> cp applications/test/repository/namespaces/ns_re.properties.install applications/test/repository/namespaces/ns_re.properties\n> cp applications/test/repository/nodetypes/custom_nodetypes.xml.install applications/test/repository/nodetypes/custom_nodetypes.xml\n\nRun test case o.a.j.init.NodeTypeData\n\nIt seems that the workspace initialization creates node states for jcr:system and a child node jcr:nodeTypes. The latter however is overlayed by a virtual node state provided by the VirtualNodeTypeStateProvider.\n\nIn case of an initial startup, the jcr:nodeTypes node is cached on creation and is not overlayed by the virtual twin from the VirtualNodeTypeStateProvider.\n\nIMO the jcr:nodeTypes node state shouldn't have been created in the first place because it is overlayed anyway. The workspace initialization routine should only create a child node entry in the jcr:system node state but no actual child node state for that entry.\n\nOpinions?",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "JCR-605",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Minor",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "Error when registering node types on virgin repository",
+    "systemSpecification": true,
+    "version": "1.1"
+}

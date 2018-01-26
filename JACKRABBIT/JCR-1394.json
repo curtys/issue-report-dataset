@@ -1,0 +1,23 @@
+{
+    "comments": [
+        {
+            "author": "Jukka Zitting",
+            "body": "Good idea! Automatic directory removal added in revision 630285.\n\nI used a slightly different mechanism that doesn't need multiple passes and that avoids accidentally removing the root directory of the data store:\n\n    if (file != directory && file.list().length == 0) {\n        file.delete();\n    }",
+            "date": "2008-02-22T19:00:23.080+0000",
+            "id": 0
+        }
+    ],
+    "component": "jackrabbit-core",
+    "description": "When the org.apache.jackrabbit.core.data.GarbageCollector is called for a FileDataStore the file objects are correctly deleted.\nBut the (sub)directories aren't removed.\nIn time this will result in a huge tree of unused empty directories\n\nI've created a small chance in method FileDataStore.deleteOlderRecursive()\nIt will remove a directory when it hasn't any files entries. Please note that currently the file objects are stored three levels deep, so it\nwill take three gc calls remove all directories. Which I think is no problem because the currently implementation is lightweighted.\n\n>>>>> CURRENT FileDataStore.java\n\n    private int deleteOlderRecursive(File file, long min) {\n        int count = 0;\n        if (file.isFile() && file.exists() && file.canWrite()) {\n            if (file.lastModified() < min) {\n                DataIdentifier id = new DataIdentifier(file.getName());\n                if (!inUse.containsKey(id)) {\n                    file.delete();\n                    count++;\n                }\n            }\n        } else if (file.isDirectory()) {\n            File[] list = file.listFiles();\n            for (int i = 0; i < list.length; i++) {\n                count += deleteOlderRecursive(list[i], min);\n            }\n        }\n        return count;\n    }\n\n>>>>>>> NEW\n\n    private int deleteOlderRecursive(File file, long min) {\n        int count = 0;\n        if (file.isFile() && file.exists() && file.canWrite()) {\n            if (file.lastModified() < min) {\n                DataIdentifier id = new DataIdentifier(file.getName());\n                if (!inUse.containsKey(id)) {\n                    file.delete();\n                    count++;\n                }\n            }\n        } else if (file.isDirectory()) {\n            File[] list = file.listFiles();\n            if (list.length==0) {\n              file.delete();\n            } else {\n              for (int i = 0; i < list.length; i++) {\n                count += deleteOlderRecursive(list[i], min);\n              }\n            }\n        }\n        return count;\n    }\n",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "JCR-1394",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Minor",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "FileDataStore Garbage Collector and empty directories",
+    "systemSpecification": true,
+    "version": ""
+}

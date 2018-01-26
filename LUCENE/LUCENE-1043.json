@@ -1,0 +1,71 @@
+{
+    "comments": [
+        {
+            "author": "Michael McCandless",
+            "body": "Initial patch.  All tests pass.",
+            "date": "2007-11-02T18:30:02.565+0000",
+            "id": 0
+        },
+        {
+            "author": "Yonik Seeley",
+            "body": "You're fast!\n\nFuture optimizations could include bulk copying multiple documents at once (all ranges between deleted docs).  The speedup would probably be greatest for small docs, but I'm not sure if it would be worth it or not.\n\nMore controversial:  maybe even expand the number of docs that can be bulk copied by  not bothering removing deleted docs if it's some very small number (unless it's an optimize).  This is probably not worth it.\n",
+            "date": "2007-11-02T19:13:56.658+0000",
+            "id": 1
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "{quote}\nFuture optimizations could include bulk copying multiple documents at once (all ranges between deleted docs). The speedup would probably be greatest for small docs, but I'm not sure if it would be worth it or not.\n{quote}\n\nOoh, I like that idea!  I'll explore that.\n\n{quote}\nMore controversial: maybe even expand the number of docs that can be bulk copied by not bothering removing deleted docs if it's some very small number (unless it's an optimize). This is probably not worth it.\n{quote}\n\nThat's a neat idea too but I agree likely not worth it.\n\nAnother idea: we can *almost* just concatenate the posting lists\n(frq/prx) for each term, because they are \"delta coded\" (we write the\ndelta between docIDs).  The only catch is you have to \"stitch up\" the\nboundary: you have to read the docID from the start of the next\nsegment, write the delta-code, then you can copy the remaining bytes.\nI think this could be a big win especially when merging larger\nsegments.\n",
+            "date": "2007-11-02T19:39:46.751+0000",
+            "id": 2
+        },
+        {
+            "author": "robert engels",
+            "body": "You have to be careful with the bulk copy because you will need to also copy the offsets from the source, sticking them up, and then write them in bulk.\n\nWith large enough input and output buffers I am not sure the bulk copy will make that large a difference.\n",
+            "date": "2007-11-02T19:48:47.980+0000",
+            "id": 3
+        },
+        {
+            "author": "Yonik Seeley",
+            "body": "re bulk copying: Ideally, read a group of docs into a buffer big enough that it triggers the IndexInput to read directly into it, and write directly from it.  The field index needs to be done int by int, but it's just adding a constant to all of them and probably isn't worth optimizing (trying to not fully encode/decode).... just loop over them ahead of time, fixing them up.  The total size of the stored fields to write is simply the difference between the indicies (need to slightly special case the end of the index of course...)\n\n{quote}Another idea: we can almost just concatenate the posting lists\n(frq/prx) for each term, because they are \"delta coded\" (we write the\ndelta between docIDs)\n{quote}\n\nNice!  new JIRA issue?",
+            "date": "2007-11-02T19:57:07.910+0000",
+            "id": 4
+        },
+        {
+            "author": "robert engels",
+            "body": "When bulk copying the documents, I think you need to:\n\nread array of long from index (8 * (ndocs+1)) in long[ndocs+1] offsets;\ncalculate length = offset[ndocs]-offset[0];\nread bytes of length from document file\nstartoffset = current output document stream position\nwrite bytes to output document\nmodify offset[] adding startoffset-offset[0] to each entry\nwrite offset[] in bulk to index output",
+            "date": "2007-11-02T20:38:04.649+0000",
+            "id": 5
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "{quote}\nNice!  new JIRA issue?\n{quote}\n\nYes, though I need to mull it over some ... I think it would require a\nchange to the index file format to have each term record the last\ndocID in its posting list, which then increases the size of the\nindex.  Maybe we could do it only when the posting list is long.  So\nthere are tricky tradeoffs....\n",
+            "date": "2007-11-03T09:36:41.575+0000",
+            "id": 6
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Attached new rev of the patch, using the bulk copy approach instead.\n\nI changed the approach slightly: I allocate an array to store the\nlength (in bytes) of each docs's stored fields, but then I do a low\nlevel byte copy (added IndexOutput.copyBytes) from the FieldsReader's\nfieldsStream to the FieldWriter's fieldsStream.\n\nAll tests pass.  I plan to commit in a day or two.\n",
+            "date": "2007-11-05T18:01:55.367+0000",
+            "id": 7
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "I just committed this.  Thanks Robert!",
+            "date": "2007-11-08T11:08:10.291+0000",
+            "id": 8
+        }
+    ],
+    "component": "core/index",
+    "description": "Robert Engels suggested the following idea, here:\n\n  http://www.gossamer-threads.com/lists/lucene/java-dev/54217\n\nWhen merging in the stored fields from a segment, if the field name ->\nnumber mapping is identical then we can simply bulk copy the entire\nentry for the document rather than re-interpreting and then re-writing\nthe actual stored fields.\n\nI've pulled the code from the above thread and got it working on the\ncurrent trunk.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-1043",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Minor",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "Speedup merging of stored fields when field mapping \"matches\"",
+    "systemSpecification": true,
+    "version": "2.2"
+}

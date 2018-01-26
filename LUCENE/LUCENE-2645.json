@@ -1,0 +1,71 @@
+{
+    "comments": [
+        {
+            "author": "Kuro Kurosaka",
+            "body": "This is preventing one of unit tests for our Tokenizer/Filter product to fail.  Although it looks as if the unit test case were failing, a closer look shows that the failure is from this this assertion inside the Lucene core.  \nWe have inspected the Token sequence that causes this assertion to fail, and it looks valid.\nThe attached program can reproduce this false assertion failure. Please give this bug a higher priority, and remove this assertion.\n{noformat}\n$ javac -cp lucene-core-4.0-SNAPSHOT.jar LuceneTrunkAssertErrorReproducer.java\n$ java -ea -cp .:lucene-core-4.0-SNAPSHOT.jar LuceneTrunkAssertErrorReproducer\nException in thread \"main\" java.lang.AssertionError: position=1 lastPosition=1\n\tat org.apache.lucene.index.codecs.standard.StandardPostingsWriter.addPosition(StandardPostingsWriter.java:197)\n\tat org.apache.lucene.index.FreqProxTermsWriterPerField.flush(FreqProxTermsWriterPerField.java:385)\n\tat org.apache.lucene.index.FreqProxTermsWriter.flush(FreqProxTermsWriter.java:88)\n\tat org.apache.lucene.index.TermsHash.flush(TermsHash.java:117)\n\tat org.apache.lucene.index.DocInverter.flush(DocInverter.java:80)\n\tat org.apache.lucene.index.DocFieldProcessor.flush(DocFieldProcessor.java:75)\n\tat org.apache.lucene.index.DocumentsWriterPerThread.flush(DocumentsWriterPerThread.java:457)\n\tat org.apache.lucene.index.DocumentsWriter.doFlush(DocumentsWriter.java:421)\n\tat org.apache.lucene.index.DocumentsWriter.flushAllThreads(DocumentsWriter.java:548)\n\tat org.apache.lucene.index.IndexWriter.doFlush(IndexWriter.java:2776)\n\tat org.apache.lucene.index.IndexWriter.flush(IndexWriter.java:2753)\n\tat org.apache.lucene.index.IndexWriter.prepareCommit(IndexWriter.java:2619)\n\tat org.apache.lucene.index.IndexWriter.commitInternal(IndexWriter.java:2692)\n\tat org.apache.lucene.index.IndexWriter.commit(IndexWriter.java:2674)\n\tat org.apache.lucene.index.IndexWriter.commit(IndexWriter.java:2658)\n\tat LuceneTrunkAssertErrorReproducer.main(LuceneTrunkAssertErrorReproducer.java:39)\n{noformat}",
+            "date": "2011-06-03T21:51:13.354+0000",
+            "id": 0
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Bug only affects 4.0 (we don't have this assert in 3.x), but I'll backport the test case to 3.x to make sure.",
+            "date": "2011-06-04T13:37:44.108+0000",
+            "id": 1
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Thanks Kurosaka!",
+            "date": "2011-06-04T13:39:47.750+0000",
+            "id": 2
+        },
+        {
+            "author": "David Smiley",
+            "body": "Thanks for the test Korusaka. I didn't realize my bug report last year that an assert condition's \">\" should become \">=\" was insufficient for a committer to simply make the 1-char change. I guess I should work on creating tests for nearly everything for my bug reports to get more traction. :-|",
+            "date": "2011-06-06T14:14:43.715+0000",
+            "id": 3
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "While test cases are always welcome, they certainly are not necessary in a patch (Yonik's Law of Patches).\n\nWhich issue had you opened before?  Somehow it fell through the cracks... which, unfortunately, happens all the time in open-source.  Best to bump/gently nag on important fixes...",
+            "date": "2011-06-06T15:48:29.833+0000",
+            "id": 4
+        },
+        {
+            "author": "David Smiley",
+            "body": "bq. Which issue had you opened before?\n\nThis one! ;-) -- But if you want to give Korusaka credit for it because he submitted a patch then fine. He went the extra mile that I didn't think was necessary.",
+            "date": "2011-06-06T16:00:17.302+0000",
+            "id": 5
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "D'oh!  Woops :)  I didn't see that you had opened this issue!  And I missed it from last September... sorry :(\n\nI will add you to CHANGES.\n\nAnd no that extra mile is not necessary.  Just some gentle nagging would help stuff not fall past the event horizons on our todo lists :)",
+            "date": "2011-06-06T16:05:17.451+0000",
+            "id": 6
+        },
+        {
+            "author": "Kuro Kurosaka",
+            "body": "Thank you, Michael, for quick fix, and David, for initially reporting this bug and giving me a credit :-)\n",
+            "date": "2011-06-06T16:05:17.546+0000",
+            "id": 7
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Thank you both :)",
+            "date": "2011-06-06T16:06:29.685+0000",
+            "id": 8
+        }
+    ],
+    "component": "core/index",
+    "description": "StandardPostingsWriterImpl line 159 is:\n{code:java}\n    assert delta > 0 || position == 0 || position == -1: \"position=\" + position + \" lastPosition=\" + lastPosition;            // not quite right (if pos=0 is repeated twice we don't catch it)\n{code}\n\nI enable assertions when I run my unit tests and I've found this assertion to fail when delta is 0 which occurs when the same position value is sent in twice in arrow.  Once I added RemoveDuplicatesTokenFilter, this problem went away.  Should I really be forced to add this filter?  I think delta >= 0 would be a better assertion.",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "LUCENE-2645",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Minor",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "False assertion of >0 position delta in StandardPostingsWriterImpl",
+    "systemSpecification": true,
+    "version": "4.0-ALPHA"
+}

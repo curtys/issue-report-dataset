@@ -1,0 +1,173 @@
+{
+    "comments": [
+        {
+            "author": "Shai Erera",
+            "body": "Patch adds copyBytes to IndexInput and overrides in RAM and FS classes. Also optimizes copyBytes in RAMOutputStream. I'd appreciate if someone can review this. Changes are on 3x",
+            "date": "2010-07-29T08:50:02.076+0000",
+            "id": 0
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Patch looks good Shai!\n\nIt looks like NIOFSIndexInput.copyBytes doesn't have an optimized impl (it's currently the default dir on non-Windows)?",
+            "date": "2010-07-29T16:59:31.498+0000",
+            "id": 1
+        },
+        {
+            "author": "Shai Erera",
+            "body": "I think it borrows the impl from SimpleFSIndexInput, which it overrides? Their impl is the same - both use FileChannel.",
+            "date": "2010-07-29T17:15:08.673+0000",
+            "id": 2
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Ahhh you're right, OK, excellent!",
+            "date": "2010-07-29T17:19:33.084+0000",
+            "id": 3
+        },
+        {
+            "author": "Shai Erera",
+            "body": "Committed revision 980654 (3x).\nCommitted revision 980656 (trunk).",
+            "date": "2010-07-30T06:16:10.884+0000",
+            "id": 4
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "This optimization causes index corruption, to at least stored fields.\n\nI've been iterating w/ Karl Wright (see dev thread subject \"busywait hang using extracting update handler on trunk\"), and tracked it down to a missing seek call in the FSIndexInput.copyBytes method.",
+            "date": "2010-08-02T18:23:11.342+0000",
+            "id": 5
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Adds a seek to the input FileChannel.\n\nThe randomized testcase in TestIW fails (w/o the fix) if you run it enough times.",
+            "date": "2010-08-02T18:30:28.699+0000",
+            "id": 6
+        },
+        {
+            "author": "Shai Erera",
+            "body": "Good catch Mike !\n\nCalling getChannel() on the first time positions the FileChannel properly - it is the latter times that this seek is needed for. I hope this didn't cause you too much headache :).",
+            "date": "2010-08-03T05:59:38.232+0000",
+            "id": 7
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "It was pretty fast to track down once I had a randomized test case showing it...",
+            "date": "2010-08-03T09:48:30.753+0000",
+            "id": 8
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Attached patch that shows that we still have a bug, here.\n\nThe patch adds deletions to the randomized test (and disables all other tests in TIW), and sets a seed that fails quickly.\n\nI'm not sure where the bug is yet...",
+            "date": "2010-08-03T15:25:43.624+0000",
+            "id": 9
+        },
+        {
+            "author": "Shai Erera",
+            "body": "Weird .. I've found out that if I disable this call:\n\n      // flush any bytes in the input's buffer.\n      numBytes -= fsInput.flushBuffer(this, numBytes);\n\nfrom FSIndexOutput.copyBytes, then the test passes.\n\nBut I'm not yet sure why ... I've disabled everything else (IndexInput.copyBytes). It's as if this call copies bytes that should not have been copied. I've added this change because I thought there is a bug in the current copyBytes impl: it uses FileChannel to do the optimized copy, but since SimpleFSIndexInput extends BufferedIndexInput, there might be bytes read to its buffer, and not written yet ...\n\nI've made the following changes:\nFSIndexOutput.copyBytes:\n{code}\n      SimpleFSIndexInput fsInput = (SimpleFSIndexInput) input;\n\n// change start\n//      // flush any bytes in the input's buffer.\n//      numBytes -= fsInput.flushBuffer(this, numBytes);\n      \n      // flush any bytes in our buffer\n      flush();\n// change end\n\n      // do the optimized copy\n      FileChannel in = fsInput.file.getChannel();\n{code}\n\nand rewrote BufferedIndexInput.flushBuffer:\n\n{code}\n    int toCopy = bufferLength - bufferPosition;\n    if (toCopy < numBytes) {\n      // We're copying the entire content of the buffer, so update accordingly.\n      out.writeBytes(buffer, bufferPosition, toCopy);\n      bufferPosition = bufferLength = 0;\n      bufferStart += toCopy;\n    } else {\n      toCopy = (int) numBytes;\n      // We are asked to copy less bytes than are available in the buffer.\n      out.writeBytes(buffer, bufferPosition, toCopy);\n      bufferPosition += toCopy;\n    }\n    return toCopy;\n{code}\n\nThe test now fails on some other exception (not the assert in addRawDocuments). If I remove the call to flushBuffer, it passes. I still need to understand this.",
+            "date": "2010-08-03T16:34:41.520+0000",
+            "id": 10
+        },
+        {
+            "author": "Shai Erera",
+            "body": "Found the problem -- the order of the flushes in FSIndexOutput.copyBytes was wrong. flush() first emptied FSIndexOutput's buffer, but flushBuffer() filled it back. I reversed the calls and the test passes.",
+            "date": "2010-08-03T16:54:06.368+0000",
+            "id": 11
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "OK thanks Shai!  I'll stress test that, and I'll also add the seek in CSIndexInput.copyBytes.",
+            "date": "2010-08-03T16:58:36.191+0000",
+            "id": 12
+        },
+        {
+            "author": "Shai Erera",
+            "body": "Mike, did you add the seek to CSIndexInput? I don't see it in the commit log.",
+            "date": "2010-08-04T05:18:59.640+0000",
+            "id": 13
+        },
+        {
+            "author": "Shai Erera",
+            "body": "Seems like it was left out. I'd like to add this fix, could you please review:\n\n{code}\nIndex: lucene/src/java/org/apache/lucene/index/CompoundFileReader.java\n===================================================================\n--- lucene/src/java/org/apache/lucene/index/CompoundFileReader.java\t(revision 982137)\n+++ lucene/src/java/org/apache/lucene/index/CompoundFileReader.java\t(working copy)\n@@ -310,6 +310,11 @@\n           // If there are more bytes left to copy, delegate the copy task to the\n           // base IndexInput, in case it can do an optimized copy.\n           if (numBytes > 0) {\n+            long start = getFilePointer();\n+            if (start + numBytes > length) {\n+              throw new IOException(\"read past EOF\");\n+            }\n+            base.seek(fileOffset + start);\n             base.copyBytes(out, numBytes);\n           }\n         }\n{code}",
+            "date": "2010-08-04T08:32:49.269+0000",
+            "id": 14
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Woops I did miss this.\n\nShouldn't the if statement be fileOffset + numBytes > length instead?",
+            "date": "2010-08-04T09:27:02.079+0000",
+            "id": 15
+        },
+        {
+            "author": "Shai Erera",
+            "body": "I've copied it from readInternal:\n\n{code}\n          long start = getFilePointer();\n          if(start + len > length)\n            throw new IOException(\"read past EOF\");\n          base.seek(fileOffset + start);\n{code}\n\nI think it's ok. fileOffset is where this file starts and length is its length. You want to know if you have enough bytes from 'start', no?",
+            "date": "2010-08-04T10:06:42.496+0000",
+            "id": 16
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Duh sorry you are correct!  fileOffset is the \"base\" of this file within the CFS.\n\nBetter to finish drinking coffee in the morning before thinking too much...",
+            "date": "2010-08-04T10:17:23.351+0000",
+            "id": 17
+        },
+        {
+            "author": "Shai Erera",
+            "body": "bq. Better to finish drinking coffee in the morning before thinking too much...\n\n\"Better to finish drinking coffee in the morning\" ... period ! :)\n\nOk so I'll commit this. Thanks !",
+            "date": "2010-08-04T10:20:14.627+0000",
+            "id": 18
+        },
+        {
+            "author": "Shai Erera",
+            "body": "Committed to 3x and trunk. Hopefully the last time :).",
+            "date": "2010-08-04T10:38:21.104+0000",
+            "id": 19
+        },
+        {
+            "author": "Grant Ingersoll",
+            "body": "Bulk close for 3.1",
+            "date": "2011-03-30T15:50:02.756+0000",
+            "id": 20
+        },
+        {
+            "author": "Matthias Seidel",
+            "body": "Uhm, what happened to these optimizations to FSIndexOutput regarding the direct copying from FSIndexInput via its FileChannel? Can't find a trace of it anywhere in the 3.1 release or in the trunk. :/",
+            "date": "2011-04-07T10:07:15.563+0000",
+            "id": 21
+        },
+        {
+            "author": "Robert Muir",
+            "body": "I removed them after they caused index corruption, twice.\n",
+            "date": "2011-04-07T10:56:11.588+0000",
+            "id": 22
+        },
+        {
+            "author": "Matthias Seidel",
+            "body": "Oh, sorry to here that. Was looking forward to this optimization. Any chance of it coming back anytime soon?",
+            "date": "2011-04-07T11:00:16.191+0000",
+            "id": 23
+        },
+        {
+            "author": "Robert Muir",
+            "body": "See LUCENE-2637 for more discussion.\n\nPersonally I'm not sure this optimization is worth the trouble, I haven't\nseen any benchmarks showing it speeds things up, and its dangerous as hell.",
+            "date": "2011-04-07T11:09:17.631+0000",
+            "id": 24
+        },
+        {
+            "author": "Matthias Seidel",
+            "body": "Ok, didn't know that. Thanks for the quick reply anyway.",
+            "date": "2011-04-07T11:34:02.121+0000",
+            "id": 25
+        }
+    ],
+    "component": "core/store",
+    "description": "We've created an optimized copy of files from Directory to Directory. We've also optimized copyBytes recently. However, we're missing the opposite side of the copy - from IndexInput to Output. I'd like to mimic the FileChannel API by having copyTo on IndexInput and copyFrom on IndexOutput. That way, both sides can optimize the copy process, depending on the type of the IndexInput/Output that they need to copy to/from.\n\nFSIndexInput/Output can use FileChannel if the two are FS types. RAMInput/OutputStream can copy to/from the buffers directly, w/o going through intermediate ones. Actually, for RAMIn/Out this might be a big win, because it doesn't care about the type of IndexInput/Output given - it just needs to copy to its buffer directly.\n\nIf we do this, I think we can consolidate all Dir.copy() impls down to one (in Directory), and rely on the In/Out ones to do the optimized copy. Plus, it will enable someone to do optimized copies between In/Out outside the scope of Directory.\n\nIf this somehow turns out to be impossible, or won't make sense, then I'd like to optimize RAMDirectory.copy(Dir, src, dest) to not use an intermediate buffer.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-2574",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Major",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "Optimize copies between IndexInput and Output",
+    "systemSpecification": true,
+    "version": ""
+}

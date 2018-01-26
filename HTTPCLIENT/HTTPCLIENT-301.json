@@ -1,0 +1,113 @@
+{
+    "comments": [
+        {
+            "author": "Ludovic Claude",
+            "body": "This patch solves the problem when using CookieSpecBase (COMPATIBILITY)\n\ndiff -r1.20 CookieSpecBase.java\n424a425\n>         String cookieDomain = cookie.getDomain();\n430c431,434\n<             if (!host.endsWith(cookie.getDomain())) {\n---\n>             // add a dot on the domain to match host myhost.net with cookie\ndomain .myhost.net\n>             String testHost = \".\" + host;\n>             if (!testHost.endsWith(cookieDomain)) {\n432c436\n<                     \"Illegal domain attribute \\\"\" + cookie.getDomain() \n---\n>                     \"Illegal domain attribute \\\"\" + cookieDomain\n436c440\n<             if (!host.equals(cookie.getDomain())) {\n---\n>             if (!host.equals(cookieDomain)) {\n438c442\n<                     \"Illegal domain attribute \\\"\" + cookie.getDomain() \n---\n>                     \"Illegal domain attribute \\\"\" + cookieDomain \n",
+            "date": "2003-12-07T08:24:54.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Ludovic,\nIn my opinion the cookie is clearly wrong. Somehow I do not feel like patching\nHttpClient because of evey single broken cookie out there.\n\nBesides, your patch seems to fail to take into consideration that cookie domain\nmay be a just a simple host name (localhost for instance). Of course, I might\nhave missed something after a just cursory examination, but your patch does not\nseem right in that regard. I'll have a closer look at the issue on Monday, but\nat the moment I lean towards not changing HttpClient 2.0 at all. \n\nIn the next release we'll provide a plug-in mechanism for custom cookie specs,\nwhich would enable you to accept any kind of broken cookie you please. Cookie\nspec plug-in mechanism is already implemented in CVS HEAD, so feel free to take\na look.\n\nRegards,\n\nOleg",
+            "date": "2003-12-07T08:52:21.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Ludovic Claude",
+            "body": "Oleg,\n\nI understand your reluctance to apply the patch, it can create more issues than\ngood.\n\nI've tried to use the HEAD release, and the cookie plugin mecanism works well.\nIt seems that you cannot use any other type than DEFAULT, but that's just a\nsmall issue.\n\nPoka,\nLudovic",
+            "date": "2003-12-08T03:02:02.000+0000",
+            "id": 2
+        },
+        {
+            "author": "Roland Weber",
+            "body": "Hello Ludovic,\n\nHttpClient works correctly in this case. RFC 2965 defines in section 1\nthe comparison operations on hosts and domain names. The *host*\nsourceforge.net is not matched by the *domain* .sourceforge.net,\nand therefore the cookie is rejected.\n\nThe best fix would be to change your target URL to use a host within the\ndomain .sourceforge.net, like:\n\nhttps://www.sourceforge.net/account/login.php\nhttps://login.sourceforge.net/account/login.php\nhttps://whatever.sourceforge.net/account/login.php\n\nSourceforge indeed has an inappropriate login link on their page, but\nI cannot imagine they don't have a hostname that can be preprended.\nYou should ask them to chance their default login link accordingly.\n\nregards,\n  Roland",
+            "date": "2003-12-08T15:09:26.000+0000",
+            "id": 3
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Hi Ludovic,\n\nI agree with Roland.  The problem really lies with sourceforge, and most likely there is another \nlogin URL with an appropriate domain.  \n\nAs for custom cookie policies you should be able to register and use another cookie policy using \nsomething like:\n\nCookiePolicy.registerCookieSpec(\"mycookies\", someCookieSpec);\nHttpMethod someMethod = ...;\nsomeMethod.getParams().setCookiePolicy(\"mycookies\");\n\nPlease let us know if this doesn't work properly.\n\nMike",
+            "date": "2003-12-08T21:31:04.000+0000",
+            "id": 4
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Folks,\nI think we all agree that the cookie is broken, and the problem lies with\nsourceforge, but the real trouble is that browsers (as well as so called\nbrowsers developed by THAT very innovative company in particular) seem to have\nno problem accepting such cookies. The question is if we should treat such\ncookies as valid ones when in browser compatibility mode?\n\nOleg",
+            "date": "2003-12-09T05:22:14.000+0000",
+            "id": 5
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Oleg,\n\nI think we should make an attempt to be as forgiving as possible when in compatibility mode, with \nthe exception of places where there are security considerations.  I've been looking at the spec and \nthe definition of the \"domain-match\" function is pretty vague.  The general wisdom seems to \nindicate that \"domain.com\" should not match \".domain.com\", but I think allowing it is pretty safe \nfrom a security standpoint.  \n\nI've also noticed that the current domain match implementation matches \"y.x.foo.com\" with \n\".foo.com\", though this is explicitly disallowed in the RFC.  We need to fix this one for sure.\n\nMike",
+            "date": "2003-12-09T13:18:24.000+0000",
+            "id": 6
+        },
+        {
+            "author": "Roland Weber",
+            "body": "Hello Mike,\n\nare you sure about the domain-matching thing? Here's a snippet from\nRFC 2965, section 1, page 1:\n\n>   Note that domain-match is not a commutative operation: a.b.c.com\n>   domain-matches .c.com, but not the reverse.\n\nBut here is something from section 3.2.2, page 5:\n\n>   Domain=value\n>      OPTIONAL.  The value of the Domain attribute specifies the domain\n>      for which the cookie is valid.  If an explicitly specified value\n>      does not start with a dot, the user agent supplies a leading dot.\n\nSo it seems it is an HttpClient bug after all. We have to add the missing\ndot when cookies are parsed.\n\ncheers,\n  Roland\n",
+            "date": "2003-12-09T15:00:30.000+0000",
+            "id": 7
+        },
+        {
+            "author": "Roland Weber",
+            "body": "Please ignore my last comment about the cookie parsing. I mixed up\nthe cookie domain and the host. The cookie is parsed correctly, the\nproblem lies with the hostname.\n\nHowever, I do wonder whether there is some redirect involved. If\nsourceforge.net sends a redirect to www.sourceforge.net, the redirect\nis chased by HttpClient, and www.sourceforge.net sends a cookie for\ndomain .sourceforge.net, will that cookie be verified against host\nsourceforge.net or against host www.sourceforge.net?\n\nI'm just guessing here. I don't have a sourceforge account to verify\nthe behaviour. I just find it hard to imagine that browsers actually\naccept a cookie outside of the host's domain. Browser makers have\ngotten a lot of public beating for security bugs lately, and I'd\nconsider this to be one.\n",
+            "date": "2003-12-09T15:17:17.000+0000",
+            "id": 8
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "> I've also noticed that the current domain match implementation matches \n> \"y.x.foo.com\" with \".foo.com\", though this is explicitly disallowed in \n> the RFC.  We need to fix this one for sure.\n\nMike,\nIn RFC2109 cookie spec domain match is implemented correctly. However, in\nbrowser compatibility mode I do not think we should change the way domains are\nmatched, as the RFC compliance was relaxed a year ago precisely in order to\nmimic the logic (or lack thereof) of mainstream browsers. Someone even took a\nlook at Mozilla's source code to double-check on that.\n\nRoland,\nI still must have a dormant Sourceforce account. I'll take a closer look at the\nSourceforce login procedure and provide a patch for our browser compatibility\ncookie spec if required\n\nOleg",
+            "date": "2003-12-09T17:13:37.000+0000",
+            "id": 9
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Oleg, \n\nYou are quite right.  I missed the code in RFC2109.  I look forward to seeing what happens with SF.\n\nMike",
+            "date": "2003-12-09T21:22:53.000+0000",
+            "id": 10
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Ludovic,\nWould it be possible for you to post the code you are using to connect to\nsourceforge.net? I am trying to reproduce the problem but cannot even get the\nsite to send that damn cookie \n\nOleg",
+            "date": "2003-12-16T01:52:14.000+0000",
+            "id": 11
+        },
+        {
+            "author": "Ludovic Claude",
+            "body": "The code is here, have a look to the login() method in FileReleaseSystemBean.\nThe trick is to hit Sourceforge first with a GET method, then send the POST\nmethod with the login information.\n\nhttp://cvs.sourceforge.net/viewcvs.py/maven-plugins/maven-plugins/sourceforge/src/main/net/sourceforge/mavenplugins/sourceforge/FileReleaseSystemBean.java?rev=1.1&view=auto\nhttp://cvs.sourceforge.net/viewcvs.py/maven-plugins/maven-plugins/sourceforge/src/main/net/sourceforge/mavenplugins/sourceforge/WebBrowser.java?rev=1.1&view=auto",
+            "date": "2003-12-16T02:18:03.000+0000",
+            "id": 12
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "OK. I got the cookie (actually the trick was 'login' parameter, which I\ninitially omitted. The HTTP get was not necessary). \n\n[DEBUG] wire - -<< \"HTTP/1.1 302 Found[\\r][\\n]\"\n[DEBUG] wire - -<< \"Date: Mon, 15 Dec 2003 22:41:07 GMT[\\r][\\n]\"\n[DEBUG] wire - -<< \"Server: Apache/1.3.27 (Unix) PHP/4.3.2 mod_ssl/2.8.12\nOpenSSL/0.9.6b[\\r][\\n]\"\n[DEBUG] wire - -<< \"X-Powered-By: PHP/4.3.2[\\r][\\n]\"\n[DEBUG] wire - -<< \"X-Accelerated-By: PHPA/1.3.3r2[\\r][\\n]\"\n[DEBUG] wire - -<< \"Expires: Wed, 11 Nov 1998 11:11:11 GMT[\\r][\\n]\"\n[DEBUG] wire - -<< \"Cache-Control: must-revalidate[\\r][\\n]\"\n[DEBUG] wire - -<< \"Set-Cookie: session_ser=xxxxxx; path=/[\\r][\\n]\"\n[DEBUG] wire - -<< \"Set-Cookie: username=xxxxx; expires=Mon, 22-Dec-03 22:41:07\nGMT; path=/; domain=.sourceforge.net[\\r][\\n]\"\n[DEBUG] wire - -<< \"Set-Cookie: persist_session=g0K8qFjTnIg%3D; expires=Tue,\n14-Dec-04 22:41:07 GMT; path=/[\\r][\\n]\"\n[DEBUG] wire - -<< \"Location:\nhttps://sourceforge.net/account/redir.php?stay_in_ssl=1&return_to=%2Fmy%2F[\\r][\\n]\"\n[DEBUG] wire - -<< \"Connection: close[\\r][\\n]\"\n[DEBUG] wire - -<< \"Transfer-Encoding: chunked[\\r][\\n]\"\n[DEBUG] wire - -<< \"Content-Type: text/html[\\r][\\n]\"\n\nBottom-line: the cookie clearly violates the RFC, however, Mozilla does not seem\nto care. Even though I do not quite like it, I'll provide a patch for the\nbrowser compatibility spec.\n\nOleg",
+            "date": "2003-12-16T07:02:44.000+0000",
+            "id": 13
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Created an attachment (id=9599)\nPatch against 2.0 (take 1)\n",
+            "date": "2003-12-17T03:06:52.000+0000",
+            "id": 14
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Patch committed to CVS HEAD and 2.0\n\nOleg",
+            "date": "2004-01-07T06:11:33.000+0000",
+            "id": 15
+        }
+    ],
+    "component": "HttpClient (classic)",
+    "description": "Hello,\n\nI'm using HttpClient 1.0 rc2 to login in the SourceForge website and perform\nsome operations, but i'm getting the following error:\n\nPage 1 from https://sourceforge.net/account/login.php\n6 d\u00c3\u00a9c. 2003 23:45:27 org.apache.commons.httpclient.HttpMethodBase\nprocessResponseHeaders\nATTENTION: Cookie rejected: \"username=l6qpwtK5hpE%3D\". Illegal domain attribute\n\".sourceforge.net\". Domain of origin: \"sourceforge.net\"\n6 d\u00c3\u00a9c. 2003 23:45:27 org.apache.commons.httpclient.HttpMethodBase readResponseBody\n\nThe cookie returned by Sourceforge is rejected because the domain for the\nrequest was sourceforge.net and the domain for the cookie was .sourceforge.net\nI have tried to change the cookie policy to all available options, but none work. \nCookiePolicy.setDefaultPolicy(CookiePolicy.COMPATIBILITY);\n\nWhat can i do?\n\nThanks,\nLudovic",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "HTTPCLIENT-301",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "HTTPCLIENT",
+    "project": "HTTPCLIENT",
+    "summary": "Cookie rejected",
+    "systemSpecification": true,
+    "version": "1.0 Beta 2"
+}

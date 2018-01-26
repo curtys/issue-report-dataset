@@ -1,0 +1,53 @@
+{
+    "comments": [
+        {
+            "author": "Peter Dettman",
+            "body": "Patch to prevent temporary files being deleted during garbage collection.\n",
+            "date": "2008-10-26T12:26:43.015+0000",
+            "id": 0
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "Hi,\n\nTemporary files are only deleted if they are old. Is there anything special with your use case, for example: do you have a small repository (so that scanning it is very quick), or is streaming the data specially slow?\n\nRegards,\nThomas\n",
+            "date": "2008-10-28T11:28:02.499+0000",
+            "id": 1
+        },
+        {
+            "author": "Peter Dettman",
+            "body": "Yes, a quite small repository (a few large items), and the streaming of data is also slow.\n\nIt seems that FileDataStore relies on the tmp file being updated at least once (at least one block is written?) b/w the GC calls to updateModifiedDateOnAccess(..) and deleteAllOlderThan(..). If not, then the lastModified() value on the tmpFile is \"old\", and it is deleted.\n\nThe attached patch fixes my immediate problems, but tmp files may then leak under some circumstances. There is the option of simply using deleteOnExit() on these files.\n\nAlternatively, tmp files could be tracked by the 'inUse' map, or something similar.\n",
+            "date": "2008-10-28T12:02:38.945+0000",
+            "id": 2
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "Committed in revision 727402",
+            "date": "2008-12-17T14:45:51.008+0000",
+            "id": 3
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Merged to the 1.5 branch in revision 727426.",
+            "date": "2008-12-17T16:21:06.960+0000",
+            "id": 4
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Merged also to the 1.4 branch in revision 734374.",
+            "date": "2009-01-14T13:00:05.405+0000",
+            "id": 5
+        }
+    ],
+    "component": "jackrabbit-core",
+    "description": "In FileDataStore.addRecord(InputStream), a temporary file is created. The data is written to the file and then it is moved to its final location (based on the contents hash).\n\nIf the garbage collector runs whilst this temp file is present, it deletes it (on Solaris 10 at least), and the addRecord fails at the attempt to rename the now non-existent temp file.\n\nI am attaching a minimal patch that prevents these temp files being deleted by deleteOlderRecursive(..), regardless of their lastModified() value.\n\nI have made this a Minor priority, since there is the obvious workaround of disabling the GC.\n",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "JCR-1838",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Minor",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "Garbage collection deletes temporary files in FileDataStore",
+    "systemSpecification": true,
+    "version": "core 1.4.6, 1.5"
+}

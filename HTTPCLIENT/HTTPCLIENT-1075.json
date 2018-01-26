@@ -1,0 +1,83 @@
+{
+    "comments": [
+        {
+            "author": "James Abley",
+            "body": "I've taken a quick look at this and have a couple of questions.\n\nThe failing case is getting the exception due to the 'mop up' code in AbstractHttpClient, line 974.\n\n{code}\n// Handling the response was successful. Ensure that the content has\n// been fully consumed.\nHttpEntity entity = response.getEntity();\nEntityUtils.consume(entity);\nreturn result;\n{code}\n\nI'm not familiar enough with the code base to say why this code is there. When it gets to this point, the result variable has already been populated with the uncompressed content as an HTML string, and the InputStream has been closed, due to the handling in BasicResponseHandler.\n\nCould someone confirm that the code is AbstractHttpClient at this point is necessary and correct?\n\nLooking an EntityUtils.consume(HttpEntity):\n\n{code}\nif (entity == null) {\n    return;\n}\nif (entity.isStreaming()) {\n    InputStream instream = entity.getContent();\n    if (instream != null) {\n        instream.close();\n    }\n}\n{code}\n\nShould perhaps the InputStream returned by GzipDecompressingEntity be a decorated form that tracks when close() has been called on the InputStream. Subsequent calls to entity.getContent() could then return null, or an InputStream that can safely have close() called on it?",
+            "date": "2011-03-31T22:14:47.197+0000",
+            "id": 0
+        },
+        {
+            "author": "James Abley",
+            "body": "Patch which seems to address the issue.",
+            "date": "2011-03-31T22:56:58.809+0000",
+            "id": 1
+        },
+        {
+            "author": "James Abley",
+            "body": "My bad from the original implementation.\n\nThe implementations of HttpEntity.getContent() on the decompressing implementations were returning a new InputStream each time. From my reading of the API docs, they should have returned the same instance, since the content wasn't repeatable. I've attached a patch containing both tests which demonstrate the problem and the proposed fix which makes the tests green.",
+            "date": "2011-03-31T23:00:42.319+0000",
+            "id": 2
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "I improved slightly the way decompressing entities handle content streaming and committed the patch to both SVN trunk and 4.1.x branch.\n\nPlease review and re-test.\n\nOleg",
+            "date": "2011-04-02T11:48:51.908+0000",
+            "id": 3
+        },
+        {
+            "author": "Mirko Friedenhagen",
+            "body": "Just as a comment: this applies as well for non-chunked responses:\n{code}\nimport java.io.IOException;\n\nimport org.apache.http.Header;\nimport org.apache.http.HttpResponse;\nimport org.apache.http.client.ClientProtocolException;\nimport org.apache.http.client.methods.HttpGet;\nimport org.apache.http.client.protocol.RequestAcceptEncoding;\nimport org.apache.http.client.protocol.ResponseContentEncoding;\nimport org.apache.http.impl.client.BasicResponseHandler;\nimport org.apache.http.impl.client.DefaultHttpClient;\nimport org.junit.Test;\n\npublic class BasicTest {\n\n    @Test\n    public void testIt() throws IOException {\n        DefaultHttpClient c = new DefaultHttpClient();\n        c.addRequestInterceptor(new RequestAcceptEncoding());\n        c.addResponseInterceptor(new ResponseContentEncoding());\n        HttpGet get = new HttpGet(\"http://www.web.de/\");\n        c.execute(get, new BasicResponseHandler() {\n            public String handleResponse(HttpResponse response) throws ClientProtocolException, IOException {\n                final Header[] allHeaders = response.getAllHeaders();\n                for (final Header header : allHeaders) {\n                  System.out.println(header);\n                }\n                return super.handleResponse(response);\n            }\n        });\n    }\n}\n{code}\n\nresponds with:\n\n{code}\njava.io.EOFException\n\tat java.util.zip.GZIPInputStream.readUByte(GZIPInputStream.java:249)\n\tat java.util.zip.GZIPInputStream.readUShort(GZIPInputStream.java:239)\n\tat java.util.zip.GZIPInputStream.readHeader(GZIPInputStream.java:142)\n\tat java.util.zip.GZIPInputStream.<init>(GZIPInputStream.java:58)\n\tat java.util.zip.GZIPInputStream.<init>(GZIPInputStream.java:67)\n\tat org.apache.http.client.entity.GzipDecompressingEntity.getContent(GzipDecompressingEntity.java:63)\n\tat org.apache.http.conn.BasicManagedEntity.getContent(BasicManagedEntity.java:88)\n\tat org.apache.http.util.EntityUtils.consume(EntityUtils.java:65)\n\tat org.apache.http.impl.client.AbstractHttpClient.execute(AbstractHttpClient.java:974)\n\tat org.apache.http.impl.client.AbstractHttpClient.execute(AbstractHttpClient.java:919)\n\tat org.apache.http.impl.client.AbstractHttpClient.execute(AbstractHttpClient.java:910)\n\tat BasicTest.testIt(BasicTest.java:24)\n\tat sun.reflect.NativeMethodAccessorImpl.invoke0(Native Method)\n\tat sun.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:39)\n\tat sun.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:25)\n\tat java.lang.reflect.Method.invoke(Method.java:597)\n\tat org.junit.runners.model.FrameworkMethod$1.runReflectiveCall(FrameworkMethod.java:44)\n\tat org.junit.internal.runners.model.ReflectiveCallable.run(ReflectiveCallable.java:15)\n\tat org.junit.runners.model.FrameworkMethod.invokeExplosively(FrameworkMethod.java:41)\n\tat org.junit.internal.runners.statements.InvokeMethod.evaluate(InvokeMethod.java:20)\n\tat org.junit.runners.BlockJUnit4ClassRunner.runNotIgnored(BlockJUnit4ClassRunner.java:79)\n\tat org.junit.runners.BlockJUnit4ClassRunner.runChild(BlockJUnit4ClassRunner.java:71)\n\tat org.junit.runners.BlockJUnit4ClassRunner.runChild(BlockJUnit4ClassRunner.java:49)\n\tat org.junit.runners.ParentRunner$3.run(ParentRunner.java:193)\n\tat org.junit.runners.ParentRunner$1.schedule(ParentRunner.java:52)\n\tat org.junit.runners.ParentRunner.runChildren(ParentRunner.java:191)\n\tat org.junit.runners.ParentRunner.access$000(ParentRunner.java:42)\n\tat org.junit.runners.ParentRunner$2.evaluate(ParentRunner.java:184)\n\tat org.junit.runners.ParentRunner.run(ParentRunner.java:236)\n\tat org.eclipse.jdt.internal.junit4.runner.JUnit4TestReference.run(JUnit4TestReference.java:49)\n\tat org.eclipse.jdt.internal.junit.runner.TestExecution.run(TestExecution.java:38)\n\tat org.eclipse.jdt.internal.junit.runner.RemoteTestRunner.runTests(RemoteTestRunner.java:467)\n\tat org.eclipse.jdt.internal.junit.runner.RemoteTestRunner.runTests(RemoteTestRunner.java:683)\n\tat org.eclipse.jdt.internal.junit.runner.RemoteTestRunner.run(RemoteTestRunner.java:390)\n\tat org.eclipse.jdt.internal.junit.runner.RemoteTestRunner.main(RemoteTestRunner.java:197)\n{code}\n",
+            "date": "2011-04-08T19:13:23.241+0000",
+            "id": 4
+        },
+        {
+            "author": "Mirko Friedenhagen",
+            "body": "I retried my tests with the version from:\n\n[mirko@borg 4.1.x]$ svn info\nPath: .\nURL: https://svn.apache.org/repos/asf/httpcomponents/httpclient/branches/4.1.x\nRepository Root: https://svn.apache.org/repos/asf\nRepository UUID: 13f79535-47bb-0310-9956-ffa450edef68\nRevision: 1090406\nNode Kind: directory\nSchedule: normal\nLast Changed Author: olegk\nLast Changed Rev: 1088006\nLast Changed Date: 2011-04-02 13:47:25 +0200 (Sat, 02 Apr 2011)\n\nWorks flawlessly. Any hints, when 4.1.2 will be released?\n",
+            "date": "2011-04-08T19:41:54.014+0000",
+            "id": 5
+        },
+        {
+            "author": "James Abley",
+            "body": "MIrko,\n\nSorry, I should have made my comments clearer. I picked up that the problem was with the interaction between BasicResponseHandler and the ResponseContentEncoding class. Your test in the previous comment runs without problems against current trunk code and the branch 4.1.x.\n\nThanks for the clarification.",
+            "date": "2011-04-08T19:45:32.257+0000",
+            "id": 6
+        },
+        {
+            "author": "Mirko Friedenhagen",
+            "body": "So maybe the subject should just be updated \"when reading gzip response\" as well ;-)? Anyway, I am happy this is already resolved.",
+            "date": "2011-04-08T19:57:39.529+0000",
+            "id": 7
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "> Any hints, when 4.1.2 will be released? \n\n@Mirko\n\nThere are no immediate plans to release 4.1.2. Provided there are no critical issues we try to have a release every 3 to 6 months.\n\nOleg",
+            "date": "2011-04-11T10:09:35.367+0000",
+            "id": 8
+        },
+        {
+            "author": "James Abley",
+            "body": "Oleg,\n\nI suggest editing the name of this issue to be \"ContentEncodingHttpClient.execute(HttpGet, ResponseHandler<T>) throws IOException when reading compressed response\" to make it clearer what the underlying issue was? It affected both deflate and gzip responses, and the fix handles both cases. Chunking had no bearing on the bug as far as I can tell.\n\nThanks,\n\nJames",
+            "date": "2011-04-13T15:02:50.754+0000",
+            "id": 9
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Done.\n\nOleg",
+            "date": "2011-04-13T18:48:46.850+0000",
+            "id": 10
+        }
+    ],
+    "component": "HttpClient (classic)",
+    "description": "The following snippet:\n\n    String url = \"http://yahoo.com\";\n    HttpClient httpClient = new ContentEncodingHttpClient();\n    HttpGet get = new HttpGet(url);\n    String content = httpClient.execute(get, new BasicResponseHandler());\n\nthrows:\n\njava.io.IOException: Attempted read from closed stream.\n\tat org.apache.http.impl.io.ChunkedInputStream.read(ChunkedInputStream.java:126)\n\tat java.util.zip.CheckedInputStream.read(CheckedInputStream.java:42)\n\tat java.util.zip.GZIPInputStream.readUByte(GZIPInputStream.java:205)\n\tat java.util.zip.GZIPInputStream.readUShort(GZIPInputStream.java:197)\n\tat java.util.zip.GZIPInputStream.readHeader(GZIPInputStream.java:136)\n\tat java.util.zip.GZIPInputStream.<init>(GZIPInputStream.java:58)\n\tat java.util.zip.GZIPInputStream.<init>(GZIPInputStream.java:68)\n\tat org.apache.http.client.entity.GzipDecompressingEntity.getContent(GzipDecompressingEntity.java:63)\n\tat org.apache.http.conn.BasicManagedEntity.getContent(BasicManagedEntity.java:88)\n\tat org.apache.http.util.EntityUtils.consume(EntityUtils.java:65)\n\tat org.apache.http.impl.client.AbstractHttpClient.execute(AbstractHttpClient.java:974)\n\tat org.apache.http.impl.client.AbstractHttpClient.execute(AbstractHttpClient.java:919)\n\tat org.apache.http.impl.client.AbstractHttpClient.execute(AbstractHttpClient.java:910)\n\tat tv.adap.service.HttpPoolTest.testChunkedGzip(HttpPoolTest.java:41)\n\nwhereas the following snippet runs fine:\n\n    String url = \"http://yahoo.com\";\n    HttpClient httpClient = new ContentEncodingHttpClient();\n    HttpGet get = new HttpGet(url);\n    HttpResponse response = httpClient.execute(get);\n    HttpEntity entity = response.getEntity();\n    String content = EntityUtils.toString(entity);\n\nThese two snippets should be functionally the same (putting the entity body into content). Creating a JIRA per the recommendation of Oleg from httpclient-users.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "HTTPCLIENT-1075",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "HTTPCLIENT",
+    "project": "HTTPCLIENT",
+    "summary": "ContentEncodingHttpClient.execute(HttpGet, ResponseHandler<T>) throws IOException when reading compressed response",
+    "systemSpecification": true,
+    "version": "4.1.1"
+}

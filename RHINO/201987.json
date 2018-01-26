@@ -1,0 +1,53 @@
+{
+    "comments": [
+        {
+            "author": "pschwartau@meer.net",
+            "body": "Confirming on WinNT:\n\n-------------------- Rhino 1.5 release 5 0000 00 00 -------------------- \njs> delete \"\".x\nException in thread \"main\" java.lang.ClassCastException\n  at org.mozilla.javascript.ScriptRuntime.delete(ScriptRuntime.java:1064)\n  at org.mozilla.javascript.Interpreter.interpret(Interpreter.java:2019)\n  at org.mozilla.javascript.InterpretedScript.call(InterpretedScript.java:62)\n  at org.mozilla.javascript.InterpretedScript.exec(InterpretedScript.java:55)\n  at org.mozilla.javascript.Context.evaluateReader(Context.java:806)\n  at org.mozilla.javascript.tools.shell.Main.evaluateReader(Main.java:363)\n  at org.mozilla.javascript.tools.shell.Main.processSource(Main.java:260)\n  at org.mozilla.javascript.tools.shell.Main.exec(Main.java:103)\n  at org.mozilla.javascript.tools.shell.Main.main(Main.java:76)\n\n\n\n----------------------- COMPARE SPIDERMONKEY ----------------------- \njs> delete \"\".x\ntrue\n\n\n\nNote: this may seem confusing at first, since |\"\"| doesn't have any\nproperty named |x|. Here is an ECMA-262 Edition 3 reference:\n\n\n11.4.1 The delete Operator\nThe production UnaryExpression : delete UnaryExpression is evaluated as follows:\n\n1. Evaluate UnaryExpression.\n2. If Type(Result(1)) is not Reference, return true.\n3. Call GetBase(Result(1)).\n4. Call GetPropertyName(Result(1)).\n5. Call the [[Delete]] method on Result(3), providing Result(4)\n   as the property name to delete.\n6. Return Result(5).\n\n\nI believe that even though |\"\".x| hasn't been defined, it is still\nof type \"Reference\" in the technical language of the ECMA spec. So\nwe pass Step 2 of 11.4.1 and make it to Step 5. This relies on the\ninternal [[Delete]] method on objects, specified by:\n\n\n8.6.2.5 [[Delete]] (P)\nWhen the [[Delete]] method of O is called with property name P,\nthe following steps are taken:\n\n1. If O doesn\u2019t have a property with name P, return true.\n2. If the property has the DontDelete attribute, return false.\n3. Remove the property with name P from O.\n4. Return true.\n\n\nTherefore by Step 1 here, since |\"\"| doesn't have a property named |x|,\nthe return value of |delete \"\".x| should be |true|.",
+            "date": "20030414T18:22:07",
+            "id": 0
+        },
+        {
+            "author": "pschwartau@meer.net",
+            "body": "Testcase added to JS testsuite:\n\n      mozilla/js/tests/ecma_3/Operators/11.4.1-001.js\n\nCurrently passing in SpiderMonkey, crashing in Rhino as above -",
+            "date": "20030414T18:47:30",
+            "id": 1
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 120497\nFix: in ScriptRutime.delete call toObject if delete target is not Scriptable\n\nThe patch touches Interpreter.java and optimizer/Codegen.java since it changes\nScriptRuntime.delete to pass Contex and scope for toObject call.",
+            "date": "20030414T22:29:41",
+            "id": 2
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "I commited the above patch.",
+            "date": "20030415T07:34:13",
+            "id": 3
+        },
+        {
+            "author": "pschwartau@meer.net",
+            "body": "Verified FIXED.\n\nThe above testcase now passes in the Rhino shell in compiled and interpreted mode.",
+            "date": "20030415T22:23:50",
+            "id": 4
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Targeting as resolved against 1.5R5",
+            "date": "20040213T11:52:21",
+            "id": 5
+        }
+    ],
+    "component": "Core",
+    "description": "The following code when executed produces unexpected exception instead of\nexpected Ok printout:\n\nvar test = delete \"\".x\nprint (test ? \"OK\" : \"FAILED\");",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "201987",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "-- normal",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "delete \"\".x throws ClassCastException",
+    "systemSpecification": false,
+    "version": "other"
+}

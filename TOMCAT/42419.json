@@ -1,0 +1,65 @@
+{
+    "comments": [
+        {
+            "author": null,
+            "body": "Beneath changing the cookie's name, additional options are to restrict the \ncookie to a certain domain and/or path. Different servers follow different \npossibilities, just for an overview:\n\nhttp://publib.boulder.ibm.com/infocenter/wasinfo/v6r1/index.jsp?\ntopic=/com.ibm.websphere.base.doc/info/aes/ae/uprs_rcookie_settings.html\n\nhttp://e-docs.bea.com/wls/docs100/webapp/weblogic_xml.html#wp1071982\n\nhttp://help.sap.com/saphelp_erp2005/helpdata/en/d1/84fd48edeb41d0bb69d2689071f4\ncf/frameset.htm",
+            "date": "20070522T09:37:11",
+            "id": 0
+        },
+        {
+            "author": null,
+            "body": "For front-end instead using mod_jk use mod_proxy (2.2.x) with somthing like for\nexample:\n<Location /myapp1>\n    ProxyPass balancer://mycluster1/myapp1 stickysession=XSESSION nofailover=On\n</Location>\n \n<Location /myapp2>\n    ProxyPass balancer://mycluster1/myapp2 stickysession=JSESSION nofailover=On\n</Location>",
+            "date": "20070622T03:57:24",
+            "id": 1
+        },
+        {
+            "author": null,
+            "body": "If a change was made, I believe the simplest approach would be allow a system property to override this. I believe JBOSS already does this. Would a patch to Tomcat be accepted to provide this support, if it was developed?",
+            "date": "20081005T11:06:21",
+            "id": 2
+        },
+        {
+            "author": null,
+            "body": "Created attachment 22672\nDiff to add support for changing the value of JSESSIONID\n\nBTW here is the reference to the entry ask for and solving the same issue in the JBOSS database:\n\n  https://jira.jboss.org/jira/browse/JBPAPP-363\n\nSince the definition of the JSESSIONID value is now defined in a single file:\n\n  catalina/src/share/org/apache/catalina/Globals.java\n\nthis is the only place a change would need to be made. I have provided a diff using a similar style of coding as used for the STRICT_SERVLET_COMPLIANCE constant. The system parameter that would be used is:\n\norg.apache.catalina.SESSION_COOKIE_NAME",
+            "date": "20081005T15:03:25",
+            "id": 3
+        },
+        {
+            "author": null,
+            "body": "Note that I have opened bug 45951 to deal with Tomcat 6. An equivalent patch has been added there.",
+            "date": "20081005T15:16:44",
+            "id": 4
+        },
+        {
+            "author": null,
+            "body": "Comment on attachment 22672\nDiff to add support for changing the value of JSESSIONID\n\nchanging MIME type of attachment.",
+            "date": "20081006T11:24:39",
+            "id": 5
+        },
+        {
+            "author": null,
+            "body": "A broader patch has been proposed for 5.5.x that additionally:\n- makes the path name parameter configurable\n- provides documentation\n",
+            "date": "20081006T11:41:50",
+            "id": 6
+        },
+        {
+            "author": null,
+            "body": "This has been fixed in 5.5.x and will be included in 5.5.28 onwards.",
+            "date": "20090324T05:46:41",
+            "id": 7
+        }
+    ],
+    "component": "Catalina",
+    "description": "Feature request for allowing people to change the default \njsessionid cookie name.\n\nThis feature is needed in the following case :\n\nSetup :\n-------\n- A single Apache web server fronting Tomcat servers \n  AND other proprietary web servers.\n- A web applications 'A' is deployed on a Tomcat server, while another \n  web application 'B' is deployed on another proprietary web server. \n  Both applications 'A' and 'B' are accessed through the same IP or DNS \n  name, but with different context-roots.\n\nProblem :\n---------\n1) A user logs in on application 'A' on a Tomcat server, and does some work.\n   The id of his session is retained in a cookie, named \"JSESSIONID\"\n2) web application A redirects the user to an application B on another, \n   proprietary, web server.\n3) The user arrives on application B. The session id contained in the cookie\n   is not recognized. A new one is created, which replaces the old one.\n4) user returns to application A. The session id contained in JSESSIONID cookie\n   is the id of a session on a proprietary web server, which obviously does not\n   correspond to any session on Tomcat. Thus, Tomcat is unable to retrieve the\n   user's session. Session is lost.\n\nIn some case, this problem can be fixed by setting the 'emptySessionPath'\nattribute to 'false' in Tomcat's server.xml. This will make all JSESSIONID \ncookies target '/context' path instead of '/', and hence preserve the values\nof the jessionid cookies. However, this attribute cannot be set to false in \nsome scenarios, e.g. when portals are used, which require that jsessionid\ncookies be transmitted across applications.\n\nSolution :\n----------\nA solution is to allow people to configure the name of the jsessionid cookie,\nfor all applications on a given server, or for a specific application.\nIn the depicted scenario, this prevents the application server 'B' to overwrite \nthe jsessionid cookie of the application 'A'.\n\nCurrently, changing the name of the jessionid cookie is not possible, as it is \nharcoded in the following source files (non-exhaustive list) :\n org/apache/catalina/connector/CoyoteAdapter.java (catalina.jar)\n org/apache/catalina/connector/Response.java (catalina.jar)\n org/apache/catalina/realm/RealmBase.java (catalina.jar)\n org/apache/jasper/tagplugins/jstl/Util.java (jasper-compiler.jar)\n native/common/jk_global.h (mod_jk.so)\n\nThis feature request applies (at least) to Catalina, Jasper and Native:JK.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "42419",
+    "issuetypeClassified": "RFE",
+    "issuetypeTracker": "RFE",
+    "priority": "P3 enhancement",
+    "product": "Tomcat 5",
+    "project": "TOMCAT",
+    "summary": "Options for changing jsessionid cookie name",
+    "systemSpecification": false,
+    "version": "5.0.17"
+}

@@ -1,0 +1,29 @@
+{
+    "comments": [
+        {
+            "author": null,
+            "body": "Created attachment 7895\nWar file that exibits the bug",
+            "date": "20030820T06:08:56",
+            "id": 0
+        },
+        {
+            "author": null,
+            "body": "All generated servlets will override javax.servlet.Servlet.init(). The overriden\ninit() first calls super.init(), followed by the initialization currently done\nin _jspInit().\n",
+            "date": "20030821T23:39:59",
+            "id": 1
+        }
+    ],
+    "component": "Jasper",
+    "description": "Jasper currently relies on the non-standard methods \"_jspInit\" \nand \"_jspDestroy\".  Since these methods are found nowhere in either the Servlet \nor Jsp specs, there is no reason that a custom \"extends\" class should either \nimplement them or call them.  The result is that all of the tag-pools remain un-\ninitialized, so the first access to a tag causes an NPE.\n\nInitialization is easy to solve (i.e. it could be moved to the constructor, you \ncould have a flag that is checked in _jspService, etc.).  Releasing is the hard \npart.  About all that I can see (without majorly changing the current \nimplementation) is to add a finalize method, which is just too ugly for \nwords :).\n\nThe other solution I can see would be to add code to the JSP page like:\n\n  private Tag getTag(org.apache.jasper.runtime.TagHandlerPool pool, Class tagC){\n    Tag result = null;\n    if(pool == null) {\n      try {\n        result = tagC.newInstance();\n      } catch(Exception ex) {\n      }\n    } else {\n      result = pool.get(tagC);\n    }\n    return result;\n   }\n   private void putTag(org.apache.jasper.runtime.TagHandlerPool pool, Tag tag) {\n    if( pool == null ) {\n      tag.release();\n    } else {\n      pool.reuse(tag);\n    }\n   }",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "22571",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "P3 normal",
+    "product": "Tomcat 5",
+    "project": "TOMCAT",
+    "summary": "NPE when using custom extends class",
+    "systemSpecification": false,
+    "version": "Nightly Build"
+}

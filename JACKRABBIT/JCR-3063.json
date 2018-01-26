@@ -1,0 +1,95 @@
+{
+    "comments": [
+        {
+            "author": "Unico Hommes",
+            "body": "The test also shows a different issue with a ConcurrentModificationException which I filed under a different issue.",
+            "date": "2011-08-24T14:19:20.599+0000",
+            "id": 0
+        },
+        {
+            "author": "Michael D\u00fcrig",
+            "body": "Concurrent writes are not allowed on a session. See http://www.day.com/specs/jcr/2.0/4_Connecting.html#4.1.2%20Thread%20Safety",
+            "date": "2011-08-24T14:34:56.019+0000",
+            "id": 1
+        },
+        {
+            "author": "Unico Hommes",
+            "body": "As the test shows, there are no concurrent writes going on on the same session. Each thread obtains its own session.",
+            "date": "2011-08-24T14:43:41.473+0000",
+            "id": 2
+        },
+        {
+            "author": "Unico Hommes",
+            "body": "Also affects 2.2.8",
+            "date": "2011-08-24T14:49:52.204+0000",
+            "id": 3
+        },
+        {
+            "author": "Michael D\u00fcrig",
+            "body": "Your are right. I thought getSuperuserSession() returns the same cached session every time. But this is not the case. ",
+            "date": "2011-08-24T15:01:17.885+0000",
+            "id": 4
+        },
+        {
+            "author": "Stefan Guggisberg",
+            "body": "i am now able to reproduce the NPEs and CMEs, thanks for providing a test case!\n",
+            "date": "2011-09-14T16:02:50.795+0000",
+            "id": 5
+        },
+        {
+            "author": "Stefan Guggisberg",
+            "body": "this is a regression of JCR-2171. ",
+            "date": "2011-09-23T14:55:02.712+0000",
+            "id": 6
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Moving the item state notifications back inside the SISM write lock would also help with JCR-2272, so I think doing so would be a good idea. Especially since the deadlock scenario from JCR-2171 should no longer be possible even without the JCR-2171 fix, and I don't recall any other similar deadlocks.",
+            "date": "2011-09-23T15:10:54.830+0000",
+            "id": 7
+        },
+        {
+            "author": "Stefan Guggisberg",
+            "body": "fixed in svn r1174822 by reverting the change introduced by JCR-2171.\n\nJCR-2171 doesn't include a test case. however, i am optimistic that the \ndead lock issue has been resolved as of JCR-2650. ",
+            "date": "2011-09-23T15:14:16.876+0000",
+            "id": 8
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "I added the missing license header to NPEandCMETest.java in revision 1174887.\n\nThis is a good candidate for the 2.2.9 release so I merged the fix to the 2.2 branch in revision 1174890.",
+            "date": "2011-09-23T17:13:55.992+0000",
+            "id": 9
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Hmm, unfortunately this introduces a deadlock even though it's not exactly the same as in JCR-2171. See below for the case where two concurrent threads are trying to save() the same items (stack traces from ConcurrentImportTest):\n\n\"Executor 12\" prio=10 tid=0x00007f3aac5df000 nid=0x7088 waiting for monitor entry [0x00007f3a84247000]\n   java.lang.Thread.State: BLOCKED (on object monitor)\n\tat org.apache.jackrabbit.core.state.LocalItemStateManager.getItemState(LocalItemStateManager.java:169)\n\t- waiting to lock <0x00000007dbeb3118> (a org.apache.jackrabbit.core.state.XAItemStateManager)\n\tat org.apache.jackrabbit.core.state.XAItemStateManager.getItemState(XAItemStateManager.java:260)\n\tat org.apache.jackrabbit.core.state.SessionItemStateManager.stateCreated(SessionItemStateManager.java:796)\n\tat org.apache.jackrabbit.core.state.StateChangeDispatcher.notifyStateCreated(StateChangeDispatcher.java:94)\n\tat org.apache.jackrabbit.core.state.LocalItemStateManager.stateCreated(LocalItemStateManager.java:439)\n\tat org.apache.jackrabbit.core.state.StateChangeDispatcher.notifyStateCreated(StateChangeDispatcher.java:94)\n\tat org.apache.jackrabbit.core.state.SharedItemStateManager.stateCreated(SharedItemStateManager.java:405)\n\tat org.apache.jackrabbit.core.state.ItemState.notifyStateCreated(ItemState.java:233)\n\tat org.apache.jackrabbit.core.state.ChangeLog.persisted(ChangeLog.java:309)\n\tat org.apache.jackrabbit.core.state.SharedItemStateManager$Update.end(SharedItemStateManager.java:785)\n\tat org.apache.jackrabbit.core.state.SharedItemStateManager.update(SharedItemStateManager.java:1500)\n\tat org.apache.jackrabbit.core.state.LocalItemStateManager.update(LocalItemStateManager.java:352)\n\tat org.apache.jackrabbit.core.state.XAItemStateManager.update(XAItemStateManager.java:354)\n\tat org.apache.jackrabbit.core.state.LocalItemStateManager.update(LocalItemStateManager.java:327)\n\tat org.apache.jackrabbit.core.state.SessionItemStateManager.update(SessionItemStateManager.java:288)\n\tat org.apache.jackrabbit.core.ItemSaveOperation.perform(ItemSaveOperation.java:258)\n\tat org.apache.jackrabbit.core.session.SessionState.perform(SessionState.java:200)\n\tat org.apache.jackrabbit.core.ItemImpl.perform(ItemImpl.java:91)\n\tat org.apache.jackrabbit.core.ItemImpl.save(ItemImpl.java:329)\n\tat org.apache.jackrabbit.core.session.SessionSaveOperation.perform(SessionSaveOperation.java:64)\n\tat org.apache.jackrabbit.core.session.SessionState.perform(SessionState.java:200)\n\tat org.apache.jackrabbit.core.SessionImpl.perform(SessionImpl.java:360)\n\tat org.apache.jackrabbit.core.SessionImpl.save(SessionImpl.java:809)\n\n\"Executor 0\" prio=10 tid=0x00007f3aac63c800 nid=0x707c in Object.wait() [0x00007f3a84e53000]\n   java.lang.Thread.State: WAITING (on object monitor)\n\tat java.lang.Object.wait(Native Method)\n\t- waiting on <0x0000000784e9b808> (a org.apache.jackrabbit.core.state.DefaultISMLocking)\n\tat java.lang.Object.wait(Object.java:485)\n\tat org.apache.jackrabbit.core.state.DefaultISMLocking.acquireReadLock(DefaultISMLocking.java:118)\n\t- locked <0x0000000784e9b808> (a org.apache.jackrabbit.core.state.DefaultISMLocking)\n\tat org.apache.jackrabbit.core.state.SharedItemStateManager.acquireReadLock(SharedItemStateManager.java:1847)\n\tat org.apache.jackrabbit.core.state.SharedItemStateManager.getItemState(SharedItemStateManager.java:265)\n\tat org.apache.jackrabbit.core.state.LocalItemStateManager.getPropertyState(LocalItemStateManager.java:133)\n\tat org.apache.jackrabbit.core.state.LocalItemStateManager.getItemState(LocalItemStateManager.java:175)\n\t- locked <0x00000007dbeb3118> (a org.apache.jackrabbit.core.state.XAItemStateManager)\n\tat org.apache.jackrabbit.core.state.XAItemStateManager.getItemState(XAItemStateManager.java:260)\n\tat org.apache.jackrabbit.core.state.SessionItemStateManager.getItemState(SessionItemStateManager.java:162)\n\tat org.apache.jackrabbit.core.ItemManager.getItemData(ItemManager.java:370)\n\tat org.apache.jackrabbit.core.ItemSaveOperation.validateTransientItems(ItemSaveOperation.java:538)\n\tat org.apache.jackrabbit.core.ItemSaveOperation.perform(ItemSaveOperation.java:216)\n\tat org.apache.jackrabbit.core.session.SessionState.perform(SessionState.java:200)\n\tat org.apache.jackrabbit.core.ItemImpl.perform(ItemImpl.java:91)\n\tat org.apache.jackrabbit.core.ItemImpl.save(ItemImpl.java:329)\n\tat org.apache.jackrabbit.core.session.SessionSaveOperation.perform(SessionSaveOperation.java:64)\n\tat org.apache.jackrabbit.core.session.SessionState.perform(SessionState.java:200)\n\tat org.apache.jackrabbit.core.SessionImpl.perform(SessionImpl.java:360)\n\tat org.apache.jackrabbit.core.SessionImpl.save(SessionImpl.java:809)",
+            "date": "2011-09-27T15:49:47.437+0000",
+            "id": 10
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "I restored the JCR-2171 fix in revision 1176465 to prevent the deadlock. In the same revision I added explicit checks against the NPEs and CMEs thrown by the test case. The CMEs are avoided by explicit synchronization and NPEs cause InvalidItemStateExceptions instead.\n\nA more thorough solution would probably be preferable, but at least the current solution avoids the RuntimeExceptions, so I'm re-resolving this as fixed for now.\n\nI also merged the change to the 2.2 branch in revision 1176482 so we can still ship this in 2.2.9.",
+            "date": "2011-09-27T17:32:55.499+0000",
+            "id": 11
+        },
+        {
+            "author": "Stefan Guggisberg",
+            "body": "> I restored the JCR-2171 fix in revision 1176465 to prevent the deadlock. \n\nok\n\n> In the same revision I added explicit checks against the NPEs and CMEs thrown by the test case. The CMEs are avoided by explicit synchronization and NPEs cause InvalidItemStateExceptions instead. \n\nhmm, i don't think we can get rid of the related concurrency issues completely. the JCR-2171 fix is IMO wrong.\ni am sure we'll run into more similar issues sooner or later. \n\nOTOH i agree that the deadlock issue is severe and needs to be addressed. if possible i would prefer\nif we'd try to solve the deadlock issue without the JCR-2171 fix.\n\n",
+            "date": "2011-09-28T08:47:41.098+0000",
+            "id": 12
+        }
+    ],
+    "component": "jackrabbit-core",
+    "description": "We have a lot of these occurring:\njava.lang.NullPointerException\n\tat org.apache.jackrabbit.core.ItemManager.getDefinition(ItemManager.java:206)\n\tat org.apache.jackrabbit.core.ItemData.getDefinition(ItemData.java:99)\n\tat org.apache.jackrabbit.core.AbstractNodeData.getNodeDefinition(AbstractNodeData.java:73)\n\tat org.apache.jackrabbit.core.NodeImpl.getDefinition(NodeImpl.java:2430)\n\tat org.apache.jackrabbit.core.ItemValidator.isProtected(ItemValidator.java:373)\n\tat org.apache.jackrabbit.core.ItemValidator.checkCondition(ItemValidator.java:273)\n\tat org.apache.jackrabbit.core.ItemValidator.checkRemove(ItemValidator.java:254)\n\tat org.apache.jackrabbit.core.ItemRemoveOperation.perform(ItemRemoveOperation.java:63)\n\tat org.apache.jackrabbit.core.session.SessionState.perform(SessionState.java:200)\n\tat org.apache.jackrabbit.core.ItemImpl.perform(ItemImpl.java:91)\n\tat org.apache.jackrabbit.core.ItemImpl.remove(ItemImpl.java:322)\n\tat org.apache.jackrabbit.core.NPEandCMETest$TestTask.run(NPEandCMETest.java:87)\n\tat java.lang.Thread.run(Thread.java:679)\n\nI'll attach a junit test to reproduce this exception.",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "JCR-3063",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "NullPointerException in ItemManager",
+    "systemSpecification": true,
+    "version": "2.2.5, 2.2.8"
+}

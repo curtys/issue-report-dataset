@@ -1,0 +1,53 @@
+{
+    "comments": [
+        {
+            "author": "Alex Deparvu",
+            "body": "The solution is to define another queue for the tasks considered as low priority, so that they don't fill the execution queue.\nThen, depending on the executor's load poll this queue for additional work items.\n\nThe secondary queue will only be used as needed, and the load is configurable via the system property \n\"org.apache.jackrabbit.core.JackrabbitThreadPool.maxLoadForLowPriorityTasks\"\nThis property is meant to be used as a percent. 0 means disabled / the default is 75.\n\nThere are some timing issues with the indexing tests on account of this new async text extraction. I've tried to fix all of them, but there may be more.\n\nI haven't touched yet on the tika extraction that happens in a different process. I think that will need some minor refactoring as well.\n\nAttaching proposed patch.\n\n",
+            "date": "2011-11-14T14:07:23.646+0000",
+            "id": 0
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "In general looks good to me.\n\nI'm not sure the communication between the threads in JackrabbitThreadPool\nis 100% correct. E.g. the first statement in RetryLowPriorityTask.run()\nchecks if the queue is empty. To me it seems like this should never\nhappen, right?\n\nStyle:\nShould we rather keep the JackrabbitThreadPool package private and\nonly expose the marker as public interface? How about renaming\nthe LOW_PRIORITY_MARKER to LowPriorityTask and extend it from\nRunnable? That way a client wouldn't have to implement Runnable\nand the marker interface.\n\nMinor:\n The method waitForTextExtractionTasksToFinish() already does an\nindex flush at the end. Aren't the additional index flush calls\nin IndexingQueueTest now obsolete?\n",
+            "date": "2011-11-15T12:25:31.038+0000",
+            "id": 1
+        },
+        {
+            "author": "Alex Deparvu",
+            "body": "thanks for taking the time to review the patch\n\n> To me it seems like this should never happen, right? \nyes, that is just premature optimization. I'll remove it.\n\n> Should we rather keep the JackrabbitThreadPool package private and only expose the marker as public interface?\nyou mean like moving the interface to the util package?\n\n> How about renaming the LOW_PRIORITY_MARKER to LowPriorityTask and extend it from Runnable?\nthat is a good idea\n\n> Aren't the additional index flush calls in IndexingQueueTest now obsolete?\ntrue. I had some issues with timing which are now hopefully fixed, so yes we can remove the extra flush\n\n",
+            "date": "2011-11-15T12:50:01.271+0000",
+            "id": 2
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "> you mean like moving the interface to the util package?\n\nno, I would still keep it in the same package as the JackrabbitThreadPool",
+            "date": "2011-11-15T12:59:17.869+0000",
+            "id": 3
+        },
+        {
+            "author": "Alex Deparvu",
+            "body": "fixed in rev:1202192",
+            "date": "2011-11-15T13:57:21.869+0000",
+            "id": 4
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Merged to the 2.2 branch in revision 1242468.",
+            "date": "2012-02-09T19:29:17.430+0000",
+            "id": 5
+        }
+    ],
+    "component": "jackrabbit-core",
+    "description": "Text extraction congests the thread pool in the repository when e.g. many PDFs are loaded into the workspace. Tasks submitted by the index merger are delayed because of that and will result in many index segment folders.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "JCR-3146",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Minor",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "Text extraction may congest thread pool in the repository",
+    "systemSpecification": true,
+    "version": ""
+}

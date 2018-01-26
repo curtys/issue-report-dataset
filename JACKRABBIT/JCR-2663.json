@@ -1,0 +1,35 @@
+{
+    "comments": [
+        {
+            "author": "Randall Hauch",
+            "body": "Added the other versions to which this issue applies.",
+            "date": "2010-06-18T02:58:01.882+0000",
+            "id": 0
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Fixed as suggested in revision 998249.",
+            "date": "2010-09-17T18:51:40.475+0000",
+            "id": 1
+        },
+        {
+            "author": "Randall Hauch",
+            "body": "Thanks, Jukka!",
+            "date": "2010-09-17T19:04:11.500+0000",
+            "id": 2
+        }
+    ],
+    "component": "jackrabbit-jcr-tests, JCR 1.0.1, JCR 2.0",
+    "description": "According to Section 8.5.2.11 of the JCR 1.0 specification:\n\n    It is optional to support properties in the SELECT, WHERE and ORDER BY clauses that are not explicitly\n    defined in the node types listed in the FROM clause but which are defined in subtypes of those node types.\n\n    It is optional to support the specifying of properties in the SELECT,WHERE and ORDERBY clauses that \n    are not explicitly defined in the node types listed in the FROM clause but which are defined in mixin \n    node types that may be assigned to node instances of the types that are mentioned in the SELECT clause.\n\nHowever, two of the test methods in the org.apache.jackrabbit.test.api.query.SQLJoinTest class are producing and executing queries that use in the WHERE clause different properties and node types than those listed in the FROM clause.  The testJoinNtBase() method is producing a query using the following code:\n\n        StringBuffer query = new StringBuffer(\"SELECT * FROM \");\n        query.append(ntBase).append(\", \").append(testMixin);\n        query.append(\" WHERE \");\n        query.append(testNodeType).append(\".\").append(jcrPath);\n        query.append(\" = \");\n        query.append(mixReferenceable).append(\".\").append(jcrPath);\n        query.append(\" AND \").append(jcrPath).append(\" LIKE \");\n        query.append(\"'\").append(testRoot).append(\"/%'\");\n\nThis code will produce a valid query only when \"testNodeType\" is set to \"nt:base\" and \"testMixin\" is set to \"mix:referenceable\":\n\n    SELECT * FROM nt:base, mix:referenceable \n    WHERE nt:base.jcr:path = mix:referenceable.jcr:path AND ...\n\nHowever, when any other values for \"testNodeType\" and \"testMixin\" are used, this produces an invalid query in which the WHERE criteria references tuple sources that do not exist in the FROM clause.  For example, when \"testNodeType\" is \"my:type\" and \"testMixin\" is \"my:mixin\", the query becomes:\n\n    SELECT * FROM nt:base, my:mixin \n    WHERE my:type.jcr:path = mix:referenceable.jcr:path AND ...\n\nThis code can be corrected by simply using the \"testNodeType\" in the FROM clause.\n\nA similar bug is in the testJoinFilterPrimaryType() method, which uses this code:\n\n        StringBuffer query = new StringBuffer(\"SELECT * FROM \");\n        query.append(testNodeType).append(\", \").append(ntBase);\n        query.append(\" WHERE \");\n        query.append(testNodeType).append(\".\").append(jcrPath);\n        query.append(\" = \");\n        query.append(mixReferenceable).append(\".\").append(jcrPath);\n        query.append(\" AND \").append(jcrPath).append(\" LIKE \");\n        query.append(\"'\").append(testRoot).append(\"/%'\");\n\nThis code will really never produce a valid query, since the FROM clause uses the \"testNodeType\" and \"nt:base\" node types, whereas the WHERE clause will use the \"testNodeType\" and \"mix:referenceable\" types.  For example, if \"testNodeType\" has a value of \"my:type\", the query becomes:\n\n    SELECT * FROM my:type, nt:base \n    WHERE my:type.jcr:path = mix:referenceable.jcr:path AND ...\n",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "JCR-2663",
+    "issuetypeClassified": "OTHER",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "JCR unit tests use invalid queries",
+    "systemSpecification": true,
+    "version": "2.0, 2.1"
+}

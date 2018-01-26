@@ -1,0 +1,53 @@
+{
+    "comments": [
+        {
+            "author": null,
+            "body": "First, the current code is:\n\n        } else if (actionCode == ActionCode.ACTION_REQ_LOCAL_ADDR_ATTRIBUTE) {\n\n            // Get local host address\n            if (localAddr == null && (socket != 0)) {\n                try {\n                    long sa = Address.get(Socket.APR_LOCAL, socket);\n                    Sockaddr addr = new Sockaddr();\n                    if (Address.fill(addr, sa)) {\n                        localAddr = addr.hostname;\n                        localPort = addr.port;\n                    }\n                } catch (Exception e) {\n                    log.warn(sm.getString(\"http11processor.socket.info\"), e);\n                }\n            }\n\n            request.localAddr().setString(localAddr);\n\nThen, I don't really care about this issue, so please stop spamming me about it.",
+            "date": "20051129T11:45:13",
+            "id": 0
+        },
+        {
+            "author": null,
+            "body": "The issue is now fixed.",
+            "date": "20051129T14:31:48",
+            "id": 1
+        },
+        {
+            "author": null,
+            "body": "*** Bug 37693 has been marked as a duplicate of this bug. ***",
+            "date": "20051129T17:01:12",
+            "id": 2
+        },
+        {
+            "author": null,
+            "body": "Remy you do not care if your code is up to servlet 2.4 specification? \n\nTrust me, I am not doing this to waste your or my time...\n\nI am a professional Java developer using Tomcat in a production evironment. We \nwant to use the APR connector, but this bug is forcing me to recommend we NOT \nuse it. If you won't fix it I can look into fixing it myself.",
+            "date": "20051129T17:06:31",
+            "id": 3
+        },
+        {
+            "author": null,
+            "body": "Created attachment 17077\nJSP example demonstrating the bug\n\nSimple JSP demonstrating the bug\n\nThis JSP demonstrates the bug clearly. It has both request.getLocalName() which\n\nshould return the local server's hostname. It also has request.getLocalAddr()\nwhich returns the machines hostname, it should return the local server's IP\naddress. Open the .jsp in Tomcat 5.5.12 using the APR native connector.",
+            "date": "20051129T17:54:24",
+            "id": 4
+        },
+        {
+            "author": null,
+            "body": "Looks like it's been resolved and fixed! Remy is the MAN!!!! /bow\n\nhttp://svn.apache.org/viewcvs.cgi/tomcat/connectors/trunk/http11/src/java/org/ap\nache/coyote/http11/Http11AprProcessor.java?rev=349715&view=markup\n\nMy bad Remy, didn't see your fixed post above... I was too busy creating the \nduplicate bug 37693... still learning about the whole apache dev process sorry \nfor any inconvenience it might have caused you. ",
+            "date": "20051129T18:40:18",
+            "id": 5
+        }
+    ],
+    "component": "Connector:HTTP",
+    "description": "I have a jsp that uses the getLocalAddr() method for some ssl certificate \ngeneration utility and it's currently returning the hostname instaed of the IP.\n\nAfter much digging through the Tomcat source I found the snippet below:\n\norg\\apache\\coyote\\http11\\Http11AprProcessor.java\n\n        } else if (actionCode == ActionCode.ACTION_REQ_LOCAL_ADDR_ATTRIBUTE) {\n\n            // Get local host address\n            if (localAddr == null) {\n                try {\n                    long sa = Address.get(Socket.APR_LOCAL, socket);\n                    remoteAddr = Address.getip(sa);\n                    if (Address.fill(addr, sa)) {\n                        localAddr = addr.hostname;\n                        localPort = addr.port;\n                    }\n                } catch (Exception e) {\n                    log.warn(sm.getString(\"http11processor.socket.info\"), e);\n                }\n            }\n\n            request.localAddr().setString(localAddr);\n\n        }\n\nShould the code above be changed to the snipit below so that the ip address is \ncoming back instead of the hostname as expected?\n\n\n        } else if (actionCode == ActionCode.ACTION_REQ_LOCAL_ADDR_ATTRIBUTE) {\n\n            // Get local host address\n            if (localAddr == null) {\n                try {\n                    long sa = Address.get(Socket.APR_LOCAL, socket);\n                    localAddr = Address.getip(sa);\n                } catch (Exception e) {\n                    log.warn(sm.getString(\"http11processor.socket.info\"), e);\n                }\n            }\n\n            request.localAddr().setString(localAddr);\n\n        }\n\nIf not I would love to know why the hostName/port are being returned instead of \nthe IP thanx!",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "37673",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "P2 normal",
+    "product": "Tomcat 5",
+    "project": "TOMCAT",
+    "summary": "Http11AprProcessor.java - getLocalAddr() returns HostName",
+    "systemSpecification": true,
+    "version": "5.5.12"
+}

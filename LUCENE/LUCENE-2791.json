@@ -1,0 +1,173 @@
+{
+    "comments": [
+        {
+            "author": "Robert Muir",
+            "body": "here's an initial patch:\nAll tests pass using this directory with -Dtests.directory, on 32 and 64bit.\n\nI'll attach pre-built DLL files and instructions in case someone else wants to test.\n",
+            "date": "2010-12-03T01:07:59.434+0000",
+            "id": 0
+        },
+        {
+            "author": "Robert Muir",
+            "body": "heres a dll built for 32-bit windows.\nto use it, just put it in a folder thats in your windows PATH, then the directory will work.\n\nto then run all lucene tests with it, first compile contrib/misc, then run a command like this:\n\nant -lib \\path\\to\\lusolr\\lucene\\build\\contrib\\misc\\lucene-misc-4.0-SNAPSHOT.jar test-core -Dtests.directory=WindowsDirectory\n",
+            "date": "2010-12-03T01:10:06.954+0000",
+            "id": 1
+        },
+        {
+            "author": "Robert Muir",
+            "body": "here's one i compiled for 64-bit. just name it WindowsDirectory.dll and follow the other instructions (obviously, you only use this if you use a 64-bit jvm).\n\nthe compilation instructions are in the javadocs for the WindowsDirectory.java by the way, its pretty easy to install mingw or ming64 to do it.\n",
+            "date": "2010-12-03T01:11:15.086+0000",
+            "id": 2
+        },
+        {
+            "author": "Robert Muir",
+            "body": "attached is an updated patch (fixing some indentation, adding some paranoid NPE checks in the JNI code, various stuff like that)\n\nI also included a crude benchmark made by mikemccand (I think we should commit this to our tests!)\n\nIt builds a 100k doc index and searches with 20 threads for 10 seconds:\nI used -Dtests.seed=0:0 and -Dtests.codec=Standard, and recorded best out of 3.\nI tested win32 -client, and win64 -server, only because these are the oracle defaults.\n\n||Directory||QPS Win32 -client||\n|NIOFSDirectory|360|\n|SimpleFS|372|\n|WindowsDirectory|616|\n|RAMDirectory|760|\n|MMapDirectory|772|\n\n||Directory||QPS Win64 -server||\n|NIOFSDirectory|361|\n|SimpleFS|376|\n|WindowsDirectory|777|\n|RAMDirectory|1105|\n|MMapDirectory|1138|\n\nSo, I think this gets you past the sync issue and can be a good choice e.g. for win32\nBut MMap still seems to be the best for this benchmark.\n\n",
+            "date": "2010-12-03T03:06:48.390+0000",
+            "id": 3
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "This is awesome!  It gives us a workaround to the JRE bug (http://bugs.sun.com/bugdatabase/view_bug.do?bug_id=6265734) killing NIOFSDir's concurrency on Windows.\n\nDoes is also allow for deletion of still-open files?\n\nYou may want to experiment w/ different buffer sizes to see if that impacts performance.\n\nAlso: this allows you to do the equivalent of Linux's O_DIRECT, right?  If so... I think we should augment the Dir API so that on opening an input it receives some sort of IOContext or something expressing why we are opening.  So for merging we would want \"direct iO\" (bypass OS buffer cache or NOREUSE fadvise flag, etc.), and larger buffer sizes and perhaps other low level IO settings in the future.",
+            "date": "2010-12-03T09:28:30.472+0000",
+            "id": 4
+        },
+        {
+            "author": "Native Policeman",
+            "body": "There are some violations:\n\nbq. We can use Windows' overlapped IO to do pread() and avoid the performance problems of SimpleFS/NIOFSDir.\n\nAhm you dont really use overlapped/async IO, ReadFile in your code only returns when read operation is finished, so not async. Because when you do you have to pass a flag: FILE_FLAG_OVERLAPPED. But I don't think we should really make it async for now, that is too much stuff as Lucene does not really support it at the moment.\n\n- Currently you don't really need the OVERLAPPED structure at all, just pass NULL: [http://msdn.microsoft.com/en-us/library/aa365467(VS.85).aspx], or is there a reason?\n- Do we need FILE_SHARE_WRITE?\n- You use env->GetStringUTFChars, which is not really a problem as index filenames are always ASCII only. The default methods in the Win32 API use the system default charset (ANSI) for the arguments to OpenFile, which links to \"OpenFileA\" in kernel32.dll. I would suggest to use the real UTF16 chars (env->GetStringChars) and use OpenFileW method, which takes wchar instead of char. The same applies to Linux Dir, but there I am not sure how encodings are handled.\n- Also the Format functions for GetLastError() results use ANSI per default. We should use the *W method, too, and pass it to java as wchar.\n- Exception handling: in native read, you call throwIOException, when ReadFile() returns false. But 2 lines later you still call the method to copy the local buffer to the java byte array. JNI docs say, that after an Exception is in the thread's local exception, you should not call any JNI methods anymore (expect some allowed ones). Also the copy operation is not really needed.\n- As in contract to the native Linux directory we are using our own Handles and not Java's FileDescriptor class to store the handle. If something goes wrong, GC can never clean up the file and it stays open. So you should add a finalizer, Java's internal File methods do that also (RandomAccessFile has a finalizer that calls close on operating system file).",
+            "date": "2010-12-03T11:08:15.344+0000",
+            "id": 5
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "bq. Does is also allow for deletion of still-open files?\n\nNo, of course not. Thats native windos, files that are open cannot be closed. No difference how the file was opened. Also MMapped Files cannot be deleted. Windows does not support the semantics of unix in Win32 API (but it does in POSIX! LOL), so open file: no deleting or changing",
+            "date": "2010-12-03T11:13:47.661+0000",
+            "id": 6
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "bq. Also: this allows you to do the equivalent of Linux's O_DIRECT, right? If so... I think we should augment the Dir API so that on opening an input it receives some sort of IOContext or something expressing why we are opening. So for merging we would want \"direct iO\" (bypass OS buffer cache or NOREUSE fadvise flag, etc.), and larger buffer sizes and perhaps other low level IO settings in the future\n\nThats different to O_DIRECT. FS caches are still used by windows, but there are also options to disable this: FILE_FLAG_WRITE_THROUGH [http://msdn.microsoft.com/en-us/library/aa363858(v=VS.85).aspx]",
+            "date": "2010-12-03T11:18:02.054+0000",
+            "id": 7
+        },
+        {
+            "author": "Native Policeman",
+            "body": "To my above comment and OVERLAPPED in my opinion not realy used (as not async):\nReading [http://msdn.microsoft.com/en-us/library/aa365467(VS.85).aspx#synchronization_and_file_position] it seems to behave little different when OVERLAPPED is non-null for synchronous reads (as we do currently). But as you never read the contents og OVERLAPPED after the function call, why pass it in? Please explain :-)",
+            "date": "2010-12-03T11:34:30.863+0000",
+            "id": 8
+        },
+        {
+            "author": "Robert Muir",
+            "body": "{quote}\nAhm you dont really use overlapped/async IO, ReadFile in your code only returns when read operation is finished, so not async. Because when you do you have to pass a flag: FILE_FLAG_OVERLAPPED. But I don't think we should really make it async for now, that is too much stuff as Lucene does not really support it at the moment.\n{quote}\n\nYes I do, Overlapped IO is distinct from asynchronous IO! you just use the overlapped structure without OVERLAPPED, as i did here.\n\nbq. Currently you don't really need the OVERLAPPED structure at all, just pass NULL: http://msdn.microsoft.com/en-us/library/aa365467(VS.85).aspx, or is there a reason?\n\nYes I do use it, do you understand C ?\n\nbq. Do we need FILE_SHARE_WRITE?\n\nYes\n\nbq. You use env->GetStringUTFChars, which is not really a problem as index filenames are always ASCII only. The default methods in the Win32 API use the system default charset (ANSI) for the arguments to OpenFile, which links to \"OpenFileA\" in kernel32.dll. I would suggest to use the real UTF16 chars (env->GetStringChars) and use OpenFileW method, which takes wchar instead of char. The same applies to Linux Dir, but there I am not sure how encodings are handled.\n\nWe don't open unicode files in lucene, they are all ascii. \n\nbq. Also the Format functions for GetLastError() results use ANSI per default. We should use the *W method, too, and pass it to java as wchar.\n\nI'm not concerned about this here.\n\nbq. Exception handling: in native read, you call throwIOException, when ReadFile() returns false. But 2 lines later you still call the method to copy the local buffer to the java byte array. JNI docs say, that after an Exception is in the thread's local exception, you should not call any JNI methods anymore (expect some allowed ones). Also the copy operation is not really needed.\n\nI don't think you know what you are talking about!\n\nThe code uses 2 techniques, alloc on the stack+SetByteArrayRegion (for small reads), and GetByteArrayElements (for larger reads). The JDK (at least sun, etc) *always* makes a copy for the latter.\n\nSo bottom line: I disagree with you on everything you said.\n",
+            "date": "2010-12-03T11:37:41.720+0000",
+            "id": 9
+        },
+        {
+            "author": "Robert Muir",
+            "body": "{quote}\nTo my above comment and OVERLAPPED in my opinion not realy used (as not async):\nReading http://msdn.microsoft.com/en-us/library/aa365467(VS.85).aspx#synchronization_and_file_position it seems to behave little different when OVERLAPPED is non-null for synchronous reads (as we do currently). But as you never read the contents og OVERLAPPED after the function call, why pass it in? Please explain \n{quote}\n\nTo position the read versus seeking the file. This is explained in the documentation on that very same page!:\n\nConsiderations for working with *synchronous* file handles:\n\nIf lpOverlapped is not NULL, the read operation *starts at the offset that is specified* in the OVERLAPPED structure and ReadFile does not return until the read operation is complete. The system updates the OVERLAPPED offset before ReadFile returns.\n",
+            "date": "2010-12-03T11:51:36.363+0000",
+            "id": 10
+        },
+        {
+            "author": "Native Policeman",
+            "body": "bq. So bottom line: I disagree with you on everything you said.\n\nThis was not against you, but I am hacking native Windows since Win32 was started :-)\n\nbq. Yes I do use it, do you understand C ?\n\nI kill you the next time we meet. I am hacking C longer than Java. This was not about C it was about the MSDN docs telling something different. See my last comment above. Thats all. Why are you so aggresive?\n\n{quote}\nbq. Exception handling: in native read, you call throwIOException, when ReadFile() returns false. But 2 lines later you still call the method to copy the local buffer to the java byte array. JNI docs say, that after an Exception is in the thread's local exception, you should not call any JNI methods anymore (expect some allowed ones). Also the copy operation is not really needed.\n\nI don't think you know what you are talking about!\n{quote}\n\nSorry we seem to have a misunderstanding. I was *not* talking about the internal copy the JVM does. I was talking about the fact, that you should not call JNI functions anymore when you set the thread's exception status and exit the function as soon as possible. You set this status after the failed ReadFile with throwIOEx(). After that its no longer needed to copy the buffer[] to the java byte array and its risky to do it because I am not sure if this env->SetByteArrayRegion() is safe to be called after exception status is set - that all I wanted to say. I would change tha code to:\n\n{code}\nif (ReadFile((HANDLE) fd, &buffer, length, &numRead, &io)) {\n  env->SetByteArrayRegion(bytes, offset, numRead, (const jbyte *) buffer);\n} else {\n  throwIOException(env, GetLastError());\n  numRead = -1;\n}  \t\n{code}\n\nPlease note env->throwNew() always returns, it simply sets the thread's exception status, so the JVM thorws the Java Exce\u00fcption passed in after the native method returns to Java bytecode again.\n\nThanks,\nNative Policeman",
+            "date": "2010-12-03T11:54:18.554+0000",
+            "id": 11
+        },
+        {
+            "author": "Robert Muir",
+            "body": "bq. This was not against you, but I am hacking native Windows since Win32 was started \n\nBut you don't understand how its IO works?",
+            "date": "2010-12-03T12:02:50.950+0000",
+            "id": 12
+        },
+        {
+            "author": "Native Policeman",
+            "body": "bq. If lpOverlapped is not NULL, the read operation starts at the offset that is specified in the OVERLAPPED structure and ReadFile does not return until the read operation is complete. The system updates the OVERLAPPED offset before ReadFile returns.\n\nThanks, I missed that. Sorry - the idea is simply to make positioned reads, I understand that.",
+            "date": "2010-12-03T12:05:15.967+0000",
+            "id": 13
+        },
+        {
+            "author": "Native Policeman",
+            "body": "bq. But you don't understand how its IO works?\n\nYou will laugh, but I did exactly the same thing a few weeks ago :-) Sorry, the whole thing was a misunderstanding.\n\nThe other things are simply minor improvements. And Mike also said that we may create files by codecs with names that are non-ascii. And as you are the unicode policeman, I dont unterstand how you can live with default charsets... This is why I suggested to use *W functions in windows and use the UTF16 chars for that reason.\n\nThe exception status stuff is also just an optimization in the error case? So why are you aggressive?",
+            "date": "2010-12-03T12:08:51.671+0000",
+            "id": 14
+        },
+        {
+            "author": "Robert Muir",
+            "body": "bq. And Mike also said that we may create files by codecs with names that are non-ascii. And as you are the unicode policeman, I dont unterstand how you can live with default charsets... \n\nits my understanding that all indexfiles/codecs are ascii-only.\n\nIf this is going to change, then there is a lot of policework to do. Personally i would really prefer if we simply keep codecs and lucene filenames as ascii-only! \n\nFor non-ascii filenames, java.io.File is broken, its equals() is inconsistent with its hashCode(), even on windows, and definitely on things like macos (as i think it still uses unicode normalization to normalize filenames). We should seriously avoid the system-dependent problems that will arise by using non-ascii filenames in these parts of lucene: i don't see this bringing a lot of benefits either.\n",
+            "date": "2010-12-03T12:14:53.465+0000",
+            "id": 15
+        },
+        {
+            "author": "Robert Muir",
+            "body": "bq. Does is also allow for deletion of still-open files?\n\nNo, but we could/should investigate trying to improve this, thoguh we might have to implement IndexOutput for it to all work.\n\nbq. You may want to experiment w/ different buffer sizes to see if that impacts performance.\n\nmaybe, mainly my point was to avoid the synchronized() here. A user could always tweak the buffer size here?\n\nbq. Also: this allows you to do the equivalent of Linux's O_DIRECT, right? If so... I think we should augment the Dir API so that on opening an input it receives some sort of IOContext or something expressing why we are opening. So for merging we would want \"direct iO\" (bypass OS buffer cache or NOREUSE fadvise flag, etc.), and larger buffer sizes and perhaps other low level IO settings in the future.\n\nYes, we can use FILE_FLAG_NO_BUFFERING, though it would be more complicated (things must be sector-aligned). In my opinion this should be a separate IndexInput, and as you stated the Dir API  could inform us. But you are right, the general notion seems to be in all major platforms, and I think we should carefully use it (if it can help!)\n\n",
+            "date": "2010-12-03T12:41:48.142+0000",
+            "id": 16
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "bq. Sorry, the whole thing was a misunderstanding.\n\nIts ok, we understand. :)",
+            "date": "2010-12-03T13:06:43.173+0000",
+            "id": 17
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "The Native Policeman now retires!",
+            "date": "2010-12-03T13:13:14.858+0000",
+            "id": 18
+        },
+        {
+            "author": "Native Policeman",
+            "body": "*wink*",
+            "date": "2010-12-03T13:13:49.898+0000",
+            "id": 19
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "I was thinking maybe I retire as generics policeman too.\n\nI decided we should convert all of our code back to java 1.4, generics are useless and should be abolished!",
+            "date": "2010-12-03T13:17:21.062+0000",
+            "id": 20
+        },
+        {
+            "author": "Robert Muir",
+            "body": "I think, I will also retire as Unicode Policeman, because Unicode is a cruft fore all US americans. Its totally useless!",
+            "date": "2010-12-03T13:31:00.319+0000",
+            "id": 21
+        },
+        {
+            "author": "DM Smith",
+            "body": "I've just back ported all the code to Java 1.1. Also, this port also deletes everything but 7-bit ASCII.\n\n(Just couldn't resist....)\n\n",
+            "date": "2010-12-03T14:06:30.999+0000",
+            "id": 22
+        },
+        {
+            "author": "Robert Muir",
+            "body": "i turned mike's benchmark into a unit test, and toned it down a bit.\n\nso i agree with uwe on only one thing, and thats optimizing the case where we throw an exception.\n\nbut i disagree on the other things: i think we should just have language neutral error messages and ascii-only files as i presented here... this isn't for general purpose use: its just for lucene. there is no need to bring wchar, etc into this.\n\nso, since all tests pass and this fixes the bug in SimpleFS, i will commit to contrib/misc coon.\n",
+            "date": "2010-12-03T14:36:29.591+0000",
+            "id": 23
+        },
+        {
+            "author": "Robert Muir",
+            "body": "committed revision 1041844 (trunk), 1041881 (3x).\n",
+            "date": "2010-12-03T15:35:45.882+0000",
+            "id": 24
+        },
+        {
+            "author": "Grant Ingersoll",
+            "body": "Bulk close for 3.1",
+            "date": "2011-03-30T15:50:09.638+0000",
+            "id": 25
+        }
+    ],
+    "component": "core/store",
+    "description": "We can use Windows' overlapped IO to do pread() and avoid the performance problems of SimpleFS/NIOFSDir.\n",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-2791",
+    "issuetypeClassified": "RFE",
+    "issuetypeTracker": "RFE",
+    "priority": "Major",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "WindowsDirectory",
+    "systemSpecification": true,
+    "version": ""
+}

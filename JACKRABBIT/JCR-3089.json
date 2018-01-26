@@ -1,0 +1,107 @@
+{
+    "comments": [
+        {
+            "author": "Alex Deparvu",
+            "body": "proposed patch + test.\n\nAs Jukka suggested, the problem was the SearchResourceImpl didn't know how to handle join results.\n\nI'm not sure what's the best way to handle this (I just used the first selector in the join, similar to what already existed in the implementation in the case of multiple selectors in a select).\n\nI also added a test for JCR-2543, a limit-enabled query, to show that the limit constraint is being respected on 2.3\n",
+            "date": "2011-10-04T09:25:43.525+0000",
+            "id": 0
+        },
+        {
+            "author": "Christian Stocker",
+            "body": "Works without exception now (but didn't check the result, if it's useful :))\nBut you have to remove \n <scope>test</scope>\nfrom the pom.xml for jackrabbit-core to make it compile\n\nhttps://gist.github.com/81882d2d3654c21c49d9",
+            "date": "2011-10-04T09:45:00.553+0000",
+            "id": 1
+        },
+        {
+            "author": "angela",
+            "body": "quickly had a look at the proposed patch and noticed that it uses jackrabbit-core specific functionality:\n\n+import org.apache.jackrabbit.core.query.lucene.join.JoinRow;\n\nthe aim of the jcr-server project however was not to rely on jackrabbit-core specific features.\nas far as i remember there is otherwise not dependency to jackrabbit-core (there was one in\nthe transaction handling which we commented later on with the remark: \n\"// commented, since server should be jackrabbit independent\".)\n\ni would therefore suggest that we try to find a solution that doesn't rely on jackrabbit-core. was\nthat feasible?",
+            "date": "2011-10-04T09:47:35.787+0000",
+            "id": 2
+        },
+        {
+            "author": "Alex Deparvu",
+            "body": "ouch, my bad :)\n\nI'll dig some more for a cleaner solution",
+            "date": "2011-10-04T13:14:23.081+0000",
+            "id": 3
+        },
+        {
+            "author": "Alex Deparvu",
+            "body": "...and I'm back\npatch v2 clean as a baby's bottom, hehe.\n\nit appears that if you call row.getPath(\"name\") works for simple rows and join rows, as opposed to row.getPath() which fails in the case of a join.",
+            "date": "2011-10-04T13:36:47.705+0000",
+            "id": 4
+        },
+        {
+            "author": "angela",
+            "body": "> it appears that if you call row.getPath(\"name\") works for simple rows and join rows, as opposed to row.getPath() which fails in the case of a join. \n\ncould you add that short explanation in the code as well? that makes the code more readable than just referring to a bug nummer.\nanybody looking at the code will immediately understand what you are doing and why... \n\nsomething like:\n\n-            String itemPath = row.getPath();\n+            /* Use Row#getPath(String) which works for both simple rows and join rows (in contrast to Row#getPath() \n+                see also https://issues.apache.org/jira/browse/JCR-3089 */\n+            final String itemPath = row.getPath(sn.get(0));\n\nthanks.",
+            "date": "2011-10-04T13:47:13.640+0000",
+            "id": 5
+        },
+        {
+            "author": "Alex Deparvu",
+            "body": "yes, sure. I've added it to the code.\n\n@Christian, I didn't check the results either ;) if the queries stop working, somebody will say something probably.\n\nthanks Angela for keeping an eye out!\n\nif all is ok, I'll commit the patch directly. I don't see a need for a v3.",
+            "date": "2011-10-04T14:10:47.906+0000",
+            "id": 6
+        },
+        {
+            "author": "Alex Deparvu",
+            "body": "I'll take the lack of additional comments as a +1 :)\n\nfixed on trunk in revision: 1179124.",
+            "date": "2011-10-05T09:43:59.131+0000",
+            "id": 7
+        },
+        {
+            "author": "Lukas Kahwe Smith",
+            "body": "I noticed that now I get some columns without a dcr:value\nIs this expected?\n\n          <dcr:column>\n            <dcr:name>jcr:path</dcr:name>\n            <dcr:selectorName>referring</dcr:selectorName>\n          </dcr:column>",
+            "date": "2011-10-06T12:30:44.905+0000",
+            "id": 8
+        },
+        {
+            "author": "Alex Deparvu",
+            "body": "that depends on what queries you are running.\n\nFor inner joins, the answer *should* be no. it wouldn't be normal to have null values for some selectors.\nBut you can also have outer joins, where you'll probably have this situation, and it would be ok. \n\nCan you run the query directly against the repo and see what results you get? \nI didn't add any functional tests to the patch, just a dummy one to make sure that joins over davex don't break anymore.",
+            "date": "2011-10-06T13:18:48.689+0000",
+            "id": 9
+        },
+        {
+            "author": "Lukas Kahwe Smith",
+            "body": "yes this happened for a LEFT OUTER JOIN.\nbut thinking about it the problem is more that in my PHP layer we currently just ignore the selectorName, which means that the jcr:path in the result set is probably getting overwritten which is actually what is causing issues on my side.\n\nso likely everything is ok here ..",
+            "date": "2011-10-06T13:23:45.614+0000",
+            "id": 10
+        },
+        {
+            "author": "Alex Deparvu",
+            "body": "> yes this happened for a LEFT OUTER JOIN\nphiew, I was expecting a bug here, good news ;)\n\nyou kinda lost me for a moment, mostly because I'm not 100% sure what's supposed to be in the webdav response.\n\nif you have some scenarios/tests in mind that you'd like to add, just list them here, I'm sure we'll get around to adding them.\n(unit tests are a strong candidate for documentation sometimes)",
+            "date": "2011-10-06T14:07:44.846+0000",
+            "id": 11
+        },
+        {
+            "author": "angela",
+            "body": "regarding tests: the only thing that counts with respect to jcr-remoting is if the setup jcr2spi-spi2dav(ex)-jcrserver works properly and\nreturns the expected result when using JCR API operations on the jcr-end of the chain. that's our reference and use-case.\n\nand it can be easily verified by adding tests to jcr2spi test suite. as far as i remember the jcr2dav module has an integrationTesting profile\nthat runs all available tests for the mentioned setup.",
+            "date": "2011-10-06T15:11:47.511+0000",
+            "id": 12
+        },
+        {
+            "author": "Alex Deparvu",
+            "body": "yes, I agree.\n\nwhen I said test scenarios I was referring to, as you very well put it: \"returns the expected result\".\nthe patch came with a few tests but It did not cover the 'outer join' scenario, as Lukas pointed out.\nthe point of the comment was not to find different ways to test, but to find (and add) useful tests. \n\nI may be wrong but before the patch there were no sql2 query tests. As sql2 would eventually be the default query engine, I'd say welcome to anybody contributing to the test effort, even if it's just scenarios.\n...as you can see I'm a big fan of sql2 :)\n",
+            "date": "2011-10-06T15:44:33.262+0000",
+            "id": 13
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Merged to the 2.2 branch in revision 1202790.",
+            "date": "2011-11-16T18:16:23.422+0000",
+            "id": 14
+        }
+    ],
+    "component": "jackrabbit-jcr-server, jackrabbit-spi2dav",
+    "description": "see the following thread for details:\nhttp://www.mail-archive.com/users@jackrabbit.apache.org/msg17975.html\n\nassuming a data structure as follows:\n/foo [nt:unstructured]\n/foo/bar [nt:unstructured]\n/foo/bar@lala = huii (lala is string property of bar)\n/ding [nt:unstructured]\n/ding@dong = ##barUUID### (dong is a property of type \"Reference\")\n\nthen the following code will throw an exception:\n\nDavexClient Client = new DavexClient(url);\nRepository repo = Client.getRepository();\nCredentials sc = new SimpleCredentials(\"admin\",\"admin\".toCharArray());\nSession s = repo.login(sc,workspace);\n\nQueryManager qm = s.getWorkspace().getQueryManager();\n\nString sql = \"SELECT data.* FROM [nt:unstructured] AS data WHERE data.lala= 'huii'\";\nsql = \"SELECT * FROM [nt:unstructured] AS data INNER JOIN [nt:unstructured] AS referring ON referring.[dong] = data.[jcr:uuid] WHERE data.lala = 'huii'\";\nsql = \"SELECT * FROM [nt:unstructured] AS data INNER JOIN [nt:unstructured] AS referring ON ISDESCENDANTNODE(data, referring) WHERE data.lala = 'huii'\";\nQuery query = qm.createQuery(sql, Query.JCR_SQL2);\nQueryResult qr = query.execute();\n\nThe first query works just fine and I can iterate over the result. Neither the second nor the third query works.\nIn both cases I end up with a javax.jcr.RepositoryException. Note the exception only happens if the query returns results. Aka a join will work just fine if it matches no rows.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "JCR-3089",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "javax.jcr.RepositoryException when a JOIN SQL2 query is send via Davex and has results",
+    "systemSpecification": true,
+    "version": ""
+}

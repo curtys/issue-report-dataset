@@ -1,0 +1,77 @@
+{
+    "comments": [
+        {
+            "author": null,
+            "body": "Didn't you mention the problem earlier in another report ? I remember something\nlike this, but didn't see anything obvious in the code (which I'm not too\nfamiliar with).\n\nYes, refactoring and removing the need for using two connections would be\nuseful. Be careful not to introduce new bugs, though ;)",
+            "date": "20050202T16:17:39",
+            "id": 0
+        },
+        {
+            "author": null,
+            "body": "(In reply to comment #1)\n> Didn't you mention the problem earlier in another report ? I remember something\n> like this, but didn't see anything obvious in the code (which I'm not too\n> familiar with).\nYou might have confused it with this enhancement proposal:\nhttp://issues.apache.org/bugzilla/show_bug.cgi?id=33266\n\nBoth issues emerged while trying to setup a self-contained webapp (with its own\ndatasource, realm and database driver in WEB-INF/lib). The one decribed in this\nreport is however far more severe. ",
+            "date": "20050202T20:07:46",
+            "id": 1
+        },
+        {
+            "author": null,
+            "body": "Created attachment 14165\nRefactored o.a.c.realm.DataSourceRealm",
+            "date": "20050203T01:20:36",
+            "id": 2
+        },
+        {
+            "author": null,
+            "body": "Created attachment 14166\nModified o.a.c.realm.LocalStrings.properties\n\nFixed two message keys for more consistent look (uppercesed 's' in a word\ndatasourceRealm). The rest of resource bundles do not contain fixed keys.",
+            "date": "20050203T01:25:09",
+            "id": 3
+        },
+        {
+            "author": null,
+            "body": "Why not ...\n\nDo you know the purpose of the\n            if( !dbConnection.getAutoCommit() ) {\n                dbConnection.commit();             \n            }\nwhich was in the code before ? I do not see any writes being made.",
+            "date": "20050203T01:38:31",
+            "id": 4
+        },
+        {
+            "author": null,
+            "body": "(In reply to comment #5)\n> Why not ...\n> \n> Do you know the purpose of the\n>             if( !dbConnection.getAutoCommit() ) {\n>                 dbConnection.commit();             \n>             }\n> which was in the code before ? I do not see any writes being made.\n\nI'll look into it (by forcing autoCommit off) and let you know if it might have\nany impact.\n\n",
+            "date": "20050203T10:28:57",
+            "id": 5
+        },
+        {
+            "author": null,
+            "body": "Created attachment 14168\no.a.c.realm.DataSourceRealm\n\nIndeed, according to jdbc specs, some resources (locks particularly) might not\nget released when leaving the connection uncommited. I added the required block\nback in a single place, just before closing the dbConnection (or should I say\nreturning to the pool)",
+            "date": "20050203T10:56:24",
+            "id": 6
+        },
+        {
+            "author": null,
+            "body": "I have applied your patch.",
+            "date": "20050205T11:36:58",
+            "id": 7
+        },
+        {
+            "author": null,
+            "body": "*** Bug 33526 has been marked as a duplicate of this bug. ***",
+            "date": "20050211T21:39:35",
+            "id": 8
+        },
+        {
+            "author": null,
+            "body": "*** Bug 33938 has been marked as a duplicate of this bug. ***",
+            "date": "20050309T23:27:06",
+            "id": 9
+        }
+    ],
+    "component": "Catalina",
+    "description": "o.a.c.r.DataSourceRealm leaks connections (does not return to the pool) in\ngetRoles(String). The new connection is obtained from the data source, but never\nreturned. Bedides there seems to be a slight performance optimization possible\nso that the getRoles makes use of the very same connection the authenticate()\ndoes. Right now the whole authentication process i.e. authentication and\nretrieval of user roles (which I consider as a whole and non-separable) requires\n*two* connections of which one is never returned. I observe the increase of the\nnumber of database backend. It eventually reaches the limit rendering the Realm\nunusable.\n\nOne might workaround it by adding the following attributes in her datasource\nResource definition: removeAbandoned=\"true\" removeAbandonedTimeout=\"15\". But for\nheavy loaded applications which extensively use the Realm facility 15 seconds\nmight be way too much.\n\nHere is what logAbandoned=\"true\" produced:\n\nDBCP object created 2005-02-02 14:40:38 by the following code was never closed:\njava.lang.Exception\n   at\norg.apache.tomcat.dbcp.dbcp.AbandonedTrace.setStackTrace(AbandonedTrace.java:157)\n   at\norg.apache.tomcat.dbcp.dbcp.AbandonedObjectPool.borrowObject(AbandonedObjectPool.java:76)\n   at\norg.apache.tomcat.dbcp.dbcp.PoolingDataSource.getConnection(PoolingDataSource.java:95)\n   at\norg.apache.tomcat.dbcp.dbcp.BasicDataSource.getConnection(BasicDataSource.java:540)\n   at org.apache.catalina.realm.DataSourceRealm.open(DataSourceRealm.java:407)\n   at org.apache.catalina.realm.DataSourceRealm.getRoles(DataSourceRealm.java:538)\n   at\norg.apache.catalina.realm.DataSourceRealm.authenticate(DataSourceRealm.java:360)\n   at\norg.apache.catalina.realm.DataSourceRealm.authenticate(DataSourceRealm.java:284)\n   at\norg.apache.catalina.authenticator.FormAuthenticator.authenticate(FormAuthenticator.java:256)\n   at\norg.apache.catalina.authenticator.AuthenticatorBase.invoke(AuthenticatorBase.java:391)\n   at org.apache.catalina.valves.AccessLogValve.invoke(AccessLogValve.java:526)\n   at org.apache.catalina.authenticator.SingleSignOn.invoke(SingleSignOn.java:365)\n   at org.apache.catalina.core.StandardHostValve.invoke(StandardHostValve.java:126)\n   at org.apache.catalina.valves.ErrorReportValve.invoke(ErrorReportValve.java:105)\n   at\norg.apache.catalina.valves.FastCommonAccessLogValve.invoke(FastCommonAccessLogValve.java:481)\n   at\norg.apache.catalina.core.StandardEngineValve.invoke(StandardEngineValve.java:107)\n   at org.apache.catalina.connector.CoyoteAdapter.service(CoyoteAdapter.java:148)\n   at org.apache.coyote.http11.Http11Processor.process(Http11Processor.java:825)\n   at\norg.apache.coyote.http11.Http11Protocol$Http11ConnectionHandler.processConnection(Http11Protocol.java:738)\n   at\norg.apache.tomcat.util.net.PoolTcpEndpoint.processSocket(PoolTcpEndpoint.java:526)\n   at\norg.apache.tomcat.util.net.LeaderFollowerWorkerThread.runIt(LeaderFollowerWorkerThread.java:80)\n   at\norg.apache.tomcat.util.threads.ThreadPool$ControlRunnable.run(ThreadPool.java:684)\n   at java.lang.Thread.run(Unknown Source)\n\nI volunteer to fix this bug as well as rework the DataSourceRealm which seems a\nbit messy to me IMHO. Particularly the fact that two connections are reqired is\nthe most annoying.",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "33357",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "P1 major",
+    "product": "Tomcat 5",
+    "project": "TOMCAT",
+    "summary": "DataSourceRealm leaks connections",
+    "systemSpecification": true,
+    "version": "5.5.7"
+}

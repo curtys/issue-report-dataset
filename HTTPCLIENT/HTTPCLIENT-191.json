@@ -1,0 +1,65 @@
+{
+    "comments": [
+        {
+            "author": "Adrian Sutton",
+            "body": "Created an attachment (id=5916)\nTest case showing the problem.\n",
+            "date": "2003-04-21T06:38:09.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Adrian Sutton",
+            "body": "Created an attachment (id=5917)\nProposed fix, take 1.\n",
+            "date": "2003-04-21T07:06:57.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Adrian Sutton",
+            "body": "There is actually a problem in the test case I sent through which causes it to\nalways fail (there's also some odd line endings).  The modified test case I'll\nattach in a moment fixes this, fails before the propsed fix and works after it.",
+            "date": "2003-04-21T07:08:19.000+0000",
+            "id": 2
+        },
+        {
+            "author": "Adrian Sutton",
+            "body": "Created an attachment (id=5918)\nCorrected test case.\n",
+            "date": "2003-04-21T07:11:02.000+0000",
+            "id": 3
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Adrian,\n\nI feel it's reasonable for a authentication scheme to have a generic ID\nattribute to uniquely identify a challenge. Not all authentication schemes are\nsupposed to support the concept of a realm, but they should all have a token\nthat can serve as an unique id. So, I guess your approach is all right. \n\nHowever, there's a concern about using the entire NTLM challenge as a challenge\nID. I have very little idea about the NTLM authentication scheme internals, so\nyou have to tell me whether my concern is groundless or not. Do you know if NTLM\nchallenge is mutable or it is always constant for the given authentication\nserver? In case of NTLM challenge being dynamically generated using some mutable\ninformation, it cannot be used as an ID in the attempted authentication hashmap\n(erroneously called realms hashmap in the HttpMethodBase class), as we will run\ninto exactly the same problem we used to have with the digest authentication\nscheme of not being able to tell if authentication with the server failed or has\nnot yet been attempted. \n\nIf you tell me that the complete NTLM challenge is always unique for the given\nNTLM server, the patch is good to be committed\n\nOleg",
+            "date": "2003-04-21T19:32:05.000+0000",
+            "id": 4
+        },
+        {
+            "author": "Adrian Sutton",
+            "body": "Oleg,\nThe NTLM challenge is mutable, however the start of the NTLM sequence is\nindicated by:\n\nWWW-Authenticate: NTLM\n\nin which case the string will be empty and HttpMethodBase will store:\nhost:port:\ninto the hash map correctly.  When the second response is received it will not\nmatch that string and HttpClient will continue the authentication process.  If\nauthentication fails at the second step, the server will reply with:\nWWW-Authenticate: NTLM\n\nagain which will match what is in the realm hash map and authentication will\nabort.  Additionally, the first response HttpClient sends in the auth process\ncontains the username, domain and host so it is not possible for a server to\nexpect authentication to work if it skips the first response after an\nunsuccessful auth session.\n\nIn short, it's safe to use the entire NTLM challenge.",
+            "date": "2003-04-22T04:35:45.000+0000",
+            "id": 5
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Adrian,\nI ran a few tests of my own. Stuff works. Great work. I'll commit the patch as\nsoon as I get home. \n\nOleg",
+            "date": "2003-04-22T19:38:59.000+0000",
+            "id": 6
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Patch applied\n\nOleg",
+            "date": "2003-04-23T00:03:43.000+0000",
+            "id": 7
+        }
+    ],
+    "component": "HttpClient (classic)",
+    "description": "NTLM Authentication requires multiple request/responses for the authentication\nto succeed.  Since HttpMethodBase is now using just the host, port and realm to\nidentify whether or not authentication has been attempted the second pass for\nNTLM authentication is never performed.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "HTTPCLIENT-191",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "HTTPCLIENT",
+    "project": "HTTPCLIENT",
+    "summary": "NTLM Authentication Fails",
+    "systemSpecification": false,
+    "version": "2.0 Alpha 3"
+}

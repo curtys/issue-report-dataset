@@ -1,0 +1,95 @@
+{
+    "comments": [
+        {
+            "author": "Alin Vasile",
+            "body": "A patch and testcase for this issue. The test may have unused imports (my env. is still not configured)",
+            "date": "2011-08-31T14:54:27.912+0000",
+            "id": 0
+        },
+        {
+            "author": "Sebb",
+            "body": "Thanks!\n\nPatch applied, with minor adjustments to remove unused imports in test code",
+            "date": "2011-09-01T12:46:10.599+0000",
+            "id": 1
+        },
+        {
+            "author": "Sebb",
+            "body": "Just discovered that the code does not work if the request is a RequestWrapper, because those always return false for isAborted();",
+            "date": "2011-09-26T17:15:59.218+0000",
+            "id": 2
+        },
+        {
+            "author": "Sebb",
+            "body": "The test cases don't detect this because the mock objects return what is expected by the code; this is not necessarily what happens in reality.\n\nThere should also be some test cases that exercise a real request, using a separate thread for the request and the abort.",
+            "date": "2011-09-26T17:38:18.464+0000",
+            "id": 3
+        },
+        {
+            "author": "Sebb",
+            "body": "There should also be a test case to ensure that connect is not retried following an abort",
+            "date": "2011-09-26T20:35:27.841+0000",
+            "id": 4
+        },
+        {
+            "author": "Alin Vasile",
+            "body": "Will be hard to assert this, since AbstractHttpClient does not expose the DefaultRequestDirector it uses, which has a reference to the retried execution count.",
+            "date": "2011-09-26T20:58:34.645+0000",
+            "id": 5
+        },
+        {
+            "author": "Sebb",
+            "body": "Added request retry test in httpcomponents/httpclient/trunk/httpclient/src/test/java/org/apache/http/impl/client/TestAbortHandling.java (r1176137).\n\nStill need to add test for connection abort.\n\n",
+            "date": "2011-09-27T00:09:13.885+0000",
+            "id": 6
+        },
+        {
+            "author": "Sebb",
+            "body": "Testing with JMeter shows that when an aborted request fails in the connect phase, the request is not present in the context.\n\nFurther, if the request is added to the context (under a new key) for debug purposes, the aborted flag is not set.\n\nThe combination BindException/\"Address already in use: connect\" is the exception generated (or at least the commonest).",
+            "date": "2011-09-27T15:03:45.467+0000",
+            "id": 7
+        },
+        {
+            "author": "Sebb",
+            "body": "I've also seen:\n\nI/O exception (java.io.IOException) caught when connecting to the target host: Request aborted \nRetrying connect ",
+            "date": "2011-09-27T21:05:34.476+0000",
+            "id": 8
+        },
+        {
+            "author": "Alin Vasile",
+            "body": "Two test methods that currently fail, one for a conection timeout and one for a request aborted before sending it to the server. Didn't had time yet to trace the faults, but hopefully they will provide some hints.",
+            "date": "2011-09-28T21:06:30.294+0000",
+            "id": 9
+        },
+        {
+            "author": "Alin Vasile",
+            "body": "patch for:\n\nDefaultHttpRetryHandler should not retry requests for java.net.SocketException: Network is unreachable: connect",
+            "date": "2011-09-28T21:33:06.189+0000",
+            "id": 10
+        },
+        {
+            "author": "Alin Vasile",
+            "body": "This patch appears to resolve the missing request from the context when the request is aborted. Will require a more experienced person in HC  to review it.",
+            "date": "2011-09-28T22:25:35.713+0000",
+            "id": 11
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "* Moved all test cases for abort handling to TestAbortHandling\n* AbstractPoolEntry now throws InterruptedIOException instead of plain IOException\n* Applied a variation of the patch contributed by Alin\n* Merged fixes to 4.1.x branch\n\nOleg",
+            "date": "2011-10-06T12:42:26.939+0000",
+            "id": 12
+        }
+    ],
+    "component": "HttpClient (classic)",
+    "description": "DefaultHttpRequestRetryHandler#retryRequest incorrectly retries aborted requests; I have seen the following log messages in JMeter:\n\norg.apache.http.impl.client.DefaultHttpClient: I/O exception (java.net.SocketException) caught when processing request: socket closed\norg.apache.http.impl.client.DefaultHttpClient: Retrying request\n\nand\n\norg.apache.http.impl.client.DefaultHttpClient: I/O exception (java.net.BindException) caught when connecting to the target host: Address already in use: connect\norg.apache.http.impl.client.DefaultHttpClient: Retrying connect\n\nThe abort() method sets the isAborted() flag, but the retry handler does not check it.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "HTTPCLIENT-1120",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "HTTPCLIENT",
+    "project": "HTTPCLIENT",
+    "summary": "DefaultHttpRequestRetryHandler#retryRequest should not retry aborted requests",
+    "systemSpecification": true,
+    "version": "4.1.2"
+}

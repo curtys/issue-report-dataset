@@ -1,0 +1,59 @@
+{
+    "comments": [
+        {
+            "author": "juerg@scratchdisk.com",
+            "body": "Created attachment 174588\nBeanProperties patch",
+            "date": "20050217T17:23:35",
+            "id": 0
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Patch comments:\n\n1. Cosmetics: please remove all tabs and try to fit lines to 80 chars limit.\n\n2. I would suggest to keep the old implementation if there is only one setter.\nThe idea of using NativeJavaObject for multiple setters is a nice one, but for\nthe common case of single setter it would create 2 additional objects per setter\nand that is not good.\n\n",
+            "date": "20050217T18:04:23",
+            "id": 1
+        },
+        {
+            "author": "juerg@scratchdisk.com",
+            "body": "1. I'm sorry for the tabs and the 80 chars limit, that's my default setting here and I didn't notice. I'll \nadapt to the Rhino style.\n\n2. How do you mean it would generate two objects for one setter? If there's only one setter, mainSetter \nand setter actually point to the same object, so only one NativeJavaMethod is used. And I would prefer \nallways use this approach, as otherwise one cannot guarantee that the behavior for how parameters are \nconverted will allways be exactly the same (or at least I'm not sure about this, I'm not deeply enough \ninto Rhino...). But one thing I wonder: The NativeJavaMethod that wrapps all setters in one should \nalready exist somewhere anyway. So wouldn't it make more sense to reuse that one instead of creating \na new one?",
+            "date": "20050217T18:15:39",
+            "id": 2
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "(In reply to comment #3)\n> 2. How do you mean it would generate two objects for one setter? If there's\nonly one setter, mainSetter \n> and setter actually point to the same object, so only one NativeJavaMethod is\nused. \n\nIn the case of the single setter BeanProperty stored only MemberBox. The patch\nchanges that to NativeJavaMethod containing the one-element array of MemberBox\nwith the original MemberBox. It is 2 additional objects.\n\n> And I would prefer \n> allways use this approach, as otherwise one cannot guarantee that the behavior\nfor how parameters are \n> converted will allways be exactly the same (or at least I'm not sure about\nthis, I'm not deeply enough \n> into Rhino...). But one thing I wonder: The NativeJavaMethod that wrapps all\nsetters in one should \n> already exist somewhere anyway. So wouldn't it make more sense to reuse that\none instead of creating \n> a new one?\n\nThis is a very good idea :). And then there is no need to create the main setter\nif NativeJavaMethod.call would be split into part serach part and a static\nmethod to apply Java call to MemberBox. Then the static method can be applied to\nthe main setter directly.\n",
+            "date": "20050217T20:45:11",
+            "id": 3
+        },
+        {
+            "author": "juerg@scratchdisk.com",
+            "body": "Funny I didn't notice this before. I changed my code, it became much simpler and closer to what was \nthere before. The formating should be alright this time too.",
+            "date": "20050217T22:31:55",
+            "id": 4
+        },
+        {
+            "author": "juerg@scratchdisk.com",
+            "body": "Created attachment 174616\nUpdated Patch\n\nThe new patch that includes the discussed changes.",
+            "date": "20050217T22:32:52",
+            "id": 5
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Marking as fixed: the last changes are in Rhino CVS now.",
+            "date": "20050218T23:08:10",
+            "id": 6
+        }
+    ],
+    "component": "Core",
+    "description": "User-Agent:       Mozilla/5.0 (Macintosh; U; PPC Mac OS X; de-de) AppleWebKit/125.5.6 (KHTML, like Gecko) Safari/125.12\nBuild Identifier: \n\nI've modified the way BeanProperties are handled by org.mozilla.javascript.JavaMembers:\nInstead of only one setter, the class can define several setters with different parameters. All the defined \nsetters for one property are uninfied in one NativeJavaMethod. In addition to that, the setter with the \nsame parameter type as the return type of the getter is selected as the main setter. The main setter is \nresponsible for setting a BeanProperty to the value null. Otherwise, the call to the NativeJavaMethod \nthat unifies several setters would be ambigous (e.g. a setter with parameter of class String and one of \nclass Object).\n\n\nReproducible: Always\n\nSteps to Reproduce:",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "282595",
+    "issuetypeClassified": "OTHER",
+    "issuetypeTracker": "RFE",
+    "priority": "-- enhancement",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "Patch for BeanProperties to work with several setters for one BeanProperty.",
+    "systemSpecification": false,
+    "version": "other"
+}

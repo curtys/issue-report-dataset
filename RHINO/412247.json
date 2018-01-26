@@ -1,0 +1,137 @@
+{
+    "comments": [
+        {
+            "author": "mguillemot@yahoo.fr",
+            "body": "Created attachment 296926\npatch adding Context.FEATURE_NON_ECMA_TO_BOOLEAN and related unit test\n\nThis patch adds the feature Context.FEATURE_NON_ECMA_TO_BOOLEAN providing the feature we need to customize boolean conversion.\nIt contains the appropriate unit test.",
+            "date": "20080114T10:10:23",
+            "id": 0
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "I posted to the mozilla.dev.tech.js-engine group and they referred me to bug 248549. There's a whole mechanism in SpiderMonkey for handling code that uses object detection on document.all that is deeper than just ToBoolean conversions. \n\nI'll think about how we approach this, but the right fix is more complex and probably should involve some special flag on host objects.",
+            "date": "20080123T02:51:09",
+            "id": 1
+        },
+        {
+            "author": "szegedia@freemail.hu",
+            "body": "Bug 248549 has a Calvin and Hobbes reference, yay!\n\nSpeaking seriously -- I couldn't fully understand the issue here as the bugreport escalated into an argument about principles and ideals. \n\nHtmlUnit people: would your proposed patch be sufficient to handle document.all, or do you envision you'll need other bits and pieces of support?\n\nI'm willing to commit this patch, except I was thinking whether it would make more sense to introduce FEATURE_HTML_USER_AGENT as a generic flag to enable non-ECMA quirks found in HTML user agents instead of now adding FEATURE_NON_ECMA_TO_BOOLEAN, and then in future adding other flags for further quirks we discover down the road. Requests for other non-ECMA behaviour mostly reported via HtmlUnit people could also be implemented in such a way that they're enabled only when this feature is on (iteration order in for loop, unescaped / in character class in regex, etc.)\n",
+            "date": "20080123T08:07:47",
+            "id": 2
+        },
+        {
+            "author": "mguillemot@yahoo.fr",
+            "body": "With the possibility to customize toBoolean I'll be able to handle \"if (document.all)\" and redefining the Boolean constructor I should be able to handle Boolean(document.all) without any change in Rhino itself.\n\nI can't say if a general FEATURE_HTML_USER_AGENT feature would make sense or not. In the case of this issue, it requires additional work for Rhino user and the feature doesn't bring anything alone. If I correctly understand the comments concerning unescaped / in character class in regex, it should be made the default. Concerning the properties order, ECMA doesn't forbid to make it the default (and so does my patch in https://bugzilla.mozilla.org/show_bug.cgi?id=412928). At the end the boolean conversion is the only point that I currently see concerned by FEATURE_HTML_USER_AGENT.\n",
+            "date": "20080123T08:36:48",
+            "id": 3
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "I think a flag is the wrong approach for this problem. The issue is that you only want the special behavior for document.all, not all objects. Additionally, SpiderMonkey/Firefox evaluate (typeof document.all) -> \"undefined\", which your patch doesn't address. \n\nInstead, to match the SpiderMonkey/Firefox behavior we need a special host object flag that can indicate that the object needs to be treated specially. The object defined in your embedding to be returned by document.all would set this flag and get the special behavior. Other objects would behave normally. Marc, is your host object implementing document.all a subclass of ScriptableObject? I think the easiest way to have host objects define this flag would be to add a new boolean method on ScriptableObject with a default implementation you could override.",
+            "date": "20080123T12:15:54",
+            "id": 4
+        },
+        {
+            "author": "mguillemot@yahoo.fr",
+            "body": "Seems that you've investigated it further than me: I didn't know (typeof document.all) -> \"undefined\".\n\nYes we implement ScriptableObject, a public or protected method on it to address current issue would be perfect for us.",
+            "date": "20080123T12:36:45",
+            "id": 5
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "Created attachment 298707\nPatch implementing ScriptableObject.avoidObjectDectection\n\nWith proposed patch, and with a throwaway change for NativeDate.avoidObjectDetection to return true, Rhino\nhas the following behavior:\n\njs> var obj = {d:new Date()};\njs> obj.d ? true : false\nfalse\njs> if (obj.d) print(true); else print(false);\nfalse\njs> typeof obj.d\nundefined\njs> obj.d.getHours()\n9\n\nI'll test this and commit it unless someone objects.",
+            "date": "20080123T14:33:05",
+            "id": 6
+        },
+        {
+            "author": "mguillemot@yahoo.fr",
+            "body": "This is fine for me.\n(I have just checked and confirm that Boolean(x) - the missing part of the document.all problem - can be customized without any change within Rhino).",
+            "date": "20080123T14:53:14",
+            "id": 7
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "Checked in:\n\nChecking in src/org/mozilla/javascript/ScriptRuntime.java;\n/cvsroot/mozilla/js/rhino/src/org/mozilla/javascript/ScriptRuntime.java,v  <--\nScriptRuntime.java\nnew revision: 1.289; previous revision: 1.288\ndone\nChecking in src/org/mozilla/javascript/ScriptableObject.java;\n/cvsroot/mozilla/js/rhino/src/org/mozilla/javascript/ScriptableObject.java,v  <-\n-  ScriptableObject.java\nnew revision: 1.126; previous revision: 1.125\ndone",
+            "date": "20080123T15:00:59",
+            "id": 8
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "(In reply to comment #8)\n> This is fine for me.\n> (I have just checked and confirm that Boolean(x) - the missing part of the\n> document.all problem - can be customized without any change within Rhino).\n> \n\nBut you still need this change, right?",
+            "date": "20080123T15:01:34",
+            "id": 9
+        },
+        {
+            "author": "mguillemot@yahoo.fr",
+            "body": "Yes, I need it too as I can't change it from \"outside\".\n\nThanks.",
+            "date": "20080123T15:03:17",
+            "id": 10
+        },
+        {
+            "author": "schools_ring@yahoo.com",
+            "body": "> Specifically, the expression\n>     document.all ? true : false\n> results in false, but the expression\n>     Boolean(document.all)\n> results in true.\n\nRight, this is what required by ECMAScript specs. Javascript\nimplements both primitive boolean value and Boolean object wrapper. In\nlogical operations objects are being downcasted first to primitives\nwith Boolean(false) resulting in true in many circumstances. Try this\nfor instance in any browser:\n\n<script>\n var b1 = false;\n var b2 = new Boolean(false);\n\n /*1*/ window.alert(b1 ? 'true':'false'); // false\n /*2*/ window.alert(b2 ? 'true':'false'); // true\n</script>\n\nThe moral is that you never ever use Boolean wrapper for Javascript\nexcept one very particular situation which is not presented here.\n\nIn your case document.all returns undefined which is in Boolean\nconstructor context equal to Boolean(false) which is situation /*2*/\nin the sample above.\n\nSo the options are either to break Rhino compatibility with ECMAScript\nor to use the right style of boolean operations. I actually highly\nsurprised that on\nhttps://bugzilla.mozilla.org/show_bug.cgi?id=412247\npeople seem ready to rather patch Rhino like no big problem which is\nsorry to say but IMO a total nonsense.\n\nIt is especially strange because in Java itself there are primitive boolean false/true as well as Boolean wrapper.\nYet it is requested to break the standard-compliant behavior for emulated Firefox so it would be equal to the actual Firefox behavior in order to (OP quote) \"simulate Firefox behavior for document.all\".\n\nSorry guys, either I'm completely off the loop here or some participants are. I am ready to accept that I am.\n",
+            "date": "20080124T15:22:02",
+            "id": 11
+        },
+        {
+            "author": "schools_ring@yahoo.com",
+            "body": "(In reply to comment #12)\n> Yet it is requested to break the standard-compliant behavior for emulated\n> Firefox so it would be equal to the actual Firefox behavior\n\nSorry:\n\n\"so it would be NOT equal\"",
+            "date": "20080124T15:23:57",
+            "id": 12
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "(In reply to comment #12)\n> So the options are either to break Rhino compatibility with ECMAScript\n> or to use the right style of boolean operations. I actually highly\n> surprised that on\n> https://bugzilla.mozilla.org/show_bug.cgi?id=412247\n> people seem ready to rather patch Rhino like no big problem which is\n> sorry to say but IMO a total nonsense.\n\nActually, I see what we're doing here as a third option. We're breaking ECMAScript compatibility *only for host objects that explicitly request it*. So all current Rhino users should notice no change, and HtmlUnit can emulate Firefox behavior. You can argue that Firefox did the wrong thing in the way it implements document.all, but that ship has sailed and now HtmlUnit (and, by extension, Rhino) can best serve its users by emulating this behavior. Otherwise HtmlUnit is devalued as a testing tool.",
+            "date": "20080124T18:59:47",
+            "id": 13
+        },
+        {
+            "author": "schools_ring@yahoo.com",
+            "body": "(In reply to comment #14)\n> (In reply to comment #12)\n> > So the options are either to break Rhino compatibility with ECMAScript\n> > or to use the right style of boolean operations. I actually highly\n> > surprised that on\n> > https://bugzilla.mozilla.org/show_bug.cgi?id=412247\n> > people seem ready to rather patch Rhino like no big problem which is\n> > sorry to say but IMO a total nonsense.\n> \n> Actually, I see what we're doing here as a third option. We're breaking\n> ECMAScript compatibility *only for host objects that explicitly request it*. So\n> all current Rhino users should notice no change, and HtmlUnit can emulate\n> Firefox behavior. You can argue that Firefox did the wrong thing in the way it\n> implements document.all, but that ship has sailed and now HtmlUnit (and, by\n> extension, Rhino) can best serve its users by emulating this behavior.\n> Otherwise HtmlUnit is devalued as a testing tool.\n\nCan anyone explain me what is the \"implementation\" of document.all in Firefox and what is exactly wrong with it? On my Firefox 2.0.0.11 it does the same thing all browsers did before: reports undefined for missing DOM feature.\n\n<script>\nalert(document.all === undefined); // true\nalert(document.FooBar === undefined); // true\n</script>\n\nI re-read the whole thread I see no bugs whatsoever - just OP that considers ECMAScript-compliant ternary expression as \"a bug\" so requesting to hack the engine. If there is not time to read ECMAScript 3rd ed. specs, please read my detailed post with explanations and samples at mozilla.dev.tech.js-engine: \nhttp://groups.google.com/group/mozilla.dev.tech.js-engine/msg/2884dfb8c781fa8d \nbtw after knowing the real production algorithm one may realize that any DOM patches do not solve the OP's problem: one still has to break the JS engine as well (condition expression production in ternary).",
+            "date": "20080124T21:38:31",
+            "id": 14
+        },
+        {
+            "author": "mguillemot@yahoo.fr",
+            "body": "You really seem to miss the point here. Just try following in your browser\n\njavascript:void(alert(document.all.foo))\n\nwhen an element has id=\"foo\", you will get it and otherwise you will get undefined, and not Error: document.all has no properties.\n",
+            "date": "20080125T08:31:48",
+            "id": 15
+        },
+        {
+            "author": "schools_ring@yahoo.com",
+            "body": "(In reply to comment #16)\n> You really seem to miss the point here. Just try following in your browser\n> \n> javascript:void(alert(document.all.foo))\n> \n> when an element has id=\"foo\", you will get it and otherwise you will get\n> undefined, and not Error: document.all has no properties.\n\nThat is not what this bug is about, at least not as reported and discussed here or at http://groups.google.com/group/mozilla.dev.tech.js-engine/browse_frm/thread/69052055fba8f606\n\nMaybe this is why it is so convoluted in both cases, because two groups or people are discussing two completely different issues at once.\n\n[1]\nThis initial \"bug\" - which is not a bug at all - is about behavioral difference in Javascript between primitive boolean values and Boolean object wrapper, in the particular in the ternary operator.\n\nvar condition = Boolean(false);\ncondition ? doTrue() : doFalse();\n\nwill branch onto doTrue on any ECMAScript-compliant engine including Gecko. There is nothing to \"fix\" here whatsoever. If anyone gets surprised by the result then the only advise could be to read ECMAScript specs. If Boolean wrapper is really needed then a quick \"guardian fix\" could be in explicit downcasting into primitive before any boolean comparisons:\n\nvar condition = Boolean(false);\n!condition ? doTrue() : doFalse();\n\nnow goes to doFalse \"as expected\"\n\n[2]\nThe second issue is that in BackCompat (Quirk) mode Gecko partially emulates document.all.ElementID getter to meet some corporate customers ultimatum. This emulation is effective in BackCompat mode only but not in CSS1Compat mode.\n\n<!DOCTYPE html PUBLIC \"-//W3C//DTD HTML 4.01 Transitional//EN\">\n<html>\n<head>\n<meta http-equiv=\"Content-Type\"\n content=\"text/html; charset=iso-8859-1\">\n<title>Demo</title>\n<script type=\"text/javascript\">\nfunction init() {\n window.alert('document mode: '+document.compatMode);\n window.alert(document.all); // undefined\n window.alert(document.all.Demo); // HTML element\n}\nwindow.onload = init;\n</script>\n</head>\n<body>\n<h1 id=\"Demo\">Demo for BackCompat mode</h1>\n</body>\n</html>\n\nat the same time\n\n<!DOCTYPE html PUBLIC \"-//W3C//DTD HTML 4.01//EN\">\n<html>\n<head>\n<meta http-equiv=\"Content-Type\"\n content=\"text/html; charset=iso-8859-1\">\n<title>Demo</title>\n<script type=\"text/javascript\">\nfunction init() {\n window.alert('document mode: '+document.compatMode);\n window.alert(document.all === undefined); // true\n try {\n  window.alert(document.all.Demo);\n }\n catch(e) {\n  window.alert(e.message);\n  // no such property exception\n }\n}\nwindow.onload = init;\n</script>\n</head>\n<body>\n<h1 id=\"Demo\">Demo for CSS1Compat mode</h1>\n</body>\n</html>\n\nThis way it is indeed rather illogical picture: for BackCompat mode Gecko still reports document.all as undefined, yet document.all.ElementID is usable.\n\nIf someone doesn't like such behavior then one may file a bug like \n\"document.all in BackCompat mode should reported as object\"\n\nI still missing any relevance of the issue [2] to the actual programming. The feature test is always must be done on the early stage and if \"document.all\" is reported as missing, why in name anyone will try to use it later so getting any troubles? That besides that problem as such is only exposed in quirk mode which is a very strange mode for Gecko: how anyone may make a compatible layout with quirk mode, so one client applying W3C model and other applying IE model?\n\nAn any case the bug title is misleading and 3/4 of the discussion is about the issue [1] above and not about [2]\n",
+            "date": "20080126T14:03:50",
+            "id": 16
+        },
+        {
+            "author": "schools_ring@yahoo.com",
+            "body": "(In reply to comment #17)\n\n> [2]\n> The second issue is that in BackCompat (Quirk) mode Gecko partially emulates\n> document.all.ElementID getter to meet some corporate customers ultimatum. This\n> emulation is effective in BackCompat mode only but not in CSS1Compat mode.\n\nBy the way due to the same ultimating requirement Gecko in BackCompat emulating another IE feature: all ID'ed HTML elements being procreated as global Javascript variables.\n\n<!DOCTYPE html PUBLIC \"-//W3C//DTD HTML 4.01 Transitional//EN\">\n<html>\n<head>\n<meta http-equiv=\"Content-Type\"\n content=\"text/html; charset=iso-8859-1\">\n<title>Demo</title>\n<script type=\"text/javascript\">\nfunction init() {\n window.alert(document.compatMode); // BackCompat\n window.alert(Demo); // HTMLElement\n}\nwindow.onload = init;\n</script>\n</head>\n<body>\n<h1 id=\"Demo\">Demo for BackCompat mode</h1>\n</body>\n</html>\n\nIs it planned to patch toBoolean for it as well?\n\n\n",
+            "date": "20080126T14:25:04",
+            "id": 17
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "(In reply to comment #18)\n> [snip]\n> \n> Is it planned to patch toBoolean for it as well?\n> \n\nNo.\n",
+            "date": "20080126T20:21:39",
+            "id": 18
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "Complete fix for bug 412247 - Allow to customize toBoolean conversion\nFix misspelling in method name (!) and correct support for Boolean(expr).\n\nChecking in src/org/mozilla/javascript/NativeBoolean.java;\n/cvsroot/mozilla/js/rhino/src/org/mozilla/javascript/NativeBoolean.java,v  <-- NativeBoolean.java\nnew revision: 1.34; previous revision: 1.33\ndone\nChecking in src/org/mozilla/javascript/ScriptRuntime.java;\n/cvsroot/mozilla/js/rhino/src/org/mozilla/javascript/ScriptRuntime.java,v  <-- ScriptRuntime.java\nnew revision: 1.290; previous revision: 1.289\ndone\nChecking in src/org/mozilla/javascript/ScriptableObject.java;\n/cvsroot/mozilla/js/rhino/src/org/mozilla/javascript/ScriptableObject.java,v  <--  ScriptableObject.java\nnew revision: 1.127; previous revision: 1.126\ndone\n",
+            "date": "20080128T14:41:29",
+            "id": 19
+        }
+    ],
+    "component": "Core",
+    "description": "User-Agent:       Mozilla/5.0 (X11; U; Linux i686; en-US; rv:1.8.1.11) Gecko/20071204 Ubuntu/7.10 (gutsy) Firefox/2.0.0.11\nBuild Identifier: \n\nECMA describes precisely that not null Object should be converted to true but this causes a problem when using Rhino to simulate Firefox behavior for document.all.\n\nRhino should give the possibility to configure if ECMA rules should be respected (default) or if Scriptable#getDefaultValue should be called on the object.\n\nThis is a critical requirement for us (HtmlUnit).\n\nReproducible: Always\n\nSteps to Reproduce:\n1.\n2.\n3.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "412247",
+    "issuetypeClassified": "RFE",
+    "issuetypeTracker": "RFE",
+    "priority": "-- enhancement",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "Allow to customize toBoolean conversion",
+    "systemSpecification": true,
+    "version": "other"
+}

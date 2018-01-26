@@ -1,0 +1,41 @@
+{
+    "comments": [
+        {
+            "author": "Robert Muir",
+            "body": "Hello Nick, thanks for your patch.\n\nIn trunk this is no problem, because wildcard query works in a very different way and both foo**********bar and foo*bar are compiled to the same matcher:\n{noformat}\n    WildcardQuery wq = new WildcardQuery(new Term(\"foo\", \"foo*******bar\"));\n    WildcardQuery wq2 = new WildcardQuery(new Term(\"foo\", \"foo*bar\"));\n    assertEquals(wq.automaton.getNumberOfStates(), wq2.automaton.getNumberOfStates());\n    assertEquals(wq.automaton.getNumberOfTransitions(), wq2.automaton.getNumberOfTransitions());\n{noformat}\n\nBut at a glance, your patch looks like a potentially useful optimization for 3.x\n",
+            "date": "2010-08-24T16:43:13.145+0000",
+            "id": 0
+        },
+        {
+            "author": "Robert Muir",
+            "body": "I took a look at this, and the worst-case behavior in 3x etc is, in my opinion, definitely bug territory.\n\nwhen 3x's wildcardEquals() encounters a '*', it does this:\n{code}\nfor (int i = string.length(); i >= s; --i)\n          {\n            if (wildcardEquals(pattern, p, string, i))\n            {\n              return true;\n            }\n          }\n{code}\n\nThis is itself already inside a loop in wildcardEquals, so its a disaster.\n\nI added a test for this, and Nick's fix (with one needed length check) and the tests pass.\nbut if you run the test without the change, you will see what Nick is experiencing.\n",
+            "date": "2010-08-24T17:09:47.409+0000",
+            "id": 1
+        },
+        {
+            "author": "Robert Muir",
+            "body": "Assigning 2.9.x and 3.0.x fix versions as, it seems to loop infinitely (or the runtime is so terrible it might as well be infinite).\n",
+            "date": "2010-08-24T17:12:40.043+0000",
+            "id": 2
+        },
+        {
+            "author": "Robert Muir",
+            "body": "Committed to 3.x (988620) 3.0.x (988638) 2.9.x (988682).\n\nThanks Nick!",
+            "date": "2010-08-24T19:32:07.108+0000",
+            "id": 3
+        }
+    ],
+    "component": "core/search",
+    "description": "If a search query has many adjacent asterisks (e.g. fo**************obar), I can get my webapp caught in a loop that does not seem to end in a reasonable amount of time and may in fact be infinite. For just a few asterisks the query eventually does return some results, but as I add more it takes a longer and longer amount of time. After about six or seven asterisks the query never seems to finish. Even if I abort the search, the thread handling the troublesome query continues running in the background and pinning a CPU.\n\nI found the problem in src/java/org/apache/lucene/search/WildcardTermEnum.java on Lucene 3.0.1 and it looks like 3.0.2 ought to be affected as well. I'm not sure about trunk, though. I have a patch that fixes the problem for me in 3.0.1.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-2620",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "Queries with too many asterisks causing 100% CPU usage",
+    "systemSpecification": true,
+    "version": "3.0.1"
+}

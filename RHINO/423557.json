@@ -1,0 +1,47 @@
+{
+    "comments": [
+        {
+            "author": "cwolves@gmail.com",
+            "body": "I know alert isn't valid, I wasn't thinking about it.  Change that to whatever, the \"x.int\" still breaks.",
+            "date": "20080318T00:15:06",
+            "id": 0
+        },
+        {
+            "author": "cwolves@gmail.com",
+            "body": "Okay, looking into this more I found that Rhino follows the ECMAScript Grammar on this while every browser I've tested (FF, Opera, Safari, IE) allows the behavior.  I suppose the question is what Rhino should be following closer  :-)  A simple browser test:\n\njavascript:alert({int:5}.int);\n\n\n\nFrom ECMA-262 E3:\n\nReservedWord :: See section 7.5.1 \nKeyword \nFutureReservedWord \nNullLiteral \nBooleanLiteral \n \nKeyword :: one of See section 7.5.2 \nbreak else new var \ncase finally return void \ncatch for switch while \ncontinue function this with \ndefault if throw \ndelete in try \ndo instanceof typeof \n \nFutureReservedWord :: one of See section 7.5.3 \nabstract enum int short \nboolean export interface static \nbyte extends long super \nchar final native synchronized \nclass float package throws \nconst goto private transient \ndebugger implements protected volatile \ndouble import public \n\nIdentifier :: IdentifierName but not ReservedWord",
+            "date": "20080328T19:09:32",
+            "id": 1
+        },
+        {
+            "author": "steve.yegge@gmail.com",
+            "body": "IE6 permits this:\n\nvar foo = {int: 5}\n\nbut NOT any of the following:\n\nvar foo = {return: 5}\nvar foo = {for: 5}\nvar foo = {while: 5}\nvar foo = {if: 5}\n\nSo technically IE is only permitting non-keyword reserved words as identifiers.  (Haven't verified it for all keywords, but that's my hunch.)",
+            "date": "20080414T11:40:32",
+            "id": 2
+        },
+        {
+            "author": "hannesw@gmail.com",
+            "body": "Created attachment 522684\nAllow keywords as property identifiers\n\nThis patch allows all keywords as property ids if Context.FEATURE_RESERVED_KEYWORD_AS_IDENTIFIER is enabled. In the meantime all major browsers allow this, so it's time to catch up.",
+            "date": "20110329T15:39:31",
+            "id": 3
+        },
+        {
+            "author": "hannesw@gmail.com",
+            "body": "Committed my patch.\n\nChecking in src/org/mozilla/javascript/Token.java;\n/cvsroot/mozilla/js/rhino/src/org/mozilla/javascript/Token.java,v  <--  Token.java\nnew revision: 1.47; previous revision: 1.46\ndone\nChecking in src/org/mozilla/javascript/Parser.java;\n/cvsroot/mozilla/js/rhino/src/org/mozilla/javascript/Parser.java,v  <--  Parser.java\nnew revision: 1.157; previous revision: 1.156\ndone\nRCS file: /cvsroot/mozilla/js/rhino/testsrc/doctests/423557.doctest,v\ndone\nChecking in testsrc/doctests/423557.doctest;\n/cvsroot/mozilla/js/rhino/testsrc/doctests/423557.doctest,v  <--  423557.doctest\ninitial revision: 1.1\ndone",
+            "date": "20110329T15:43:24",
+            "id": 4
+        }
+    ],
+    "component": "Compiler",
+    "description": "User-Agent:       Mozilla/5.0 (Macintosh; U; Intel Mac OS X; en-US; rv:1.8.1.12) Gecko/20080201 Firefox/2.0.0.12\nBuild Identifier: rhino1_6R7\n\nThe following snippets cause compiler errors, all are valid:\n\nvar x = {int:5};\nvar x = {for:5};\nvar x = {continue:5};\nvar x = {while:5};\n...etc\n\nvar x = {'int': 5}; // passes this, but...\nalert(x.int);       // fails\n\nReproducible: Always\n\nSteps to Reproduce:\n1.\n2.\n3.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "423557",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "-- normal",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "Compiler chokes on keywords as object properties",
+    "systemSpecification": true,
+    "version": "other"
+}

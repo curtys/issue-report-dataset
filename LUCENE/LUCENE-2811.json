@@ -1,0 +1,71 @@
+{
+    "comments": [
+        {
+            "author": "Michael McCandless",
+            "body": "Patch.",
+            "date": "2010-12-13T12:06:36.415+0000",
+            "id": 0
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Patch also has fix for intermittent failure I hit in TestAddIndexes testAddIndexesWithRollback.",
+            "date": "2010-12-13T12:10:00.032+0000",
+            "id": 1
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "Mike good that you figured it out :D - other than that I think this part gets messier and messier each time we change something. Your patch is a good indicator that we need to push stuff into codecs and let codecs decide if a feature is present in a segment. BW code should be handled in PreFlexCodec and new stuff like hasVector should be something a codec holds or rather segmentCodecs encodes really. Accessing the filename extensions outside a codec seem to be very odd (I know TV and Stored fields are not yet exposed - just sayin) \n\nAlso all the CFS and Compound Doc Store stuff should be pushed to codecs.\n\nI looked at the patch and it looks good to me though except of the one System.out.println:\n\n{code}\n    System.out.println(\"SI READ 2\");\n{code}\n\nsimon",
+            "date": "2010-12-13T12:35:18.519+0000",
+            "id": 2
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "bq. Accessing the filename extensions outside a codec seem to be very odd (I know TV and Stored fields are not yet exposed - just sayin)\n\nI agree -- we gotta get this stuff under codec control!  No core code should be operating on file names.\n\nbq. I looked at the patch and it looks good to me though except of the one System.out.println:\n\nWoops, thanks, I'll remove the sop!",
+            "date": "2010-12-13T13:41:47.794+0000",
+            "id": 3
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Committed to trunk...\n\nI'll let this age a bit before backporting to 3.x.",
+            "date": "2010-12-13T19:21:00.905+0000",
+            "id": 4
+        },
+        {
+            "author": "Earwin Burrfoot",
+            "body": "I think SegmentInfo.hasVectors should be a boolean.\n\nIf this is an old index, we can check the file presence in SegmentInfo constructor, set it properly, and on next write index is silently upgraded.",
+            "date": "2010-12-14T16:41:05.804+0000",
+            "id": 5
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Good idea, will do...",
+            "date": "2010-12-14T17:23:16.848+0000",
+            "id": 6
+        },
+        {
+            "author": "Earwin Burrfoot",
+            "body": "From IRC:\nSegmentMerger.hasVectors carries no new information compared to OneMerge.hasVectors, and can be dropped.\nOneMerge.hasVectors is initialized just near OneMerge.info, and is later used to set OneMerge.info.hasVectors, might as well do that from the get go and drop OM.hV.",
+            "date": "2010-12-15T01:06:01.870+0000",
+            "id": 7
+        },
+        {
+            "author": "Grant Ingersoll",
+            "body": "Bulk close for 3.1",
+            "date": "2011-03-30T15:50:00.199+0000",
+            "id": 8
+        }
+    ],
+    "component": "core/index",
+    "description": "Today SegmentInfo doesn't know if it has vectors, which means its files() method must check if the files exist.\n\nThis leads to subtle bugs, because Si.files() caches the files but then we fail to invalidate that later when the term vectors files are created.\n\nIt also leads to sloppy code, eg TermVectorsReader \"gracefully\" handles being opened when the files do not exist.  I don't like that; it should only be opened if they exist.\n\nThis also fixes these intermittent failures we've been seeing:\n\n{noformat}\njunit.framework.AssertionFailedError: IndexFileDeleter doesn't know about file _1e.tvx\n       at org.apache.lucene.util.LuceneTestCase$LuceneTestCaseRunner.runChild(LuceneTestCase.java:979)\n       at org.apache.lucene.util.LuceneTestCase$LuceneTestCaseRunner.runChild(LuceneTestCase.java:917)\n       at org.apache.lucene.index.IndexWriter.filesExist(IndexWriter.java:3633)\n       at org.apache.lucene.index.IndexWriter.startCommit(IndexWriter.java:3699)\n       at org.apache.lucene.index.IndexWriter.prepareCommit(IndexWriter.java:2407)\n       at org.apache.lucene.index.IndexWriter.commitInternal(IndexWriter.java:2478)\n       at org.apache.lucene.index.IndexWriter.commit(IndexWriter.java:2460)\n       at org.apache.lucene.index.IndexWriter.commit(IndexWriter.java:2444)\n       at org.apache.lucene.index.TestIndexWriterExceptions.testRandomExceptionsThreads(TestIndexWriterExceptions.java:213)\n{noformat}",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-2811",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "SegmentInfo should explicitly track whether that segment wrote term vectors",
+    "systemSpecification": true,
+    "version": ""
+}

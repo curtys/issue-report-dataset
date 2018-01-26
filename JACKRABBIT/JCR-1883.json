@@ -1,0 +1,35 @@
+{
+    "comments": [
+        {
+            "author": "Thomas Mueller",
+            "body": "There are multiple solutions to the problem. \n\nOne is, refresh will undo the move operation. But that would also change the old parent node, which may not be expected.\n\nAnother solution is to reject refreshing this node. This is what I have implemented. Here is a proposed patch. I also want to add a test case for this issue.\n\nIndex: src/main/java/org/apache/jackrabbit/core/ItemImpl.java\n===================================================================\n--- src/main/java/org/apache/jackrabbit/core/ItemImpl.java\t(revision 722453)\n+++ src/main/java/org/apache/jackrabbit/core/ItemImpl.java\t(working copy)\n@@ -1171,10 +1171,19 @@\n             switch (transientState.getStatus()) {\n                 case ItemState.STATUS_STALE_MODIFIED:\n                 case ItemState.STATUS_STALE_DESTROYED:\n-                case ItemState.STATUS_EXISTING_MODIFIED:\n                     // add this item's state to the list\n                     list.add(transientState);\n                     break;\n+                    \n+                case ItemState.STATUS_EXISTING_MODIFIED:\n+                    if (!transientState.getParentId().equals(\n+                            transientState.getOverlayedState().getParentId())) {\n+                        throw new RepositoryException(\n+                                \"Cannot refresh a moved item: \" + this + \n+                                \" - possible solution: refresh the parent\");\n+                    }\n+                    list.add(transientState);\n+                    break;\n \n                 case ItemState.STATUS_NEW:\n                     throw new RepositoryException(",
+            "date": "2008-12-09T15:42:27.443+0000",
+            "id": 0
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "Fixed in revision 725292. The unit tests succeed, but I'm not sure if we should backport this fix yet - it may have some unwanted side effects.",
+            "date": "2008-12-10T14:22:28.182+0000",
+            "id": 1
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "OK, marking this for 1.6.0. If there's end user demand for a fix in 1.5.x then we can reconsider merging the fix to the 1.5 branch.",
+            "date": "2008-12-17T15:32:16.741+0000",
+            "id": 2
+        }
+    ],
+    "component": "jackrabbit-core",
+    "description": "Moving a node and then refreshing it can make it disappear.\n\ndeleteDirectory(new File(\"repository\"));\nRepository rep = new TransientRepository();\nSession session = rep.login(new SimpleCredentials(\"\", new char[0]));\nNode root = session.getRootNode();\nNode a = root.addNode(\"a\");\nNode b = a.addNode(\"b\");\nsession.save();\nsession.move(\"/a/b\", \"/b\");\nb.refresh(false);\n// session.save(); // no effect\nfor (NodeIterator it = root.getNodes(); it.hasNext();) {\n    Node n = it.nextNode();\n    System.out.println(n.getName());\n    for (NodeIterator it2 = n.getNodes(); it2.hasNext();) {\n        System.out.println(\"  \" + it2.nextNode().getName());\n    }\n}\n\nIn the trunk, the node 'b' is not listed after the refresh (not under the root page, and not under a). The output is:\njcr:system\n  jcr:versionStorage\n  jcr:nodeTypes\na\n\n\nJackrabbit 1.4.x throws an exception:\n\njcr:system\n  jcr:versionStorage\n  jcr:nodeTypes\na\nException in thread \"main\" javax.jcr.RepositoryException: failed to resolve name of acee31c4-c33b-4ed4-b1b5-39db6f17fb09\n\tat org.apache.jackrabbit.core.HierarchyManagerImpl.getName(HierarchyManagerImpl.java:451)\n\tat org.apache.jackrabbit.core.CachingHierarchyManager.getName(CachingHierarchyManager.java:287)\n\tat org.apache.jackrabbit.core.NodeImpl.getName(NodeImpl.java:1931)\n\tat org.apache.jackrabbit.core.fuzz.TestMoveRemoveRefresh.test(TestMoveRemoveRefresh.java:33)\n\tat org.apache.jackrabbit.core.fuzz.TestMoveRemoveRefresh.main(TestMoveRemoveRefresh.java:15)\n\n\nvoid deleteDirectory(File file) {\n    if (file.isDirectory()) {\n        File[] list = file.listFiles();\n        for(int i=0; i<list.length; i++) {\n            deleteDirectory(list[i]);\n        }\n    }\n    file.delete();\n}\n",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "JCR-1883",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Minor",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "Moved node disappears",
+    "systemSpecification": true,
+    "version": "1.5"
+}

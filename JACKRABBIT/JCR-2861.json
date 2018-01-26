@@ -1,0 +1,41 @@
+{
+    "comments": [
+        {
+            "author": "Claus K\u00f6ll",
+            "body": "The internal TimerTask will only be scheduled if we are in a one phase transaction.",
+            "date": "2011-01-25T11:49:24.173+0000",
+            "id": 0
+        },
+        {
+            "author": "Claus K\u00f6ll",
+            "body": "I think we could delete the complete Rollback-Task because the timeout handling should make the TM not the RM.\nI will create a new issue for that ...",
+            "date": "2011-01-25T13:26:33.897+0000",
+            "id": 1
+        },
+        {
+            "author": "Claus K\u00f6ll",
+            "body": "Fixed in revision 1066794",
+            "date": "2011-02-03T12:38:40.512+0000",
+            "id": 2
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Merged to the 2.2 branch in revision 1202683.",
+            "date": "2011-11-16T12:53:26.241+0000",
+            "id": 3
+        }
+    ],
+    "component": "jackrabbit-core",
+    "description": "The problem here is that in a 2 phase transaction the xa spec does not  \npermit a RB* return code in response to xa_commit().  The xa spec says  \nthe following about RB* return codes in the xa_commit() section:        \n                                                                        \n\"The resource manager did not commit the work done on behalf of the     \ntransaction branch.  Upon return, the resource manager has rolled back  \nthe branch?s work and has released all held resources.  These values may\nbe returned only if TMONEPHASE is set in flags\"                         \n                                                                        \nEssentially, the only two return codes from xa_commit that J2EE Containers can     \nhandle sensibly are XA_OK (normal case) and XA_RMFAIL.  RMFAIL will     \ncause the containers to retry to commit the  transaction.  Any other return code will result in a heuristic          \ntransaction outcome (non-atomic).  \n\nIn a xa environment the TMONEPHASE is not set on the flags and so XA_RBTIMEOUT is \nnot a permitted return code. A Container  transaction service cannot do anything to ensure an atomic     \noutcome if an XAResource fails to honour its promise to be able to commit it made when it answer XA_OK in response to xa_prepare(). \n\nThe internal timeout handling will rollback the Jackrabbit XAResource if the time exceeds between prepare and commit.\nand in the commit Method will always throw a XA_RBTIMEOUT.\n\nWe should not handle the timeout internal because this should make the container in a 2 Phase transaction.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "JCR-2861",
+    "issuetypeClassified": "OTHER",
+    "issuetypeTracker": "BUG",
+    "priority": "Critical",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "Internal Timeout Handling in the TransactionContext is not XA Spec. conform",
+    "systemSpecification": true,
+    "version": "2.2"
+}

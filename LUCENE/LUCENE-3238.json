@@ -1,0 +1,65 @@
+{
+    "comments": [
+        {
+            "author": "Ludovic Boutros",
+            "body": "Here is the patch for the branch 3x.",
+            "date": "2011-06-24T13:55:07.606+0000",
+            "id": 0
+        },
+        {
+            "author": "Robert Muir",
+            "body": "Hi, definitely a bug, thank you!\n\nIn my opinion, WildcardQuery should not try to override MultiTermQuery's rewrite here, it causes too many problems.\n\nInstead, in this case it should just return a PrefixTermEnum... this is the way we handle these things in trunk and I think we should fix it here the same way.",
+            "date": "2011-06-24T14:21:26.198+0000",
+            "id": 1
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "The fix is fine, but in my optinion the problem should be solved differently.\n\nI would like to make the rewrite method in MultiTermQuery final to prevent override. To correctly fix the issue, WildcardQuery only needs to return a PrefixTermEnum in its getEnum method. This is already fixed in Lucene 4.0.\n\nFrom looking at the code, SpanMultiTermQueryWrapper would not work correct in all cases, if the underlying query overwrites rewrite(), as the rewritten query would again have the wrong type.",
+            "date": "2011-06-24T14:22:52.219+0000",
+            "id": 2
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Patch is fine! Funny overlap, we both responded with same answer :-)",
+            "date": "2011-06-24T14:25:20.897+0000",
+            "id": 3
+        },
+        {
+            "author": "Robert Muir",
+            "body": "Same patch: except I made MultiTermQuery's rewrite() final.\n\nIn my opinion, this is a good backwards break, it will only fix bugs in someone's code if they have a custom MultiTermQuery: its very tricky to override this (e.g. you must pass along boost, rewriteMethod, ...), and when you do, still might cause problems (like this Span issue).\n\nIts also much easier to just return a simpler enum.\n",
+            "date": "2011-06-24T14:51:25.819+0000",
+            "id": 4
+        },
+        {
+            "author": "Ludovic Boutros",
+            "body": "I understand the patch, that's better indeed. :)\n\nThanks.",
+            "date": "2011-06-24T16:30:08.750+0000",
+            "id": 5
+        },
+        {
+            "author": "Robert Muir",
+            "body": "thanks Ludovic, nice catch!\n\n\n",
+            "date": "2011-06-24T23:42:16.057+0000",
+            "id": 6
+        },
+        {
+            "author": "Robert Muir",
+            "body": "bulk close for 3.3",
+            "date": "2011-07-02T02:40:12.000+0000",
+            "id": 7
+        }
+    ],
+    "component": "core/search",
+    "description": "If we try to do a search with SpanQuery and a PrefixQuery this message is returned:\n\n\"You can only use SpanMultiTermQueryWrapper with a suitable SpanRewriteMethod.\"\n\nThe problem is in the WildcardQuery rewrite function.\n\nIf the wildcard query is a prefix, a new prefix query is created, the rewrite method is set with the SpanRewriteMethod and the prefix query is returned.\n\nBut, that's the rewritten prefix query which should be returned:\n\n-      return rewritten;\n+      return rewritten.rewrite(reader);\n\nI will attach a patch with a unit test included.\n\n\n\n",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-3238",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "SpanMultiTermQueryWrapper with Prefix Query issue",
+    "systemSpecification": true,
+    "version": "3.3"
+}

@@ -1,0 +1,83 @@
+{
+    "comments": [
+        {
+            "author": "Olaf Sebelin",
+            "body": "Created an attachment (id=17812)\nWire log of the execution of the sample code\n\nThis is the wire log of the execution of the example code. Hostnames are\nanonymized.",
+            "date": "2006-03-01T21:52:12.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "If CONNECT method fails (due to an authentication failure, for instance) and the\nproxy requests the connection to be kept alive, the connection is returned back\nto the connection manager in an inconsistent state (the connection is kept open\nbut the tunnel has not been established). This causes the subsequent methods\nthat reuse this connection generate invalid HTTP requests\n\nOleg",
+            "date": "2006-03-01T22:03:08.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Ortwin Gl\u00fcck",
+            "body": "Oleg,\n\nDo you consider this a violation of the proxy protocol? I doubt that Squid is so\nbad at it. Or do we have a chance to catch this situation and close the\nconnection anyway (ignoring the keep-alive header). We can always close a\nconnection without violating the HTTP specs.",
+            "date": "2006-03-01T22:08:18.000+0000",
+            "id": 2
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "(In reply to comment #3)\n> Oleg,\n> \n> Do you consider this a violation of the proxy protocol? I doubt that Squid is so\n> bad at it.\n\nNo, I do not. This is clearly a problem on the HttpClient side\n\n Or do we have a chance to catch this situation and close the\n> connection anyway (ignoring the keep-alive header). We can always close a\n> connection without violating the HTTP specs.\n\nThis is correct. HTTP connection may be closed at any point of time without any\nprior notice. 'Connection' headers are purely informational. They imply no\nmandatory action.\n\nIt should be technically possible to recover from this situation without\ndropping the connection, but I would rather choose to incur a slight performance\nhit by reopening the connection, if the recovery logic proves too complicated.\nOtherwise, it is a one line fix\n\nOleg\n",
+            "date": "2006-03-01T22:20:33.000+0000",
+            "id": 3
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Created an attachment (id=17821)\nPatch (take 1)\n\nThis should take care of the problem. Please review\n\nOleg",
+            "date": "2006-03-03T01:46:33.000+0000",
+            "id": 4
+        },
+        {
+            "author": "Olaf Sebelin",
+            "body": "(In reply to comment #5)\n> Created an attachment (id=17821) [edit]\n> Patch (take 1)\n> \n> This should take care of the problem. Please review\n> \n> Oleg\n\nDid work for me.",
+            "date": "2006-03-03T02:13:59.000+0000",
+            "id": 5
+        },
+        {
+            "author": "Roland Weber",
+            "body": "I'm not familiar with all the details of the code,\nbut this change looks OK to me.\n\ncheers,\n  Roland",
+            "date": "2006-03-05T02:23:36.000+0000",
+            "id": 6
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Looks fine to me.  We should probably add a test case if possible so this one\ndoesn't pop up again.\n\nMike",
+            "date": "2006-03-06T11:19:59.000+0000",
+            "id": 7
+        },
+        {
+            "author": "Ortwin Gl\u00fcck",
+            "body": "Yeah, test case is dearly needed. It's a reoccuring issue that one of those\ncombinations of (proxy, SSL, auth(scheme) proxy, auth(scheme) server) breaks. I\nam not very good at combinatorics, but there seem to be about ~32 possibilities\nto combine those. It's very hard to achieve full test coverage of the possible\nstate space. I was thinking of refactoring the test suite so it can be run with\nany combination of the above. But I guess that's something for another\nsummer-of-code...",
+            "date": "2006-03-06T16:43:46.000+0000",
+            "id": 8
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "(In reply to comment #9)\n> Yeah, test case is dearly needed. It's a reoccuring issue that one of those\n> combinations of (proxy, SSL, auth(scheme) proxy, auth(scheme) server) breaks. I\n> am not very good at combinatorics, but there seem to be about ~32 possibilities\n> to combine those. It's very hard to achieve full test coverage of the possible\n> state space. I was thinking of refactoring the test suite so it can be run with\n> any combination of the above. But I guess that's something for another\n> summer-of-code...\n\nOdi,\nI seriously doubt that refactoring of the test suite will help. It is HttpClient\nthat is in need of refactoring. Presently SSL tunneling, authentication,\nredirects handling, connection persistence aspects are all inseparably coupled\nin the HttpMethodDirector and cannot be adequately unit-tested.\n\nI considered writing a test case for this bug, and decided to not ivest time\ninto that, as I do not see a good way to test the bug independently from the\nunderlying connection manager (the connection manager would have to return THE\nSAME connection for the test case to be meaningful). Essentially the test case\nwould test the assumptions of the inner working of the connection manager rather\nthan SSL tunneling code\n\nOleg",
+            "date": "2006-03-06T17:33:08.000+0000",
+            "id": 9
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Patch checked in\n\nOleg",
+            "date": "2006-03-06T17:44:49.000+0000",
+            "id": 10
+        }
+    ],
+    "component": "HttpClient (classic)",
+    "description": "Opening a HTTPS Connection over an authenticating Proxy (Basic auth. scheme) \nfails, if proxy credentials are not provided at the first try. \n\nThe following example code will fail:\n\nHttpClient client = new HttpClient(new MultiThreadedHttpConnectionManager());\nURL url = new URL(\"https://examplehttpsurl\");\n  \n//first try \nGetMethod get = new GetMethod(url.toExternalForm());\nHostConfiguration hc = new HostConfiguration();\nhc.setHost(url.getHost(), 443, \"https\");\nhc.setProxy(\"proxyhost\", 4711);\n\ntry {\n  client.executeMethod(hc, get);\n} catch (Exception e){\n  LOG.error(\"\",e);\n} finally {\n  get.releaseConnection();\n}\n\n//returns 407 (expected)\nLOG.debug(\"Answer: \" + get.getStatusLine().toString()); \n\n//retry with credentials (normally requested from the user)\nclient.getState().setProxyCredentials(new AuthScope(\"proxyhost\",4711),\n      new NTCredentials(\"USER\", \"PASS\", \"\", \"\"));\n\nget = new GetMethod(url.toExternalForm());\n\ntry {\n  client.executeMethod(hc, get);\n} catch (Exception e) {\n  e.printStackTrace();\n} finally {\n  get.releaseConnection();\n}\n//should be 200 but is 407\nLOG.debug(\"Answer: \" + get.getStatusLine().toString());\n\n\n\n----------\n\n\nFrom what I see from HttpMethodDirector.executeWithRetry(final\nHttpMethod method), the cause is, that the connection is kept open, and\nthus the connect is never retried:\n\n\nif (!this.conn.isOpen()) {\n  // this connection must be opened before it can be used\n  // This has nothing to do with opening a secure tunnel\n  this.conn.open();\n  if (this.conn.isProxied() && this.conn.isSecure() \n      && !(method instanceof ConnectMethod)) {\n    // we need to create a secure tunnel before we can execute the real method\n    if (!executeConnect()) {\n      // abort, the connect method failed\n      return;\n    }\n  }\n}\n\n\nIf I add a conn.close() before returning on !executeConnect(), the\nabove code will work, the CONNECT is reattempted.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "HTTPCLIENT-570",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "HTTPCLIENT",
+    "project": "HTTPCLIENT",
+    "summary": "Failed CONNECT leaves connection in an inconsistent state",
+    "systemSpecification": true,
+    "version": "3.0 Final"
+}

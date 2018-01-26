@@ -1,0 +1,71 @@
+{
+    "comments": [
+        {
+            "author": "Chiao Cheng",
+            "body": "Created an attachment (id=14478)\nsimple demonstration of equals and hashcode\n",
+            "date": "2005-03-13T21:51:04.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Created an attachment (id=14480)\nPatch against Commons HttpClient trunk (HttpClient 3.0)\n\nI reviewed all the classes in HttpClient 3.0 with regards to their compliance\nwith the Object#hashCode/Object#equals best practices and made changes that\nwere necessary to ensure compliance. I'll back port the patch to HttpClient 2.x\nbranch once it gets reviewed and committed to the SVN trunk. \n\nLet me know what you think\n\nOleg",
+            "date": "2005-03-14T02:04:02.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Chiao Cheng",
+            "body": "Curious...\n\n+            return LangUtils.equals(this.getName(), that.getName())\n+                  && LangUtils.equals(this.cookieDomain, that.cookieDomain)\n+                  && LangUtils.equals(this.cookiePath, that.cookiePath);\n\nWhy access member variable directly with that.cookieDomain instead of using \naccessor methods getDomain()?  Does current object have access to \nthat.cookieDomain?  I don't understand completely but it looks like \ncookieDomain is private.\n\nSame with that.cookiePath versus that.getPath().",
+            "date": "2005-03-14T08:20:54.000+0000",
+            "id": 2
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Looks good to me.\n\nMike",
+            "date": "2005-03-14T12:03:28.000+0000",
+            "id": 3
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "> Why access member variable directly with that.cookieDomain instead of using\n> accessor methods getDomain()?  \n\nWhat would be benefits of doing otherwise?\n\n> Does current object have access to that.cookieDomain?  \n\nYes, it does, because \"that\" is an instance of the same class\n\nOleg",
+            "date": "2005-03-14T17:27:21.000+0000",
+            "id": 4
+        },
+        {
+            "author": "Chiao Cheng",
+            "body": "(In reply to comment #5)\n> > Why access member variable directly with that.cookieDomain instead of using\n> > accessor methods getDomain()?  \n> What would be benefits of doing otherwise?\n> > Does current object have access to that.cookieDomain?  \n> Yes, it does, because \"that\" is an instance of the same class\n\nCool.  No benefit I guess.  I was just curious and wanted to know for my self-\neducation.  Thanks for the answers!\n",
+            "date": "2005-03-15T04:37:15.000+0000",
+            "id": 5
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Patch committed to SVN trunk & 2.0 branch.\n\nOleg",
+            "date": "2005-03-15T06:02:00.000+0000",
+            "id": 6
+        },
+        {
+            "author": "Ortwin Gl\u00fcck",
+            "body": "Chiao,\n\nBloch's \"Effective Java\" (Addison Wesley) on how to implement hashCode and\nequals may be of interest to you.\n\nOrtwin Gl\u00fcck",
+            "date": "2005-03-15T17:30:19.000+0000",
+            "id": 7
+        },
+        {
+            "author": "Chiao Cheng",
+            "body": "I was reading your recommended book \"effective java\", specifically chapter \n3 \"obey the general contract when overriding equals\".  The following statement \ncaught my attention...\n\n\"There is simply no way to extend an instantiable class and add an aspect \nwhile preserving the equals contract.\"\n\nAfter looking over his Point/ColorPoint example carefully, it appears that \nthis Cookie class is very similar.  And thus has a similar violation of the \nequals contract?\n\nNameValuePair pair = new NameValuePair(\"test\",\"blank\");\nCookie c = new Cookie(\"blah.com\", \"test\",\"blank\");\n\npair.equals(c) --> true;\nc.equals(pair) --> false;\n\nThis seems to break the symmetry portion of the equals contract.",
+            "date": "2006-02-10T18:34:32.000+0000",
+            "id": 8
+        }
+    ],
+    "component": "HttpClient (classic)",
+    "description": "org.apache.commons.httpclient.Cookie hashCode() does not meet object.hashCode\n() contract.  Cookie.hashCode() returns different values even though data used \nin equals() comparison is the same.\n\nContract:**Whenever it is invoked on the same object more than once during an \nexecution of a Java application, the hashCode method must consistently return \nthe same integer, provided no information used in equals comparisons on the \nobject is modified.**\n\nBreaks use of cookie within collections such as when using contains().\n\nTraced problem back to parent class NameValuePair.  Cookie.hashCode() calls \nNameValuePair.hashCode() which relies on name/value hashes.  Cookie does not \nrely on value to determine equality.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "HTTPCLIENT-441",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "HTTPCLIENT",
+    "project": "HTTPCLIENT",
+    "summary": "Cookie.java hashCode method violates contract",
+    "systemSpecification": true,
+    "version": "2.0.2"
+}

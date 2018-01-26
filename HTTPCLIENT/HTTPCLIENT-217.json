@@ -1,0 +1,89 @@
+{
+    "comments": [
+        {
+            "author": "Ortwin Gl\u00fcck",
+            "body": "releaseConnection is meant to return a connection to the connection pool.\nHowever it does not close it because the connection should be reused if possible.\n\nWhat you want is a means to abort a request. This can be accomplished by\nexplicitly closing the physical connection and not returning it to the pool. We\nshould provide an 'abort' method that does that. I am not sure how this\nintegrates with the current connection manager architecture.\n\nThis is a feature request and not a bug. As we are in beta now, we can not\nimplement this until we have branched 2.0 out. So targetting for 2.1.",
+            "date": "2003-05-28T15:12:13.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Created an attachment (id=11477)\nPatch (take 1)\n",
+            "date": "2004-05-10T03:32:31.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Well, it looks like this is all it takes. Writing the test case was by far the\nmost difficult part.\n\nLet me know if I overlooked any potential problems\n\nOleg",
+            "date": "2004-05-10T03:34:09.000+0000",
+            "id": 2
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Hi Oleg,\n\nThis looks like the right way to handle abort.  I have a few suggestions:\n\n - HttpMethodBase should check the abort flag before executing just in case abort() was called before \nthe method had a connection.\n - A test case should be added for the above case.\n\nOther than these items I think this one is ready to go.\n\nMike",
+            "date": "2004-05-10T04:11:29.000+0000",
+            "id": 3
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Fair enough. How about this?\n\nOleg",
+            "date": "2004-05-10T04:53:25.000+0000",
+            "id": 4
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Created an attachment (id=11479)\nPatch (take 2)\n",
+            "date": "2004-05-10T04:53:55.000+0000",
+            "id": 5
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Looks good.\n\nMike",
+            "date": "2004-05-10T05:25:55.000+0000",
+            "id": 6
+        },
+        {
+            "author": "Ortwin Gl\u00fcck",
+            "body": "I am quite surprised that all it takes is a connection.close! Looks as if we\nfinally have a good architecture for connection handling :-) Good work guys.",
+            "date": "2004-05-10T14:44:51.000+0000",
+            "id": 7
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "If nobody complains loudly I'll commit the patch tonight (~ 20:00 GMT)\n\nOleg",
+            "date": "2004-05-11T21:47:39.000+0000",
+            "id": 8
+        },
+        {
+            "author": "Mike Sample",
+            "body": "Oleg, if the abort request comes from a different thread than the code that \nacts on the abort flag (probably does) then you may want the 'aborted' boolean \nfield to be volatile so it'll get updated immediately.",
+            "date": "2004-05-11T23:37:55.000+0000",
+            "id": 9
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Even though there are enough people out there who claim volatile variable\nimplementation to be completely broken in many JDKs, and even though there's no\nharm in calling abort multiple times, you are completely right. I'll mark\naborted flag as volatile before committing the patch\n\nOleg",
+            "date": "2004-05-11T23:53:23.000+0000",
+            "id": 10
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Patch committed with the changes suggested by Mike Sample \n\nOleg",
+            "date": "2004-05-12T03:46:02.000+0000",
+            "id": 11
+        }
+    ],
+    "component": "HttpClient (classic)",
+    "description": "This is the problem : I use the httpclient to fire many requests. At some point \nof time, the server has queued up requests. So certain requests are waiting for \nresponse. Now when I call httpMethod.releaseConnection, the request should stop \nwaiting for the response and the connection should be closed. However, this \ndoes not happen. The request is only given up after it has timed out.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "HTTPCLIENT-217",
+    "issuetypeClassified": "RFE",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Minor",
+    "product": "HTTPCLIENT",
+    "project": "HTTPCLIENT",
+    "summary": "httpMethod.abort needed",
+    "systemSpecification": false,
+    "version": "2.0 Alpha 3"
+}

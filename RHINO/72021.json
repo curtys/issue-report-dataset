@@ -1,0 +1,59 @@
+{
+    "comments": [
+        {
+            "author": "user@apochta.com",
+            "body": "Created attachment 28699\nWorkaround suggestion",
+            "date": "20010324T15:57:37",
+            "id": 0
+        },
+        {
+            "author": "sleung@focus-solutions.co.uk",
+            "body": "I have come across the same problem. Below is a sample of scripts which will \nreproduce the problem when run in the Rhino shell Main:-\n\n   a = new java.lang.String(\"TEST\");\n   a <= \"TEST\";\n\nBelow is a work around by changing 'a' to javascript string:-\n\n   a = new java.lang.String(\"TEST\");\n   b = new String(a);\n   b <= \"TEST\";\n\n",
+            "date": "20010327T08:46:12",
+            "id": 1
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "In the current Rhino tip it is possible to convert java.lang.String returned by\nJava methods directly to JS String via simple:\n\nContext cx = Context.enter();\ncx.getWrapFactory().setJavaPrimitiveWrap(false);\n\nSee API documentation for\norg.mozilla.javascript.WrapFactory#isJavaPrimitiveWrap() in the current tip for\ndetails.\n\nNote that this does not make to work:\na = new java.lang.String(\"TEST\");\na <= \"TEST\";\n\nas WrapFactory#setJavaPrimitiveWrap(boolean) does not affect explicit\nconstructor calls, but if one wish to completely replace Java String, he can\noverride WrapFactory#wrapNewObject to return new JS String object for Java\nString. See the following attachment for details.\n",
+            "date": "20020714T14:39:09",
+            "id": 2
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 91278\nWrapFactory implementation to map Java String to JS String in all cases\n\nWith this MyWrap class that example works as expected:\n\nRhino 1.5 release 4 0000 00 00 (in progress)\njs> var  cx = Packages.org.mozilla.javascript.Context.getCurrentContext();\njs> var wrap = new Packages.MyWrap(cx);\njs> var a = new java.lang.String(\"TEST\");\njs> a <= \"TEST\";\ntrue",
+            "date": "20020714T14:44:13",
+            "id": 3
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "I mark the bug as fixed as the required functionality is already available with\nminimal setup.",
+            "date": "20020714T14:47:43",
+            "id": 4
+        },
+        {
+            "author": "pschwartau@meer.net",
+            "body": "Marking Verified. Anup, please reopen if you disagree -",
+            "date": "20020714T22:18:07",
+            "id": 5
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Targeting as resolved against 1.5R4",
+            "date": "20040213T12:21:29",
+            "id": 6
+        }
+    ],
+    "component": "Core",
+    "description": "The rhino script engine converts every java object that the application passes\n(if it is not a Scriptable object) to the JavaNativeObject. Our applaiction \npasses a String object to script runtime and it converts it to the \nNativeJavaObject. Now if the user tries to increment or decrement the string \nobject in the script the runtime callls the \"doubleValue\" method by default to \nconvert the string to number and this fails since there is no method \nnamed \"doubleValue\" implemented in the class String. \n\nHowever if the user directly declares a String object inside the script the \nscript runtime recognizes it as such and deals with it correctly. \n\nI think the script runtime should also recognize the String object returned by \nthe application that is using it. And should do the correct conversion to \nnumber and boolean in the same way that it does for the String objects defined \ninside the script.",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "72021",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "BUG",
+    "priority": "-- normal",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "The ScriptRuntime class tries to convert even the String values to JavaNativeObject",
+    "systemSpecification": true,
+    "version": "other"
+}

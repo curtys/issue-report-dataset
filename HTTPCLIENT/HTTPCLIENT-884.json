@@ -1,0 +1,47 @@
+{
+    "comments": [
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Patch checked in to SVN trunk and 4.0.x branch. Please review / re-test\n\nMany thanks for submitting the patch, Jared\n\nOleg",
+            "date": "2009-11-04T19:59:21.919+0000",
+            "id": 0
+        },
+        {
+            "author": "Jared Jacobs",
+            "body": "Fix looks good. I noticed that this issue was omitted from the release notes. Only HTTPCLIENT-885 was mentioned. I believe this issue is more serious than HTTPCLIENT-885 because the library uses the faulty code to send all url-form-encoded entities, whereas the faulty code in HTTPCLIENT-885 is not used internally by the library at all.",
+            "date": "2009-11-26T16:38:44.268+0000",
+            "id": 1
+        },
+        {
+            "author": "a2398723957",
+            "body": "i've just switched from hc-client-4.0.0 to hc-client-4.0.1 and my code stopped working right!\nthe remote server i send post request to replies with \"getcgivars(): Unsupported Content-Type.\"\nthe problem is that after this fix the hc client sends:\n\"Content-Type: application/x-www-form-urlencoded; charset=UTF-8\"\ninstead of\n\"Content-Type: application/x-www-form-urlencoded\"\n\nare you sure you've done the righ fix Jared Jacobs?\n\nthanks.\n",
+            "date": "2010-08-29T16:55:00.286+0000",
+            "id": 2
+        },
+        {
+            "author": "Jared Jacobs",
+            "body": "If you are sending simple ASCII content, then you can try specifying \"US-ASCII\" or \"ISO-8859-1\" as the second argument to the UrlEncodedFormEntity constructor.\n\nOleg, you may want to provide a way in UrlEncodedFormEntity to exclude the \"charset\" parameter here. Apparently it's still common for servers not to parse media type parameters correctly. For backwards compatibility, browser vendors decided not to specify the charset in the Content-Type header (even though it's arguably most correct and a common practice -- just search the web), but instead to give authors the option of sending the character set as an extra \"_charset_\" parameter in the request's body, and that practice made it into the HTML 5 spec:\nhttp://www.w3.org/TR/html5/association-of-controls-and-forms.html#url-encoded-form-data\n\nUnlike most media types, which are \"owned\" by IANA, the browser vendors and W3C own the non-standard \"application/x-www-form-urlencoded\".",
+            "date": "2010-08-30T17:10:58.815+0000",
+            "id": 3
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "I am somewhat reluctant to introduce workarounds for non-compliant servers in this particular case, as it is pretty trivial to put together a customised UrlEncodedFormEntity implementation or to override the default value with the #setContentType method. What could be done, tough, is changing UrlEncodedFormEntity to exclude 'charset' parameter from the ContentType header if it is not explicitly set by the user (encoding constructor parameter is null). \n\nOleg",
+            "date": "2010-08-31T09:18:27.666+0000",
+            "id": 4
+        }
+    ],
+    "component": "HttpClient (classic)",
+    "description": "UrlEncodedFormEntity sets the Content-Type header to:\n   \"application/x-www-form-urlencoded\"\n\nIt should set the header to:\n   \"application/x-www-form-urlencoded; charset=\" + charset\n\nAs a result, content can be misinterpreted by the recipient (e.g. if the entity content includes multibyte Unicode characters encoded with the \"UTF-8\" charset).\n\nFor a correct example of specifying the charset in the Content-Type header, see StringEntity.java.\n\nHere's the fix:\n\n    public UrlEncodedFormEntity (\n        final List <? extends NameValuePair> parameters, \n        final String encoding) throws UnsupportedEncodingException {\n        super(URLEncodedUtils.format(parameters, encoding),  encoding);\n-        setContentType(URLEncodedUtils.CONTENT_TYPE);\n+        setContentType(URLEncodedUtils.CONTENT_TYPE + HTTP.CHARSET_PARAM +\n+            (encoding != null ? encoding : HTTP.DEFAULT_CONTENT_CHARSET));\n    }\n\n    public UrlEncodedFormEntity (\n        final List <? extends NameValuePair> parameters) throws UnsupportedEncodingException {\n-        super(URLEncodedUtils.format(parameters, HTTP.DEFAULT_CONTENT_CHARSET), \n-            HTTP.DEFAULT_CONTENT_CHARSET);\n-        setContentType(URLEncodedUtils.CONTENT_TYPE);\n+        this(parameters, HTTP.DEFAULT_CONTENT_CHARSET);\n    }\n",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "HTTPCLIENT-884",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Minor",
+    "product": "HTTPCLIENT",
+    "project": "HTTPCLIENT",
+    "summary": "Charset omitted from UrlEncodedFormEntity Content-Type header",
+    "systemSpecification": true,
+    "version": "4.0 Final"
+}

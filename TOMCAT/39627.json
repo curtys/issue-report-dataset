@@ -1,0 +1,83 @@
+{
+    "comments": [
+        {
+            "author": null,
+            "body": "Hey Richard,\n\nI've been bitten by this defect too. AFAICT it is caused by juli's LogManager\nadding the root logger directly to the classloaders map of loggers, instead of\nusing the addLogger() method which performs some configuration.\n\nHere's a patch to the juli source on the 6.0.x tree. It seems to work okay for\nme, but I can see from reading the code that there are other defects with the\nway logging configuration is inherited from classloader to classloader and the\nway configuration is reset. This might solve your problem though.\n\nRoger",
+            "date": "20060608T14:57:54",
+            "id": 0
+        },
+        {
+            "author": null,
+            "body": "Created attachment 18430\nproposed fix for defect 39627\n\npatch added",
+            "date": "20060608T14:59:44",
+            "id": 1
+        },
+        {
+            "author": null,
+            "body": "Any chance to see this in Tomcat 5.5.21 or Tomcat 6.0.x?",
+            "date": "20070104T17:04:52",
+            "id": 2
+        },
+        {
+            "author": null,
+            "body": "Hi Sebastian,\n\n> Any chance to see this in Tomcat 5.5.21 or Tomcat 6.0.x?\n\nI'm not sure if you're asking whether the bug is still present in these\nversions, or if it's fixed in these versions.\n\nI've just tested Tomcat 5.5.20 (the latest 5.5 release) and 6.0.7. The bug is\nstill present in 5.5.20, but is fixed in 6.0.7.\n",
+            "date": "20070106T12:55:30",
+            "id": 3
+        },
+        {
+            "author": null,
+            "body": "Tomcat 6.0.x uses its own version of JULI. Remy Maucherat checked in Roger's\npatch in July 2006:\n\nhttp://svn.apache.org/viewvc?view=rev&revision=420008\n\nTomcat 5.5.x must still use the old version of JULI:\n\nhttp://svn.apache.org/viewvc/tomcat/connectors/trunk/juli/src/java/org/apache/juli/\n",
+            "date": "20070106T13:36:45",
+            "id": 4
+        },
+        {
+            "author": null,
+            "body": "Created attachment 19370\nProposed fix for bug 39627 (Tomcat 5.5)\n\nThis is an equivalent patch for Tomcat 5.5. It's the same as the 6.0 patch\n(except I've just removed the info.loggers.put line, instead of commenting it\nout).\n\nI've tested this with Tomcat 5.5.20 and it fixes the bug.\n\nThe change to the 6.0 JULI code was made well before 6.0 alpha/beta releases\nstarted to be produced, so this has actually been fixed since 6.0.0.",
+            "date": "20070106T15:26:53",
+            "id": 5
+        },
+        {
+            "author": null,
+            "body": "To clarify, this new patch should be applied to the Tomcat Connectors project\nfound here:\n\nhttp://svn.apache.org/viewvc/tomcat/connectors/trunk/\n",
+            "date": "20070106T15:44:05",
+            "id": 6
+        },
+        {
+            "author": null,
+            "body": "Changing back to 5.5.17 (the earliest known version with this bug).",
+            "date": "20070112T03:11:33",
+            "id": 7
+        },
+        {
+            "author": null,
+            "body": "This has been fixed in svn for 5.5.x and will be in 5.5.21 onwards.",
+            "date": "20070114T08:03:20",
+            "id": 8
+        },
+        {
+            "author": null,
+            "body": "Fixed in 5.5.22.",
+            "date": "20070224T08:07:44",
+            "id": 9
+        },
+        {
+            "author": null,
+            "body": "5.5.22 wasn't released so this is fixed in 5.5.23.",
+            "date": "20070309T14:42:23",
+            "id": 10
+        }
+    ],
+    "component": "Catalina",
+    "description": "When using the standard Java Logging API (e.g. in a standalone Java program,\noutside of Tomcat), the logging.properties file can have a directive such as\n\n  .level = FINE\n\nwhich will set the threshold for the root logger. Assuming in this case that the\nhandlers associated with the root logger also have a threshold of FINE (or\nlower), then FINE log messages passed to the root logger will be output by the\nhandlers (e.g. to the console, or to a file).\n\nWhen using JULI, the \".level = XXX\" directive is ignored. The default logging\nconfiguration for Tomcat sets the threshold for the root logger's handlers\n(1catalina.org.apache.juli.FileHandler and java.util.logging.ConsoleHandler) to\nFINE, so putting \".level = ALL\" should be enough to get all FINE (and CONFIG)\nlog messages sent to the console and log files.\n\nIt doesn't work if JULI is used directly:\n\nLogger log = Logger.getLogger(\"name\");\nlog.fine(\"Some message\");\n\nIt also doesn't work if Commons Logging is used (since the Jdk14Logger just\ndelegates the logging to a Java Logging Logger object - Commong Logging \"debug\"\nis translated into Java Logging \"FINE\"):\n\nLog log = LogFactory.get(\"name\");\nlog.debug(\"Some message\");\n\nThe workaround for this is to explicitly give a threshold for a lower-level\n(package-level, for example) logger, and explicitly list the default handlers\nfor this logger. For example:\n\nmy.logger.level = FINE\nmy.logger.handlers = 1catalina.org.apache.juli.FileHandler,\njava.util.logging.ConsoleHandler",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "39627",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "P3 minor",
+    "product": "Tomcat 5",
+    "project": "TOMCAT",
+    "summary": "JULI ignores a \".level = XXX\" directive in logging.properties",
+    "systemSpecification": true,
+    "version": "5.5.17"
+}

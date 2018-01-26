@@ -1,0 +1,101 @@
+{
+    "comments": [
+        {
+            "author": "Ernst de Haan",
+            "body": "Created an attachment (id=13795)\nPossible implementation of alternative A\n",
+            "date": "2004-12-20T20:41:06.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Ernst de Haan",
+            "body": "Created an attachment (id=13796)\nPossible implementation of alternative B\n",
+            "date": "2004-12-20T20:41:39.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Ortwin Gl\u00fcck",
+            "body": "I am in favour for throwing an exception here. But the change needs proper testing.",
+            "date": "2004-12-20T22:26:38.000+0000",
+            "id": 2
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "(1) IllegalStateException (Patch A) is no good because both cases, the locked\nconnection and the null connection manager are legitimate.\n\n(2) Patch B, though in a very subtle way, breaks the API which is formally has\nbeen frozen. The method is so widely used, so I am really hesitant to make this\nchange, no matter how minor. \n\nI do agree the releaseConnection code is not ideal. However this is not an\nisolated problem with releaseConnection, rather an overall problem with the 2.0\nand 3.0 API that have been stretched to their limit. \n\nIf there are no load objections I'll mark this bug as WONTFIX\n\nOleg",
+            "date": "2004-12-20T22:30:55.000+0000",
+            "id": 3
+        },
+        {
+            "author": "Ortwin Gl\u00fcck",
+            "body": "Fine with me. I agree that the code \"works as designed\". To my knowledge\nintroducing an exception would break the connection managers and changing the\nAPI is not feasible currently.",
+            "date": "2004-12-20T22:39:10.000+0000",
+            "id": 4
+        },
+        {
+            "author": "Ernst de Haan",
+            "body": "Depending on the definition, patch B may not break the API. All existing code\nwill still compile with the changes applied. However, indeed all code that was\nbinary linked to the 3.0-beta1 code will not work as-is with these changes\napplied, since the signature of the method will change.\n\nBut assuming that the definition of the freeze is strict, I have no objections\nto marking this one as WONTFIX.",
+            "date": "2004-12-20T22:42:00.000+0000",
+            "id": 5
+        },
+        {
+            "author": "Michael Becke",
+            "body": "I would agree with the WONTFIX.  The locked behavior is only meant to be used when executing a \nmethod inside the HttpMethodDirector.  This \"feature\" should not be visible to users of the HttpClient \nAPI.\n\nMike",
+            "date": "2004-12-20T22:49:51.000+0000",
+            "id": 6
+        },
+        {
+            "author": "Ernst de Haan",
+            "body": "The code may indeed work \"as designed\", but it does not work \"as documented\".\nThere is nothing in the documentation that explains this behavior. For users of\nthe library it is not clear that even if you do call releaseConnection(), the\nconnection may not actually be released, so you may have to call it multiple\ntimes, just to be sure.\n\nAlso, it is not clear from the documentation that the releaseConnection() method\ncan safely be called multiple times.\n\nFinally, there is no way to tell that the connection has indeed been released.\n",
+            "date": "2004-12-20T22:52:18.000+0000",
+            "id": 7
+        },
+        {
+            "author": "Ernst de Haan",
+            "body": "Created an attachment (id=13803)\nPatch that extends the documentation of the releaseConnection() method\n",
+            "date": "2004-12-20T22:54:57.000+0000",
+            "id": 8
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Created an attachment (id=13804)\nHttpConnection Javadoc patch (take 2)\n\nErnst,\n\nDo you mind if I change the wording a little and make it a little less, say,\nscary? \n\nOleg",
+            "date": "2004-12-21T01:09:27.000+0000",
+            "id": 9
+        },
+        {
+            "author": "Ernst de Haan",
+            "body": "Looks perfect to me!",
+            "date": "2004-12-21T01:31:47.000+0000",
+            "id": 10
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "*** HTTPCLIENT-408 has been marked as a duplicate of this bug. ***",
+            "date": "2004-12-21T04:54:18.000+0000",
+            "id": 11
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Patch committed.\n\nMany thanks, Ernst.\n\nOleg",
+            "date": "2004-12-21T04:55:51.000+0000",
+            "id": 12
+        },
+        {
+            "author": "Ernst de Haan",
+            "body": "Verified r1.104.",
+            "date": "2004-12-21T22:20:03.000+0000",
+            "id": 13
+        }
+    ],
+    "component": "HttpClient (classic)",
+    "description": "When a connection is attempted to be released using\nHttpConnection.releaseConnection(), it is unclear whether this is actually done.\nThe implementation for the method is as follows in 3.0-beta1:\n\n    /**\n     * Release the connection.\n     */\n    public void releaseConnection() {\n        LOG.trace(\"enter HttpConnection.releaseConnection()\");\n        if (locked) {\n            LOG.debug(\"Connection is locked.  Call to releaseConnection() ignore\n        } else if (httpConnectionManager != null) {\n            LOG.debug(\"Releasing connection back to connection manager.\");\n            httpConnectionManager.releaseConnection(this);\n        } else {\n            LOG.warn(\"HttpConnectionManager is null.  Connection cannot be relea\n        }\n    }\n\nSilently ignoring a request (to release the connection, in this case) is hardly\never the right thing to do, in my opinion. Instead, I suggest the method\nindicates whether the connection was actually closed or not.\n\nI see at least 2 alternatives:\n\n1) throw an exception to indicate the connection could not be released;\n2) return a flag indicating whether the connection could actually be released.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "HTTPCLIENT-406",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Minor",
+    "product": "HTTPCLIENT",
+    "project": "HTTPCLIENT",
+    "summary": "Releasing a connection is unconfirmed",
+    "systemSpecification": false,
+    "version": "3.0 Beta 1"
+}

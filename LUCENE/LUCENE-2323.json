@@ -1,0 +1,173 @@
+{
+    "comments": [
+        {
+            "author": "Shai Erera",
+            "body": "That'd be great !",
+            "date": "2010-03-14T18:21:57.048+0000",
+            "id": 0
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "+1!!",
+            "date": "2010-03-14T20:30:12.524+0000",
+            "id": 1
+        },
+        {
+            "author": "Robert Muir",
+            "body": "Here are my initial thoughts on this. \nI don't think we have to do the entire thing at one time either:\n\n* fold contrib/regex into contrib/queries:\n** alongside 'similar' you would see 'regex'\n* fold the four queryparsers in contrib/misc into contrib/queryparser, so under o.a.l.qp you would see:\n** core\n** standard\n** complexPhrase\n** ext\n** precedence\n** analyzing\n* fold the fast-vector-highlighter under highlighter, so under o.a.l.search you would see:\n** highlight\n** vectorhighlight\n\nIn a second phase, potentially a different issue, i would like to discuss issues that might involve backwards breaks:\n* xml-query-parser: really belongs in contrib/queryparser, but we would have to change pkg names.\n* wikipedia: really belongs in analysis, but we would have to change pkg names.\n* contrib/surround: what to do? has both queryparser and queries, maybe should stay as is.\n\nAny objections to doing the first part, which has no pkg naming changes?\n",
+            "date": "2010-03-17T18:44:42.409+0000",
+            "id": 2
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "bq. Here are my initial thoughts on this. \n\n+1, I think this initial re-org is great Robert!\n\nI think it'd be OK to rename XML QP and Wikipedia as well.  Surround does seem trickier... maybe leave that for now.",
+            "date": "2010-03-17T19:27:53.438+0000",
+            "id": 3
+        },
+        {
+            "author": "Shai Erera",
+            "body": "Robert - I think that's great reorganization.\n\nI do want to propose to omit the component name from the package (where it makes sense). I.e., unless we want to have o.a.l.qp, it doesn't mean that all QPs under contrib/queryParser need to belong to the same package. If it makes sense for all of them to belong to o.a.l.search (as an example), then that's where they should go, IMO.\n\nSo I think it's ok if under contrib/queryparser or contrib/analyzers you'll see packages like o.a.l.analysis.ar/fr/snowball, as well as I'm perfectly fine if all of them exist under o.a.l.analysis. Analysis makes sense as a package name.",
+            "date": "2010-03-17T21:26:38.661+0000",
+            "id": 4
+        },
+        {
+            "author": "Karthik K",
+            "body": "When we talk about reorganization - it would be useful to run by some jdepend reports at -  http://clarkware.com/software/JDepend.html , as a metric for the stability of the packages. ",
+            "date": "2010-03-17T21:47:06.645+0000",
+            "id": 5
+        },
+        {
+            "author": "Robert Muir",
+            "body": "bq. I do want to propose to omit the component name from the package (where it makes sense).\n\nShai, I agree its a little redundant, yet under this issue I wanted to avoid changing package names \nas much as possible: changing the package name breaks people's code and thats why I wanted\nto just do the first part, with no pkg naming changes.\n\nI thought these initial svn moves are obvious wins, and any further stuff can be done later under another\nissue... \n\nTypically I would prefer to do a full reorganization at once, but in my opinion that is for a later, probably\nlonger and more frustrating discussion, and it needs to involve Solr, too.\n",
+            "date": "2010-03-17T22:23:12.672+0000",
+            "id": 6
+        },
+        {
+            "author": "Hoss Man",
+            "body": "I personally don't have a strong opinion on this, but i wanted to point it out for completeness:\n\nthe last time i remember a big discussion about reorging contribs, there seemed to be a strong sentiment that we should be striving for more \"small\" contribs/modules -- specificly in terms of artifact size/complexity.  I think one specific example was that some poeple might want a few langauge specific analyzers, but not all of them -- and if they have no direct dependencies on each other (just core) we should try to build/distribute them as (tiny) individual Jars -- and possible in (big) bundled jars as well.\n\nSo while it might make a lot of sense to organize some existing contribs into logical \"groups\" which might get build up in big bundled jars, there are likely going to be people who still want to comsume the existing jars (or even more granular jars)\n\nLooking at the specific suggestions robert made: it makes sense to logically organize all the query parsers under a common directory, but how many users are actually using more then one and are we doing them a disservice if we only ship them in one big jar?   Ditto for the highlighters (does anyone besides Solr use *both* highlighters in a single application?)",
+            "date": "2010-03-18T00:49:59.176+0000",
+            "id": 7
+        },
+        {
+            "author": "Robert Muir",
+            "body": "Hoss Man, the only problem I have with what you said, is that it prevents factoring the code.\n\nPerhaps I want to refactor some code among our 7 queryparsers or 2 highlighters or whatever, \nthe only way I can do this is to shove stuff (shared code) into core, I think this is bad.\n\nOtherwise, I don't really care how things are packaged, this proposal was supposed to be\na small step towards modules.\n\n",
+            "date": "2010-03-18T00:59:58.511+0000",
+            "id": 8
+        },
+        {
+            "author": "Hoss Man",
+            "body": "bq. Perhaps I want to refactor some code among our 7 queryparsers or 2 highlighters or whatever, the only way I can do this is to shove stuff (shared code) into core, I think this is bad.\n\nagreed ... IIRC the idea in this discussion was the have a lot more smaller \"modules\", with a lot better defined/advertised dependencies, so that module X,Y,Z might all depend on modules A, and B (which had the common refactored code you speak of) and the \"core\" module is special in that it must never depend on anything else.\n\nLike i said: I personally don't have a very strong opinion about this, i think people who are really concerned about jar sizes can compile their own after pruning the classes they don't care about -- but it's definitely harder when those classes are all in one atomic source tree where you might not notice that someone refactored a common dependency that wasn't there before.\n",
+            "date": "2010-03-18T01:10:06.022+0000",
+            "id": 9
+        },
+        {
+            "author": "Robert Muir",
+            "body": "{quote}\nagreed ... IIRC the idea in this discussion was the have a lot more smaller \"modules\", with a lot better defined/advertised dependencies, so that module X,Y,Z might all depend on modules A, and B (which had the common refactored code you speak of)\n{quote}\n\nI didn't know this was the goal, if what you say is true, then I must say i completely\nmisunderstood, I completely disagree, and I'm completely off-base with this issue.\n",
+            "date": "2010-03-18T01:17:35.642+0000",
+            "id": 10
+        },
+        {
+            "author": "Mark Miller",
+            "body": "This reorg is a great a great step for contrib IMO!\n\n+1",
+            "date": "2010-03-18T01:27:26.129+0000",
+            "id": 11
+        },
+        {
+            "author": "Hoss Man",
+            "body": "bq. I didn't know this was the goal, if what you say is true, then I must say i completely misunderstood, I completely disagree, and I'm completely off-base with this issue.\n\nI'm not saying it is a goal, or should be a goal, just that i seem to remember that this was teh direction that seemed to have support the last time i remember there being a big \"reorg the contribs\" discussion.  (i could be remembering wrong, it could be that *I* thought it was a really great idea at the time so it stuck with me, and now i'm just more ambivalent)  \n\nA quick skim suggests this is the most recent thread i'm thinking of...\n\nhttp://old.nabble.com/New-flexible-query-parser-to22549684.html#a22637326\n(\"kitchen sink\" was the search term i was looking for)\n\n...but i don't think that was the first time it came up.",
+            "date": "2010-03-18T01:43:11.795+0000",
+            "id": 12
+        },
+        {
+            "author": "Robert Muir",
+            "body": "bq. it could be that I thought it was a really great idea at the time\n\nmy problem is not in the idea, but that its just unrealistic.\n\nmore realistic, lets say for the queryparsers would be, for example:\n# moving the queryparsers together as i proposed here\n# implementing some of the specialized ones with the new flexible queryparser (LUCENE-1823)\n# removing the now obselete specialized queryparsers.\n# improving tests and general quality of the queryparsing package\n\nAt this point the code might be mature enough for an idea like yours.\n\nI'm also realistic, and I know I probably cannot do much here except step 1, as I'm not a queryparser expert.\n\nBut I can say there's at least a patch open for step 2, even if this patch might not yet be ready.\nSo this seems like a realistic small step forward towards improving things.\n\nThe modularization idea won't cleanup contrib... some of it is hairy and that needs to be done first.\n",
+            "date": "2010-03-18T02:15:06.623+0000",
+            "id": 13
+        },
+        {
+            "author": "Shai Erera",
+            "body": "Robert - I think that's exactly what I was proposing. You indicated that there are some components under contrib that you cannot move around because their package names would change, and I said that I don't think their package names should change :). So you can move XMLQP under contrib/queryparsers and its package name will stay the same ...\n\nI also think that at least for analyzers, having all of them under one contrib jar will allow us to improve the way our users interact w/ analyzers. Consider for example an AnalyzerFactory which when receiving a Locale returns a pre-configured Analyzer, the best one we can think of for that Locale. That's (to me) a great service to our users, and I don't see how we can do that if all analyzers are under different modules. Besides, analyzers are logically close to each other because they perform a very specific task. Refactoring the analysis API again would be easier of all of them were under the same root directory ... less chance of missing some.\n\nQuery parsers are different because I agree a user will likely pick one for his app and go with it. But I don't think we're talking about massive amount of code here right? So again it makes sense to bundle them up together. We can have a module-level documentation of the different query parsers, pros and cons for each, use cases etc., and then the user can pick. If jar size is important to someone, then I think that someone is already recompiling everything to include just what he needs, and so we're not hurting anyone here.\n\nTherefore I see this reorg as a logical and important step towards modularization.",
+            "date": "2010-03-18T05:08:06.134+0000",
+            "id": 14
+        },
+        {
+            "author": "Robert Muir",
+            "body": "bq. But I don't think we're talking about massive amount of code here right?\n\nAnd hopefully less code if we can put some of these things together and\nstart looking at refactoring them a bit!\n\nUntil code in contrib is to a certain degree of maturity, I feel we should organize\nit by functionality. Its easy for the users, and it invites the sort of refactoring and \ncleanup that some of this code needs.\n",
+            "date": "2010-03-18T05:33:37.565+0000",
+            "id": 15
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "{quote}\nUntil code in contrib is to a certain degree of maturity, I feel we should organize\nit by functionality. Its easy for the users, and it invites the sort of refactoring and\ncleanup that some of this code needs.\n{quote}\n\n+1\n\n",
+            "date": "2010-03-18T09:07:43.456+0000",
+            "id": 16
+        },
+        {
+            "author": "Robert Muir",
+            "body": "attached is a patch for the first moves outlined.\n\nbefore applying the patch, please run the following script:\n\n{noformat}\n# regex -> queries\nsvn move lucene/contrib/regex/lib lucene/contrib/queries\nsvn move lucene/contrib/regex/src/java/org/apache/lucene/search/regex lucene/contrib/queries/src/java/org/apache/lucene/search\nsvn move lucene/contrib/regex/src/java/org/apache/regexp lucene/contrib/queries/src/java/org/apache\nsvn move lucene/contrib/regex/src/test/org/apache/lucene/search/regex lucene/contrib/queries/src/test/org/apache/lucene/search\nsvn delete lucene/contrib/regex\n\n# fast-vector-highlighter -> highlighter\nsvn move lucene/contrib/fast-vector-highlighter/src/java/org/apache/lucene/search/vectorhighlight lucene/contrib/highlighter/src/java/org/apache/lucene/search\nsvn move lucene/contrib/fast-vector-highlighter/src/test/org/apache/lucene/search/vectorhighlight lucene/contrib/highlighter/src/test/org/apache/lucene/search\nsvn delete lucene/contrib/fast-vector-highlighter\n\n# misc/queryparsers -> queryparser\nsvn move lucene/contrib/misc/src/java/org/apache/lucene/queryParser/* lucene/contrib/queryparser/src/java/org/apache/lucene/queryParser\nsvn move lucene/contrib/misc/src/test/org/apache/lucene/queryParser/* lucene/contrib/queryparser/src/test/org/apache/lucene/queryParser\n{noformat}\n\nIf no one objects, (especially including Hoss Man), I would like to commit in \na day or two, but keeping the issue open, and doing the more complex ones\nnext.\n",
+            "date": "2010-03-19T03:00:47.344+0000",
+            "id": 17
+        },
+        {
+            "author": "Paul Elschot",
+            "body": "Would it be possible to move surround to the query parsers, too?",
+            "date": "2010-03-19T08:22:02.709+0000",
+            "id": 18
+        },
+        {
+            "author": "Robert Muir",
+            "body": "bq. Would it be possible to move surround to the query parsers, too? \n\nYes, I think we want to do this. I can do it in the second patch with the other moves.",
+            "date": "2010-03-19T11:17:44.157+0000",
+            "id": 19
+        },
+        {
+            "author": "Hoss Man",
+            "body": "bq. If no one objects, (especially including Hoss Man)\n\nI really have no opinions, I was just trying to chime in with my memories of hte past discussions -- i don't necessarily think one way or another is more good/bad right/wrong.\n\ngo with your gut.",
+            "date": "2010-03-23T18:59:11.925+0000",
+            "id": 20
+        },
+        {
+            "author": "Robert Muir",
+            "body": "Committed 927696 (and 927697 for the solr piece).\n\nWill keep the issue open and work on a patch for the next part.",
+            "date": "2010-03-26T05:25:03.520+0000",
+            "id": 21
+        },
+        {
+            "author": "Robert Muir",
+            "body": "now that flex is merged, its a good time to continue doing this.\n\nattached is a patch to move WikipediaTokenizer to contrib/analyzers and remove contrib/wikipedia (there is nothing else in it).\nit also adds the factory and test to Solr.\n\nbefore applying the patch, you must run the following svn commands:\n{code}\nmkdir lucene/contrib/analyzers/common/src/java/org/apache/lucene/analysis/wikipedia\nsvn add lucene/contrib/analyzers/common/src/java/org/apache/lucene/analysis/wikipedia\nmkdir lucene/contrib/analyzers/common/src/test/org/apache/lucene/analysis/wikipedia\nsvn add lucene/contrib/analyzers/common/src/test/org/apache/lucene/analysis/wikipedia\nsvn move lucene/contrib/wikipedia/src/java/org/apache/lucene/wikipedia/analysis/* lucene/contrib/analyzers/common/src/java/org/apache/lucene/analysis/wikipedia\nsvn move lucene/contrib/wikipedia/src/test/org/apache/lucene/wikipedia/analysis/* lucene/contrib/analyzers/common/src/test/org/apache/lucene/analysis/wikipedia\nsvn rm lucene/contrib/wikipedia\n{code}\n\nif no one objects, I would like to commit this soon.",
+            "date": "2010-04-09T18:08:31.759+0000",
+            "id": 22
+        },
+        {
+            "author": "Robert Muir",
+            "body": "attached is a patch to move surround to contrib/queryparser.\n\nbefore applying the patch please run:\n{noformat}\nsvn move lucene/contrib/surround/src/java/org/apache/lucene/queryParser/surround lucene/contrib/queryparser/src/java/org/apache/lucene/queryParser/\nsvn move lucene/contrib/surround/src/test/org/apache/lucene/queryParser/surround lucene/contrib/queryparser/src/test/org/apache/lucene/queryParser/\nsvn move lucene/contrib/surround/README.txt lucene/contrib/queryparser\nsvn delete lucene/contrib/surround\n{noformat}\n",
+            "date": "2010-04-10T13:51:23.104+0000",
+            "id": 23
+        },
+        {
+            "author": "Robert Muir",
+            "body": "i backported changes thus far to stable: 941649",
+            "date": "2010-05-06T10:44:34.910+0000",
+            "id": 24
+        },
+        {
+            "author": "Grant Ingersoll",
+            "body": "Bulk close for 3.1",
+            "date": "2011-03-30T15:50:27.609+0000",
+            "id": 25
+        }
+    ],
+    "component": "modules/other",
+    "description": "it would be nice to reorganize contrib modules, so that they are bundled together by functionality.\n\nFor example:\n* the wikipedia contrib is a tokenizer, i think really belongs in contrib/analyzers\n* there are two highlighters, i think could be one highlighters package.\n* there are many queryparsers and queries in different places in contrib\n",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-2323",
+    "issuetypeClassified": "REFACTORING",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Major",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "reorganize contrib modules",
+    "systemSpecification": true,
+    "version": ""
+}

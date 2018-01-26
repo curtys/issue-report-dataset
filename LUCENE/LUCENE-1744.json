@@ -1,0 +1,35 @@
+{
+    "comments": [
+        {
+            "author": "Michael McCandless",
+            "body": "Attached patch, including Shalin's test case (thanks!) which fails on trunk, plus the fix that resolves it.\n\nI plan to commit shortly.",
+            "date": "2009-07-15T11:11:04.567+0000",
+            "id": 0
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Thanks Shalin!",
+            "date": "2009-07-15T11:19:01.595+0000",
+            "id": 1
+        },
+        {
+            "author": "Shai Erera",
+            "body": "good catch. I think this was before one of the issues (forgot which) where I added doc as a member to BS2.",
+            "date": "2009-07-15T11:36:23.980+0000",
+            "id": 2
+        }
+    ],
+    "component": "",
+    "description": "When BooleanScorer2 runs the top collection loop (one of its\nscore(Collector)) methods, it uses a local \"doc\" var, ie:\n\n{code}\npublic void score(Collector collector) throws IOException {\n    collector.setScorer(this);\n    int doc;\n    while ((doc = countingSumScorer.nextDoc()) != NO_MORE_DOCS) {\n      collector.collect(doc);\n    }\n}\n{code}\n\nThe problem is, if the child collector calls scorer.doc() it will\nalways get -1.  Most Collectors don't actually call scorer.doc(), but\none important one that does is ScoreCachingWrapperScorer, as it uses\nthe doc to know when to invalidate its cache.  Since this always\nreturns -1, the ScoreCachingWrapperScorer keeps returning score=0.0 to\nits caller, thus messing up a SortField.SCORE comparator instance if\nit's included in the sort fields.\n",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-1744",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Minor",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "BooleanScorer2 fails to update this.doc when its the top scorer",
+    "systemSpecification": true,
+    "version": "2.9"
+}

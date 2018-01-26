@@ -1,0 +1,23 @@
+{
+    "comments": [
+        {
+            "author": "Stefan Guggisberg",
+            "body": "fixed in svn r497809.\n\nfixed as suggested with a minor modification:\n\n'synchronized (listeners)'  is not necessary since listeners is a SynchronizedMap,\ni.e. both values() and toArray() are already synchronized on the instance.\n\nbtw: the reason why the listeners array had been manually created & populated \nrather than simply calling toArray() was a bug in common-collections-2.1\n(http://issues.apache.org/bugzilla/show_bug.cgi?id=25551). it's not obvious \nand i should have documented the workaround... however, since jackrabbit moved \non to use common-collections-3.1 in the meantime this workaround is no longer \nnecessary, i.e. it's safe and perfectly reasonable to use ReferenceMap.values().toArray().",
+            "date": "2007-01-19T13:56:48.096+0000",
+            "id": 0
+        }
+    ],
+    "component": "jackrabbit-core",
+    "description": "During the registration of a set of nodetypes this exception may be encountered:\n\njava.util.ConcurrentModificationException\n        at org.apache.commons.collections.map.AbstractReferenceMap$ReferenceEntrySetIterator.checkMod(AbstractReferenceMap.java:761)\n        at org.apache.commons.collections.map.AbstractReferenceMap$ReferenceEntrySetIterator.hasNext(AbstractReferenceMap.java:735)\n        at org.apache.jackrabbit.core.nodetype.NodeTypeRegistry.notifyRegistered(NodeTypeRegistry.java:1750)\n        at org.apache.jackrabbit.core.nodetype.NodeTypeRegistry.registerNodeTypes(NodeTypeRegistry.java:223)\n\nIt seems that the copying of the listeners triggered this exception:\n\n    private void notifyRegistered(QName ntName) {\n        // copy listeners to array to avoid ConcurrentModificationException\n        NodeTypeRegistryListener[] la =\n                new NodeTypeRegistryListener[listeners.size()];\n        Iterator iter = listeners.values().iterator();\n        int cnt = 0;\n1750:   while (iter.hasNext()) {\n            la[cnt++] = (NodeTypeRegistryListener) iter.next();\n        }\n        for (int i = 0; i < la.length; i++) {\n            if (la[i] != null) {\n                la[i].nodeTypeRegistered(ntName);\n            }\n        }\n    }\n\nThe methods \"notifyReRegistered\" and \"notifyUnregistered\" will probably suffer from the same problem.\n\nReproduction of this exception may be tricky; it only occurred once in our application. It is probably a race condition: another thread might access the listeners during the copy. It may be helpful to use a debugger and set a breakpoint in the middle of the copy giving other threads the opportunity to access the listeners...\n\nWe think that a possible solution is the following:\n\n    /**\n     * Notify the listeners that a node type <code>ntName</code> has been registered.\n     */\n    private void notifyRegistered(QName ntName) {\n        // copy listeners to array to avoid ConcurrentModificationException\n    \tNodeTypeRegistryListener[] la;\n    \tsynchronized (listeners) {\n            la = (NodeTypeRegistryListener[]) listeners.values().toArray(new NodeTypeRegistryListener[listeners.size()]);\n\t\t}\n\n        for (int i = 0; i < la.length; i++) {\n            if (la[i] != null) {\n                la[i].nodeTypeRegistered(ntName);\n            }\n        }\n    }\n\n\n\n",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "JCR-713",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "ConcurrentModificationException during registration of nodetypes",
+    "systemSpecification": true,
+    "version": "1.1.1, 1.2.1"
+}

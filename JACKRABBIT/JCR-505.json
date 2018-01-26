@@ -1,0 +1,35 @@
+{
+    "comments": [
+        {
+            "author": "Marcel Reutegger",
+            "body": "Changed clean-up code to only remove child nodes that are not protected nor mandatory.\n\nFixed in revision: 427978\n\nThank you for reporting this issue.",
+            "date": "2006-08-02T13:32:40.000+0000",
+            "id": 0
+        },
+        {
+            "author": "David Pitfield",
+            "body": "Thank you for the change to test whether the nodedef is mandatory or protected.\n\nThere are a couple of other scenarios which prevent the node from being removed:\n\n1) the parent node is protected\n2) implementation-specific constraints (per 7.1.6)\n\nAn example of the latter is a node that is conditionally mandatory based on a property's value.\n\nTherefore I propose consuming any ConstraintViolationException thrown by remove in cleanUpTestRoot of AbstractJCRTest.",
+            "date": "2006-08-04T19:41:29.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "I agree.\n\nI've changed the cleanUpTestRoot() method and added a try catch clause which consumes a ConstraintViolationException.\n\nsvn version: 429266",
+            "date": "2006-08-07T07:49:16.000+0000",
+            "id": 2
+        }
+    ],
+    "component": "test",
+    "description": "If the test node exists, the setUp and tearDown methods remove all its child nodes.  In some repositories these child nodes may be mandatory or protected, causing test setup/teardown to fail.\n\nProposal: tolerate exceptions thrown in removing a child node in test setup/teardown.\n\n--- ../AbstractJCRTest.java     (revision 422074)\n+++ ../AbstractJCRTest.java     (working copy)\n@@ -344,7 +344,11 @@\n                 // clean test root\n                 testRootNode = root.getNode(testPath);\n                 for (NodeIterator children = testRootNode.getNodes(); children.hasNext();) {\n-                    children.nextNode().remove();\n+                    try {\n+                      children.nextNode().remove();\n+                    } catch (RepositoryException e) {\n+                      // consume\n+                    }\n                 }\n             } else {\n                 // create nodes to testPath\n@@ -375,7 +379,11 @@\n                         // clean test root\n                         testRootNode = root.getNode(testPath);\n                         for (NodeIterator children = testRootNode.getNodes(); children.hasNext();) {\n-                            children.nextNode().remove();\n+                            try {\n+                              children.nextNode().remove();\n+                            } catch (RepositoryException e) {\n+                              // consume\n+                            }\n                         }\n                         root.save();\n                     }\n",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "JCR-505",
+    "issuetypeClassified": "OTHER",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "TCK: AbstractJCRTest fails if setUp/tearDown cannot remove children of test node",
+    "systemSpecification": true,
+    "version": ""
+}

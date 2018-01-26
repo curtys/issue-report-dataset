@@ -1,0 +1,53 @@
+{
+    "comments": [
+        {
+            "author": "Marcel Reutegger",
+            "body": "Please note that jackrabbit already provides such a functionality.\n\n- To convert from JQOM to SQL2 simply call:\n    qom.getStatement()\n\n- To convert from SQL2 to JQOM call:\n    QueryManager qm = ...\n    QueryObjectModel qom = (QueryObjectModel) qm.createQuery(sql2, Query.JCR_SQL2);\n\nI'm not sure if anything else beyond that is really needed.",
+            "date": "2009-10-09T07:06:11.674+0000",
+            "id": 0
+        },
+        {
+            "author": "johann sorel",
+            "body": "the two methods :\nqom.getStatement();\nqm.createQuery(sql2, Query.JCR_SQL2); \n\nAre part of JCR interfaces, They don't do any work unless you implement them.\nWhat I was trying to say is that a basic implementation should be provided in the jackrabbit-jcr-commons module.\nThat's why I suggest a QueryUtilities class could be made for this purpose since it's straightforward code.",
+            "date": "2009-10-09T07:23:23.936+0000",
+            "id": 1
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "I see. In that case you can use QueryObjectModelBuilder in jackrabbit-spi-commons.\n\n- from JQOM to SQL2:\n    QueryObjectModelBuilderRegistry.getQueryObjectModelBuilder(Query.JCR_SQL2).toString(qom);\n\n- from SQL2 to JQOM:\n    QueryObjectModelFactory qf = ...\n    ValueFactory vf = ...\n    QueryObjectModelBuilder qomBuilder = QueryObjectModelBuilderRegistry.getQueryObjectModelBuilder(Query.JCR_SQL2);\n    qomBuilder.createQueryObjectModel(sql2, qf, vf);",
+            "date": "2009-10-09T07:50:47.638+0000",
+            "id": 2
+        },
+        {
+            "author": "johann sorel",
+            "body": "That's a solution, I agree, but not an available one for us.\n\nI guess this case is special for our applications. \nOur analyze of jackrabbit has show us the fact that jackrabbit-SPI is to far from JCR.\nSince we are making a JCR implementation for our data model (Geographic Information Systems) we choose to limit our use of jackrabbit to the JCR-commun module.\nThere are four main reasons why we don't wont to depend on jackrabbit spi.\n- First it's to far from the JCR specification, it's like a second jcr definition.\n- We have to learn jackrabbit spi, which is a useless extra step because we want jcr, not spi.\n- We lose the control over the code, we have no control over cache, real JCR object, nodes, node types and so on. Spi makes an automatic mapping to jcr interfaces that we don't control.\n- And it adds more dependency where we already have more than 40Mb of jars\n\nMy question now : \nIs the code handling JQOM/SQL2 really binded to SPI or is it generic/abstract enough to be moved in jackrabbit-jcr-common ?",
+            "date": "2009-10-09T08:15:31.603+0000",
+            "id": 3
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "AFAICS it does not depend on SPI packages and could be moved to jcr-commons, but this would also affect public classes that we already released and it would potentially break existing code when users upgrade to 2.0.\n\nThis mainly affects the SQL2 Parser class, other classes were introduced after the 1.6 release and are not a problem. What do others think? Should we move it to jcr-commons?",
+            "date": "2009-10-09T09:25:03.531+0000",
+            "id": 4
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "Moved classes JoinType, Operator and Order in package qom (spi-commons) to jcr-commons. Same for QueryObjectModelBuilder and QueryObjectModelBuilderFactory.\n\nParser (sql2) in spi-commons is now deprecated and extends from the class with the same name in jcr-commons that should now be used.\n\nI had to leave the test cases for the SQL2 parser in spi-commons because of the dependencies it has.\n\nsvn revision: 825633",
+            "date": "2009-10-15T20:22:01.518+0000",
+            "id": 5
+        }
+    ],
+    "component": "jackrabbit-jcr-commons",
+    "description": "The JCR2 doc specify that both contain the same thing and can be translated from one to another\nin a straightforward manner. The jackrabbit-jcr-commons module should offer a utility class to transform\nfrom one language to another in a generic way, \n\nfor exemple :\n- String toSQL2(QueryObjectModel qom)\n- QueryObjectModel toJQOM(QueryObjectModelFactory factory, String query)",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "JCR-2343",
+    "issuetypeClassified": "RFE",
+    "issuetypeTracker": "RFE",
+    "priority": "Minor",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "Utility class to tranform JCR-SQL2 to/from JCR-JQOM",
+    "systemSpecification": true,
+    "version": "2.0-beta1"
+}

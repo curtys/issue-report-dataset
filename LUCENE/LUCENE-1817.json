@@ -1,0 +1,107 @@
+{
+    "comments": [
+        {
+            "author": "Robert Muir",
+            "body": "I am looking at this today. One thing about this code that should also be corrected ASAP is that if you have a custom dictionary directory in .DCT format, the load() method will actually call save()\n\nThis will create a corresponding .MEM file in the same directory after loading the dictionary in DCT format.\n\nI really do not think load() methods should be creating or writing to files.\n",
+            "date": "2009-08-26T14:56:49.671+0000",
+            "id": 0
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "In my opinion, the loader should be able to load either .mem files (which should realy be named *.ser, because they are serialized java objects) or DCT format files (maybe autodetect) or two separate methods. If you want to quicker load the files later, you could also save the DCT as a serialized object after that, but this should be left to the user and not done automatically.",
+            "date": "2009-08-26T15:02:27.630+0000",
+            "id": 1
+        },
+        {
+            "author": "Robert Muir",
+            "body": "Uwe, i agree. currently it does do the autodetect (first checks for .MEM, then falls back on DCT).\nbut if it has to fall back on DCT, it will create a .MEM file.",
+            "date": "2009-08-26T15:05:47.871+0000",
+            "id": 2
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "We should mark the smartcn module  experimental as we plan to do heavy refactoring after 2.9 is out. This patch adds a notice to package.html and JavaDoc.\nQuoting Mark Miller from the list:\nbq. Warning users that you don't plan on promising back compat with experimental warnings seems like a good idea to me.\n",
+            "date": "2009-08-26T15:11:13.843+0000",
+            "id": 3
+        },
+        {
+            "author": "Robert Muir",
+            "body": "to make matters more complex, trying to load a bigram dictionary from a DCT file gave me:\n\n{noformat}\n# An unexpected error has been detected by Java Runtime Environment:\n#\n#  EXCEPTION_ACCESS_VIOLATION (0xc0000005) at pc=0x000000006dc378d0, pid=3140, tid=5912\n#\n# Java VM: Java HotSpot(TM) 64-Bit Server VM (11.2-b01 mixed mode windows-amd64)\n# Problematic frame:\n# V  [jvm.dll+0x3a78d0]\n{noformat}\n\napparently this is some clover issue in my eclipse and i turned it off, so it is an unrelated problem.",
+            "date": "2009-08-26T16:54:49.296+0000",
+            "id": 4
+        },
+        {
+            "author": "Robert Muir",
+            "body": "patch adds:\n* load custom dictionaries when the analyzer has been configured to do so\n* test that custom DCT dictionaries load \n* do not serialize/write files when loading DCT\n* change saveToObj() to package protected so someone can serialize their own dictionaries instead.\n\nthe patch requires some binary dct data files which I will try to upload as a zip",
+            "date": "2009-08-26T17:19:08.633+0000",
+            "id": 5
+        },
+        {
+            "author": "Robert Muir",
+            "body": "the two files in this directory need to be placed in smartcn/test under o/a/l/analysis/cn/smart/hmm/customDictionaryDCT\n",
+            "date": "2009-08-26T17:20:48.827+0000",
+            "id": 6
+        },
+        {
+            "author": "Robert Muir",
+            "body": "i looked at this file format and I am going to create smaller custom dictionaries for testing.\n\nthis way we do not have huge files in svn",
+            "date": "2009-08-26T20:19:55.730+0000",
+            "id": 7
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "Robert, I commited the javadoc changes. Once you have smaller dict files feel free to commit your patch. If you run into problems I would prefer to skip the tests (and the dict files) and commit it without this simple test. This should be fine.\n\nsimon",
+            "date": "2009-08-26T20:23:18.585+0000",
+            "id": 8
+        },
+        {
+            "author": "Robert Muir",
+            "body": "Here is a javadocs-only patch that I think is the best solution.\n\nThis is because i created several custom dictionaries and found:\n1) it will be difficult to support this dictionary format for a number of reasons\n2) the dictionary format is limited to GB2312 encoding, and will not support things like traditional chinese\n3) even when creating a correct file in the correct format, there are many assumptions about what should be in the dictionary.\n   Especially things like WordDictionary.expandDelimiterData\n   If these assumptions are not met, things like infinite loops occur.\n\nI recommend we instead remove javadocs describing how to use a custom dictionary.\nAnd in this patch also expand the EXPERIMENTAL wording from just APIs, to both APIs and file formats.\nIn the future we should refactor and use a unicode-based format.\n\nI won't do anything here without some consensus that others feel it is the right way to go, but I think we should do this in 2.9\n",
+            "date": "2009-08-27T16:50:36.726+0000",
+            "id": 9
+        },
+        {
+            "author": "Mark Miller",
+            "body": "I agree Robert - given your concerns, lots drop custom support for now (even if just at the javadoc lvl if you can't do custom anyway without rebuilding the jar).\n\n+1",
+            "date": "2009-08-27T18:41:00.434+0000",
+            "id": 10
+        },
+        {
+            "author": "Robert Muir",
+            "body": "i will wait a bit and see if anyone has an issue with this, otherwise i would like to commit at the end of the day.",
+            "date": "2009-08-27T18:47:17.018+0000",
+            "id": 11
+        },
+        {
+            "author": "Mark Miller",
+            "body": "I vote commit it now so it makes the RC - I can appreciate wanting to have consensus here - but silence is consensus in Lucene dev, - and twos often a crowd\nBy the powers vested in me as the RM (which are, essentially, none) I say pop this baby in. People have a week to complain and force us to take it out. I think this one is fairly clear territory though.\nLets put the first RC out with everything we know of taken care of. These are extraordinary times.",
+            "date": "2009-08-27T18:55:19.254+0000",
+            "id": 12
+        },
+        {
+            "author": "Robert Muir",
+            "body": "Committed revision 808570.",
+            "date": "2009-08-27T19:02:40.321+0000",
+            "id": 13
+        },
+        {
+            "author": "xlzhang",
+            "body": "I am interested in working on adding the feature to allow use customized dictionary in text file, not DCT file.\nI have a couple of questions before trying on it.\n\nIn the package, I only saw .mem file. Where should I download .dct file and how to convert from text file to dct file?\n",
+            "date": "2012-01-28T01:01:29.355+0000",
+            "id": 14
+        }
+    ],
+    "component": "modules/analysis",
+    "description": "it is not possible to use a custom dictionary, even though there is a lot of code and javadocs to allow this.\n\nThis is because the custom dictionary is only loaded if it cannot load the built-in one (which is of course, in the jar file and should load)\n{code}\npublic synchronized static WordDictionary getInstance() {\n    if (singleInstance == null) {\n      singleInstance = new WordDictionary(); // load from jar file\n      try {\n        singleInstance.load();\n      } catch (IOException e) { // loading from jar file must fail before it checks the AnalyzerProfile (where this can be configured)\n        String wordDictRoot = AnalyzerProfile.ANALYSIS_DATA_DIR;\n        singleInstance.load(wordDictRoot);\n      } catch (ClassNotFoundException e) {\n        throw new RuntimeException(e);\n      }\n    }\n    return singleInstance;\n  }\n{code}\n\nI think we should either correct this, document this, or disable custom dictionary support...",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-1817",
+    "issuetypeClassified": "OTHER",
+    "issuetypeTracker": "BUG",
+    "priority": "Minor",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "it is impossible to use a custom dictionary for SmartChineseAnalyzer",
+    "systemSpecification": true,
+    "version": ""
+}

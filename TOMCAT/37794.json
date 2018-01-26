@@ -1,0 +1,65 @@
+{
+    "comments": [
+        {
+            "author": null,
+            "body": "URL POST must use a content-length. Otherwise, it's something else.",
+            "date": "20051205T18:53:01",
+            "id": 0
+        },
+        {
+            "author": null,
+            "body": "It's correct that Content-Length was required for HTTP/1.0, but with HTTP/1.1\nit's not required anymore according to RFC2616\n[ftp://ftp.isi.edu/in-notes/rfc2616.txt] chapter 4.3:\n\nThe presence of a message-body in a request is signaled by the\n   inclusion of a Content-Length or Transfer-Encoding header field in\n   the request's message-headers.\n\nRFC2616 chapter 19.4.6 \"Introduction of Transfer-Encoding\" also includes pseudo\ncode for determining the content-length from the chunks.\n\nPlease correct me if I'm wrong.\n\nBest regards\nArne Riiber\n\n",
+            "date": "20051205T19:45:12",
+            "id": 1
+        },
+        {
+            "author": null,
+            "body": "Created attachment 17155\nSample code for demonstrating the bug",
+            "date": "20051205T20:25:59",
+            "id": 2
+        },
+        {
+            "author": null,
+            "body": "This is really a problem for any POST requests coming out of MIDP where you\ncannot change your transfer encoding (its controlled by the device).\n\nThanks a lot,\n-Rushabh",
+            "date": "20070124T15:37:40",
+            "id": 3
+        },
+        {
+            "author": null,
+            "body": "As of Tomcat 5.5.20 and Tomcat 6.0.16, this is still an open issue.  Any status?",
+            "date": "20080404T15:18:59",
+            "id": 4
+        },
+        {
+            "author": null,
+            "body": "This has been fixed in trunk (with a test case) and will be proposed for 6.0.x and 5.5.x",
+            "date": "20090616T13:31:19",
+            "id": 5
+        },
+        {
+            "author": null,
+            "body": "This has been fixed in 6.0.x and will be included in 6.0.21 onwards",
+            "date": "20090624T10:46:01",
+            "id": 6
+        },
+        {
+            "author": null,
+            "body": "This has been fixed in 5.5.x and will be included in 5.5.28 onwards.",
+            "date": "20090705T16:03:38",
+            "id": 7
+        }
+    ],
+    "component": "Servlet & JSP API",
+    "description": "Overview: When an HTTP/1.1 client (for example J2ME) POST with\ntransfer-encoding: chunked to a servlet, the getParameter() family and\ngetQueryString() methods fail to retrieve the correct result by returning\nnothing. In contrast, reading until end-of-file on the servlets input stream\nproduces correct result.\n\nSteps to reproduce: Send a chunked POST request, with a=0 in the first chunk,\nsleep 1 s, then send &b=0 in the next, followed by a 0-chunk and trailer. On the\nreceiving servlet, call getParameterNames() or getParameter().\n\nActual Results: null\n\nExpected results: a=0&b=1\n\nBuild: Tomcat 5.5.12\n\nAdditional Builds and Platforms:\n- getParameter() does fail on:\n    Tomcat 4.1.18\n    Tomcat 4.1.24\n    Tomcat 5.5.12\n- getParameter() doesn't fail on:\n    Jetty 5.1.6\n\nAdditional Information: Please refer to the log below for Tomcat behaviour. It\nis from a simple test client and servlet written to demonstrate the bug.\nTomcat 5.5.12 log:\n\n****************************\n1) Reading the body - PASS *\n****************************\n    [junit] // testChunked(localhost, 8080)\n    [junit] // Sending request to host localhost port 8080\n    [junit] POST /testchunked/EchoServlet/getBody HTTP/1.1\n    [junit] User-Agent: no.riiber.net.http.test.chunked.EchoClient (chunked-test)\n    [junit] content-type: application/x-www-form-urlencoded\n    [junit] connection: Close\n    [junit] host: localhost:8080\n    [junit] transfer-encoding: chunked\n\n    [junit] 3\n    [junit] a=0\n    [junit] 4\n    [junit] &b=1\n    [junit] // Reading response from host localhost port 8080\n    [junit] HTTP/1.1 200 OK\n    [junit] Server: Apache-Coyote/1.1\n    [junit] Content-Type: text/plain;charset=ISO-8859-1\n    [junit] Content-Length: 9\n    [junit] Date: Mon, 05 Dec 2005 07:48:59 GMT\n    [junit] Connection: close\n\n    [junit] a=0&b=1\n    [junit] // PASS: a=0\n    [junit] // PASS: &b=1\n***************************************\n2) Reading using getQuerySTring: FAILS\n***************************************\n    [junit] // testChunked(localhost, 8080)\n    [junit] // Sending request to host localhost port 8080\n    [junit] POST /testchunked/EchoServlet/getQueryString HTTP/1.1\n    [junit] User-Agent: no.riiber.net.http.test.chunked.EchoClient (chunked-test)\n    [junit] content-type: application/x-www-form-urlencoded\n    [junit] connection: Close\n    [junit] host: localhost:8080\n    [junit] transfer-encoding: chunked\n\n    [junit] 3\n    [junit] a=0\n    [junit] 4\n    [junit] &b=1\n    [junit] // Reading response from host localhost port 8080\n    [junit] HTTP/1.1 200 OK\n    [junit] Server: Apache-Coyote/1.1\n    [junit] Content-Type: text/plain;charset=ISO-8859-1\n    [junit] Content-Length: 6\n    [junit] Date: Mon, 05 Dec 2005 07:48:59 GMT\n    [junit] Connection: close\n\n    [junit] null\n    [junit] // *** FAIL: a=0 is not present in response from\n/testchunked/EchoServlet/getQueryString ***\n    [junit] // *** FAIL: &b=1 is not present in response from\n/testchunked/EchoServlet/getQueryString ***\n********************************************\n3) Reading using getParameterNames(): FAILS\n*********************************************\n    [junit] // testChunked(localhost, 8080)\n    [junit] // Sending request to host localhost port 8080\n    [junit] POST /testchunked/EchoServlet/getParameterNamesAndValues HTTP/1.1\n    [junit] User-Agent: no.riiber.net.http.test.chunked.EchoClient (chunked-test)\n    [junit] content-type: application/x-www-form-urlencoded\n    [junit] connection: Close\n    [junit] host: localhost:8080\n    [junit] transfer-encoding: chunked\n\n    [junit] 3\n    [junit] a=0\n    [junit] 4\n    [junit] &b=1\n    [junit] // Reading response from host localhost port 8080\n    [junit] HTTP/1.1 200 OK\n    [junit] Server: Apache-Coyote/1.1\n    [junit] Content-Type: text/plain;charset=ISO-8859-1\n    [junit] Content-Length: 2\n    [junit] Date: Mon, 05 Dec 2005 07:49:02 GMT\n    [junit] Connection: close\n\n\n    [junit] // *** FAIL: a=0 is not present in response from\n/testchunked/EchoServlet/getParameterNamesAndValues ***\n    [junit] // *** FAIL: &b=1 is not present in response from\n/testchunked/EchoServlet/getParameterNamesAndValues ***\n\nBest regards\nArne Riiber",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "37794",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "P2 normal",
+    "product": "Tomcat 5",
+    "project": "TOMCAT",
+    "summary": "getParameter() fails on POST with transfer-encoding: chunked",
+    "systemSpecification": true,
+    "version": "5.5.12"
+}

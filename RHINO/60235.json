@@ -1,0 +1,35 @@
+{
+    "comments": [
+        {
+            "author": "igor@mir2.org",
+            "body": "As a result of changes in sealed semantics, see bug 203013, one can now\noverrides properties from object's prototype even if the prototype is sealed.\n",
+            "date": "20030516T14:36:11",
+            "id": 0
+        },
+        {
+            "author": "pschwartau@meer.net",
+            "body": "Marking Verified - see bug 203013.",
+            "date": "20030516T17:48:13",
+            "id": 1
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Targeting as resolved against 1.5R5",
+            "date": "20040213T11:42:20",
+            "id": 2
+        }
+    ],
+    "component": "Core",
+    "description": "I'm not sure if this is intended behavior or not -- it's odd if it's intended, \nas it makes it difficult to use sealed classes, but anyway....\n\nIf you create a sealed class, you cannot create an object whose prototype is \nthat sealed class and override a method that was originally declared in the \nsealed class.\n\nI changed this by doing the following, but I don't know what the definition of\nsealed is.  I can see why it's a gray area, but if sealed objects are supposed \nto represent reusable prototypes, don't you need to override methods like \ntoString(), etc?\n\n\nIndex: ScriptableObject.java\n===================================================================\nRCS file: /src/master/org/mozilla/javascript/ScriptableObject.java,v\nretrieving revision 1.3\ndiff -u -r1.3 ScriptableObject.java\n--- ScriptableObject.java       2000/11/04 00:10:09     1.3\n+++ ScriptableObject.java       2000/11/15 21:44:29\n@@ -226,7 +226,19 @@\n         }\n         Slot slot = slots[slotIndex];\n         if ((slot.attributes & ScriptableObject.READONLY) != 0)\n-            return;\n+        {\n+            // Allow function override, even if functions are sealed!\n+            // Note that we can override a function to point to void or an actu\nal property value,\n+            // we should really check the existing value if we want to just sea\nl functions.\n+            // We don't want to make readonly properties settable, now, do we?!\n\n+            // [Properties like Math.PI, etc...]\n+//System.out.println(\"Setting: \" + name + \" to: \" + value + \" on: \" + start + \"\n for: \" + this);\n+            if ( start == this || !(slot.value instanceof Function)\n+             ||  ((slot.flags & (Slot.HAS_SETTER|Slot.HAS_GETTER)) != 0) )\n+            {\n+                return;\n+            }\n+        }\n         if ((slot.flags & Slot.HAS_SETTER) != 0) {\n             GetterSlot getterSlot = (GetterSlot) slot;\n             try {",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "60235",
+    "issuetypeClassified": "OTHER",
+    "issuetypeTracker": "BUG",
+    "priority": "P3 normal",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "Cannot override existing methods in new instances of sealed classes",
+    "systemSpecification": true,
+    "version": "other"
+}

@@ -1,0 +1,371 @@
+{
+    "comments": [
+        {
+            "author": "Simon Willnauer",
+            "body": "here is an initial patch that cuts over the API to use a ReaderInfo struct. I upload that patch to get initial feedback for this rather massive change. Before i fix all JavaDoc etc. some others should review that first. The patch contains the following changes:\n\n * Cut over to use ReaderInfo in Weight#scorer, Weight#explain & Filter.getDocIdSet\n * Added ReaderInfo[] to IndexReader and its subclasses as well as IndexSearcher and Searcher which just forwards if applicable.\n * Fixed several, IMO legacy implementations in Solr code that still fixed the doc offset in explain\n * Removed all uses of SolrIndexReader#leaveReaders outside of SIR - IMO we can make those private to SIR now.\n * Added a DummySearcher to QueryWrapperFilter since it uses the subreader to obtain the weight from a query. That didn't work anymore since I assert now that\n  the parent readers are identical in Weight#scorer\n * cut over IndexSearcher to use ReaderInfo instead of seq. subreader\n\nWhat is definitly missing here from my point of view is:\n\n * sharpen the javadoc in weight, filter, and query to make clear how Weight, Rewrite & Scorer play together. For instance it should be clear that a query should only be executed against the same reader it was rewritten against.\n * possibly revise the getSeqSub & getSeqDocBase API in IR and maybe merge then in ReaderInfo\n * We should think about what we need in Scorer and Filter before we commit since this already changes the interface so we can do it here though. For instance could we include a _needsScoring_ flag in either Query#weight() or in the Weight#scorer() method. One other way would be to add those flags to the struct \nthat is passed in but that would mean that we can not simply bind them to the IR and use them from there.\n* maybe think about the name ReaderContext sounds also good instead  of ReaderInfo\n \n\ncomments welcome!!",
+            "date": "2010-12-23T16:07:25.325+0000",
+            "id": 0
+        },
+        {
+            "author": "Yonik Seeley",
+            "body": "ReaderInfo (info about parents, and reader context in general) should not be kept on the IndexReader since a reader can be used in multiple contexts.  For example, the idea that a reader has a single parent is false.  This info should be keept at a higher level (like IndexSearcher) and passed down.",
+            "date": "2010-12-23T16:17:53.888+0000",
+            "id": 1
+        },
+        {
+            "author": "Yonik Seeley",
+            "body": "bq. # Removed all uses of SolrIndexReader#leaveReaders outside of SIR - IMO we can make those private to SIR now.\n\nSolrIndexReader could be removed altogether if this is solved correctly - it's only real purpose was really to solve this context problem.\n",
+            "date": "2010-12-23T16:35:12.618+0000",
+            "id": 2
+        },
+        {
+            "author": "Yonik Seeley",
+            "body": "Remember that we may be dealing with a tree with a depth > 2, so If we want to preserve maximum information, we may want something like this:\n\n{code}\npublic static final class ReaderInfo {\n    public final IndexReader reader;\n\n    /** the reader info for this reader's immediate parent, or null if none */\n    public final ReaderInfo parent;\n\n    /** the ord of this reader in the parent */\n    public final int ordInParent;\n\n    /** the offset of this reader in the parent */\n   public final int offsetInParent;\n\n   /** the ord of this reader in the top level reader */\n   public final int ord;\n\n  /** the offset of this reader in the top level reader */\n  public final int offset;\n{code}\n",
+            "date": "2010-12-23T17:05:30.581+0000",
+            "id": 3
+        },
+        {
+            "author": "Yonik Seeley",
+            "body": "Another thing to think about is if this should be unified with the very similar ReaderUtil.Slice",
+            "date": "2010-12-23T19:39:19.587+0000",
+            "id": 4
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "I like the full ReaderInfo!\n\nIt holds details not only relative to top-level reader but also\nrelative to its immediate parent.  This way we don't lose any\ninformation on the full tree structure (in case there are apps that\ncare).\n\nI think we should add the sub-ReaderInfos too, so the tree is\ndoubly-linked?\n\nbq. ReaderInfo (info about parents, and reader context in general) should not be kept on the IndexReader since a reader can be used in multiple contexts.\n\nActually I think we can and should store this in IndexReader?\n\nBut, only the top-level reader is allowed to hold ReaderInfo for all\nsubs it [recurisvely] contains.  Ie a given IR is not allowed to hold\n\"its\" ReaderInfo, since it can in general have more than one\nReaderInfo if it belongs to multiple top-level readers.\n\nSo eg IR would have a getTopReaderInfo(), to return its own top-level\nReaderInfo.  From there, eg, IS would walk the subs down to gather the\nleaf ReaderInfo array that are the subs visited for searching.\n\nMan I wish we had done this back in 2.9 w/ the per-segment cutover,\ninstead of passing around naked readers this whole time!!\n",
+            "date": "2010-12-23T20:00:07.355+0000",
+            "id": 5
+        },
+        {
+            "author": "Yonik Seeley",
+            "body": "{quote}I think we should add the sub-ReaderInfos too, so the tree is\ndoubly-linked?\n{quote}\n\nYeah, sounds like a good idea.  Solr currently has this functionality via SolrIndexReader (all lucene readers in the tree are wrapped on every reopen), and every SolrIndexReader has the list of children, and a parent pointer.  So this is turning into the same thing, just with a parallel data structure (which mirrors the actual reader tree) instead of wrapping.\n\n{quote} Actually I think we can and should store this in IndexReader?\n\nBut, only the top-level reader is allowed to hold ReaderInfo for all\nsubs it [recurisvely] contains. \n{quote}\n\nA top level reader may also be a sub-reader of another top level reader... so it doesn't seem\nlike we can make that restriction, and any ReaderInfo stored on an IndexReader would only be valid\nin some contexts.  Think about simply trying to walk up to the top level reader, or using \"offset\"\nor \"ord' which vary depending on the top-level reader.\n\nAnd if that info is passed down to weight() and scorer() anyway, what's the point of storing it on IR?\nI guess if we made the restriction that things that vary depending on top-level reader should be avoided\nin ReaderInfo if obtained directly from an IndexReader, it would be OK.  But that's a severe and strange restriction.\n\nWe can try approaching it from the other direction too... what is gained or made easier by storing ReaderInfo on IR?  What are the usecases?\n",
+            "date": "2010-12-23T20:42:23.900+0000",
+            "id": 6
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "I'm confused -- there'd be no restriction with this approach?  Ie it\nwould allow for a sub that's shared in different top readers.\n\nThe IR has .getTopReaderInfo().  This returns a full ReaderInfo tree\nfor all subs under that top.  That info is stored, privately, in only\nthat top reader (not on the subs). When you call .getTopReaderInfo(),\nno ReaderInfo is set on any of the subs.  Only that top reader holds\nthis tree.\n",
+            "date": "2010-12-23T21:04:48.949+0000",
+            "id": 7
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "bq. I'm confused - there'd be no restriction with this approach? Ie it would allow for a sub that's shared in different top readers.\n\nI think what yonik it saying it that you can not be sure that the topLevelReader is a TopLevelReader since it could have yet another parent.\nThis will always be true and essentially only well defined in the context of an IndexSearcher. IndexSearcher takes an arbitrary IndexReader as a topLevel and this will be the one for this IS context. The same IR could be a sub-reader in a different context though.\n\nI'm tend to lean towards holding ReaderInfo on IndexSearcher rather than on IndexReader. It is really an information that 100% depends on a context which is given by IS. IS also defines the context for Query#weigth / createWeight and Weight ctors and with LUCENE-2837 we can eventually rely on the given Searcher is an IS. \n\nbq. Another thing to think about is if this should be unified with the very similar ReaderUtil.Slice\nI agree this should be easy to obtain. \n\nbq. SolrIndexReader could be removed altogether if this is solved correctly - it's only real purpose was really to solve this context problem.\nyeah this makes sense. I didn't look into it too deep during the first patch. \n\nI think we should give Yoniks full ReaderInfo a go an create it only in IS. This might make some Solr classes go away too and reduce complexity. I will go ahead and work on a new patch soon.",
+            "date": "2010-12-29T09:11:12.984+0000",
+            "id": 8
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "bq. The same IR could be a sub-reader in a different context though.\n\nRight, but that's perfectly fine w/ the proposed API.\n\nIe, any IR is able to be a top reader if you ask it to.  So you can\ncall IR.getTopReaderInfo(), and this will fill in the full tree as\nseen by that top reader *only*.  Meaning, the resulting tree is\n\"private\" to that reader.  If you go and ask another reader for its\ntree, a new tree (private to that reader's \"view\" (parent/child\nrelationships)) is computed.\n\nThe API is fully general: it allows for readers that are shared by\nmore than one top reader.\n\nReally (as Yonik said before) this is a question of caching.  It's\ngonna be the same tree, whether it's stored on IR or IS.  Yet, the\ntree in no way depends on IS -- it's entirely a function of the\nrelationships b/w IR and its subs.  An app should be able to store the\ntop IR, and pull the tree from it on demand.  And init'ing an IS from\nan IR should continue to be cheap.\n\nAlso, looking towards the future... at some point we will split apart\n\"composite reader\" and \"atomic reader\".  Ie, these really should be\nseparate classes, but today in Lucene they are one and the same and so\nwe have \"dynamic typing\" (you hit exceptions at runtime) instead of\nstatic typing (compilation errors).  At some point we have to fix this\nand make these two IRs separately classes.\n\nBut to say that this API should be moved to IS instead of IR because\nof this dynamic/static typing problem is a step in the wrong direction\n-- ie once we split out these two IR classes we'll want to move the\nthe getTopReaderInfo API back to the \"composite\" IR.\n\nBTW we will have to somehow fix CachingWrapperFilter to behave\nproperly here.  Ie, it needs to know whether the cache key is purely\nthe sub-reader (as it is, always, today), or the combo of root reader\n+ sub (as it is for eg DuplicateFilter).\n\n",
+            "date": "2010-12-30T11:08:49.302+0000",
+            "id": 9
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "I like ReaderContext as the name instead of ReaderInfo... Info is too \"generic\".",
+            "date": "2010-12-30T11:13:24.569+0000",
+            "id": 10
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "Attaching my current state. There is still one testcase failing in solr land that violates the hierarchy (TestFunctionQuery) or rather the contract between Query#weight() and Weight#scorer() in not using the correct leaf readers etc.\n\nI added 2 structs CompositeContext and AtomicContext which made it somewhat simpler IMO. Yet, I try to fix the solr problems as far as i can - if that is not possible without major changes i will remove the assert in TermWeight since all tests pass without it though.\n\nif someone finds the time to look at the Context impls - comments very welcome!\n\nsimon",
+            "date": "2011-01-04T18:07:51.802+0000",
+            "id": 11
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Looks good Simon!  Random comments...\n\nMaybe rename AtomicContext -> AtomicReaderContext?  And same for\nCompositeContext?\n\nShould Filter.getDocIDSet take an AtomicReaderContext?  We don't have\nto do that in this patch, though... this patch is a big enough first\nstep!\n\nLeafes -> Leaves\n\nMaybe IR.getTopReaderContext() instead of IR.topLevelReaderContext()?\n(Or .getRootReaderContext()?).\n\nI agree this should eventually subsume\n.getSequentialReaders... though, we probably should change IR base\nmethod to return null not throw UOE, if so (until we succeed in\nstatically typing composite vs atomic readers...).\n\nI think we can change the expert IndexSearcher ctor that takes the\nforced subReaders to instead take a root ReaderContext?  In fact,\nmaybe we can remove it altogether?  It was added to avoid the\n\"relatively costly\" gatherSubReaders that IS does if you just pass it\nan IR, but, we are now fixing that w/ this issue, by having IR cache\nthe root ReaderContext...\n\nIf we did that could we go back to having QueryWrapperFilter just make\nan IndexSearcher?\n\nDo we really need forceLeafs()?  Can't QueryWrapperFilter make a\nMultiReader holding just its atomic IR and pass that to IS?  And then\nwe can remove the AtomicContext ctor that takes a \"naked\" atomic\nreader?\n\nQueryWrapperFilter's WeightOnlyearcher should be WeightOnlySearcher.\n",
+            "date": "2011-01-05T10:37:09.343+0000",
+            "id": 12
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "next iteration, this time I think we are very close.\n- I renamed AtomicContext to AtomicReaderContext and likewise for CompositeContext\n- s/topLevelReaderContext/getTopReaderContext\n- updated to latest trunk and adopted the changes to IS in LUCENE-2837\n- Removed the dummy searcher in QueryWrapperFilter which now works just fine with a IS instance\n- added ReaderContext ctors to IS\n- replaced some members in IS in favor of AtomicReader[] leaves <--- leafs :)\n- s/leafs/leaves\n- Sharpened the JDocs in Weight - review please\n- added missing JDocs to IR, IS & ReaderContext + subs\n\n{quote}\nShould Filter.getDocIDSet take an AtomicReaderContext? We don't have\nto do that in this patch, though... this patch is a big enough first\nstep!\n{quote}\n\nYeah I would like to do so, similar to Weight#scorer but currently mainly solr prevents us from this. There is also the functionqueries that still operate on IR instead of ReaderContext but maybe this is a good usecase to consolidate them move them into a module and get them out of core?!\nAnyway, we should do this in a different issue - this has its purpose as you stated.\nLikewise I would do issues for CachingWrapperFilter & DuplcateFilter though.\n\nsimon\n",
+            "date": "2011-01-05T14:44:51.817+0000",
+            "id": 13
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "Updated to trunk and fixed some variable naming s/info/context\n\nall tests pass",
+            "date": "2011-01-05T17:01:36.327+0000",
+            "id": 14
+        },
+        {
+            "author": "Yonik Seeley",
+            "body": "I'm browsing through this latest patch a bit...\n- ReaderContextBuilder.numLeafes uses an AtomicInt, but ReaderUtil.Gather doesn't do any threading.\n- ReaderContext.leaves() is a method - shouldn't it just be a member for consistency?  I don't really understand the javadoc on that method either, since I don't see how I could walk the tree myself - there are no child pointers.\n- Is ReaderContext.isTopLevel redundant (i.e. it will always be equal to parent==null)?  Maybe the same thing for isAtomic and leaves==null?",
+            "date": "2011-01-05T17:40:41.901+0000",
+            "id": 15
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "bq. ReaderContextBuilder.numLeafes uses an AtomicInt, but ReaderUtil.Gather doesn't do any threading.\nthat way I can update it in the annonymous class - not do any threading doesn't really matter that operation is not time critical at all. Impl. detail IMO which is just convenient \n\nbq. ReaderContext.leaves() is a method - shouldn't it just be a member for consistency? I don't really understand the javadoc on that method either, since I don't see how I could walk the tree myself - there are no child pointers.\nwell they are in CompositeReaderContext but that jdoc is missleading. I added it to prevent a cast to check if there are leaves I don't see why this is problematic here though. I would rather add a children() method for consistency here though.\n\nbq. Is ReaderContext.isTopLevel redundant (i.e. it will always be equal to parent==null)? Maybe the same thing for isAtomic and leaves==null?\nyeah we could do that but I would prefer the simple booleans since they are way more expressive and easier to understand.\n\n",
+            "date": "2011-01-05T17:53:11.256+0000",
+            "id": 16
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Patch looks good!\n\nThere's a numLeafs in ReaderUtil still, and s/docbaseInParent/docBaseInParent.\n\nI think children() would be good.",
+            "date": "2011-01-05T18:10:42.388+0000",
+            "id": 17
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "fixed those little spelling issues & added a children() method to ReaderContext. I also revised the leaves() jdocs to be more clear now. \n\nI think we are good to go!",
+            "date": "2011-01-05T19:05:05.492+0000",
+            "id": 18
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "+1!\n\nBut there's still a numLeafes in ReaderUtil :)",
+            "date": "2011-01-05T19:14:21.288+0000",
+            "id": 19
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "bq. But there's still a numLeafes in ReaderUtil \n\nbloddy dyslexic german \n\nI'll go ahead and commit",
+            "date": "2011-01-05T19:19:34.416+0000",
+            "id": 20
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "final patch, fixed the leafes problem and added changes.txt entry. I commit shortly",
+            "date": "2011-01-05T19:53:43.516+0000",
+            "id": 21
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Go ahead, looks good, +1\n\nIf there are smaller issues, let's fix them later. The patch is quite big, so its better to commit now and let everybody use it! I was also thinking about using ReaderContext in Query.rewrite() for consistency.",
+            "date": "2011-01-05T20:03:49.921+0000",
+            "id": 22
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "committed in revision 1055636",
+            "date": "2011-01-05T20:47:50.284+0000",
+            "id": 23
+        },
+        {
+            "author": "Yonik Seeley",
+            "body": "Regarding this assert in IndexSearcher:\n    // TODO: eable this assert once SolrIndexReader and friends are refactored to use ReaderContext\n    // We can't assert this here since SolrIndexReader will fail in some contexts - once solr is consistent we should be fine here\n    // assert context.isTopLevel: \"IndexSearcher's ReaderContext must be topLevel for reader\" + context.reader;\n\nThis is a bug in ReaderUtil.build() that when passed a segment reader, it sets isTopLevel to false.\nYou got bit by those extra booleans ;-) \n\nWhen I hacked ReaderContext to just set isTopLevel to parent==null, all the solr tests passed w/ the assertion enabled.",
+            "date": "2011-01-05T23:02:49.855+0000",
+            "id": 24
+        },
+        {
+            "author": "Yonik Seeley",
+            "body": "I see another related bug I think:\nCompositeReaderContext does this:\n      super(parent, reader, false, leaves != null, ordInParent, docbaseInParent);\nIt assumes that a reader is top level if it has leaves.",
+            "date": "2011-01-06T00:03:52.099+0000",
+            "id": 25
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "bq. This is a bug in ReaderUtil.build() that when passed a segment reader, it sets isTopLevel to false.\nah good catch! Thanks!\n\nbq. It assumes that a reader is top level if it has leaves.\nthat one is actually intentional. if it is a CompositeReaderContext it must have leaves since it is composed of at least on other reader, right? Otherwise it should be an atomic reader or do I miss something?\n\nI have to admit that I didn't try to hard to get the Solr part running altogether. ",
+            "date": "2011-01-06T00:48:32.785+0000",
+            "id": 26
+        },
+        {
+            "author": "Yonik Seeley",
+            "body": ">    Should Filter.getDocIDSet take an AtomicReaderContext? We don't have\n>    to do that in this patch, though... this patch is a big enough first\n>    step!\n\nbq. Yeah I would like to do so, similar to Weight#scorer but currently mainly solr prevents us from this.\n\nWhich part?  I was looking into migrating some SolrIndexSearcher to ReaderContext, and realized I needed the global base.\nI clould walk up to calculate, but then I realized that AtomicReaderContext already has that!  So we should either change to AtomicReaderContext, or put a getBaseInTop() method on ReaderContext.",
+            "date": "2011-01-06T02:14:46.721+0000",
+            "id": 27
+        },
+        {
+            "author": "Yonik Seeley",
+            "body": "Do we have any good MultiReader tests? \nwrapUnderlyingReader() sort of does... but not enough to tell if someone accidentally used baseInParent as opposed to the global base.\nPerhaps it should construct a MultiReader with an arbitrary but equivalent structure based on children and leaves?",
+            "date": "2011-01-06T02:53:44.572+0000",
+            "id": 28
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "bq. So we should either change to AtomicReaderContext, or put a getBaseInTop() method on ReaderContext.\n\nWe should move to AtomicReaderContext if possible. Would you want to open a new issue to migrate solr parts or should we do that in this one?\nSimilarly, Weight#scorer should also take a AtomicReaderContext if possible...\n",
+            "date": "2011-01-06T06:15:45.559+0000",
+            "id": 29
+        },
+        {
+            "author": "Yonik Seeley",
+            "body": "bq. would you want to open a new issue to migrate solr parts or should we do that in this one\n\nThis one is fine.  It makes sense to actual cutover from ReaderContext to AtomicReaderContext before migration away from SolrIndexReader.\nBut you previously indicated there was some issue in Solr that made that problematic?",
+            "date": "2011-01-06T17:43:16.109+0000",
+            "id": 30
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "bq. But you previously indicated there was some issue in Solr that made that problematic?\nactually for Filter that should be fine as far as I can see. I had some cases where non-atomic reader ctx where passed to scorer but maybe those where a different problem, I try to remember though. If you feel like it you can just go ahead and cut over to ARCxt on getDocIdSet() or I will do next week though. \n\n",
+            "date": "2011-01-06T18:19:35.344+0000",
+            "id": 31
+        },
+        {
+            "author": "Yonik Seeley",
+            "body": "Soooo, I took a quick shot at a high level migration of Filter.getDocIDSet to AtomicReaderContext - and after a few IDE crashes and other roadblocks + headaches, I went ahead with a bottom-up approach (as you can see from some of my commits).",
+            "date": "2011-01-08T01:51:41.383+0000",
+            "id": 32
+        },
+        {
+            "author": "Yonik Seeley",
+            "body": "It seems we also need to migrate FieldComparator to use ReaderContext (eventually AtomicReaderContext)?",
+            "date": "2011-01-08T02:05:49.988+0000",
+            "id": 33
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "bq. It seems we also need to migrate FieldComparator to use ReaderContext (eventually AtomicReaderContext)?\n\n+1\n\nAnd also Collector?",
+            "date": "2011-01-08T12:19:55.091+0000",
+            "id": 34
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "bq. And also Collector?\nyeah I think that one can move to ARC too.\n\n{code}\n  ValueSource#getValues(IndexReader)\n{code}\n\nis another one",
+            "date": "2011-01-10T12:16:23.233+0000",
+            "id": 35
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "this patch cuts over Weight#scorer, Weight#explain & Filter#getDocIDSet to AtomicReaderContext. I also somewhat fixed IndexSearcher to handle concurrent execution correctly with respect to the actual context. Currently each sub searcher was its own context now we are just using IS as an executor of one leaf but still being aware of the entire context.\n\nAll tests pass. I will commit soon if nobody objects",
+            "date": "2011-01-11T08:55:30.494+0000",
+            "id": 36
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Awesome -- patch looks great!  I love the simplification to IndexSearcher for the sub-searchers, the fact that we no longer have to rebase since the provided context sends the docBase down.  This is cleaner, too (we no longer have to \"get a topLevel context\" for a sub reader).  Great!\n\nThis will also make the cutover to statically typed readers (atomic vs composite) easier.",
+            "date": "2011-01-11T11:45:11.015+0000",
+            "id": 37
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "next transition iteration - this one cuts over Collector#setNextReader to Collector#setNextContext(AtomicReaderContext) and FieldComparator#setNextContext(AtomicReaderContext) respectively. I also replaced several SolrIndexReader uses to the use the new API rather than SolrIndexReader directly. There are just a handful of SolrIndexReader uses left which are mainly due to ValueSource#docValues(IR). This seems to be the last one left  - we are close!  If nobody objects I will commit soon.",
+            "date": "2011-01-11T15:07:43.272+0000",
+            "id": 38
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "renamed setNextContext back to setNextReader - its really just a reader with context",
+            "date": "2011-01-11T16:02:12.954+0000",
+            "id": 39
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Simon -- heads up, I'm renaming TermState.copy -> TermState.copyFrom in LUCENE-2857.",
+            "date": "2011-01-11T17:22:34.061+0000",
+            "id": 40
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "bq. Simon - heads up, I'm renaming TermState.copy -> TermState.copyFrom in LUCENE-2857.\nthis comment should be on LUCENE-2694, right?!",
+            "date": "2011-01-11T19:17:54.845+0000",
+            "id": 41
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "this patch cuts over all function query stuff to AtomicReaderContext in solr & lucene. It also nukes SolrIndexReader entirely - yay!! :)\nI thinks somebody should give this patch a glance though, especially from the solr perspective although all tests pass. \n\nI had to make the IndexSearcher(ReaderContext, AtomicContext...) ctor public which is ok I think and I added a new already deprecated method to ValueSource in lucene land to make transition easier.\n\nif nobody objects I will commit later today",
+            "date": "2011-01-12T10:40:45.661+0000",
+            "id": 42
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "{quote}\nbq. Simon - heads up, I'm renaming TermState.copy -> TermState.copyFrom in LUCENE-2857.\n\nthis comment should be on LUCENE-2694, right?!\n{quote}\n\nDuh, right.  But it looks like you got the message anyway ;)",
+            "date": "2011-01-12T11:33:48.575+0000",
+            "id": 43
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "updated to trunk",
+            "date": "2011-01-12T21:50:19.035+0000",
+            "id": 44
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "I committed the latest patch in revision 1058431, I think we are done here - yay!",
+            "date": "2011-01-13T07:15:14.963+0000",
+            "id": 45
+        },
+        {
+            "author": "Robert Muir",
+            "body": "There are some issues here with IndexSearcher, mostly found with LUCENE-2751 (once we started randomly using the executor service in tests).\n# some recursion bugs in IndexSearcher(IndexReader r, boolean closeReader, ExecutorService executor)\n# i noticed problems with IndexSearcher(ReaderContext topLevel, AtomicReaderContext... leaves), the varargs causes this ctor to become ambiguous with other ctors (such as ReaderContext, ExecutorService). I don't understand why this ctor needs to be public, i noticed Solr's QueryValueSource is the only thing using it, and I think instead that should be fixed.",
+            "date": "2011-01-31T22:08:36.387+0000",
+            "id": 46
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "bq. some recursion bugs in IndexSearcher(IndexReader r, boolean closeReader, ExecutorService executor)\nwhat's the recursion bug here? I have no idea why we are passing \"this\" to the subs here - maybe to save a single instance?!\n\nbq. i noticed problems with IndexSearcher(ReaderContext topLevel, AtomicReaderContext... leaves), the varargs causes this ctor to become ambiguous with other ctors (such as ReaderContext, ExecutorService). I don't understand why this ctor needs to be public, i noticed Solr's QueryValueSource is the only thing using it, and I think instead that should be fixed.\n\ncan we disambiguate by using ARC[] instead of ARC... ?",
+            "date": "2011-02-01T12:34:32.143+0000",
+            "id": 47
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "I think something like this patch is needed to fix the two \"recursion\" problems?  The thing is, I needed to comment out that assert!\n\nSimon can you check this?  Thanks.",
+            "date": "2011-02-01T14:57:35.993+0000",
+            "id": 48
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "bq. Simon can you check this? Thanks.\nthis seems wrong since you don't maintain the actual hierarchy between parent and child. We need this for certain assertions down the road. Yet, what's problematic here is that it takes more than one leaf which kills the sematics of methods like IS#docFreq() as you figured out on IRC. If the parents reader is used for a searcher that only operates on partial leaves we have a problem. I think we need to shrapen that ctor to only take one sub and use the subs reader as the IS's reader. This should make the semantics clear. Ideally we should also make this ctor private one the users of it are \"fixed\". But for now \n{code}\nIndexSearcher(ReaderContext ctx, AtomicReaderContext leaf)\n...\n{code}\n\nshould be fine ey?\n\n",
+            "date": "2011-02-01T16:14:41.007+0000",
+            "id": 49
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Patch to fix recursion, take 2.\n\nStill not sure about it... had to comment out a different assert ;)",
+            "date": "2011-02-01T16:25:16.105+0000",
+            "id": 50
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Another rev -- fixed QueryValueSource.  Since that class directly controls when it invokes weight.scorer, I think it's safe to just pass the top context?",
+            "date": "2011-02-01T18:13:58.002+0000",
+            "id": 51
+        },
+        {
+            "author": "Yonik Seeley",
+            "body": "bq. fixed QueryValueSource. Since that class directly controls when it invokes weight.scorer, I think it's safe to just pass the top context?\n\nYep.  Note that it's fallback code in any case - the normal path is that it should have already been weighted and the weight will be found in the context.",
+            "date": "2011-02-02T03:40:38.199+0000",
+            "id": 52
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "here is a slightly different patch that makes the dangerous ctor private and uses the leaf's reader as the IS reader. I also put an assert into getTopReaderContext to assert that nobody pulls a toplevel context from the schizo IS.\n\nAll tests pass with LUCENE-2751",
+            "date": "2011-02-02T12:05:40.553+0000",
+            "id": 53
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Patch looks good!\n\nBut, can you change the new assert to say something like \"cannot access top context when IS is a leaf reader\" or something?  Right now if you trip that assert it's like not clear what's gone wrong...\n\nAnd I think either remove the jdoc on that method, or, clarify that it's only sugar when IS is not based on an leaf reader?\n\nI really don't like this schitzo IS though ;)  Sometimes it's top reader sometimes it's leaf reader.  But, the schitzo IS's should never \"escape\" out of the top IS that has an ES.",
+            "date": "2011-02-02T14:12:16.429+0000",
+            "id": 54
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "I think we can really get rid of the sub searchers and do it all on the top level searcher. I just sketched something out how this should be done from my point of view. The executors should only specify the ARC slice they want to execute and use the top level searcher to do the searches.\n\nthis patch is just for illustration purposes... Jdocs need to be fixed etc. \n\nI think if we do it that way the semantics are clear for IS.",
+            "date": "2011-02-02T21:11:16.610+0000",
+            "id": 55
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Patch looks great!  No more schitzo sub searchers!\n\n+1 to commit",
+            "date": "2011-02-02T21:16:15.928+0000",
+            "id": 56
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "another iteration - fixed / added some javadocs and marked the LeafSlice experimental. I will wait a bit an commit later. All tests pass even with LUCENE-2751 ",
+            "date": "2011-02-02T22:07:24.252+0000",
+            "id": 57
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "Committed revision 1066669.",
+            "date": "2011-02-02T22:34:49.718+0000",
+            "id": 58
+        }
+    ],
+    "component": "core/search",
+    "description": "Spinoff from LUCENE-2694 - instead of passing a reader into Weight#scorer(IR, boolean, boolean) we should / could revise the API and pass in a struct that has parent reader, sub reader, ord of that sub. The ord mapping plus the context with its parent would make several issues way easier. See LUCENE-2694, LUCENE-2348 and LUCENE-2829 to name some.\n\n",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-2831",
+    "issuetypeClassified": "RFE",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Major",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "Revise Weight#scorer & Filter#getDocIdSet API to pass Readers context",
+    "systemSpecification": true,
+    "version": "4.0-ALPHA"
+}

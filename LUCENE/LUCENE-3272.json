@@ -1,0 +1,59 @@
+{
+    "comments": [
+        {
+            "author": "Robert Muir",
+            "body": "This is really important I think, we should eventually consolidate all the QPs across lucene-core, contrib, and solr into a module.\n\nI think its also important that we do this so that eventually we could hopefully move core queries into the queries module, and finally add all the cool stuff to the Lucene QP that is \"missing\" (positional stuff like NEAR, function queries, join, ...)\n\nI think most tests only use the QP for convenience, maybe just make a REALLY REALLY simple MockQueryParser that is basically a String.split() for these tests for convenience? Then it would analyze the terms and make a boolean query... anything else more complicated (e.g. phrasequery) could just be explicitly instantiated?\n\n\n",
+            "date": "2011-07-01T03:01:11.370+0000",
+            "id": 0
+        },
+        {
+            "author": "Chris Male",
+            "body": "bq. ... contrib, and solr into a module\n\nI'm not sure about the practicalities of consolidating Solr's QPs at the moment.  Most, if not all, are somehow directly tied to Solr's Schema concepts.  That in fact seems to be their advantage since the typing information is hugely beneficial.  With Lucene's FieldType work coming up, maybe some of it can be offloaded to those.  We can also work on inverting the APIs in some places, providing abstractions in others.\n\nThat all said, I'm not afraid of trying.\n\n{quote}\nI think most tests only use the QP for convenience, maybe just make a REALLY REALLY simple MockQueryParser that is basically a String.split() for these tests for convenience? Then it would analyze the terms and make a boolean query... anything else more complicated (e.g. phrasequery) could just be explicitly instantiated?\n{quote}\n\nSounds like a great plan (and a great first step).\n",
+            "date": "2011-07-01T03:11:03.473+0000",
+            "id": 1
+        },
+        {
+            "author": "Robert Muir",
+            "body": "{quote}\nWith Lucene's FieldType work coming up, maybe some of it can be offloaded to those. We can also work on inverting the APIs in some places, providing abstractions in others.\n{quote}\n\nI don't think we have to do all the work at once? Like, ideally however these problems are being solved (e.g. adding numericrange support to the QP is one example), we could eventually move the solr QPs to use this 'information' and maybe refactor how its own schema works... if it turns out stuff is really solr-specific and not generalizable then keep it in solr.\n\nBut I think as a start, we can consolidate what is in lucene core and contrib, thats a ton of work in itself. \n",
+            "date": "2011-07-01T03:19:06.987+0000",
+            "id": 2
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Big +1!  We've needed query parsing factored out for a loooong time.  And cutting tests over to a new MockQP, and then simply moving (but not merging) all QPs together to a module, sounds like great first steps.\n\nNote that the FieldType work (at least as currently planned/targetted) isn't a schema -- it's really just a nicer API for working with documents.  Ie, nothing is persisted, nothing checks that 2 docs have the fields / types, etc.\n\nStill, it would be great to pull Solr's QP in and somehow abstract the parts that require access to Solr's schema.",
+            "date": "2011-07-01T11:00:35.139+0000",
+            "id": 3
+        },
+        {
+            "author": "Hoss Man",
+            "body": "single module != single jar ... correct?\n\nsomeone writing a small form factor app that wants to use the basic Lucene QueryParser shouldn't have to load a jar containing every query parser provided by solr (and all of the dependencies they have)",
+            "date": "2011-07-01T19:35:20.257+0000",
+            "id": 4
+        },
+        {
+            "author": "Robert Muir",
+            "body": "single jar, but you can customize: its open source.\n\nHoss I think you are looking at this the wrong way: this actually makes it way easier for someone writing a small form factor app that uses no query parser at all, or their own queryparser, or whatever.\n\nwe should do this to make the lucene core smaller, and then you plug in the modules you need (and maybe only selected parts from them, but thats your call).\n\nI don't think we need to provide X * Y * Z possibilities, nor do we need to provide 87 jar files.\n\n\nBut, this is just rehashing LUCENE-2323, where we already had this conversation. I think at the least we should put all these QPs into one place to make refactoring between them easier. Then we make a smaller amount of code for these small form factor apps you are so concerned about, with the messy duplication this is not possible now.\n\nI still stand by my comments in LUCENE-2323, and guess what, turns out I think I was right.\nLUCENE-1938 then refactored one of these queryparsers, removing 4000 lines of code but keeping the same functionality.\n",
+            "date": "2011-07-01T20:19:23.168+0000",
+            "id": 5
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "can we close this issue? seems resolved?",
+            "date": "2011-11-14T10:44:06.760+0000",
+            "id": 6
+        }
+    ],
+    "component": "modules/queryparser",
+    "description": "Lucene has a lot of QueryParsers and we should have them all in a single consistent place.  \n\nThe following are QueryParsers I can find that warrant moving to the new module:\n\n- Lucene Core's QueryParser\n- AnalyzingQueryParser\n- ComplexPhraseQueryParser\n- ExtendableQueryParser\n- Surround's QueryParser\n- PrecedenceQueryParser\n- StandardQueryParser\n- XML-Query-Parser's CoreParser\n\nAll seem to do a good job at their kind of parsing with extensive tests.\n\nOne challenge of consolidating these is that many tests use Lucene Core's QueryParser.  One option is to just replicate this class in src/test and call it TestingQueryParser.  Another option is to convert all tests over to programmatically building their queries (seems like alot of work).",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "LUCENE-3272",
+    "issuetypeClassified": "REFACTORING",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Major",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "Consolidate Lucene's QueryParsers into a module",
+    "systemSpecification": true,
+    "version": ""
+}

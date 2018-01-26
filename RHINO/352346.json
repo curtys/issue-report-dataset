@@ -1,0 +1,53 @@
+{
+    "comments": [
+        {
+            "author": "martin.honnen@gmx.de",
+            "body": "I have looked the E4X specification (2nd edition) and it clearly requires toXMLString to always escape '<', '>', '&' for text nodes respectively element content. The requirement is in section 10.2.1.1 EscapeElementValue.\n\nThe Rhino E4X implementors of toXMLString however have choosen not do do any escaping on text nodes as\n<http://lxr.mozilla.org/mozilla/source/js/rhino/xmlimplsrc/org/mozilla/javascript/xmlimpl/XML.java#2897>\nsimply checks\n\nif (curs.isText())\n{\n  result = curs.getChars();\n}\n\nand that getChars method of the XmlCursor in XML beans does not seem to be intended to give you XML markup with proper escaping but rather plain text:\n<http://xmlbeans.apache.org/docs/1.0.4/reference/org/apache/xmlbeans/XmlCursor.html#getChars()>\n\nSo this bug is not specific to text nodes in XMLList objects but simply happens when toXMLString is directly called on an XML object of node kind 'text'.",
+            "date": "20060912T16:30:19",
+            "id": 0
+        },
+        {
+            "author": "szegedia@freemail.hu",
+            "body": "Ok, any idea for a patch? Just escape the return value of \"curs.getChars()\" in\n\nif (curs.isText())\n{\n  result = curs.getChars();\n}\n\nwould do? Does XmlBeans or Rhino already have code for XML escaping somewhere?",
+            "date": "20060926T12:06:30",
+            "id": 1
+        },
+        {
+            "author": "martin.honnen@gmx.de",
+            "body": "(In reply to comment #2)\n> Ok, any idea for a patch? Just escape the return value of \"curs.getChars()\" in\n> \n> if (curs.isText())\n> {\n>   result = curs.getChars();\n> }\n> \n> would do? \n\nIt would be start, at least as this bug is concerned. E4X wants toXMLString called on an attribute to apply escaping too so that would need to be fixed too.\n\n> Does XmlBeans or Rhino already have code for XML escaping somewhere?\n\nRhino has\n<http://lxr.mozilla.org/mozilla/source/js/rhino/xmlimplsrc/org/mozilla/javascript/xmlimpl/XML.java#508>\ndumpNode which then makes uses of cursor.xmlText in some cases. Using that it might be possible to at least get well-formed stuff from toXMLString(). It does not look as if XML beans escpapes '>', XML does not require that, but the E4X specification spells out that '>' should be escaped as '&gt;'.\n\nAnd I am more guessing what might help than really understanding the XML beans API.\n\nAre those guys that implemented E4X for Rhino no longer interested in maintaining/fixing it? The file lists contributors \n  Ethan Hugg\n  Terry Lucas\n  Milen Nankov",
+            "date": "20060926T13:10:28",
+            "id": 2
+        },
+        {
+            "author": "inonit@inonit.com",
+            "body": "This bug is fixed in the upcoming non-XMLBeans implementation of E4X for Rhino.  See bug 355677.",
+            "date": "20070128T20:10:04",
+            "id": 3
+        },
+        {
+            "author": "inonit@inonit.com",
+            "body": "The submitted test case gives the submitter's expected results if XMLBeans is not present.  See bug 355677.",
+            "date": "20070205T16:40:24",
+            "id": 4
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "Adding target milestone of 1.6R6 based on the date this bug was resolved FIXED.",
+            "date": "20070518T15:10:52",
+            "id": 5
+        }
+    ],
+    "component": "E4X",
+    "description": "This test with the shell of Rhino 1.6 R 4 (and XML beans 1.0.4)\n\nRhino 1.6 release 4 2006 09 09\njs> var xmlList = <><![CDATA[<strong>Kibo & Xibo</strong>]]></>;\njs> xmlList[0].nodeKind()\ntext\njs> xmlList.toXMLString()\n<strong>Kibo & Xibo</strong>\n\nshows that the toXMLString method fails to properly escape '<' and '>' and '&' in the text content in the XML list. Result should be\n\n&lt;strong&gt;Kibo &amp; Xibo&lt;/strong&gt;\n\ninstead as Spidermonkey does.\n\nIn terms of the XML specification escaping '>' as '&gt;' is not a must but for symmetry and clearness usually '>' is escaped. '<' and '&' however must be escaped so Rhino has a bug there.",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "352346",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "-- normal",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "toXMLString() called on text node in XMLList fails to escape '<' and '>' and '&' in the text content",
+    "systemSpecification": true,
+    "version": "head"
+}

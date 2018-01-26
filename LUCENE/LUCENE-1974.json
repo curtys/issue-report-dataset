@@ -1,0 +1,113 @@
+{
+    "comments": [
+        {
+            "author": "Hoss Man",
+            "body": "this is the same as the previously attached test but i've simplified it (to me) and revamped it to be a patch that can be applied to 2.9.0.\n\nI can confirm that it fails for me (against 2.9.0) and seems to suggest a weird hit collection bug somwhere in the BooleanScorer or Prefix scoring code \n\n(a prefix query works, a boolean query containing term queries work, but a boolean query containing a prefix query fails to find all the expected matches)\n\nUnless i'm missing something really silly, this suggests a pretty heinious bug somewhere in the core scoring code.",
+            "date": "2009-10-13T22:53:54.542+0000",
+            "id": 0
+        },
+        {
+            "author": "Hoss Man",
+            "body": "tweaked test so that it can be applied to 2.4.1 (by removing readOnly param from IndexSearcher constructor)\n\nverified this test passes against 2.4.1 ... it's a new bug in 2.9.0",
+            "date": "2009-10-13T23:02:46.709+0000",
+            "id": 1
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Hmm... seems to be a bug in BooleanScorer... if you call static BooleanQuery.setAllowDocsOutOfOrder(false) the test passes (so that's a viable workaround it seems).",
+            "date": "2009-10-13T23:08:32.547+0000",
+            "id": 2
+        },
+        {
+            "author": "Robert Muir",
+            "body": "Hoss man, i played with this a little, maybe this is all obvious tho\n* test passes if you set BooleanQuery.setAllowDocsOutOfOrder(false) [its booleanscorer, not booleanscorer2]\n* to simplify things, you can use ConstantScoreQuery of a single term instead of PrefixQuery to trigger it\n\nagree with the comment in the original test, if you trace the execution, the problem is it doesnt actually refill the queue with his second doc (which is docid 11,000 or something). this is because .score() is being called on the subscorer with an end limit of 8192 or so.\n\n{code}\n// refill the queue\n      more = false;\n...\n        if (subScorerDocID != NO_MORE_DOCS) {\n          more |= sub.scorer.score(sub.collector, end, subScorerDocID);\n ...   \n    } while (current != null || more);\n{code}\n\n",
+            "date": "2009-10-13T23:16:16.282+0000",
+            "id": 3
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Ugh, this is the bug:\n\n{code}\nIndex: src/java/org/apache/lucene/search/Scorer.java\n===================================================================\n--- src/java/org/apache/lucene/search/Scorer.java\t(revision 824846)\n+++ src/java/org/apache/lucene/search/Scorer.java\t(working copy)\n@@ -87,7 +87,7 @@\n       collector.collect(doc);\n       doc = nextDoc();\n     }\n-    return doc == NO_MORE_DOCS;\n+    return doc != NO_MORE_DOCS;\n   }\n   \n   /** Returns the score of the current document matching the query.\n\n{code}\n\nI'll commit shortly, to trunk & 2.9 branch.",
+            "date": "2009-10-13T23:50:16.263+0000",
+            "id": 4
+        },
+        {
+            "author": "Michael Busch",
+            "body": "It's also concerning that no unit test catches this...",
+            "date": "2009-10-13T23:57:08.889+0000",
+            "id": 5
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "bq. It's also concerning that no unit test catches this...\n\nI agree....  I'll commit tangfulin & Hoss's test case.\n\nI think the other tests do not catch it because the error only happens if the docID is over 8192 (the chunk size that BooleanScorer uses).  Most of our tests work on smaller sets of docs.",
+            "date": "2009-10-14T00:15:59.474+0000",
+            "id": 6
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Thanks tangfulin and Hoss!  I think we need to spin 2.9.1 for this.",
+            "date": "2009-10-14T00:22:47.836+0000",
+            "id": 7
+        },
+        {
+            "author": "Yonik Seeley",
+            "body": "bq. It's also concerning that no unit test catches this... \n\nI've said it before, I'll say it again... anything of sufficient complexity really benefits from random tests to hit boundary cases that one would not have thought to code for.  We have quite a few in Solr, but not enough.  We obviously don't have enough in Lucene either.\n\nOne other simple tactic I've used in Solr to increase the chance of hitting boundary conditions is to make sure many segments are created by default (bad for performance, good for testing), and that cache sizes, window sizes, etc are small so that they are crossed more often by more tests.\n\n",
+            "date": "2009-10-14T00:24:03.721+0000",
+            "id": 8
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "+1... we need many more tests that do this in Lucene.",
+            "date": "2009-10-14T00:36:12.344+0000",
+            "id": 9
+        },
+        {
+            "author": "Michael Busch",
+            "body": "{quote}\nI think we need to spin 2.9.1 for this. \n{quote}\n\n+1\n\n{quote}\n+1... we need many more tests that do this in Lucene. \n{quote}\n\n+1",
+            "date": "2009-10-14T00:41:27.834+0000",
+            "id": 10
+        },
+        {
+            "author": "tangfulin",
+            "body": "Good job, Thanks you all for this!\n\nThough we have spent about a day to change our project back to Lucene 2.4 to avoid the bug, now I think it is time to change it back",
+            "date": "2009-10-14T01:58:17.259+0000",
+            "id": 11
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "As a test, to tease out more corner cases, I temporarily dropped BooleanScorer's chunk size from 2048 to 16, and ran all tests.  Everything passed.\n",
+            "date": "2009-10-14T12:46:04.725+0000",
+            "id": 12
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "bq. Though we have spent about a day to change our project back to Lucene 2.4 to avoid the bug, now I think it is time to change it back\n\nThank you for finding the bug, narrowing down, and opening issue!!  Sorry for all the hassle :(",
+            "date": "2009-10-14T12:46:29.404+0000",
+            "id": 13
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "I've modified TestBoolean2 to show the bug (attached patch), by\nbuilding up a larger index from the small test index it normally uses.\nI'll commit shortly.\n\nHere are the conditions that tickle the bug:\n\n  * Must be a BooleanQuery, that contains only SHOULD and up to 32\n    MUST_NOT clauses (so that BooleanScorer not BooleanScorer2 is\n    used).\n\n  * At least one of the clauses must not be a TermQuery.\n\n  * Must be a segment with more than 4096 docs, and, the clause(s)\n    that are not TermQuery must all have no matches in a 2048 chunk\n    (and must have valid matches after that chunk).  When such a chunk\n    is hit, then BooleanScorer stops prematurely.\n",
+            "date": "2009-10-14T12:57:37.480+0000",
+            "id": 14
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Bulk close all 2.9.1 issues.",
+            "date": "2009-11-07T14:57:30.375+0000",
+            "id": 15
+        }
+    ],
+    "component": "core/query/scoring",
+    "description": "query: (name:tang*)\ndoc=5137 score=1.0  doc:Document<stored,indexed<name:tangfulin>>\ndoc=11377 score=1.0  doc:Document<stored,indexed<name:tangfulin>>\nquery: name:tang* name:notexistnames\ndoc=5137 score=0.048133932  doc:Document<stored,indexed<name:tangfulin>>\n\nIt is two queries on the same index, one is just a prefix query in a\nboolean query, and the other is a prefix query plus a term query in a\nboolean query, all with Occur.SHOULD .\n\nwhat I wonder is why the later query can not find the doc=11377 doc ?\n\nthe problem can be repreduced by the code in the attachment .",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-1974",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "BooleanQuery can not find all matches in special condition",
+    "systemSpecification": true,
+    "version": "2.9"
+}

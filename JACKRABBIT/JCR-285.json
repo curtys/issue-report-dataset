@@ -1,0 +1,41 @@
+{
+    "comments": [
+        {
+            "author": "Joseph Chen",
+            "body": "Proposed fix for unit test.",
+            "date": "2005-12-02T10:45:08.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Tagged for 1.0",
+            "date": "2006-01-11T18:13:56.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Stefan Guggisberg",
+            "body": "fixed as suggested (svn r391041).\n\nthanks for reporting this issue!",
+            "date": "2006-04-03T21:26:59.000+0000",
+            "id": 2
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Merged for 1.0.1 in revision 409520.",
+            "date": "2006-05-26T07:31:35.000+0000",
+            "id": 3
+        }
+    ],
+    "component": "test",
+    "description": "In testPredefinedNodeType(), the test reads in a test file from the file system and then performs a string comparison, which may fail due to line-separator differences:\n\n    private void testPredefinedNodeType(String name)\n            throws NotExecutableException {\n        try {\n            StringBuffer spec = new StringBuffer();\n            String resource =\n                \"org/apache/jackrabbit/test/api/nodetype/spec/\"\n                + name.replace(':', '-') + \".txt\";\n            Reader reader = new InputStreamReader(\n                    getClass().getClassLoader().getResourceAsStream(resource));\n            for (int ch = reader.read(); ch != -1; ch = reader.read()) {\n                spec.append((char) ch);\n            }\n\n            NodeType type = manager.getNodeType(name);\n\n            assertEquals(\n                    \"Predefined node type \" + name,\n                    spec.toString(),\n                    getNodeTypeSpec(type));\n...\n\nThe above works when the file being read in has line-separators that match the operating system the test is being run on.  However, if there is a mismatch, the string comparison will fail.\n\nThe fix is to replace line-separators in both strings being compared:\n\nHelper method to replace line separators\n\n    /** Standardize line separators around \"\\n\". */\n    public String replaceLineSeparators(String stringValue) {\n        // Replace \"\\r\\n\" (Windows format) with \"\\n\" (Unix format) \n        stringValue = stringValue.replaceAll(\"\\r\\n\", \"\\n\");\n        // Replace \"\\r\" (Mac format) with \"\\n\" (Unix format)\n        stringValue = stringValue.replaceAll(\"\\r\", \"\\n\");\n        \n        return stringValue;\n    }\n    \nUpdated test method:\n\n    private void testPredefinedNodeType(String name)\n            throws NotExecutableException {\n        try {\n            StringBuffer spec = new StringBuffer();\n            String resource =\n                \"org/apache/jackrabbit/test/api/nodetype/spec/\"\n                + name.replace(':', '-') + \".txt\";\n            Reader reader = new InputStreamReader(\n                    getClass().getClassLoader().getResourceAsStream(resource));\n            for (int ch = reader.read(); ch != -1; ch = reader.read()) {\n                spec.append((char) ch);\n            }\n\n            NodeType type = manager.getNodeType(name);\n            \n            String nodeTypeSpecValue = replaceLineSeparators(getNodeTypeSpec(type));\n            String specValue = replaceLineSeparators(spec.toString());\n            \n            assertEquals(\n                    \"Predefined node type \" + name,\n                    specValue,\n                    nodeTypeSpecValue);\n...",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "JCR-285",
+    "issuetypeClassified": "OTHER",
+    "issuetypeTracker": "BUG",
+    "priority": "Minor",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "Line-separator differences cause PredefinedNodeTypeTest to fail on different operating systems.",
+    "systemSpecification": false,
+    "version": "0.9, 1.0"
+}

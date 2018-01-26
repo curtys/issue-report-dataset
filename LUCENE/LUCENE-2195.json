@@ -1,0 +1,95 @@
+{
+    "comments": [
+        {
+            "author": "Simon Willnauer",
+            "body": "here is a patch",
+            "date": "2010-01-07T16:32:05.285+0000",
+            "id": 0
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "Updated patch. This patch does not count==0 check in contains(Object) as the o.toString() could return null and the NPE would be silently swallowed if the set is empty. \nThe null check and NPE are necessary to yield consistent behavior no matter if the set is empty or not.",
+            "date": "2010-01-07T17:01:59.768+0000",
+            "id": 1
+        },
+        {
+            "author": "Robert Muir",
+            "body": "Simon I like it. this is useful for things like empty stopword sets, so we do not hash every input token unnecessarily.",
+            "date": "2010-01-07T17:06:21.622+0000",
+            "id": 2
+        },
+        {
+            "author": "Yonik Seeley",
+            "body": "Seems that this patch would just slow things down (slightly) for the common case, and for correctly written code.\nIf one really wants to optimize the case of an empty set, shouldn't that be done at a higher level (i.e. don't put the stop filter in the chain, don't create a set at all, etc).\n\nSo I think we should skip both the null checks and the ==0 checks and leave it as is.",
+            "date": "2010-01-07T17:22:39.181+0000",
+            "id": 3
+        },
+        {
+            "author": "Robert Muir",
+            "body": "Yonik, I disagree. I would rather see contains() comparisons against empty sets than this kind of if (set != null && set.contains())... i see this code around a lot.\n\nit does not matter, it is the same.",
+            "date": "2010-01-07T17:33:03.268+0000",
+            "id": 4
+        },
+        {
+            "author": "Yonik Seeley",
+            "body": "It's not quite the same - no method call for set != null.\nBut my point stands - this is optimization for the very uncommon case at the expense of the common case.  This specific instance isn't too big of a deal (it's a predictable branch at least), but as a matter of principle we should avoid going down those roads.",
+            "date": "2010-01-07T17:37:51.813+0000",
+            "id": 5
+        },
+        {
+            "author": "Robert Muir",
+            "body": "well then something must be decided: either we use null sets,remove use of EMPTY_SET all over the place, and have if set != null scattered all over the place, or we go this route. \n\ni do not care either way but we should not be using EMPTY_SET in various tokenstreams without this patch, else we unnecessarily hash every input token for no good reason.\n",
+            "date": "2010-01-07T17:56:28.084+0000",
+            "id": 6
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "I changed my patch to please Yonik who has performance concerns as well as robert who wants to use EMTPY_SET instead of set == null checks. \nI agree with robert that I would rather have an empty set instead of null asssigned if the set is omitted or if the default set is empty. Yet, I subclassed UnmodifiableCharArraySet and added a specailized implementation for EMPTY_SET that checks for null to throw the NPE and otherwise always returns false for all contains(...) methods.\nThis class is final and the overhead for the method call should be very small.\n\n ",
+            "date": "2010-01-07T18:23:59.419+0000",
+            "id": 7
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "any comments on the latest patch?",
+            "date": "2010-01-14T22:54:33.060+0000",
+            "id": 8
+        },
+        {
+            "author": "Robert Muir",
+            "body": "Simon i made a few changes (i like the idea of simply a special EmptyCharArraySet so this does not slow down anything else and alleviates any concerns)\n\n* I do not think unmodifiableset should have a no-arg ctor, so instead i pushed this up to emptychararrayset\n* i do not think emptychararrayset need override and throw uoe for removeAll or retainAll, and i don't think the tests were correct in assuming it will throw uoe. it will not throw uoe for say, removeAll only because it is empty. it will just do nothing.\n\nnow the emptychararrayset conforms with AbstractCollation.remove/retainAll:\nNote that this implementation will throw an UnsupportedOperationException if the iterator returned by the iterator method does not implement the remove method and this collection contains one or more elements in common with/not present with the specified collection.\n",
+            "date": "2010-01-16T17:09:02.661+0000",
+            "id": 9
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "bq. I do not think unmodifiableset should have a no-arg ctor, so instead i pushed this up to emptychararrayset\nok I'm fine with that.\n\n{quote}\ni do not think emptychararrayset need override and throw uoe for removeAll or retainAll, and i don't think the tests were correct in assuming it will throw uoe. it will not throw uoe for say, removeAll only because it is empty. it will just do nothing.\n{quote}\n\nYou are right, this should only throw this exception if the set contains it and the Iterator does not implement remove()\n{code}\n     * Note that this implementation throws an\n     * <tt>UnsupportedOperationException</tt> if the iterator returned by this\n     * collection's iterator method does not implement the <tt>remove</tt>\n     * method and this collection contains the specified object.\n{code}\n\nsame is true for AbstractSet#removeAll()  & retainAll()\n\nThanks for updating it. I think this is good to go though! \n\n",
+            "date": "2010-01-16T18:38:46.223+0000",
+            "id": 10
+        },
+        {
+            "author": "Robert Muir",
+            "body": "bq. Thanks for updating it. I think this is good to go though! \n\nme too, if no one objects I will commit in a few days.",
+            "date": "2010-01-17T22:09:31.093+0000",
+            "id": 11
+        },
+        {
+            "author": "Robert Muir",
+            "body": "Committed revision 902723.\n\nThanks Simon!",
+            "date": "2010-01-25T07:49:01.536+0000",
+            "id": 12
+        }
+    ],
+    "component": "modules/analysis",
+    "description": "CharArraySet#contains(...) always creates a HashCode of the String, Char[] or CharSequence even if the set is empty. \ncontains should return false if set it empty",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-2195",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Major",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "Speedup CharArraySet if set is empty",
+    "systemSpecification": true,
+    "version": ""
+}

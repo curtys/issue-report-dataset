@@ -1,0 +1,71 @@
+{
+    "comments": [
+        {
+            "author": "Uwe Schindler",
+            "body": "Patch.",
+            "date": "2009-10-23T19:52:42.978+0000",
+            "id": 0
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Mark Miller on java-dev:\n\n{quote}\nNice! I like it. Even if its not much faster (havn't checked either), I\ncan't see it being much slower and its cleaner code.\n\nI'd be happy to do some quick perf tests when I get a chance, but I'm +1\non it.\n{quote}",
+            "date": "2009-10-23T19:53:27.487+0000",
+            "id": 1
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Is there any MultiSearcher related task/alg in contrib/benchmark or somewhere in JIRA?",
+            "date": "2009-10-23T20:02:40.043+0000",
+            "id": 2
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "The reason why this code looked like this is simple (from SVN log): at the beginning the FieldDoc values were just \"Object[] fields\". So the casts were needed. After adding custom comparators they get \"Comparable\". So there was no real perf idea behind doing it so complicated and ineffective.",
+            "date": "2009-10-23T20:15:41.763+0000",
+            "id": 3
+        },
+        {
+            "author": "Mark Miller",
+            "body": "Okay Uwe -\n\nI took a 2 GB zipped Wiki dump and used a SkipDocTask to create four unique indices of 64,000 docs each.\n\nThen I ran a search matching all docs and sorting on title, taking the average of 1000 runs and recording that overage over a few times for each method.\n\nI tried topn's of 10, 100, and 1000.\n\nI couldn't measure a meaningful difference one way or the other. Lets do it.",
+            "date": "2009-10-23T22:46:14.452+0000",
+            "id": 4
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "I think it is because you only merge the top 1000 docs into the HitQueue. The merging of the HQs at the end of search is simple, because it only merges the top n docs of each queue. You would only see a difference if you sort all hits.\n\nI think we can commit this, too.",
+            "date": "2009-10-23T22:52:31.037+0000",
+            "id": 5
+        },
+        {
+            "author": "Mark Miller",
+            "body": "Right - I don't think we have to worry about things much over top 1000.\n\nAnd while I don't want to take the time to do top 4*64,000, for kicks I tried top 64,000 over a couple runs.\n\nIt actually does show a 2-3% win with the new method once you get up that high ;)\n\nIts somethin' anyway :)",
+            "date": "2009-10-23T23:03:28.424+0000",
+            "id": 6
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "OK, I commit soon!",
+            "date": "2009-10-23T23:06:37.458+0000",
+            "id": 7
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Committed revision: 829274\n\nThanks Mark for perf testing!",
+            "date": "2009-10-23T23:10:31.077+0000",
+            "id": 8
+        }
+    ],
+    "component": "core/search",
+    "description": "When updating core for generics,  I found the following as a optimization of FieldDocSortedHitQueue:\n\nAll FieldDoc values are Compareables (also the score or docid, if they\nappear as SortField in a MultiSearcher or ParallelMultiSearcher). The code\nof lessThan seems very ineffective, as it has a big switch statement on the\nSortField type, then casts the value to the underlying numeric type Object,\ncalls Number.xxxValue() & co for it and then compares manually. As\nj.l.Number is itself Comparable, I see no reason to do this. Just call\ncompareTo on the Comparable interface and we are happy. The big deal is that\nit prevents casting and the two method calls xxxValue(), as Number.compareTo\nworks more efficient internally.\n\nThe only special cases are String sort, where the Locale may be used and the\nscore sorting which is backwards. But these are two if statements instead of\nthe whole switch.\n\nI had not tested it now for performance, but in my opinion it should be\nfaster for MultiSearchers. All tests still pass (because they should).\n",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-2006",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Major",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "Optimization for FieldDocSortedHitQueue",
+    "systemSpecification": true,
+    "version": "3.0"
+}

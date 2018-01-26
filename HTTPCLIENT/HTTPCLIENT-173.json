@@ -1,0 +1,83 @@
+{
+    "comments": [
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Created an attachment (id=5268)\nDebug trace\n",
+            "date": "2003-03-12T00:30:58.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Created an attachment (id=5423)\nPatch draft (complete redesign of authentication components)\n",
+            "date": "2003-03-20T03:39:56.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "While working on a fix for this bug I have come to realize that any sort of\nclean solution would require an almost complete authentication logic redesign.\nAuthenticator#authenticate method needed to be more modular, so that HttpClient\nclass could access information about authentication scheme being used. Besides,\nauthentication parsing logic was a complete mess. I was not sure I could fix it\nwithout introducing subtle bugs\n\nIMPORTANT: The patch retains full API compatibility with the existing version.\nNo existing code should be broken.\n\nThis patch should also fix the following bugs:\nhttp://nagoya.apache.org/bugzilla/show_bug.cgi?id=17158\nhttp://nagoya.apache.org/bugzilla/show_bug.cgi?id=16861\n\nYou'll have to perform some manual adjustments after having applied the patch:\n- create org.apache.commons.httpclient.auth package\n- move AuthChallengeParser, AuthenticationException,\nMalformedChallengeException, AuthScheme, AuthSchemeBase, BasicScheme,\nDigestScheme, NTLMScheme, RFC2617Scheme, HttpAuthenticator classes to the newly\ncreated package\n\nOleg\nPS: New classes have not been documented yet",
+            "date": "2003-03-20T03:59:38.000+0000",
+            "id": 2
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Created an attachment (id=5459)\nPatch (take 1)\n",
+            "date": "2003-03-21T19:01:36.000+0000",
+            "id": 3
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "- A few more polishing touches. \n- All new classes have been documented. \n\nFolks, your feedback will be hugely appreciated\nOleg",
+            "date": "2003-03-21T19:04:55.000+0000",
+            "id": 4
+        },
+        {
+            "author": "Adrian Sutton",
+            "body": "Hi Oleg,\nA few comments as I come across things:\n\n* The NTLM class is to become package access in the near future, but this \npatch requires it to be public.  Probably should move the NTLM class into the \nauth package.  Final say on when this happens is up to Jandalf but I'm all for \ndoing it now while you're refactoring.  Alternatively the NTLM class could be \nrolled into the NTLMScheme class, but it may make the class a bit big.\n\n* The realm for NTLM has previously been considered to be the hostname of the \nserver being connected to.  Without this assumption it is impossible to \nconnect to two NTLM servers in parallel and requires work arounds even when \nconnecting sequentially.  We could document getRealm to indicate that if it \nreturns null, the realm should be considered to be the host name of the \nserver, but I would prefer to see the domain name returned by getRealm.\n\n* In NTLMScheme, there is a class variable called ntmlchallenge, it probably \nshould be ntlmchallenge (note lm/ml difference).\n\n* AuthChallengeParser.extractScheme returns the result in all lower case, \nhowever getSchemeName() returns the name with varying capitals. It seems \nneater to have AuthChallengeParser.extractScheme().equals(scheme.getSchemeName\n()) if the scheme matches the challenge.\n\n* There's currently no way to register a new scheme to be used, eventually we \nshould add one, though pluggable auth modules wasn't scheduled until 2.1 or \nlater (the lack of this ability probably renders the above point moot).\n\n* Considering that at some point we are going to make schemes pluggable, \nshould we add a \"canHandle\" method which can be used to determine if the \nScheme can handle the given authentication challenge?\n\n* Following along with the above, HttpAuthenticator.selectAuthScheme could be \nslightly more generic by using either the canHandle method if one is added or \nby using the getSchemeName if not to determine which scheme to return.  \nAdmittedly this code may get messy as unfortunately there's no way to enforce \na class to have a constructor which takes just a String parameter.\n\n* Authenticator seems to have almost exclusively become a wrapper for \nHttpAuthenticator.  Should we make it a full wrapper and depreciate the class? \n(Definitely don't remove it until after 2.0 though)\n\n* Maybe I'm just up to late but there seems to be some redundant code on line \n216 of Authenticator:\n\nheaders = (Header [])headerlist.toArray(new Header[headerlist.size()]);\nfor (int i = 0; i < headers.length; i++) {\n    headers[i] = (Header)headerlist.get(i);\n}\n\nIt seems to me that toArray should copy the contents of the list into the \narray before returning, so there's then no need for the for loop.\n\nGenerally I think the architecture looks really good, I haven't really gone \nover the actual code implementation and haven't had a chance to set up tests \nyet, but will hopefully get to that tomorrow.  For now it's time for bed.\n\nHope that gives you something to think about anyway.",
+            "date": "2003-03-21T21:43:20.000+0000",
+            "id": 5
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": ">> * The NTLM class is to become package access in the near future, but this \npatch requires it to be public.  Probably should move the NTLM class into the \nauth package.  Final say on when this happens is up to Jandalf but I'm all for \ndoing it now while you're refactoring.  Alternatively the NTLM class could be \nrolled into the NTLMScheme class, but it may make the class a bit big.\n\n\n- My goal, though, was to retain full API compatibility. I agree that NTLM class\ndoes not belong to the root 'httpclient' package and should be moved to\n'httpclient.auth' package.\n\n\n>> * The realm for NTLM has previously been considered to be the hostname of the \nserver being connected to.  Without this assumption it is impossible to \nconnect to two NTLM servers in parallel and requires work arounds even when \nconnecting sequentially.  We could document getRealm to indicate that if it \nreturns null, the realm should be considered to be the host name of the \nserver, but I would prefer to see the domain name returned by getRealm.\n\n- I discovered this assumption while working on the patch and found it a bit\nodd. I have taken care that the modified code does honor this assumption,\nhowever, I'd also prefer NT domain to be returned as authentication realm. This\nsaid, I have confess about being absolutely clueless as far as NTLM protocol is\nconcerned. I do not know if it is feasible at all. So, help would be appreciated\n\n>> \n* In NTLMScheme, there is a class variable called ntmlchallenge, it probably \nshould be ntlmchallenge (note lm/ml difference).\n\nOooops. Corrected\n\n>> * AuthChallengeParser.extractScheme returns the result in all lower case, \nhowever getSchemeName() returns the name with varying capitals. It seems \nneater to have AuthChallengeParser.extractScheme().equals(scheme.getSchemeName\n()) if the scheme matches the challenge.\n\nMakes sense. Corrected\n\n>> * There's currently no way to register a new scheme to be used, eventually we \nshould add one, though pluggable auth modules wasn't scheduled until 2.1 or \nlater (the lack of this ability probably renders the above point moot).\n\n- It occurred to me as well. However, pluggable architecture should encompass no\nonly authentication, but other aspects (pluggable cookie policies, for\ninstance). This definitely would be too much for the time being. Such redesign\nshould be preceded by implementation of a better configuration architecture.\nDefinitely a post-2.0 feature\n\n>> * Authenticator seems to have almost exclusively become a wrapper for \nHttpAuthenticator.  Should we make it a full wrapper and depreciate the class? \n(Definitely don't remove it until after 2.0 though)\n\n- That will be the next step for me, if the patch gets approved\n\n>>* Maybe I'm just up to late but there seems to be some redundant code on line \n216 of Authenticator:\n\nNo, it's just silly me ;-)\n\nMany thanks, Adrian, for your input\n",
+            "date": "2003-03-21T22:58:21.000+0000",
+            "id": 6
+        },
+        {
+            "author": "Adrian Sutton",
+            "body": "> - My goal, though, was to retain full API compatibility. I agree that NTLM \nclass does not belong to the root 'httpclient' package and should be moved to\n'httpclient.auth' package.\n\n* That's fine, it can be moved whenever it's ready to move.  I only noticed \nbecause I'd already made my local copy package private and saw the compile \nerrors.\n\n>- I discovered this assumption while working on the patch and found it a bit\nodd. I have taken care that the modified code does honor this assumption,\nhowever, I'd also prefer NT domain to be returned as authentication realm. This\nsaid, I have confess about being absolutely clueless as far as NTLM protocol is\nconcerned. I do not know if it is feasible at all. So, help would be \nappreciated\n\n* Using the NT domain would be nice, but unfortunately it is one of the things \nstored in the credentials we're trying to find.  Also, a server may be in any \nnumber of NT domains for authentication purposes, or an entire NT domain could \nbe a child of another domain (they form a tree structure).  The one constant \nthat I have been able to find in the process, is the host name (which \nunfortunately can be substituted for a different host name or an ip) as with \nno realms any authentication challenge from a server will accept the same \ncredentials as any other challenge from that server.  If there is a better way \nto go about it, it would be good to hear about it, but I don't think there is.\n\nThe rest we seem to agree on.  I'll try to run a few tests to make sure \neverything is working as expected this afternoon, but it all looks good to me \nso I don't expect any problems.",
+            "date": "2003-03-22T12:23:09.000+0000",
+            "id": 7
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Created an attachment (id=5482)\nPatch (take 2)\n",
+            "date": "2003-03-25T04:56:34.000+0000",
+            "id": 8
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "*** HTTPCLIENT-155 has been marked as a duplicate of this bug. ***",
+            "date": "2003-03-28T05:20:44.000+0000",
+            "id": 9
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Patch applied",
+            "date": "2003-03-28T05:22:10.000+0000",
+            "id": 10
+        }
+    ],
+    "component": "HttpClient (classic)",
+    "description": "HttpMethodBase's processAuthenticationResponse uses a set of realms to which\nattempts to authenticate have already been made. The elements of the set are a\nconcatenation of the requested path and the value of the Authentication response\nheader.\n\nFor digest authentication this response header contains a nonce value, which is\nuniquely generated by the server each time a 401 response is made. This makes it\nimpossible to recognize that authentication against this realm has been\nattempted before and so all 100 attempts are made before returning. The nonce\nshould probably not be used in the realmsUsed element\n\nReported by Rob Owen <Rob.Owen@sas.com>",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "HTTPCLIENT-173",
+    "issuetypeClassified": "RFE",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "HTTPCLIENT",
+    "project": "HTTPCLIENT",
+    "summary": "Multiple DIGEST authentication attempts with same credentials",
+    "systemSpecification": true,
+    "version": "2.0 Alpha 3"
+}

@@ -1,0 +1,83 @@
+{
+    "comments": [
+        {
+            "author": null,
+            "body": "Created attachment 17478\nPatch for InputBuffer fixing 1) and 2)",
+            "date": "20060121T21:36:57",
+            "id": 0
+        },
+        {
+            "author": null,
+            "body": "Created attachment 17479\nTest JSP\n\nTest JSP to be called by the next attachment",
+            "date": "20060121T21:37:38",
+            "id": 1
+        },
+        {
+            "author": null,
+            "body": "Created attachment 17480\nTest Client perl script\n\nClient side script which posts data to the test JSP to reproduce both bugs.",
+            "date": "20060121T21:38:26",
+            "id": 2
+        },
+        {
+            "author": null,
+            "body": "By the way: the same problem (and the same fix) apply to the 5.0 branch.",
+            "date": "20060121T21:39:04",
+            "id": 3
+        },
+        {
+            "author": null,
+            "body": "I was at our customers side today. The problem is always reproducible with the\najp connector. On his system, I can not reproduce with HTTP connector. But from\nthe code in InputBuffer it's clear, that the occurence of the bug only depends\non the amount of data received on the socket, when the buffer loads new data.\n\nI'm pretty confident, that the patch also fixes bugs 34829, 28959, 27447, and\n24897. I know, that CoyoteReader/InputBuffer/(Byte|Char)Chunk are difficult to\nunderstand and noone wants to touch them. But I instrumented the classes to\nexactly find out what's happening, and if Remy (or whoever is willing to dig\ninto it) likes more explanation of the patch please ask.\n\nAt the customer's installation his problem was fixed with the patch.",
+            "date": "20060123T15:48:06",
+            "id": 4
+        },
+        {
+            "author": null,
+            "body": "(In reply to comment #5)\n> I was at our customers side today. The problem is always reproducible with \nthe\n> ajp connector. On his system, I can not reproduce with HTTP connector. But \nfrom\n> the code in InputBuffer it's clear, that the occurence of the bug only \ndepends\n> on the amount of data received on the socket, when the buffer loads new data.\n\nBy default, the HTTP connector only reads 4K at a time, so serendipitously \nthis bug doesn't show itself.\n\nThe patch has been committed to the SVN trunk, and will appear in 5.5.16.\n\n",
+            "date": "20060124T05:22:25",
+            "id": 5
+        },
+        {
+            "author": null,
+            "body": "*** Bug 38836 has been marked as a duplicate of this bug. ***",
+            "date": "20070601T19:09:31",
+            "id": 6
+        },
+        {
+            "author": null,
+            "body": "thi issue still occurs with tomcat 5.5.28. Could you please let me know, how to apply this patch to 5.5.28?",
+            "date": "20111025T06:49:15",
+            "id": 7
+        },
+        {
+            "author": null,
+            "body": "This is very unlikely the same problem.\n\nBugzilla is not a support form.\nPlease post your problem description to the Tomcat users list.\n\nRegards,\n\nRainer",
+            "date": "20111025T08:33:03",
+            "id": 8
+        },
+        {
+            "author": null,
+            "body": "Thanks for your response Jung. We have an environment using HTTP connector. The issue does not occur, other environment using AJP connector.\n\nIn code we are using\nBufferedReader in = request.getReader();\n\nWhen a request is sent on AJP connector environment, the above code reads only 8192 length, not whole.\n\nBut if a request is sent on HTTP connector environment, the same method reads whole data. do you have any idea.. Please help.\n\nThe Tomcat version same in the both of the environments above.",
+            "date": "20111025T09:02:16",
+            "id": 9
+        },
+        {
+            "author": null,
+            "body": "Please discuss this on the Tomcat users list, see http://tomcat.apache.org/lists.html\n\nThank you.",
+            "date": "20111025T09:07:46",
+            "id": 10
+        }
+    ],
+    "component": "Catalina",
+    "description": "There are two bugs in\n\norg.apache.catalina.connector.InputBuffer:\n\n1) If you send a POST with 8K in the body then the optimizedWrite flag in\nCharChunk prevents the input data from being read into the CharChunk. This only\nhappens at and after the second request on an input processor, because the\noptimizedWrite flag ist being set to true when recycling the InputBuffer after\nthe first request.\n\n2) After fixing that, you can more easily see another bug: realReadChars always\nreads the full ByteChunk buffer size and then tries to convert it into the\nCharChunk. There is a corner case, where CharChunk has a limit just a little too\nsmall, to be able to do that. This is not about making CharChunk much bigger. I\ncan give more precise details, but the patch might be self-explaining (it is\nvery short).\n\nI attach\n\n- a patch\n- a JSP and a perl script to easily reproduce the problem. Problem 1) can be\nreprodiced by setting CHUNK in the script to 8192, problem 2 (after fixing 1) by\nsetting it slightly bigger than 8192, e.g. 8300.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "38346",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "P2 normal",
+    "product": "Tomcat 5",
+    "project": "TOMCAT",
+    "summary": "InputBuffer breaks request.readLine()",
+    "systemSpecification": false,
+    "version": "5.5.14"
+}

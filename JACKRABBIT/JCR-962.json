@@ -1,0 +1,65 @@
+{
+    "comments": [
+        {
+            "author": "Bertrand Delacretaz",
+            "body": "ConcurrentVersioningWithTransactionsTest patch, must be enabled in org.apache.jackrabbit.core.TestAll",
+            "date": "2007-06-05T10:21:40.981+0000",
+            "id": 0
+        },
+        {
+            "author": "Bertrand Delacretaz",
+            "body": "Deadlocked threads dump with 10 concurrent tasks",
+            "date": "2007-06-05T10:22:46.153+0000",
+            "id": 1
+        },
+        {
+            "author": "Bertrand Delacretaz",
+            "body": "Deadlocked threads dump with 100 concurrent tasks",
+            "date": "2007-06-05T10:23:45.624+0000",
+            "id": 2
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "Attached the stacktraces of the two relevant threads from 10-threads-dump.txt, which are in a deadlocked state.",
+            "date": "2007-06-08T10:30:37.523+0000",
+            "id": 3
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "Added Bertrands' test case and created a new test suite, which contains all long running tests related to multi-threading: MultiThreadingTests. The suite will not run with the regression test while building jackrabbit-core but can easily be started in an IDE.",
+            "date": "2007-06-26T08:20:08.605+0000",
+            "id": 4
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "This patch replaces the internal XAResources on the XAWorkspace with two similar ones on the XAVersionManager. The idea is to lock the version manager early in the prepare phase and release the lock at the end of the transaction. When changes on the workspace are committed the version manager is already locked and stays locked until the version changes are committed.\n\nIf there are no version items in the transaction the write lock on the version manager is not acquired to allow concurrency between multiple sessions operating on different workspaces.\n\nWith this patch the sequence for locking workspace and version store is:\n1) version store\n2) workspace\n\nThe rest of the jackrabbit core should be reviewed and changed accordingly.",
+            "date": "2007-06-26T08:43:51.693+0000",
+            "id": 5
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "Assuming lazy consensus I committed the patch in revision: 551877",
+            "date": "2007-06-29T12:57:04.153+0000",
+            "id": 6
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Merged to the 1.3 branch in revision 581177.",
+            "date": "2007-10-02T10:01:50.418+0000",
+            "id": 7
+        }
+    ],
+    "component": "jackrabbit-core",
+    "description": "Patch follows for a ConcurrentVersioningWithTransactionsTest, based on the existing ConcurrentVersioningTest but using transactions around the versioning operations.\n\nOn my macbook, running the test with CONCURRENCY = 100 and NUM_OPERATIONS = 100 causes a deadlock after a few seconds, thread dumps follow.\n\nNote that I had to ignore StaleItemStateException (which is probably justified, due to not locking stuff IIUC) to let the threads run long enough to show the problem.\n\nRunning the test a few times showed the same locking pattern several times: some threads are locked at line 87 (session.save(), no transaction) while others are at line 93 (transaction.commit()), in testConcurrentCheckinInTransaction():\n\n    80    public void testConcurrentCheckinInTransaction() throws RepositoryException {\n    81      runTask(new Task() {\n    82        public void execute(Session session, Node test) throws RepositoryException {\n    83          int i = 0;\n    84          try {\n    85            Node n = test.addNode(\"test\");\n    86            n.addMixin(mixVersionable);\n    87            session.save();\n    88            for (i = 0; i < NUM_OPERATIONS / CONCURRENCY; i++) {\n    89              final UserTransaction utx = new UserTransactionImpl(test.getSession());\n    90              utx.begin();\n    91              n.checkout();\n    92              n.checkin();\n    93              utx.commit();\n    94            }\n    95            n.checkout();\n    96          } catch (Exception e) {\n    97            final String threadName = Thread.currentThread().getName();\n    98            final Throwable deepCause = getLevel2Cause(e);\n    99            if(deepCause!=null && deepCause instanceof StaleItemStateException) {\n   100              // ignore \n   101            } else {\n   102              throw new RepositoryException(threadName + \", i=\" + i + \":\" + e.getClass().getName(), e);\n   103            }\n   104          }\n   105        }\n   106      }, CONCURRENCY);\n   107    }",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "JCR-962",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "Deadlocks in ConcurrentVersioningWithTransactionsTest",
+    "systemSpecification": true,
+    "version": ""
+}

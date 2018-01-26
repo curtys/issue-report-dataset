@@ -1,0 +1,59 @@
+{
+    "comments": [
+        {
+            "author": "Thomas Mueller",
+            "body": "To enable logging  each session.save call, configure the logger (logback) as follows (logs to stdout):\n\n  <appender name=\"STDOUT\" class=\"ch.qos.logback.core.ConsoleAppender\">\n    <layout class=\"ch.qos.logback.classic.PatternLayout\">\n      <Pattern>%d{HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n</Pattern>\n    </layout>\n  </appender>\n\n  <logger \n      name=\"org.apache.jackrabbit.core.session.SessionSaveOperation\" \n      level=\"DEBUG\">\n    <appender-ref ref=\"STDOUT\"/>\n  </logger>\n\nIf the system property \"org.jackrabbit.logWithStackTrace\" is set to \"true\", then a stack trace is logged as well (this slows down performance).",
+            "date": "2011-05-05T14:35:03.237+0000",
+            "id": 0
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "Would it be possible to put the path of the item into the exception message instead of the UUID? I think that would be even more helpful.",
+            "date": "2011-05-05T16:24:32.497+0000",
+            "id": 1
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "The path is already included in the exception message in some cases:\n\nException in thread \"main\" javax.jcr.InvalidItemStateException: property /test/x/y: the property cannot be saved because it has been modified externally.\n\tat org.apache.jackrabbit.core.PropertyImpl.makePersistent(PropertyImpl.java:155)\n\tat org.apache.jackrabbit.core.ItemSaveOperation.persistTransientItems(ItemSaveOperation.java:835)\n\tat org.apache.jackrabbit.core.ItemSaveOperation.perform(ItemSaveOperation.java:243)\n\tat org.apache.jackrabbit.core.session.SessionState.perform(SessionState.java:200)\n\tat org.apache.jackrabbit.core.ItemImpl.perform(ItemImpl.java:91)\n\tat org.apache.jackrabbit.core.ItemImpl.save(ItemImpl.java:329)\n\tat org.apache.jackrabbit.core.session.SessionSaveOperation.perform(SessionSaveOperation.java:57)\n\tat org.apache.jackrabbit.core.session.SessionState.perform(SessionState.java:200)\n\tat org.apache.jackrabbit.core.SessionImpl.perform(SessionImpl.java:360)\n\tat org.apache.jackrabbit.core.SessionImpl.save(SessionImpl.java:800)\n\nBut not in all cases. This message looks like a bug:\n\nException in thread \"main\" javax.jcr.InvalidItemStateException: Item cannot be saved because it has been deleted externally: item.save()\n\tat org.apache.jackrabbit.core.ItemSaveOperation.getTransientStates(ItemSaveOperation.java:322)\n\tat org.apache.jackrabbit.core.ItemSaveOperation.perform(ItemSaveOperation.java:98)\n\tat org.apache.jackrabbit.core.session.SessionState.perform(SessionState.java:200)\n\tat org.apache.jackrabbit.core.ItemImpl.perform(ItemImpl.java:91)\n\tat org.apache.jackrabbit.core.ItemImpl.save(ItemImpl.java:329)\n\tat org.apache.jackrabbit.core.session.SessionSaveOperation.perform(SessionSaveOperation.java:64)\n\tat org.apache.jackrabbit.core.session.SessionState.perform(SessionState.java:200)\n\tat org.apache.jackrabbit.core.SessionImpl.perform(SessionImpl.java:360)\n\tat org.apache.jackrabbit.core.SessionImpl.save(SessionImpl.java:800)",
+            "date": "2011-05-06T05:22:30.456+0000",
+            "id": 2
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "It seems the more I test, the more problems I find. In some cases, SessionItemStateManager.getIdOfRootTransientNodeState throws a NullPointerException.\nI guess that means the change for JCR-2425 isn't working:\n\njava.lang.NullPointerException: null\n\tat org.apache.jackrabbit.core.cache.ConcurrentCache.getSegment(ConcurrentCache.java:96) ~[classes/:na]\n\tat org.apache.jackrabbit.core.cache.ConcurrentCache.get(ConcurrentCache.java:122) ~[classes/:na]\n\tat org.apache.jackrabbit.core.state.MLRUItemStateCache.retrieve(MLRUItemStateCache.java:69) ~[classes/:na]\n\tat org.apache.jackrabbit.core.state.ItemStateReferenceCache.retrieve(ItemStateReferenceCache.java:139) ~[classes/:na]\n\tat org.apache.jackrabbit.core.state.LocalItemStateManager.getItemState(LocalItemStateManager.java:169) ~[classes/:na]\n\tat org.apache.jackrabbit.core.state.XAItemStateManager.getItemState(XAItemStateManager.java:260) ~[classes/:na]\n\tat org.apache.jackrabbit.core.state.SessionItemStateManager.getItemState(SessionItemStateManager.java:162) ~[classes/:na]\n\tat org.apache.jackrabbit.core.state.SessionItemStateManager.getIdOfRootTransientNodeState(SessionItemStateManager.java:520) ~[classes/:na]\n\tat org.apache.jackrabbit.core.session.SessionSaveOperation.perform(SessionSaveOperation.java:51) ~[classes/:na]\n\tat org.apache.jackrabbit.core.session.SessionState.perform(SessionState.java:200) [classes/:na]\n\tat org.apache.jackrabbit.core.SessionImpl.perform(SessionImpl.java:360) [classes/:na]\n\tat org.apache.jackrabbit.core.SessionImpl.save(SessionImpl.java:800) [classes/:na]\n\tat org.apache.jackrabbit.api.Test.main(Test.java:39) [test-classes/:na]\n\nTest case:\n\n        Repository repository = new TransientRepository();\n        Session session = repository.login(\n                new SimpleCredentials(\"admin\", \"admin\".toCharArray()));\n        Session session2 = repository.login(\n                new SimpleCredentials(\"admin\", \"admin\".toCharArray()));\n\n        boolean setProperty = false;\n\n        try {\n            if (session.getRootNode().hasNode(\"test\")) {\n                session.getRootNode().getNode(\"test\").remove();\n            }\n            Node test = session.getRootNode().addNode(\"test\");\n            session.save();\n            Node x = test.addNode(\"x\");\n            x.setProperty(\"y\", 1);\n            session.save();\n\n            Node x2 = session2.getRootNode().getNode(\"test\").getNode(\"x\");\n            if (setProperty) {\n                x2.setProperty(\"y\", 2);\n                x.setProperty(\"y\", 3);\n            } else {\n                x2.remove();\n                x.addNode(\"b\");\n            }\n            session2.save();\n            session.save();\n\n\n        } finally {\n            session.logout();\n            session2.logout();\n        }",
+            "date": "2011-05-06T05:25:53.752+0000",
+            "id": 3
+        },
+        {
+            "author": "Stefan Guggisberg",
+            "body": "i am unable to reproduce the NPE with the provided test case on current trunk. \nany idea why i am not getting those?",
+            "date": "2011-05-06T15:59:13.457+0000",
+            "id": 4
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "Most likely you don't see the NPE because it is ignored (now) when using the default log settings. To see it in stdout, use src/test/resource/lockback-test.xml:\n\n\n<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<configuration>\n\n  <appender name=\"STDOUT\" class=\"ch.qos.logback.core.ConsoleAppender\">\n    <layout class=\"ch.qos.logback.classic.PatternLayout\">\n      <Pattern>%d{HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n</Pattern>\n    </layout>\n  </appender>\n\n  <appender name=\"file\" class=\"ch.qos.logback.core.FileAppender\">\n    <file>target/jcr.log</file>\n    <encoder>\n      <pattern>%date{HH:mm:ss.SSS} %-5level %-40([%thread] %F:%L) %msg%n</pattern>\n    </encoder>\n  </appender>\n\n  <appender name=\"sift\" class=\"ch.qos.logback.classic.sift.SiftingAppender\">\n    <discriminator>\n      <Key>testclass</Key>\n      <DefaultValue>junit</DefaultValue>\n    </discriminator>\n    <sift>\n      <appender name=\"FILE-${testname}\" class=\"ch.qos.logback.core.FileAppender\">\n        <File>target/surefire-reports/${testclass}.log</File>\n        <layout class=\"ch.qos.logback.classic.PatternLayout\">\n          <Pattern>%date{HH:mm:ss.SSS} %-5level %-40([%thread] %F:%L) %msg%n</Pattern>\n        </layout>\n      </appender>\n    </sift>\n  </appender>\n\n  <logger name=\"org.apache.jackrabbit.test\" level=\"DEBUG\"/>\n\n  <root level=\"INFO\">\n    <appender-ref ref=\"file\"/>\n    <appender-ref ref=\"sift\"/>\n  </root>\n\n  <logger name=\"org.apache.jackrabbit.core.session.SessionSaveOperation\" level=\"DEBUG\">\n    <appender-ref ref=\"STDOUT\"/>\n  </logger>\n\n</configuration>\n",
+            "date": "2011-05-09T08:25:45.488+0000",
+            "id": 5
+        },
+        {
+            "author": "Stefan Guggisberg",
+            "body": "thanks, i could now reproduce the NPE.\n\ni filed JCR-2967.",
+            "date": "2011-05-09T14:48:12.813+0000",
+            "id": 6
+        }
+    ],
+    "component": "",
+    "description": "Currently it's very difficult to find the root cause of error like: javax.jcr.InvalidItemStateException: <UUID> has been modified externally.\n\nTo better trace back such issues, it would be nice to add DEBUG logging for the Session.save() call.",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "JCR-2961",
+    "issuetypeClassified": "OTHER",
+    "issuetypeTracker": "RFE",
+    "priority": "Minor",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "Improve logging of Session.save() to trace back root cause of externally modified nodes",
+    "systemSpecification": true,
+    "version": ""
+}

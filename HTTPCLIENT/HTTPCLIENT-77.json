@@ -1,0 +1,35 @@
+{
+    "comments": [
+        {
+            "author": "Ortwin Gl\u00fcck",
+            "body": "Socket.connect(SocketAddress, int) is a JDK 1.4 feature and as such not feasible\nfrom within HttpClient as we need to be 1.3 compatible.\n\nI suggest we realize a timeout at the HttpConnection level which is configurable\nat construction time.\n\nSetting prio to high as this is a frequently requested feature. Changing summary.",
+            "date": "2002-10-22T15:28:06.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Ortwin Gl\u00fcck",
+            "body": "Created an attachment (id=3815)\nadds connection timeout. applied 2002-11-12 11h CET\n",
+            "date": "2002-11-12T18:07:31.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Ortwin Gl\u00fcck",
+            "body": "Created an attachment (id=3816)\nNew File (part of patch)\n",
+            "date": "2002-11-12T18:08:30.000+0000",
+            "id": 2
+        }
+    ],
+    "component": "HttpClient (classic)",
+    "description": "I was writing test code to use the setSoTimeout(int millis) method to set a\ntimeout value when connecting to a URL.  It appears to me that no matter what I\nset the timeout to be a HttpConnection will try to connect but uses some other\ntimeout value(I'm guessing the OS's default value).  I looked at the code for\nHttpConnection and it uses the Socket(host,port) constructor which tries to\nconnect write away.  I'd like to suggest the following code below so the timeout\nis set before first the connection is even made.\n\n/* Compile the code as is and it should timeout within a sec.  If you\n * uncomment the first two lines after the try statement and comment\n * out the other socket connect statements and run the code again you will\n * notice write away that the timeout is something else because it connects\n * right away in the constructor.  Its like the timeout is worthless at this\n * point.  As a matter a fact the code should never get there.\n * This all assumes that 192.168.168.50 is not on your network.\n */\n\nimport java.io.*;\nimport java.net.*;\n\npublic class SocketTest {\n    public static void main(String[] args) {\n        long start = System.currentTimeMillis();\n\n        try {\n            //Socket socket = new Socket(\"192.168.168.50\",80);\n            //socket.setSoTimeout(1000);\n\n            //Setting timeout before the connection is made.\n            Socket socket = new Socket();\n            InetSocketAddress sAddress =\n                new InetSocketAddress(\"192.168.168.50\",80);\n            socket.connect(sAddress,1000);\n\n        } catch (UnknownHostException e) {\n            System.out.println(e);\n        } catch (SocketException e) {\n            System.out.println(e);\n        } catch (IOException e) {\n            System.out.println(e);\n        }\n\n        System.out.println(System.currentTimeMillis() - start);\n    }\n}",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "HTTPCLIENT-77",
+    "issuetypeClassified": "RFE",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "HTTPCLIENT",
+    "project": "HTTPCLIENT",
+    "summary": "Implement Connection Timeouts",
+    "systemSpecification": false,
+    "version": "2.0 Alpha 1"
+}

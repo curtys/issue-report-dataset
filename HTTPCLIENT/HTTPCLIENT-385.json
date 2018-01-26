@@ -1,0 +1,41 @@
+{
+    "comments": [
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Gustavo,\nWould it be possible that we address this problem in the next major release,\nthat is 4.0? \n\nMike, any ideas how we could approach this problem? It is actually very trivial,\nit just makes an already ugly API uglier.\n\nOleg",
+            "date": "2004-10-09T17:49:00.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "*** HTTPCLIENT-470 has been marked as a duplicate of this bug. ***",
+            "date": "2005-06-12T02:17:33.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Roland Weber",
+            "body": "OperatedClientConnection provides direct access to the socket.\nManagedClientConnection currently does not. We might add an optional interface to cast down to.\nIf we do so, we should consider to disable keep-alive (at least by default) for a connection with a twisted socket.\n\ncheers,\n  Roland\n\n",
+            "date": "2007-02-05T19:45:03.385+0000",
+            "id": 2
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "HttpConnection interface has #setSocketTimeout method implemented by all connection classes. ManagedClientConnection passes this call onto the wrapped connection. ManagedClientConnection used to execute the request can obtained from the HTTP context. So, I think we are all right.\n\nOleg",
+            "date": "2007-10-07T18:09:17.449+0000",
+            "id": 3
+        }
+    ],
+    "component": "HttpClient (classic)",
+    "description": "I'm trying to access a set of pages in order, for which I have a maximum delay\npermissible.  The complete operation includes following all redirects and\nfetching the complete page content.  What I need, which doesn't seem to be\ndoable right now (according to the common-users list) is to reset the SO_TIMEOUT\nproperty of the socket before each read to the inputstream.  I'd need an access\nto the HttpConnection, or a way to set the parameters for that object.\n\nThis is a simplified version of what I'm doing:\n-----\nHttpURL url = new HttpURL(urlString);\nmethod.setURI(url);\nmethod.setFollowRedirects(false);\nmethod.getParams().setSoTimeout(remainingTime);\nHostConfiguration hostConfig = new HostConfiguration();\nhostConfig.setHost(url);\nmethod.setHostConfiguration(hostConfig);\ntimeoutChecker.getRemainingTime());\n\nint statusCode = client.executeMethod(hostConfig, method, state);\nString pageContent;\n\nif (isRedirect(statusCode)) {\n    if (timeoutChecker.isTimeout()) {\n        throw new TimeoutException(\"Total execution time for fetch exceeded\ntimeout parameter\");\n    } else {\n        Header locationHeader = method.getResponseHeader(\"location\");\n        HttpURL nextLocation = new HttpURL(locationHeader.getValue().toCharArray());\n        pageContent = fetchGet(nextLocation.getEscapedURI(), addressHolder,\ntimeoutChecker, state);\n    }\n} else if (isSuccess(statusCode)) {\n    // at least 4K buffers, might be as big as the webpage\n    int responseSize = Math.max(getResponseSize(method), DEFAULT_RESPONSE_SIZE);\n    InputStream response = method.getResponseBodyAsStream();\n    ByteArrayOutputStream outstream = new ByteArrayOutputStream(responseSize);\n    byte[] buffer = new byte[responseSize];\n    int len;\n    do {\n        // ***TODO need to reset the SO_TIMEOUT to the remaining time\n        len = response.read(buffer);\n        outstream.write(buffer, 0, len);\n    while ((len > 0) && !timeoutChecker.isTimeout());\n    outstream.close();\n    pageContent = EncodingUtil.getString(outstream.toByteArray(),\nmethod.getResponseCharSet());\n    response.close();\n} else {\n    ...\n}",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "HTTPCLIENT-385",
+    "issuetypeClassified": "RFE",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Minor",
+    "product": "HTTPCLIENT",
+    "project": "HTTPCLIENT",
+    "summary": "Access to SO_TIMEOUT for open connections",
+    "systemSpecification": false,
+    "version": "3.0 Alpha 2"
+}

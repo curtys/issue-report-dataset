@@ -1,0 +1,53 @@
+{
+    "comments": [
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 149204\nJavaScriptException extends RuntimeException\n\nThe patch changes JavaScriptException to extend from RuntimeException and\nremoves various catch blocks for JavaScriptException that rethrow exception or\nignore it since it was not supposed to happen.",
+            "date": "20040524T14:24:35",
+            "id": 0
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "I committed attachment 149204",
+            "date": "20040526T12:08:51",
+            "id": 1
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 149347\nRhinoException as common exception root\n\nThe patch adds RhinoException as a common root for all exceptions for Rhino.\nThe class contains method to init/get script source location for the exception\nwhich is used by the rest of Exception classes.\n\nTo preserve binary compatibility I preserved the original source information\nmethods as a deprecated form.",
+            "date": "20040526T15:16:58",
+            "id": 2
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "I committed the last patch.",
+            "date": "20040607T16:47:52",
+            "id": 3
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Proper target milestone",
+            "date": "20040812T07:24:43",
+            "id": 4
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "The common root exception changes included also deprecation of PropertyException\nsince in common cases they were caught and rethrown as runtime exceptions by\nruntime or just caught and ignored. So I replaced throwing of PropertyException\nby  Context,reportRuntimeException and deprecated the class. \n\nBut that causes a compatibility problem during compilation since\nPropertyException extends Exception and no longer explicitly declared in Rhino\nAPI. So code containing catch (PropertyException ex) may not compile. To fix\nthat I commited a patch to extend PropertyException from RuntimeException to\nhave less suprises during Rhino upgrade. ",
+            "date": "20040814T16:53:37",
+            "id": 5
+        }
+    ],
+    "component": "Core",
+    "description": "Currently Rhino runtime can throw 3 different types of exceptions:\n\n1. JavaScriptException that is thrown by JavaScript throw statement.\n2. EcmaError that represents JavaScript runtime exception as specified by ECMA\nstandard.\n3. EvaluatorException that is thrown on compilation errors and as a wrapper for\nexceptions in Java functions.\n\nSince JavaScriptException extends Exception, it has to be always declared in the\nmethod signature. In principle this useful to provide a hint that a particular\nAPI can execute some JavaScript code. But in practice it does not work this way\nsince virtually any Rhino API method can cause indirect execution of JavaScript\ncode and in most such cases the API does not have \"throws JavaScriptException\"\ndeclaration.\n\nFor example, Context.toString(Object) executes toString function if it is\ndefined for the object and it can be defined with JavaScript. In addition any\nnative method including getters and setters can trigger JS execution and \"throws\nJavaScriptException\" is not included in Scriptable.get/Scriptable.put methods.\n\nFor this reason I suggest to change JavaScriptException to extend from\nRuntimeException so it would not be necessary to wrap it into artificial\nwrappers to circumvent lack of the exception declaration.\n\nSuch change will cause source compatibility error if Java code contains:\n\ntry {\n    ....\n} catch (RuntimeException ex) {\n    ...\n} catch (JavaScriptException ex) {\n    ...\n}\n\nbut this is trivially fixable in a forward and backward compatible way by\nchanging statement's order. \n\nIn addition for compiled classes with such code catch (JavaScriptException ex)\nwould not be reached so it may change program's semantics but at least the\nchange would be binary compatible.\n\nWith such change in place it would also make change to introduce a common base\nclass for all exceptions thrown by Rhino so it would be simple to process all\nsuch exceptions.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "244492",
+    "issuetypeClassified": "OTHER",
+    "issuetypeTracker": "RFE",
+    "priority": "-- enhancement",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "JavaScriptException to extend RuntimeException and common exception base",
+    "systemSpecification": false,
+    "version": "other"
+}

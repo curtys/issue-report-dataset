@@ -1,0 +1,95 @@
+{
+    "comments": [
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Alfonso,\nPlease provide wire/debug log of the session that exhibits the problem. \n\nOleg",
+            "date": "2003-11-02T08:36:34.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Alfonso",
+            "body": "Created an attachment (id=8884)\nDebug log of the problem with the original rc2 sources\n",
+            "date": "2003-11-03T19:58:40.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Alfonso",
+            "body": "If I make the following change in HttpMethodBase at line 2449\n\ninstead of\n\n            || (status == 304) ) { // NOT MODIFIED\n\nput this\n\n            || (status == 304) || )(status == 407 ) { // NOT MODIFIED\n\nI get the page correctly. I've created another attachment to show that. It shows\nthat the credentials I'm using are correct, not that this should be the best\nmethod to solve the problem.\n",
+            "date": "2003-11-03T20:10:39.000+0000",
+            "id": 2
+        },
+        {
+            "author": "Alfonso",
+            "body": "Created an attachment (id=8886)\nResults after changing HttpMethodBase#2449\n",
+            "date": "2003-11-03T20:13:43.000+0000",
+            "id": 3
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Alfonso,\nI pinpointed the bug. Fix will follow soon.\n\nOleg",
+            "date": "2003-11-03T20:50:46.000+0000",
+            "id": 4
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Alfonso,\nUnfortunately I am unable to generate a proper patch at the moment (I am at the\nclient's site and they have CVS port blocked by the corporate firewall).\nBasically the problem boils down to HttpClient (or me, if you please) forgetting\nto reset the 'force-close connection' flag. This additional line in\nHttpMethodBase#responseBodyConsumed should take care of the problem. I'll submit\na proper patch later today.\n\n    protected void responseBodyConsumed() {\n\n        // make sure this is the initial invocation of the notification,\n        // ignore subsequent ones.\n        responseStream = null;\n        if (responseConnection != null) {\n            responseConnection.setLastResponseInputStream(null);\n\n            if (shouldCloseConnection(responseConnection)) {\n                responseConnection.close();\n            }\n        }\n        ///////////////////////////////////\n        this.connectionCloseForced = false;\n        ///////////////////////////////////\n        doneWithConnection = true;\n        if (!inExecute) {\n            ensureConnectionRelease();\n        }\n    }\n\nOleg",
+            "date": "2003-11-03T21:17:36.000+0000",
+            "id": 5
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Created an attachment (id=8890)\nPatch (take 1)\n",
+            "date": "2003-11-04T01:48:06.000+0000",
+            "id": 6
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "The patch should take of the problem. Test cases included.\n\nOleg",
+            "date": "2003-11-04T01:49:33.000+0000",
+            "id": 7
+        },
+        {
+            "author": "Alfonso",
+            "body": "Oleg,\n\nWow!!!. Thanks. Applied the patch. It now works as expected without needing my\nadditional modifications. Should I close the bug or is that something left for you ?",
+            "date": "2003-11-04T05:17:33.000+0000",
+            "id": 8
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Alfonso,\nFirst of all, thanks for tracking down this bug and helping us to fix it. \n\nI'll commit the patch shortly and close the bug report. If you are familiar with\nCVS it would be great if you could check out the latest code from CVS HEAD and\n2.0 branches (once the patch is checked it) and re-test it. \n\nOleg",
+            "date": "2003-11-04T05:38:59.000+0000",
+            "id": 9
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Patch applied to both HEAD & 2.0 branch. \n\nOleg",
+            "date": "2003-11-04T07:12:04.000+0000",
+            "id": 10
+        },
+        {
+            "author": "Alfonso",
+            "body": "Hello, this is Alfonso again. Excuse me for the delay in testing. I've\ndownloaded the 2.0 rc 2 (dated Oct 13) and tried my app. The library fails to\nauthenticate properly.\n\nWhat is the procedure now. \u00c2\u00bf Should this bug be reopen or a new one created ?\n\nI don't remember some of this, but as I need this feature working, can you tell\nme what was wrong with my initial sugested correction ?\n",
+            "date": "2003-12-31T07:52:18.000+0000",
+            "id": 11
+        },
+        {
+            "author": "Eric Johnson",
+            "body": "Alfonso,\n\nYou will need to build HttpClient from the source directly, or use the latest\nnightly build (although this is the 2.1 build, not 2.0, so it may not work for\nyou) found here:\nhttp://cvs.apache.org/builds/jakarta-commons/nightly/commons-httpclient/\n\nHttpClient 2.0rc3 has not yet been built, so you cannot test that yet....  If\nyou need help getting the source from CVS and building it, check out the CVS\nclients at http://www.wincvs.org/, and for Jakarta CVS access, look at the\ninformation at http://jakarta.apache.org/site/cvsindex.html.\n\nYou should continue to use this bug report to track this issue.",
+            "date": "2003-12-31T22:55:29.000+0000",
+            "id": 12
+        }
+    ],
+    "component": "HttpClient (classic)",
+    "description": "When I try to go via a MS Proxy which is set up with NTLM authentication I\nalways get a \"407\" error, no matter which credentials used.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "HTTPCLIENT-290",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Blocker",
+    "product": "HTTPCLIENT",
+    "project": "HTTPCLIENT",
+    "summary": "MS Proxy with NTLM authentication set up does not work",
+    "systemSpecification": true,
+    "version": "2.0 Beta 2"
+}

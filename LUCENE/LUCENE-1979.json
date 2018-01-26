@@ -1,0 +1,203 @@
+{
+    "comments": [
+        {
+            "author": "Michael Busch",
+            "body": "Removes almost all deprecations from the indexer package. The only things left are:\n\n* IndexReader#getFieldCacheKey() - what do we do with that one?\n* calls to IndexInput#readChars() and #skipChars() - I think we have to keep those until 4.0?\n\nAll core & contrib tests pass. It'd be good if someone could review this patch though.",
+            "date": "2009-10-13T23:45:12.556+0000",
+            "id": 0
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "bq. IndexReader#getFieldCacheKey() - what do we do with that one?\n\nI think we should undeprecate it.  I had deprecated it thinking LUCENE-831 would land.",
+            "date": "2009-10-13T23:57:34.559+0000",
+            "id": 1
+        },
+        {
+            "author": "Michael Busch",
+            "body": "OK, will do!",
+            "date": "2009-10-14T00:05:32.199+0000",
+            "id": 2
+        },
+        {
+            "author": "Michael Busch",
+            "body": "Patch for the back-compat trunk.\n\nHmm, everything passes, except this one:\n\n{noformat}\n[junit] java.lang.NoSuchMethodError: org.apache.lucene.index.SnapshotDeletionPolicy.snapshot()Lorg/apache/lucene/index/IndexCommitPoint;\n    [junit] \tat org.apache.lucene.TestSnapshotDeletionPolicy.testReuseAcrossWriters(TestSnapshotDeletionPolicy.java:82)\n    [junit] \tat org.apache.lucene.util.LuceneTestCase.runBare(LuceneTestCase.java:206)\n    [junit] Test org.apache.lucene.TestSnapshotDeletionPolicy FAILED\n{noformat}\n\nHere drop-in replacement doesn't seem to work. The method snapshot() of SnapshotDeletionPolicy was changed to return IndexCommit instead of IndexCommitPoint. IndexCommit used to implement the deprecated IndexCommitPoint, which this patch removes.\n\nSo the tests are compiled against snapshot() returning IndexCommitPoint in the bw-branch, and when run against the method returning IndexCommit of trunk it fails with the exception above.",
+            "date": "2009-10-14T00:09:04.867+0000",
+            "id": 3
+        },
+        {
+            "author": "Michael Busch",
+            "body": "Same patch as before, but with IndexReader#getFieldCacheKey() undeprecated.\n\nIs it correct that we keep IndexInput#readChars() and IndexInput#skipChars() for index format compatibility?",
+            "date": "2009-10-14T00:22:00.572+0000",
+            "id": 4
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "bq. Is it correct that we keep IndexInput#readChars() and IndexInput#skipChars() for index format compatibility?\n\nYes, we need to keep them.\n\nIt was in 2.4 (LUCENE-510) when we switched to writing strings as UTF8, so any index created by eg 2.3 (which we must be able to read through at least 3.9) will need these methods.",
+            "date": "2009-10-14T00:28:59.798+0000",
+            "id": 5
+        },
+        {
+            "author": "Michael Busch",
+            "body": "OK, thanks for the confirmation. Then this patch removes all deprecations in indexer now.\n\nI'll wait for comments about the back-compat patch from Uwe first. If I mess up the bw-branch again I'm afraid he'll get mad at me! :)",
+            "date": "2009-10-14T00:33:44.907+0000",
+            "id": 6
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Hi Michael,\n\nI see no problem in bw patch :-) One other thing: Can you apply the undeprecations also to 2.9 branch? (Like I did yesterday for the Searchable one).",
+            "date": "2009-10-14T05:44:40.739+0000",
+            "id": 7
+        },
+        {
+            "author": "Michael Busch",
+            "body": "Hi Uwe, \n\nthanks for taking a look here. However, there *is* a problem. Please see my previous comment with the exception I'm getting when running test-tag. It seems like I have to commit the change to SnapshotDeletionPolicy#snaphot() also to the bw branch.\n\n{quote}\nCan you apply the undeprecations also to 2.9 branch?\n{quote}\n\nWill do!",
+            "date": "2009-10-14T05:48:09.764+0000",
+            "id": 8
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "There are two possibilities:\n\n- Changing the backwards branch main code to change this method\n- remove this test\n\nI think both possibilities has pros and cons, I tend to the first, because: As you changed the method also in 3.0 trunk, you have to put a backwards incompatibility entry into changes.txt (because we have detected it with the test). In this case it is also valid to change the bw branch code and not only tests.\n\n(I only looked over the patch, but didn't test it, to find the same things like yesterday. Didn't read all the comments, sorry).",
+            "date": "2009-10-14T05:58:58.093+0000",
+            "id": 9
+        },
+        {
+            "author": "Michael Busch",
+            "body": "Well IndexCommitPoint was deprecated, so I think this is an expected break - so I don't think an entry in CHANGES.txt is necessary?\n\nI'm also for the first option. Will do that.",
+            "date": "2009-10-14T06:01:54.902+0000",
+            "id": 10
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "I would add the change in CHANGES.txt, too. Its only one line like: \"Changed return value of snapshot() from X to Y\". Because, if you use it, you cannot do drop in replacements, what you are able to do if you remove all deprecated code from your app in 2.9.",
+            "date": "2009-10-14T06:06:43.593+0000",
+            "id": 11
+        },
+        {
+            "author": "Michael Busch",
+            "body": "Committed revision 825022.",
+            "date": "2009-10-14T06:42:13.836+0000",
+            "id": 12
+        },
+        {
+            "author": "Michael Busch",
+            "body": "Also added an appropriate entry to the bw breaks section of CHANGES.txt.",
+            "date": "2009-10-14T06:42:57.261+0000",
+            "id": 13
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "I think you missed to delete IndexComitPoint in SVN.",
+            "date": "2009-10-14T06:54:54.591+0000",
+            "id": 14
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "I think there are some more deprecations (hidden). A search on deprecated finds some more files. E.g.:\n\n- allowMinus1Position in IndexWriter, DocumentsWriter, DocInverterPerField (field and methods, not correctly marked deprecated).\n- Also IndexReader has still lots of deprecations (e.g. doCommit())\n- CheckIndex#PrintStream\n- some MergePolicy methods\n- IndexWriter#DEFAULT_MERGE_FACTOR, DEFAULT_MAX_MERGE_DOCS, docCount(), abort(), addIndexes()\n",
+            "date": "2009-10-14T07:03:42.937+0000",
+            "id": 15
+        },
+        {
+            "author": "Michael Busch",
+            "body": "For now I fixed all those that the compiler showed me as warnings.\n\nI think we should do a text search for \"deprecated\" on the entire core after the compiler warnings are removed.\n\nBut not now, going to bed...",
+            "date": "2009-10-14T08:00:13.072+0000",
+            "id": 16
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "javac only shows a warning, if you override a deprecated method and not deprecate it or if you use a deprecated method. But it does not tell you that there are deprecated methods declared.\n\nI will post a patch with the rest removed.",
+            "date": "2009-10-14T08:07:36.931+0000",
+            "id": 17
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Here the patch for the rest. It also needs a changed backwards branch. It also adds varargs to some of the addIndexes methods. We should look at other places, too, where to add varargs, too (e.g. IndexSearcher, MultiSearcher,...)\n\nI have to leave now to Zurich will be back on Friday, but may have some time to look further into it. Michael, can you check the whole patch, I am on a hurry and was not able to test everything (trunk, trunk-contrib, bw).",
+            "date": "2009-10-14T09:28:55.356+0000",
+            "id": 18
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "My patch has a bug in TestTermVectorAccessor in contrib/misc (rewrite from deprec TermEnum.skip). I do not know whats wrong. Maybe you can fix it, I can look after it later in the evening.",
+            "date": "2009-10-14T15:29:49.112+0000",
+            "id": 19
+        },
+        {
+            "author": "Michael Busch",
+            "body": "I just ran all tests. test-contrib and test-tag both fail for me. I can look into it a bit later today...",
+            "date": "2009-10-14T16:17:17.413+0000",
+            "id": 20
+        },
+        {
+            "author": "Michael Busch",
+            "body": "This one fails in the bw-branch: org.apache.lucene.index.TestThreadedOptimize",
+            "date": "2009-10-14T16:19:00.281+0000",
+            "id": 21
+        },
+        {
+            "author": "Michael Busch",
+            "body": "Fixes the bug in TermVectorAccessor.",
+            "date": "2009-10-14T18:09:47.259+0000",
+            "id": 22
+        },
+        {
+            "author": "Michael Busch",
+            "body": "And the fix for the bw-branch.\n\nRunning all tests again now...",
+            "date": "2009-10-14T18:25:40.898+0000",
+            "id": 23
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Thanks!\n-Your patch for TermVectorAccessor is fine, only the termEnum.close() should also be inside the if-branch.-\n\nEDIT: sorry, my fault.",
+            "date": "2009-10-14T18:29:04.295+0000",
+            "id": 24
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Seems that in the bw branch one more docCount() was in the tests... Sorry. I just patched the bw branch with the trunk test patch :-)\n\nRunning tests now, too.",
+            "date": "2009-10-14T18:39:42.765+0000",
+            "id": 25
+        },
+        {
+            "author": "Michael Busch",
+            "body": "{quote}\nSeems that in the bw branch one more docCount() was in the tests\n{quote}\n\nYeah I just removed the line, because the variable wasn't actually used anywhere.\n\n\nOK all tests passed (core, contrib, bw). \n+1 for committing.",
+            "date": "2009-10-14T18:51:45.273+0000",
+            "id": 26
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "+1 all tests pass here, too!",
+            "date": "2009-10-14T19:16:15.367+0000",
+            "id": 27
+        },
+        {
+            "author": "Michael Busch",
+            "body": "Shall I commit it or are you going to, Uwe? Just asking, so that we're not trying to do it at the same time...",
+            "date": "2009-10-14T21:01:04.861+0000",
+            "id": 28
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "do it!",
+            "date": "2009-10-14T21:05:03.328+0000",
+            "id": 29
+        },
+        {
+            "author": "Michael Busch",
+            "body": "Committed revision 825288.\n\nThanks, Uwe!",
+            "date": "2009-10-14T21:25:56.802+0000",
+            "id": 30
+        }
+    ],
+    "component": "core/index",
+    "description": null,
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-1979",
+    "issuetypeClassified": "OTHER",
+    "issuetypeTracker": "OTHER",
+    "priority": "Minor",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "Remove remaining deprecations from indexer package",
+    "systemSpecification": true,
+    "version": ""
+}

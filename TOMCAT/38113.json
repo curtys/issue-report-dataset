@@ -1,0 +1,77 @@
+{
+    "comments": [
+        {
+            "author": null,
+            "body": "This is fixed in the SVN trunk, and will appear in 5.5.16",
+            "date": "20060304T03:59:14",
+            "id": 0
+        },
+        {
+            "author": null,
+            "body": "(In reply to comment #1)\n> This is fixed in the SVN trunk, and will appear in 5.5.16\n\nThe fix is not correct.\n\nFollowing jsp:\n<jsp:expression>\"\" + request.getQueryString()</jsp:expression>\ndoes not write 'null' to the page, even if not question mark on the url.\n\nWhile javadoc of HttpServletRequest#getQueryString states:\npublic java.lang.String getQueryString()\n\n    Returns the query string that is contained in the request URL after the\npath. This method returns null if the URL does not have a query string. Same as\nthe value of the CGI variable QUERY_STRING.",
+            "date": "20060328T19:23:18",
+            "id": 1
+        },
+        {
+            "author": null,
+            "body": "(Sorry if this results in a duplicate post, BugZilla seems to be very flacky\ntoday and commiting comments does not seem to work)\n\nI agree. This \"fix\" breaks webapps: JForum, and maybe others.\n\nThe original assumption behind this change was incorrect, the specification\nclearly states that getQueryString() *should* return null, not an empty string.",
+            "date": "20060329T19:54:05",
+            "id": 2
+        },
+        {
+            "author": null,
+            "body": "(In reply to comment #3)\n> I agree. This \"fix\" breaks webapps: JForum, and maybe others.\n> \n> The original assumption behind this change was incorrect, the specification\n> clearly states that getQueryString() *should* return null, not an empty string.\n\nMost likely, this will be the one and only time I agree with you on something.\n\nhttp://foo/bar? means there's no query String -> it should most likely return\nnull anyway (and if it shouldn't, it's not actually specified anywhere).",
+            "date": "20060329T23:50:49",
+            "id": 3
+        },
+        {
+            "author": null,
+            "body": "Ok, so I reverted the fix.",
+            "date": "20060330T18:46:30",
+            "id": 4
+        },
+        {
+            "author": null,
+            "body": "Please read specifications:\n\n5.2.1.  Pre-parse the Base URI\n\nother components may be empty or undefined....  \n\nA component is undefined if its associated delimiter does  not appear \nin the URI reference; the path component is never undefined, though it may be empty.\n--------------------------------------------------------------\nSo for query we have two values null and \"\".\n\nPlease fix this because Tomcat is the only tested container (even 6.28) which is not capable to tell difference between /aaa? and /aaa.\n(WAS, WLS and many others correctly return \"\" and null) for suplied data.\n\nIf you so afraid about old ignorant existing apps, please implement as switch.",
+            "date": "20100812T09:01:46",
+            "id": 5
+        },
+        {
+            "author": null,
+            "body": "I've fixed this for Tomcat 7.0.x. It will be included in 7.0.3 onwards.\n\nI'll propose a back port (off by default, configured via a system property) for 5.5.x and 6.0.x.",
+            "date": "20100825T12:45:44",
+            "id": 6
+        },
+        {
+            "author": null,
+            "body": "Backports proposed.",
+            "date": "20100825T13:12:35",
+            "id": 7
+        },
+        {
+            "author": null,
+            "body": "Fixed in 5.5.x and will be in 5.5.31 onwards.",
+            "date": "20100903T12:48:43",
+            "id": 8
+        },
+        {
+            "author": null,
+            "body": "Fixed in 6.0.x and will be included in 6.0.30 onwards.",
+            "date": "20100907T12:10:53",
+            "id": 9
+        }
+    ],
+    "component": "Catalina",
+    "description": "The method getQueryString in class org.apache.catalina.connector.Request returns\nnull, instead of an empty string for a URL of the form http://foo/bar? as\nrequired by the specification.  A correct implementation of the method is as\nfollows:\n\n    /**\n     * Return the query string associated with this request.\n     */\n    public String getQueryString() {\n        Object qStrObj = coyoteRequest.queryString();\n        return ((qStrObj == null) ? null : qStrObj.toString());\n    }",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "38113",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "BUG",
+    "priority": "P2 normal",
+    "product": "Tomcat 5",
+    "project": "TOMCAT",
+    "summary": "getQueryString returns null instead of empty-string",
+    "systemSpecification": true,
+    "version": "5.5.12"
+}

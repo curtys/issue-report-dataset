@@ -1,0 +1,47 @@
+{
+    "comments": [
+        {
+            "author": "Brian Moseley",
+            "body": "the import/export handlers should also have access to the resource that is being imported or exported itself, not just the backing node. this gives greater flexibility for DavResource implementations to provide additional collaborating objects to the handlers.",
+            "date": "2005-10-12T00:01:05.000+0000",
+            "id": 0
+        },
+        {
+            "author": "angela",
+            "body": "hi brian\n\ncould you explain what is the use-case for having access to the resource in the import/export?\nthe only command - as far as i know - that would currently need this information is the 'dirlisting' which does not really belong to the import/export... what it should do (and currently doesn't) is providing a list that corresponds to a PROPFIND with depth=1... but this is not a export that is driven by the repository items but rather by the dav-resource or itself, which knows about its members.\n\nkind regards\nangela",
+            "date": "2005-10-20T22:10:50.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Brian Moseley",
+            "body": "none of the jcr-server commands need it, but all of my custom commands do.\n\ni use spring to wire together dependencies for all of my custom components. my subclass of SimpleWebdavServlet makes spring's WebApplicationContext available to my subclass of DavResourceImpl, which then needs to pass it down to my import and export handlers. the only way i can do this today is by subclassing ImportContext and ExportContext, and even to achieve that i had to make a few changes to DavResourceImpl.\n\nin general it is always possible for the resource to have additional information besides the backing node that the import/export handlers need to do their job correctly. its much easier to write an import handler that can call resource methods directly than to jump through hoops with intermediary context classes.\n\nultimately i'm considering some more extensive surgery to jcr-server so that it doesn't use the chain stuff at all. i've gotten to the point where my chains are each one command only :) these commands simply delegate their actual work to a data access object of my own creation, so the chain executation is really just overhead at this point. i still see the chain's usefulness to others tho.\n\ni propose that whatever replacement you come up with, you hide it behind an interface so that it's as easy as possible for people to provide alternate import/export implementations, cos they will inevitably find a need for that level of flexibility - i already have.\n",
+            "date": "2005-10-21T00:48:20.000+0000",
+            "id": 2
+        },
+        {
+            "author": "angela",
+            "body": "issues has been solved.\ni will add a description of the changes as soon as changes are available.",
+            "date": "2005-11-03T01:05:19.000+0000",
+            "id": 3
+        },
+        {
+            "author": "angela",
+            "body": "overview over changes implied by the removal of the command-chains:\n\n\nChain, Command and Context replacement\n--------------------------------------------------------------------------------------------------------------\n\nchain          -----> IOManager interface\n\ncommand -----> IOHandler interface\n\ncontext      ----->  IOContext base interface\n                   ----->  ImportContext interface\n                   ----->  ExportContext interface\n\n\nIOHandler covers the corresponding import AND export\nfor both collections and non-collections. \nnevertheless, it is possible that a given implementation\nonly handles export or import (then the corresponding\n'canImport/canExport' must return false).\n\nIOManager is used to define a list of IOHandlers\nthat can be asked for a specific import/export. note.\nin contrast to the command-chains the import/export\nshould be considered completed as soon as the first \nhandler indicates success.\n\nboth the IOManager and the IOHandler allow to run\nthe import/export either with a DavResource or with a boolean\nflag indication if a collection is affected.\n\nI extracted slightly modified interfaces from the original context \nclasses.  Apart from the common methods (covered by IOContext), the\nImportContext interface allows to get related properties, the ExportContext \nhowever only allows to set them.\nAfter the import/export is completed (success or failure)\nthe context must be 'released' by calling 'informCompleted'.\n\n\nUtilities\n--------------------------------------------------------------------------------------------------------------\n\nCommon utitily methods present in the abstract commands\nand in the NodeResource class were moved to a IOUtil.java.\n\n\nConfiguration\n--------------------------------------------------------------------------------------------------------------\n\ncatalog.xml is not used any more.\nThe resource configuration should define an IOManager.\nIf the configuration entry is missing the default impl. is used as fallback.\n\n\nCommands in detail\n--------------------------------------------------------------------------------------------------------------\n\nAddNode\nFileImport\nFileExport      -------> DefaultIOHandler\n\nZipImport       -------> ZipHandler \n                         [ new: covers also export ]\n\nXmlImport\nXmlExport       -------> XmlHandler \n                         [ only generic xml, see below ]\n\nDirListing      -------> DirListingExportHandler\n                         [ note: no import ]\n\nSetContentType\nSaveCommand\nCheckin\nAddMixin        -------> no replacement\n\nPrimaryItem  -------> was not used. no replacement inside jackrabbit.\n\n\nNOTE regarding xml import/export. The import-command\ntried to distinguish generic xml from exported sysview/docview\nxml files, that were extracted without a file/folder\nnode being created. This lead to consistency problems.\nThe new xml-Handler does not make this distinction. if\nan xml should be directly extracted below the import-root\na separated handler should take care of this (and should\nrather not be used in a webdav context).\n\nregards\nangela\n\n",
+            "date": "2005-11-08T00:59:28.000+0000",
+            "id": 4
+        }
+    ],
+    "component": "",
+    "description": "i'd like to review the usage of command chains for import/export within the simple webdav server.\n\nwhile the concept of command chains offers a lot of flexibility, it showed that the implementation generates some drawbacks. a new mechanism should take advantage of the experiences made with the command chains.\n\nfrom my point of view the following issues should be taken into consideration:\n\n- provide means to extend and modify the import/export logic with minimal effort\n\n- consistent import/export functionality for both collections and non-collections\n  > export/import should not be completely separated.\n  > interfaces should encourage consistency\n  > increase maintainability, reduce no of errors\n\n- distinction of collections and non-collections for import/export behaviour\n  > PUT must result in non-coll, MKCOL in collection\n\n- allow to defined a set of import/export-handlers with a given order.\n\n- the different handlers must not rely on each other.\n\n- an import/export should be completed after the first handler indicates success. there \n  should not be other classes involved in order to complete the import/export.\n\n- avoid huge configuration files and if possible, avoid program flow being defined outside of java code.\n\n- avoid duplicate configuration (e.g. resource-filtering), duplicate code, duplicate logic, that is \n  hard to maintain.\n\n- additonal logic should be defined within a given import/export handler.\n  however, in case of webdav i see limited value of using extra logic such as addMixin or checkin, \n  that are covered by  webdav methods (such as LOCK, VERSION-CONTROL or CHECKIN).\n\nregards\nangela\n\n\n",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "JCR-249",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Major",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "Webdav: Review usage of command chains",
+    "systemSpecification": false,
+    "version": ""
+}

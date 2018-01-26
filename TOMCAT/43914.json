@@ -1,0 +1,59 @@
+{
+    "comments": [
+        {
+            "author": null,
+            "body": "Created attachment 21160\nminimal webapp that demonstrates the problem",
+            "date": "20071120T05:54:34",
+            "id": 0
+        },
+        {
+            "author": null,
+            "body": "Created attachment 21161\nsimple fix\n\nI have no idea what the preferred internal Tomcat method for encoding URLs is,\nI just copied the URLEncoder stuff from DefaultServlet.",
+            "date": "20071120T05:57:38",
+            "id": 1
+        },
+        {
+            "author": null,
+            "body": "I have been through RFC2616 and can't see anywhere that states that the location\nheader for a 302 must be encoded. Please provide reference(s) to the section(s)\nthat require this.",
+            "date": "20071224T11:03:17",
+            "id": 2
+        },
+        {
+            "author": null,
+            "body": "Section 14.30 of RFC2616 specifies the Location header as:\n\n   Location       = \"Location\" \":\" absoluteURI\n\nThen, in section 3.2.1 it specifies the definition of absoluteURI:\n\n   For definitive information on\n   URL syntax and semantics, see \"Uniform Resource Identifiers (URI):\n   Generic Syntax and Semantics,\" RFC 2396 [42] (which replaces RFCs\n   1738 [4] and RFC 1808 [11]). This specification adopts the\n   definitions of \"URI-reference\", \"absoluteURI\", \"relativeURI\", \"port\",\n   \"host\",\"abs_path\", \"rel_path\", and \"authority\" from that\n   specification.\n\nMoving on to RFC2396, in section 3 you can find the start of the absoluteURI \nBNF. If you follow the production you will eventually see that the basic \ncharacters of the individual path components come down to this:\n\n      pchar         = unreserved | escaped |\n                      \":\" | \"@\" | \"&\" | \"=\" | \"+\" | \"$\" | \",\"\n\nBasically, the above says it can only contain unreserved characters and the \ncharacters explicitly specified, all the rest must be escaped.\n\nLook into sections 2.3 and 2.4.1 for the exact definitions of \"unreserved\" and \n\"escaped\", and you will see that none of them include the space character, \nwhich means \"pchar\" doesn't include it, which in turn means \"absoluteURI\" \ndoesn't include it, which means eventually that the Location header can't \ninclude it either. Same goes for many other special characters not explicitly \ncovered by \"pchar\", not just space.\n",
+            "date": "20071225T21:23:45",
+            "id": 3
+        },
+        {
+            "author": null,
+            "body": "Thanks for the pointer. That makes perfect sense.\n\nI have applied your patch to trunk and proposed it for 6.0.x and 5.5.x",
+            "date": "20071226T13:25:35",
+            "id": 4
+        },
+        {
+            "author": null,
+            "body": "Fixed in Tomcat 6.0.x.",
+            "date": "20071228T13:08:30",
+            "id": 5
+        },
+        {
+            "author": null,
+            "body": "Fixed in 5.5.x and will be included in 5.5.26 onwards.",
+            "date": "20080106T15:16:55",
+            "id": 6
+        }
+    ],
+    "component": "Connector:Coyote",
+    "description": "Copy the attached static.war into $CATALINA_HOME/webapps. Then start the server \nand paste this HTTP request in netcat:\n\nGET /static/name%20with%20spaces HTTP/1.1\nUser-Agent: Jakarta Commons-HttpClient/3.0\nHost: localhost:8080\n\nTomcat will answer with the following HTTP redirect:\n\nHTTP/1.1 302 Moved Temporarily\nServer: Apache-Coyote/1.1\nLocation: http://localhost:8080/static/name with spaces/\nTransfer-Encoding: chunked\nDate: Tue, 20 Nov 2007 13:46:12 GMT\n\nObserve the Location: header. It has raw unencoded spaces in the URL which is \nin clear violation of the HTTP specification.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "43914",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "P2 normal",
+    "product": "Tomcat 5",
+    "project": "TOMCAT",
+    "summary": "HTTP spec violation when generating HTTP redirects for folders without trailing slash",
+    "systemSpecification": false,
+    "version": "5.5.25"
+}

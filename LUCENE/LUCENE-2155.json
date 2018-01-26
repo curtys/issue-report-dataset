@@ -1,0 +1,29 @@
+{
+    "comments": [
+        {
+            "author": "Robert Muir",
+            "body": "attached is a patch that not only clears all Calendar attributes to erase anything dependent on local time, but also ensures the same hour/minute/second/millisecond is used for actual and expected.\n\nThis is because the date in the test (2002/1/4) becomes two different Thai dates, depending upon the hour of day, timezone, etc.\n\nThe expected end date was always 4/2/2545, because these were set. But the actual end date would sometimes be 3/2/2545, depending upon when and where you ran the tests.\n",
+            "date": "2009-12-14T15:58:41.660+0000",
+            "id": 0
+        },
+        {
+            "author": "Robert Muir",
+            "body": "Committed revision 890407.\n\nThis may not be the complete solution, but its at least an improvement. I still do not trust these tests are doing exactly what we think...",
+            "date": "2009-12-14T17:33:18.612+0000",
+            "id": 1
+        }
+    ],
+    "component": "",
+    "description": "Some tests fail randomly (hard to reproduce). It appears to me that this is caused by uninitialized date fields. For example Uwe reported a failure today in this test of TestQueryParser:\n\n{code}\n /** for testing legacy DateField support */\n  public void testLegacyDateRange() throws Exception {\n    String startDate = getLocalizedDate(2002, 1, 1, false);\n    String endDate = getLocalizedDate(2002, 1, 4, false);\n{code}\n\nif you look at the helper getLocalizedDate, you can see if the 4th argument is false, it does not initialize all date field functions.\n{code}\n  private String getLocalizedDate(int year, int month, int day, boolean extendLastDate) {\n Calendar calendar = new GregorianCalendar();\n calendar.set(year, month, day);\n if (extendLastDate) {\n      calendar.set(Calendar.HOUR_OF_DAY, 23);\n      calendar.set(Calendar.MINUTE, 59);\n      calendar.set(Calendar.SECOND, 59);\n ...\n}\n{code}\n\nI think the solution to this is that in all tests, whereever we create new GregorianCalendar(), it should be followed by a call to Calendar.clear().\nThis will ensure that we always initialize unused calendar fields to zero, rather than being dependent on the local time.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-2155",
+    "issuetypeClassified": "OTHER",
+    "issuetypeTracker": "OTHER",
+    "priority": "Minor",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "random localization test failures",
+    "systemSpecification": true,
+    "version": ""
+}

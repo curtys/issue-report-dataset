@@ -1,0 +1,113 @@
+{
+    "comments": [
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "The manifest file contains this entry\n\nBundle-Version: 4.0.0.SNAPSHOT\n\nIs not that sufficient? \n\nOleg",
+            "date": "2009-07-31T23:01:23.276+0000",
+            "id": 0
+        },
+        {
+            "author": "Richard Wallace",
+            "body": "That's what I originally thought too.  But I've found it not to be true in the past.  I just asked on the Felix mailing list and got this [response|http://www.mail-archive.com/users@felix.apache.org/msg05128.html].",
+            "date": "2009-07-31T23:58:20.825+0000",
+            "id": 1
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Richard,\n\nWe are using Felix maven-bundle-plugin to generate OSGi metadata. If anything, this appears to be a problem of maven-bundle-plugin or possibly a misconfiguration of it on our part:\n\nhttp://svn.apache.org/repos/asf/httpcomponents/httpclient/trunk/httpclient-osgi/pom.xml\n\nFeel free to submit a patch or propose a solution to the problem that ideally does not involve manual editing of the OSGi manifest file.\n\nOleg",
+            "date": "2009-08-01T12:03:37.310+0000",
+            "id": 2
+        },
+        {
+            "author": "Richard Wallace",
+            "body": "You need to add the version to each of the exported packages.  Instead of \n\n{code}\n<_exportcontents>\n               org.apache.http.cookie.*, \n               org.apache.http.impl.cookie.*, \n               org.apache.http.auth.*, \n               org.apache.http.impl.auth.*, \n               org.apache.http.conn.*, \n               org.apache.http.impl.conn.*, \n               org.apache.http.client.*, \n               org.apache.http.impl.client.*,\n               org.apache.http.entity.mime.*, \n               org.apache.http.entity.mime.content.*\n</_exportcontents>\n{code}\n\nyou want\n\n{code}\n<_exportcontents>\n               org.apache.http.cookie.*;version=\"${project.version}\", \n               org.apache.http.impl.cookie.*;version=\"${project.version}\", \n               org.apache.http.auth.*;version=\"${project.version}\", \n               org.apache.http.impl.auth.*;version=\"${project.version}\", \n               org.apache.http.conn.*;version=\"${project.version}\", \n               org.apache.http.impl.conn.*;version=\"${project.version}\", \n               org.apache.http.client.*;version=\"${project.version}\", \n               org.apache.http.impl.client.*;version=\"${project.version}\",\n               org.apache.http.entity.mime.*;version=\"${project.version}\", \n               org.apache.http.entity.mime.content.*;version=\"${project.version}\"\n</_exportcontents>\n{code}",
+            "date": "2009-08-05T00:34:16.848+0000",
+            "id": 3
+        },
+        {
+            "author": "Sebb",
+            "body": "For an example of a small project that creates OSGI entries with versioning, see almost any of the Commons projects.\nThese use Felix too. Here is an extract from the Commons parent POM:\n\n===\n        <configuration>\n          <excludeDependencies>true</excludeDependencies>\n          <manifestLocation>target/osgi</manifestLocation>\n          <instructions>\n            <!-- stops the \"uses\" clauses being added to \"Export-Package\" manifest entry -->\n            <_nouses>true</_nouses>\n            <Bundle-SymbolicName>${commons.osgi.symbolicName}</Bundle-SymbolicName>\n            <Export-Package>${commons.osgi.export}</Export-Package>\n            <Private-Package>${commons.osgi.private}</Private-Package>\n            <Import-Package>${commons.osgi.import}</Import-Package>\n            <DynamicImport-Package>${commons.osgi.dynamicImport}</DynamicImport-Package>\n            <Bundle-DocURL>${project.url}</Bundle-DocURL>\n          </instructions>\n        </configuration>\n\n===\n\n    <!-- Configuration properties for the OSGi maven-bundle-plugin -->\n    <commons.osgi.symbolicName>org.apache.commons.${commons.componentid}</commons.osgi.symbolicName>\n    <commons.osgi.export>org.apache.commons.*;version=${pom.version}</commons.osgi.export>\n    <commons.osgi.import>*</commons.osgi.import>\n    <commons.osgi.dynamicImport />\n    <commons.osgi.private />\n\n    <!-- location of any manifest file used by maven-jar-plugin -->\n    <commons.manifestfile>target/osgi/MANIFEST.MF</commons.manifestfile>\n\n\n===\n\nI think the idea is that individual projects can override the commons.* properties if necesary; that is probably not necessary for HC",
+            "date": "2009-08-05T01:34:05.464+0000",
+            "id": 4
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "What about 'Import-Package'? Do imported packages need to be explicitly versioned?\n\nThis is how bundle manifest look now:\n-----\nManifest-Version: 1.0\nExport-Package: org.apache.http.client.entity;uses:=\"org.apache.http.e\n ntity,org.apache.http.client.utils\";version=\"4.0.0.SNAPSHOT\",org.apac\n he.http.conn.scheme;uses:=\"org.apache.http.conn,org.apache.http.param\n s,org.apache.http.util,org.apache.http\";version=\"4.0.0.SNAPSHOT\",org.\n apache.http.conn.params;uses:=\"org.apache.http.params,org.apache.http\n .conn.routing,org.apache.http\";version=\"4.0.0.SNAPSHOT\",org.apache.ht\n tp.cookie.params;uses:=\"org.apache.http.params\";version=\"4.0.0.SNAPSH\n OT\",org.apache.http.conn.ssl;uses:=\"org.apache.http.conn.scheme,org.a\n pache.http.params,org.apache.http.conn,org.apache.http.conn.util,java\n x.security.auth.x500,javax.net.ssl\";version=\"4.0.0.SNAPSHOT\",org.apac\n he.http.client.utils;uses:=\"org.apache.http.message,org.apache.http.u\n til,org.apache.http\";version=\"4.0.0.SNAPSHOT\",org.apache.http.impl.co\n nn;uses:=\"org.apache.http.message,org.apache.http.io,org.apache.http.\n impl.io,org.apache.http.conn.scheme,org.apache.http.protocol,org.apac\n he.commons.logging,org.apache.http.conn.params,org.apache.http.params\n ,org.apache.http.impl,org.apache.http.conn.routing,org.apache.http.co\n nn,javax.net.ssl,org.apache.http.util,org.apache.http\";version=\"4.0.0\n .SNAPSHOT\",org.apache.http.client;uses:=\"org.apache.http.conn,org.apa\n che.http.cookie,org.apache.http.protocol,org.apache.http.params,org.a\n pache.http.client.methods,org.apache.http.auth,org.apache.http\";versi\n on=\"4.0.0.SNAPSHOT\",org.apache.http.conn.routing;uses:=\"org.apache.ht\n tp.protocol,org.apache.http\";version=\"4.0.0.SNAPSHOT\",org.apache.http\n .client.protocol;uses:=\"org.apache.http.protocol,org.apache.commons.l\n ogging,org.apache.http.conn.scheme,org.apache.http.params,org.apache.\n http.client,org.apache.http.conn.routing,org.apache.http.client.param\n s,org.apache.http.conn,org.apache.http.cookie,org.apache.http.client.\n methods,org.apache.http,org.apache.http.auth\";version=\"4.0.0.SNAPSHOT\n \",org.apache.http.client.params;uses:=\"org.apache.http.conn,org.apach\n e.http.auth.params,org.apache.http.params,org.apache.http.conn.params\n ,org.apache.http.cookie.params,org.apache.http\";version=\"4.0.0.SNAPSH\n OT\",org.apache.http.auth.params;uses:=\"org.apache.http.params\";versio\n n=\"4.0.0.SNAPSHOT\",org.apache.http.conn;uses:=\"org.apache.http.conn.s\n cheme,org.apache.http.protocol,org.apache.http.params,org.apache.http\n .entity,org.apache.http.conn.routing,javax.net.ssl,org.apache.http\";v\n ersion=\"4.0.0.SNAPSHOT\",org.apache.http.entity.mime.content;version=\"\n 4.0.0.SNAPSHOT\",org.apache.http.impl.client;uses:=\"org.apache.commons\n .logging,org.apache.http.protocol,org.apache.http.conn.params,org.apa\n che.http.impl,org.apache.http.entity,org.apache.http.client,org.apach\n e.http.impl.conn,org.apache.http.conn.routing,org.apache.http.conn,or\n g.apache.http.cookie,org.apache.http.impl.cookie,org.apache.http.impl\n .auth,javax.net.ssl,org.apache.http.message,org.apache.http.conn.sche\n me,org.apache.http.params,org.apache.http.conn.ssl,org.apache.http.cl\n ient.utils,org.apache.http.client.protocol,org.apache.http.client.par\n ams,org.apache.http.util,org.apache.http.client.methods,org.apache.ht\n tp,org.apache.http.auth\";version=\"4.0.0.SNAPSHOT\",org.apache.http.coo\n kie;uses:=\"org.apache.http.params,org.apache.http\";version=\"4.0.0.SNA\n PSHOT\",org.apache.http.conn.util;version=\"4.0.0.SNAPSHOT\",org.apache.\n http.entity.mime;uses:=\"org.apache.http.message,org.apache.http.entit\n y.mime.content,org.apache.http\";version=\"4.0.0.SNAPSHOT\",org.apache.h\n ttp.impl.cookie;uses:=\"org.apache.http.message,org.apache.http.params\n ,org.apache.http.client.utils,org.apache.http.cookie,org.apache.http.\n util,org.apache.http\";version=\"4.0.0.SNAPSHOT\",org.apache.http.impl.a\n uth;uses:=\"org.apache.http.message,org.apache.commons.logging,org.apa\n che.http.protocol,org.apache.http.params,org.ietf.jgss,org.apache.htt\n p.auth.params,org.apache.http.util,org.apache.http.auth,org.apache.ht\n tp\";version=\"4.0.0.SNAPSHOT\",org.apache.http.client.methods;uses:=\"or\n g.apache.http.message,org.apache.http.conn,org.apache.http.params,org\n .apache.http.client.utils,org.apache.http\";version=\"4.0.0.SNAPSHOT\",o\n rg.apache.http.impl.conn.tsccm;uses:=\"org.apache.http.conn.scheme,org\n .apache.commons.logging,org.apache.http.params,org.apache.http.conn.p\n arams,org.apache.http.impl.conn,org.apache.http.conn.routing,org.apac\n he.http.conn,org.apache.http.util,org.apache.http\";version=\"4.0.0.SNA\n PSHOT\",org.apache.http.auth;uses:=\"org.apache.http.params,org.apache.\n http.util,org.apache.http\";version=\"4.0.0.SNAPSHOT\"\nPrivate-Package: org.apache.commons.codec,org.apache.commons.codec.bin\n ary,org.apache.commons.codec.digest,org.apache.commons.codec.language\n ,org.apache.commons.codec.net,org.apache.james.mime4j,org.apache.jame\n s.mime4j.codec,org.apache.james.mime4j.descriptor,org.apache.james.mi\n me4j.field,org.apache.james.mime4j.field.address,org.apache.james.mim\n e4j.field.address.parser,org.apache.james.mime4j.field.contentdisposi\n tion.parser,org.apache.james.mime4j.field.contenttype.parser,org.apac\n he.james.mime4j.field.datetime,org.apache.james.mime4j.field.datetime\n .parser,org.apache.james.mime4j.field.language.parser,org.apache.jame\n s.mime4j.field.mimeversion.parser,org.apache.james.mime4j.field.struc\n tured.parser,org.apache.james.mime4j.io,org.apache.james.mime4j.messa\n ge,org.apache.james.mime4j.parser,org.apache.james.mime4j.storage,org\n .apache.james.mime4j.util\nIgnore-Package: net.jcip.annotations\nBundle-ClassPath: .,apache-mime4j-0.6.jar,httpclient-4.0-SNAPSHOT.jar,\n httpmime-4.0-SNAPSHOT.jar,commons-codec-1.3.jar\nBuilt-By: kalnicol\nTool: Bnd-0.0.255\nBundle-Name: Apache HttpClient OSGi bundle\nCreated-By: Apache Maven Bundle Plugin\nX-Compile-Source-JDK: 1.5\nBundle-Vendor: Apache Software Foundation\nImplementation-Vendor-Id: org.apache\nBundle-Version: 4.0.0.SNAPSHOT\nBuild-Jdk: 1.6.0_10\nBnd-LastModified: 1249465883724\nBundle-ManifestVersion: 2\nBundle-License: http://www.apache.org/licenses/LICENSE-2.0.html\nBundle-Description: HttpComponents Client (OSGi bundle)\nBundle-DocURL: http://www.apache.org/\nBundle-SymbolicName: org.apache.httpcomponents.httpclient\nImport-Package: javax.crypto,javax.crypto.spec,javax.net.ssl,javax.sec\n urity.auth.x500,org.apache.commons.logging,org.apache.http,org.apache\n .http.auth;version=\"4.0.0.SNAPSHOT\",org.apache.http.auth.params;versi\n on=\"4.0.0.SNAPSHOT\",org.apache.http.client;version=\"4.0.0.SNAPSHOT\",o\n rg.apache.http.client.entity;version=\"4.0.0.SNAPSHOT\",org.apache.http\n .client.methods;version=\"4.0.0.SNAPSHOT\",org.apache.http.client.param\n s;version=\"4.0.0.SNAPSHOT\",org.apache.http.client.protocol;version=\"4\n .0.0.SNAPSHOT\",org.apache.http.client.utils;version=\"4.0.0.SNAPSHOT\",\n org.apache.http.conn;version=\"4.0.0.SNAPSHOT\",org.apache.http.conn.pa\n rams;version=\"4.0.0.SNAPSHOT\",org.apache.http.conn.routing;version=\"4\n .0.0.SNAPSHOT\",org.apache.http.conn.scheme;version=\"4.0.0.SNAPSHOT\",o\n rg.apache.http.conn.ssl;version=\"4.0.0.SNAPSHOT\",org.apache.http.conn\n .util;version=\"4.0.0.SNAPSHOT\",org.apache.http.cookie;version=\"4.0.0.\n SNAPSHOT\",org.apache.http.cookie.params;version=\"4.0.0.SNAPSHOT\",org.\n apache.http.entity,org.apache.http.entity.mime;version=\"4.0.0.SNAPSHO\n T\",org.apache.http.entity.mime.content;version=\"4.0.0.SNAPSHOT\",org.a\n pache.http.impl,org.apache.http.impl.auth;version=\"4.0.0.SNAPSHOT\",or\n g.apache.http.impl.client;version=\"4.0.0.SNAPSHOT\",org.apache.http.im\n pl.conn;version=\"4.0.0.SNAPSHOT\",org.apache.http.impl.conn.tsccm;vers\n ion=\"4.0.0.SNAPSHOT\",org.apache.http.impl.cookie;version=\"4.0.0.SNAPS\n HOT\",org.apache.http.impl.io,org.apache.http.io,org.apache.http.messa\n ge,org.apache.http.params,org.apache.http.protocol,org.apache.http.ut\n il,org.ietf.jgss\nEmbed-Dependency: *;scope=compile|runtime;inline=false\nX-Compile-Target-JDK: 1.5\n-----\n",
+            "date": "2009-08-05T10:16:16.358+0000",
+            "id": 5
+        },
+        {
+            "author": "Sebb",
+            "body": "I think so; the Commons OSGI manifests have version numbers in Import-Package entries for their own classes.",
+            "date": "2009-08-05T10:25:49.818+0000",
+            "id": 6
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Having to manually set a version on each and every imported package would be a _major_ pain in the rectum and simply defeats the whole point of using the damn bundle plugin. \n\nBesides, if we set an explicit version on HttpCore imports it would render HttpClient OSGi bundle incompatible with officially released OSGi bundles of HttpCore.\n\nOleg",
+            "date": "2009-08-05T12:27:46.660+0000",
+            "id": 7
+        },
+        {
+            "author": "Richard Wallace",
+            "body": "There are 2 ways to get around having to define versions on each imported package.  Since they are all in the same sub package you can just use\n\n<Import-Package>org.apache.http.*;version=\"4.0\",*</Import-Package>\n\nThat will set the version for org.apache.http and any subpackages that are used.  Alternatively, you can declare a dependency in maven on the bundle that contains those packages and has an <Export-Package> manifest entry with the proper versions and the bundle plugin will automatically find it and use those versions.\n\nAny chance you could do a minor release of the HttpCore OSGi bundle to get it's manifest entries fixed? ",
+            "date": "2009-08-05T14:08:45.915+0000",
+            "id": 8
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "> There are 2 ways to get around having to define versions on each imported package. Since they are all \n> in the same sub package you can just use\n>\n> <Import-Package>org.apache.http.*;version=\"4.0\",*</Import-Package>\n\nI thought about it but unfortunately HttpCore and HttpCore share the same 'org.apache.http' namespace.\n\n> Any chance you could do a minor release of the HttpCore OSGi bundle to get it's manifest entries fixed? \n\nUsually ASF releases tend to escalate into a very painful and time consuming affair for me, often leading to outbursts of domestic violence in my family. I often end up sleeping on a sofa in the living room severely beaten by my wife. I would hate having to do a release just because of OSGi bundle. This can be fixed with the next planned release of core (4.1), though\n\nOleg",
+            "date": "2009-08-05T14:44:32.961+0000",
+            "id": 9
+        },
+        {
+            "author": "Ortwin Gl\u00fcck",
+            "body": "I offer you my sofa during an ASF release, Oleg :-)",
+            "date": "2009-08-05T14:50:27.216+0000",
+            "id": 10
+        },
+        {
+            "author": "Sebb",
+            "body": "@Richard: is it easy for you to test the OSGI bundle? e.g. if a release candidate were built, could you easily test that aspect of it?",
+            "date": "2009-08-05T16:16:46.306+0000",
+            "id": 11
+        },
+        {
+            "author": "Richard Wallace",
+            "body": "Sebb: Yes, that would be pretty simple for me to test.",
+            "date": "2009-08-05T16:22:29.969+0000",
+            "id": 12
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "I committed a fix for Export-Package problem. The Import-Package problem can fixed once HTTPCORE-201 is fixed.\n\nOleg",
+            "date": "2009-08-05T19:26:34.233+0000",
+            "id": 13
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Committed a fix for HTTPCORE-201 to HttpCore trunk and 4.0.x branch. Please review / test\n\nOleg",
+            "date": "2009-08-05T19:52:34.970+0000",
+            "id": 14
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Fixed in SVN trunk\n\nOleg",
+            "date": "2009-11-25T20:41:30.473+0000",
+            "id": 15
+        }
+    ],
+    "component": "HttpClient (classic)",
+    "description": "The \"Export-Package\" manifest entry doesn't specify the version of the package being exported.  This means that packages importing it can't specify a version to import.",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "HTTPCLIENT-865",
+    "issuetypeClassified": "OTHER",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "HTTPCLIENT",
+    "project": "HTTPCLIENT",
+    "summary": "HttpClient OSGi Export-Package doesn't specify version",
+    "systemSpecification": true,
+    "version": "4.0 Beta 2"
+}

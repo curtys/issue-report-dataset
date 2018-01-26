@@ -1,0 +1,107 @@
+{
+    "comments": [
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Created an attachment (id=9576)\nPatch (take 1)\n",
+            "date": "2003-12-15T19:41:26.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Any feedback so far? Is anyone looking at the patch?\n\nOleg",
+            "date": "2003-12-18T01:28:07.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Hi Oleg,\n\nThis looks quite good.  I like the changes to the AuthScheme interface.  Authentication in \nHttpMethodDirector is quite complicated now,  more javadocs here would be quite helpful.\n\nI also noticed, in the process of testing that HttpState.setAuthenticationPreemtive() no longer \nseems to have any effect.  Granted, it is deprecated, but now it's completely non-functional.  Any \nthoughts about how we can fix this?\n\nMike",
+            "date": "2004-01-12T10:24:56.000+0000",
+            "id": 2
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "> HttpMethodDirector is quite complicated now,  more javadocs here would\n> be quite helpful.\n\nThat goes without saying. As soon as the code stabilizes somewhat Javadocs will \nbe provided. I would wait until the first alpha, though\n\n> Granted, it is deprecated, but now it's completely non-functional.\n> Any thoughts about how we can fix this?\n\nI can't think of anything elegant, but a dirty workaround should not be too \ndifficult.\n\nFolks, are there any objections to committing the patch? Odi, have you had a \nchange to review the patch? Are you still planning on reviewing it?\n\nOleg\n",
+            "date": "2004-01-12T19:04:20.000+0000",
+            "id": 3
+        },
+        {
+            "author": "Ortwin Gl\u00fcck",
+            "body": "sorry Oleg, I can not apply the patch to the current HEAD. It seems outdated.",
+            "date": "2004-01-12T19:19:19.000+0000",
+            "id": 4
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Created an attachment (id=9909)\nPatch (take 2)\n",
+            "date": "2004-01-12T20:39:10.000+0000",
+            "id": 5
+        },
+        {
+            "author": "Ortwin Gl\u00fcck",
+            "body": "I think the patch is okay, but the architecture is not perfect yet. You can\nstill commit it I guess. I did not run any tests on it but rather scimmed the code.\n\nTo do:\n1. I would like to get rid of the challenge stuff in AuthScheme interface.\nChallenge is really an implementation detail that should not be part of this\ninterface.\n2. For real stateful authentication we will need a single AuthScheme instance\nthat  lives during a complete authentication cycle. The\nAuthPolicy::getAuthScheme method does not currently fulfill this.\n\nOdi",
+            "date": "2004-01-12T21:18:51.000+0000",
+            "id": 6
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "\n> I think the patch is okay, but the architecture is not perfect yet. You can\n> still commit it I guess. I did not run any tests on it but rather scimmed the \n> code.\n\nThings can be always done better. The question is if the patch is step forward\nor backward. If you need more time to review the patch, let me know.\n\n> 2. For real stateful authentication we will need a single AuthScheme instance\n> that  lives during a complete authentication cycle. \n\nUnless we are talking about different things, I believe that this is in fact the\ncase. There's _always_ (preemptive auth scheme notwithstanding) only one\ninstance of authentication scheme within a complete authentication cycle. One\nmay take this one step further and persist (cache) authentication schemes\nbetween method invocations to avoid re-authentication against the realms\nHttpClient already has authenticated with. But this is something for 4.0\n\nOleg",
+            "date": "2004-01-12T21:36:30.000+0000",
+            "id": 7
+        },
+        {
+            "author": "Ortwin Gl\u00fcck",
+            "body": "> The question is if the patch is step forward\n> or backward. \n\nI think the code is moving towards the right places. It's certainly an\nimprovement. Good work so far.\n\n> Unless we are talking about different things, I believe that this is in fact the\n> case. There's _always_ (preemptive auth scheme notwithstanding) only one\n> instance of authentication scheme within a complete authentication cycle.\n\nOh. So I have to look at it again. Then this is fine with me and I can try and\nmake DigestAuth behave better ,-)",
+            "date": "2004-01-12T21:52:52.000+0000",
+            "id": 8
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Commit it fine with me.\n\nMike",
+            "date": "2004-01-12T22:19:11.000+0000",
+            "id": 9
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Patch committed. Oleg",
+            "date": "2004-01-13T02:51:09.000+0000",
+            "id": 10
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Prompted by the 2.0 incompatibility discovered by Vincent Massol\n<vmassol at pivolis.com> (Specials thanks go to Gump and all the Gump\nMeisters) I went over the authentication code one more time and made yet\nanother series of changes \n\n* I factored out the authentication challenge processing logic from the\nHttpMethodDirector to a class of its own. Thanks to that authentication\nchallenge processing can now be tested separately. Test cases provided.\n\n* HttpMethodDirector no longer intervenes if Authorization &\nProxy-Authorization are set manually by the user. Custom authorization\nheaders are never overwritten\n\n* Introduced a new class called AuthState that represents the\nauthentication process state that contains all the authentication\ndetails. Basically it is just a convenience wrapper around the\nauthentication scheme interface.\n\n* Proxy and host authentication state objects moved to the HTTP method\nlevel, so that they can be queried by the user to find out the details\nabout authentication that has been performed by the HttpMethodDirector.\nWith the current implementation all the details of proxy and host\nauthentication are contained within the HttpMethodDirector instance,\nwhich exists only within the lifetime of HttpClient#executeMethod()\nexecution. As soon as the method returns, the respective\nHttpMethodDirector instance gets GCed along with the authentication\ndetails\n\n* More test cases\n\nOleg",
+            "date": "2004-03-24T21:30:34.000+0000",
+            "id": 11
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Created an attachment (id=10949)\nFollow-up patch (take 1)\n",
+            "date": "2004-03-24T21:31:27.000+0000",
+            "id": 12
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Looks good to me.  I like it.\n\nMike",
+            "date": "2004-03-25T11:15:35.000+0000",
+            "id": 13
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Patch committed.\n\nOleg",
+            "date": "2004-03-26T04:38:42.000+0000",
+            "id": 14
+        }
+    ],
+    "component": "HttpClient (classic)",
+    "description": "The existing HTTP authentication framework has got a few glaring deficiencies:\n- Authentication headers management evolved (or degraded) into a some sort of\nblack art and proved very error-prone.\n- Existing logic intended to deal with authentication failures and\nauthentication failure recovery is flawed. The resolution of the HTTPCLIENT-213 did\nappear possible without a better approach than the one based on AuthScheme#getID.\n\nOn top of that authentication logic got quite messy with the series of attempts\nto fix breakages in complex authentication schemes (the latest being NTLM proxy\n+ basic host fix) \n\nThe patch I am about to attach is an attempt to address all the shortcomings\nmentioned above. It builds upon my previous patch that enabled authentication\nschemes to maintain authentication state and presents a complete redesign of the\nexisting HTTP authentication framework.\n\nBasically there's no authentication code left untouched, so please do take a\ncloser look. Critique, comments, suggestions welcome.\n\nOleg",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "HTTPCLIENT-306",
+    "issuetypeClassified": "REFACTORING",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Minor",
+    "product": "HTTPCLIENT",
+    "project": "HTTPCLIENT",
+    "summary": "Redesign of HTTP authentication framework",
+    "systemSpecification": false,
+    "version": ""
+}

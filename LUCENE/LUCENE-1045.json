@@ -1,0 +1,167 @@
+{
+    "comments": [
+        {
+            "author": "Daniel Naber",
+            "body": "Makes auto sorting work with long.",
+            "date": "2007-11-03T21:48:58.974+0000",
+            "id": 0
+        },
+        {
+            "author": "Daniel Naber",
+            "body": "patch applied\n",
+            "date": "2007-11-26T18:54:40.274+0000",
+            "id": 1
+        },
+        {
+            "author": "Grant Ingersoll",
+            "body": "This patch seems a bit strange to me (sorry for getting to it so late).  I think the better way might be to have the FieldSortedHitQueue#comparatorAuto method use the ExtendedFieldCache, instead of creating the dependency in FieldCacheImpl on ExtendedFieldCache to have long support.  \n\nThen, you could just override getAuto in ExtendedFieldCache.   \n\nThis way, those who have longs and want them treated as such get them from the ExtendedFC, otherwise, those just using FieldCacheImpl, get the behavior they are used to, namely no long support.",
+            "date": "2007-11-26T19:44:32.230+0000",
+            "id": 2
+        },
+        {
+            "author": "Yonik Seeley",
+            "body": "Hmmm, I didn't realize that ExtendedFieldCache was added until you just pointed it out.\nWhy can't we just add long and double support directly to FieldCache?\n",
+            "date": "2007-11-26T19:54:46.262+0000",
+            "id": 3
+        },
+        {
+            "author": "Grant Ingersoll",
+            "body": "Because it is an interface and that could break implementations.  See https://issues.apache.org/jira/browse/LUCENE-1015",
+            "date": "2007-11-26T20:02:03.553+0000",
+            "id": 4
+        },
+        {
+            "author": "Yonik Seeley",
+            "body": "Normally right, but a user can't provide their own implementation for lucene to use (because of the way lucene looks up the implementation).",
+            "date": "2007-11-26T20:08:10.155+0000",
+            "id": 5
+        },
+        {
+            "author": "Grant Ingersoll",
+            "body": "There is a cleaner way of doing this w/o copying code from ExtendedFieldCacheImpl\n\nPatch to follow",
+            "date": "2007-11-26T20:12:48.223+0000",
+            "id": 6
+        },
+        {
+            "author": "Grant Ingersoll",
+            "body": "{quote}\nNormally right, but a user can't provide their own implementation for lucene to use (because of the way lucene looks up the implementation).\n{quote}\n\nTrue, it isn't all that useful of an interface.  We probably should open another issue to deal with it.  Either that, or we should take another look at fixing it in https://issues.apache.org/jira/browse/LUCENE-831\n\n",
+            "date": "2007-11-26T20:15:27.308+0000",
+            "id": 7
+        },
+        {
+            "author": "Grant Ingersoll",
+            "body": "Refactoring to remove duplicated code and use the ExtendedFieldCache impl.",
+            "date": "2007-11-26T20:25:50.967+0000",
+            "id": 8
+        },
+        {
+            "author": "Yonik Seeley",
+            "body": "My only concern is that ExtendedFieldCache(Impl) adds more public classes that we then need to keep back compatibility with in future releases.  If we decide that adding long/double directly to FieldCache is OK, then that should ideally be done before the next release so we can simply remove ExtendedFieldCache.",
+            "date": "2007-11-26T20:42:27.892+0000",
+            "id": 9
+        },
+        {
+            "author": "Doug Cutting",
+            "body": "> True, it isn't all that useful of an interface.\n\nPerhaps it should be an abstract base class instead of an interface, so that the API can more easily evolve without breaking user code?  If external implementations are not currently supported, this might even be a back-compatible change.",
+            "date": "2007-11-26T20:57:13.816+0000",
+            "id": 10
+        },
+        {
+            "author": "Grant Ingersoll",
+            "body": "That's fine by me, I think we just need to document it clearly in CHANGES.txt that we are making a potentially non-back compatible change (which isn't likely) in order to support future back compatibility :-).  \n\nI guess the question is whether there are people that have extended TopDocCollector and created a variation of the PriorityQueue that is similar to FieldSortedHitQueue that uses their own FieldCache implementation.  I can't imagine the need for this, but it does seem possible, or did I miss something?",
+            "date": "2007-11-26T21:27:49.172+0000",
+            "id": 11
+        },
+        {
+            "author": "Grant Ingersoll",
+            "body": "Any more thoughts on this?  Otherwise, I am going to apply this patch before I forget about it.  It does seem to me there is at least a remote possibility of using the interface.  \n\nI will commit tomorrow evening or Tuesday unless I hear otherwise.",
+            "date": "2007-12-03T02:06:21.605+0000",
+            "id": 12
+        },
+        {
+            "author": "Yonik Seeley",
+            "body": "I think we should just fold Long & Double support into the FieldCache and change it to be an abstract class.\nIt is *very* unlikely that anyone has implemented their own FieldCache since it wouldn't be directly usable with Lucene.\nIn the worst-case scenario that someone did, there will be an immediate and understandable error, and the fix is easy.",
+            "date": "2007-12-03T02:15:59.299+0000",
+            "id": 13
+        },
+        {
+            "author": "Otis Gospodnetic",
+            "body": "Grant, any chance of you throwing in short support in there?\n",
+            "date": "2007-12-03T07:59:20.968+0000",
+            "id": 14
+        },
+        {
+            "author": "Grant Ingersoll",
+            "body": "{quote}\nshort support\n{quote}\nFieldCache already has shorts support, so no reason not to add it and bytes to SortField.\n\nI will work up a patch for all of this.\n",
+            "date": "2007-12-03T11:44:29.970+0000",
+            "id": 15
+        },
+        {
+            "author": "Grant Ingersoll",
+            "body": "Drops ExtendedFieldCache, puts everything into FieldCache, adds support to SortField and FieldSortedHitQueue for sorting on bytes and longs.  Drops FieldCacheImpl as it doesn't really serve any purpose once you make FieldCache a class.\n\nNote this breaks the back-compat. contract on FieldCache interface.\n",
+            "date": "2007-12-03T17:30:04.086+0000",
+            "id": 16
+        },
+        {
+            "author": "Yonik Seeley",
+            "body": "Actually, I'm not sure we should change it to an abstract class now... that's not a backward compatible change for normal users, right?\n\nPeople very likely access the current FieldCache via FieldCache.DEFAULT.get...() or\nFieldCache f = FieldCache.DEFAULT\n\nSo as long as no one has any custom implementations, we can at least add new methods to the FieldCache interface and implement them in FieldCacheImpl",
+            "date": "2007-12-03T23:44:32.628+0000",
+            "id": 17
+        },
+        {
+            "author": "Grant Ingersoll",
+            "body": "With this latest patch, they will still be able to do that.  I made FC a full-blown public class and deleted FieldCacheImpl.\n\nSo far, there has been one user who responded to my request for people who have implemented FieldCache: http://www.gossamer-threads.com/lists/lucene/java-user/55402\n\nHowever, the user already says it isn't a big deal for us to change it.",
+            "date": "2007-12-04T00:58:21.339+0000",
+            "id": 18
+        },
+        {
+            "author": "Yonik Seeley",
+            "body": "> With this latest patch, they will still be able to do that.\n\nOnly if they recompile.  Simply dropping in a new lucene jar would break their existing FieldCache usage.",
+            "date": "2007-12-04T01:19:35.493+0000",
+            "id": 19
+        },
+        {
+            "author": "Grant Ingersoll",
+            "body": "Yes.  True.  Here you and Doug finally had me convinced and now... :-)",
+            "date": "2007-12-04T02:01:14.584+0000",
+            "id": 20
+        },
+        {
+            "author": "Grant Ingersoll",
+            "body": "I committed my original patch which keeps the ExtendedFieldCache.\n\nIf anything, I think we should mark FieldCache for 3.X that it is going to be converted to a class.",
+            "date": "2007-12-18T15:13:54.221+0000",
+            "id": 21
+        },
+        {
+            "author": "Grant Ingersoll",
+            "body": "Sigh, I had it in the patch, but didn't get the BYTE and SHORT values on the SortField.  Ugh.",
+            "date": "2008-01-31T02:21:14.078+0000",
+            "id": 22
+        },
+        {
+            "author": "Grant Ingersoll",
+            "body": "Here's the patch that adds the missing short and byte sorting.\n\nWill commit in the next day or two.",
+            "date": "2008-01-31T16:27:23.345+0000",
+            "id": 23
+        },
+        {
+            "author": "Grant Ingersoll",
+            "body": "I committed the short-byte patch.",
+            "date": "2008-02-02T03:09:39.623+0000",
+            "id": 24
+        }
+    ],
+    "component": "core/search",
+    "description": "This is actually the same as LUCENE-463 but I cannot find a way to re-open that issue. I'm attaching a test case by dragon-fly999 at hotmail com that shows the problem and a patch that seems to fix it.\n\nThe problem is that a long (as used for dates) cannot be parsed as an integer, and the next step is then to parse it as a float, which works but which is not correct. With the patch the following parsers are used in this order: int, long, float.\n",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-1045",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Minor",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "SortField.AUTO doesn't work with long",
+    "systemSpecification": true,
+    "version": "2.2"
+}

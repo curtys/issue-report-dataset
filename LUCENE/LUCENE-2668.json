@@ -1,0 +1,113 @@
+{
+    "comments": [
+        {
+            "author": "Koji Sekiguchi",
+            "body": "The test program which can be used to see the problem.",
+            "date": "2010-09-25T18:05:07.560+0000",
+            "id": 0
+        },
+        {
+            "author": "Koji Sekiguchi",
+            "body": "Here is my idea. It is very simple - always adds offset gap. This causes test failure in offset test of TestIndexWriter.\nCan anyone explain why the condition (if(anyToken)) is there?",
+            "date": "2010-09-26T01:22:47.156+0000",
+            "id": 1
+        },
+        {
+            "author": "Yonik Seeley",
+            "body": "bq. always adds offset gap\n\n+1 \nI don't know the background on this, but this seems more consistent, intuitive, and potentially useful (i.e. being able to depend that different field values are anways >n*gap positions apart)",
+            "date": "2010-09-26T01:44:50.885+0000",
+            "id": 2
+        },
+        {
+            "author": "Koji Sekiguchi",
+            "body": "Thanks Yonik for the comment.\n\nHere is the final patch. I'd like to commit in a few days if no one objects.",
+            "date": "2010-09-26T04:21:03.927+0000",
+            "id": 3
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "+1\n\nBut, what about index back compat?  Should we switch this under Version?  Or do we think apps are not relying on this quirky behavior?\n\nIn the future, eg w/ write-once attr bindings in the analysis chain (LUCENE-2450), which lets us fully decouple analysis and indexing, how pos/offset gaps are added for multi-valued fields will be fully under the analyzer's control...",
+            "date": "2010-09-26T13:05:52.912+0000",
+            "id": 4
+        },
+        {
+            "author": "Yonik Seeley",
+            "body": "bq. Or do we think apps are not relying on this quirky behavior?\n\nI'd doubt there's a single one relying on the current behavior - in fact I think it's more likely that there's an app out there relying on the proposed behavior and they just haven't hit the case when no tokens were indexed for a field value.\n",
+            "date": "2010-09-26T13:19:53.626+0000",
+            "id": 5
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "bq. I'd doubt there's a single one relying on the current behavior - in fact I think it's more likely that there's an app out there relying on the proposed behavior and they just haven't hit the case when no tokens were indexed for a field value.\n\nOK so let's just break it and advertise this in the back compat breaks...",
+            "date": "2010-09-26T15:41:01.701+0000",
+            "id": 6
+        },
+        {
+            "author": "Robert Muir",
+            "body": "Seems like we should fix LUCENE-2529 for the positions too?\n",
+            "date": "2010-09-26T16:23:39.445+0000",
+            "id": 7
+        },
+        {
+            "author": "Yonik Seeley",
+            "body": "bq. Seems like we should fix LUCENE-2529 for the positions too? \n\nYep, really seems like almost the same issue.",
+            "date": "2010-09-26T16:34:45.600+0000",
+            "id": 8
+        },
+        {
+            "author": "Koji Sekiguchi",
+            "body": "Ok, I'll see this issue and LUCENE-2529 all together.",
+            "date": "2010-09-26T22:33:02.308+0000",
+            "id": 9
+        },
+        {
+            "author": "Koji Sekiguchi",
+            "body": "New patch attached. It includes LUCENE-2529 and its test case. I added setter/getter for positionIncrementGap to MockAnalyzer.",
+            "date": "2010-09-27T03:04:48.156+0000",
+            "id": 10
+        },
+        {
+            "author": "Koji Sekiguchi",
+            "body": "trunk: Committed revision 1001796 and 1001957.\nbranch_3x: Committed revision 1001991.",
+            "date": "2010-09-28T02:20:21.877+0000",
+            "id": 11
+        },
+        {
+            "author": "David Smiley",
+            "body": "So to anyone who's commented on this issue that has done work on this class... do you know why it _conditionally_ decrements the position and then increments it later unconditionally?  Reference lines 156 & 188.  The very fact that it happens sometimes but not others is thwarting my efforts to have the term positions between multiple fields coincide (special purpose use case I have).  I'm using a position filter that ensures that all terms for a value have 0 position increment gap, even the first one.  But sometimes I have no value or I have a value that is a stop word.  My hacky work-around is to set the first value to each of these multi-valued fields be some dummy value that gets indexed.  This is ugly and wasteful on disk.",
+            "date": "2010-09-30T13:31:21.715+0000",
+            "id": 12
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "bq. do you know why it conditionally decrements the position and then increments it later unconditionally? \n\nThis was done in LUCENE-1542, to prevent position increment from becoming negative, which messes up positions if the field has a payload.  Basically we cannot store a -1 position if the field has a payload.\n\nBut I agree it's awful that we are inconsistent and it requires hacks for apps that have 0 posIncr on the first token.  Not sure how to best fix this though...",
+            "date": "2010-09-30T21:51:18.655+0000",
+            "id": 13
+        },
+        {
+            "author": "David Smiley",
+            "body": "Apologies; I meant to post to LUCENE-2529",
+            "date": "2010-10-01T18:44:04.703+0000",
+            "id": 14
+        },
+        {
+            "author": "Grant Ingersoll",
+            "body": "Bulk close for 3.1",
+            "date": "2011-03-30T15:49:56.552+0000",
+            "id": 15
+        }
+    ],
+    "component": "core/index",
+    "description": "Problem: If a multiValued field which contains a stop word (e.g. \"will\" in the following sample) only value is analyzed by StopAnalyzer when indexing, the offsets of the subsequent tokens are not correct.\n\n{code:title=indexing a multiValued field}\ndoc.add( new Field( F, \"Mike\", Store.YES, Index.ANALYZED, TermVector.WITH_OFFSETS ) );\ndoc.add( new Field( F, \"will\", Store.YES, Index.ANALYZED, TermVector.WITH_OFFSETS ) );\ndoc.add( new Field( F, \"use\", Store.YES, Index.ANALYZED, TermVector.WITH_OFFSETS ) );\ndoc.add( new Field( F, \"Lucene\", Store.YES, Index.ANALYZED, TermVector.WITH_OFFSETS ) );\n{code}\n\nIn this program (soon to be attached), if you use WhitespaceAnalyzer, you'll get the offset(start,end) for \"use\" and \"Lucene\" will be use(10,13) and Lucene(14,20). But if you use StopAnalyzer, the offsets will be use(9,12) and lucene(13,19). When searching, since searcher cannot know what analyzer was used at indexing time, this problem causes out of alignment of FVH.\n\nCause of the problem: StopAnalyzer filters out \"will\", anyToken flag set to false then offset gap is not added in DocInverterPerField:\n\n{code:title=DocInverterPerField.java}\nif (anyToken)\n  fieldState.offset += docState.analyzer.getOffsetGap(field);\n{code}\n\nI don't understand why the condition is there... If always the gap is added, I think things are simple.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-2668",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Minor",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "offset gap should be added regardless of existence of tokens in DocInverterPerField",
+    "systemSpecification": true,
+    "version": "2.9.3, 3.0.2, 3.1, 4.0-ALPHA"
+}

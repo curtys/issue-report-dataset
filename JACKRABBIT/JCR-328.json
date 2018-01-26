@@ -1,0 +1,53 @@
+{
+    "comments": [
+        {
+            "author": "Jukka Zitting",
+            "body": "Fixed by removing the TransientRepository(RepositoryConfig) constructor in revision 382213.\n\nIt is possible to implement the removed functionality in client code like this:\n\n    final RepositoryConfig config = ...;\n    Repository repository = new TransientRepository(\n        new TransientRepository.RepositoryFactory() {\n            public RepositoryImpl getRepository() throws RepositoryException {\n                return new RepositoryImpl.create(config);\n            }\n        });\n\nThis should only be done when the mentioned problem in the file system configuration is fixed. A separate issue should be opened for that if anyone needs such functionality.",
+            "date": "2006-03-02T10:18:05.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Mark Slater",
+            "body": "There's a syntax error on the example code's return line. The code should read:\n\nfinal RepositoryConfig config = ...; \n    Repository repository = new TransientRepository( \n        new TransientRepository.RepositoryFactory() { \n            public RepositoryImpl getRepository() throws RepositoryException { \n                return RepositoryImpl.create(config); \n            } \n        });\n\n",
+            "date": "2006-03-20T19:44:05.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "> There's a syntax error on the example code's return line.\n\nGood catch, thanks!\n\nIs there interest to have the TransientRepository(RepositoryConfig) constructor back? Now that JCR-331 is resolved, there should be no problem restoring the constructor.",
+            "date": "2006-03-20T19:48:04.000+0000",
+            "id": 2
+        },
+        {
+            "author": "Mark Slater",
+            "body": "Sure. That would make my JUnit code somewhat cleaner.",
+            "date": "2006-03-21T06:15:41.000+0000",
+            "id": 3
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "The TransientRepository(RepositoryConfig) constructor is now restored (revision 387966).",
+            "date": "2006-03-23T07:18:37.000+0000",
+            "id": 4
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Merged to 1.0 in revision 389548.",
+            "date": "2006-03-29T02:17:28.000+0000",
+            "id": 5
+        }
+    ],
+    "component": "jackrabbit-core",
+    "description": "I'm using a TransitoryRepository for my unit testing, with the repository's file system specified as:\n\n    <FileSystem class=\"org.apache.jackrabbit.core.fs.local.LocalFileSystem\">\n        <param name=\"path\" value=\"${rep.home}/repository\"/>\n    </FileSystem>\n\nI noticed today that when I run my unit tests Jackrabbit is creating four directories at the root of my hard drive: \"meta\", \"namespaces\", \"nodetypes\", and \"data\". I tracked the problem the fact that when a LocalFileSystem is closed, it sets the \"root\" to null - an invalid state. But when using a TransitoryRepository, the invalid state is never discovered because the LocalFileSystem object itself is not released, or re-initialized. It is simply used to create BasedFileSystem objects in RepositoryImpl. Calls to BasedFileSystem defer to the LocalFileSystem object that now has a null root. Inside the LocalFileSystem, all the calls to Java's io.File constructor have a \"null\" parent parameter, causing File to fall back to its single argument constructor which sees the path \"/meta\" and happily creates files at the root of the disk.\n\nI'm not sure what the best solution is, but some thoughts I've had are:\n- don't set the \"root\" property to null when closing a LocalFileSystem\n- make RepositoryConfig re-init the FileSystem variable when it is accessed.\n- don't cache the RepositoryConfig in TransitoryRepository (this might also require a new constructor that takes a class-path resource for the repository configuration file)",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "JCR-328",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "TransientRepository with LocalFileSystem eventually causes Repository data to be stored at path '/'",
+    "systemSpecification": false,
+    "version": "0.9"
+}

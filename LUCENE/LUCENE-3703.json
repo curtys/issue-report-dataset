@@ -1,0 +1,59 @@
+{
+    "comments": [
+        {
+            "author": "Shai Erera",
+            "body": "Forgot to mention that Doron actually discovered the bug, I just had the time to provide the fix :).",
+            "date": "2012-01-18T13:37:46.548+0000",
+            "id": 0
+        },
+        {
+            "author": "Shai Erera",
+            "body": "Patch fixes the bug by moving to track reference count by DTR. Also, added a test which covers that bug.\n\nOn the go, fixed close() to synchronize on this if the instance is not already closed. Otherwise, two threads that call close() concurrently might fail (one of them) in decRef().\n\nI think it's ready to commit, will wait until tomorrow for review.",
+            "date": "2012-01-18T13:46:11.839+0000",
+            "id": 1
+        },
+        {
+            "author": "Doron Cohen",
+            "body": "Patch looks good, builds and passes for me, thanks for fixing this Shai.\n\nFew comments:\n* CHANGES: rephrase the e.g. part like this: (e.g. if application called incRef/decRef).\n* New test:\n** LTC.newDirectory() instead of new RAMDirectory().\n** text messages in the asserts.\n* DTR: \n** Would it be simpler to make close() synchronized (just like IR.close())\n** Would it - again - be simpler to keep maintaining the ref-counts in the internal IR and just, in refresh, decRef as needed in the old one and incRef accordingly in the new one? This way we continue to delegate that logic to IR, and do not duplicate it.\n** Current patch removes the ensureOpen() check from getRefCount(). I think this is correct - in fact I needed that when debugging this. Perhaps should document about it in CHANGES entry.",
+            "date": "2012-01-19T07:37:52.908+0000",
+            "id": 2
+        },
+        {
+            "author": "Shai Erera",
+            "body": "Thanks for reviewing Doron !\n\nbq. CHANGES: rephrase the e.g. part like this: (e.g. if application called incRef/decRef).\n\nWill fix, thanks.\n\nbq. LTC.newDirectory() instead of new RAMDirectory()\n\nI wrote a comment in the test \"// no need for random directories here\" -- it's really not related to any Directory.\n\nbq. text messages in the asserts.\n\nadded.\n\nbq. Would it be simpler to make close() synchronized (just like IR.close())\n\nIt would, but then it'd mean everyone who calls close() will wait, even if the TR is already closed. The code now is a nice way to only block threads which discover that TR is not already closed. I don't think it's that critical (how often do you call close() anyway), so I don't mind to keep it / make the entire method synchronized.\n\nbq. Would it - again - be simpler to keep maintaining the ref-counts in the internal IR\n\nI think that the code would look odd -- we'll ir.openIfChanged, then call incRef() until newIR.getRefCount() == oldIR.getRefCount(). And I'm not sure how will that play with someone calling concurrently to DTR.decRef() ... it might be a mess. Even though we duplicate ref counting logic, I think it's safer, but perhaps I misunderstood what you meant?\n\nbq. Perhaps should document about it in CHANGES entry.\n\nI will mention it as well.",
+            "date": "2012-01-19T08:17:13.917+0000",
+            "id": 3
+        },
+        {
+            "author": "Shai Erera",
+            "body": "Patch addresses Doron's comments.",
+            "date": "2012-01-19T08:20:43.196+0000",
+            "id": 4
+        },
+        {
+            "author": "Doron Cohen",
+            "body": "Missed that test comment about no need for random directory.\nAbout the decRef dup code, yeah, that's what I meant, but okay.\nI think this is ready to commit.",
+            "date": "2012-01-19T10:05:21.400+0000",
+            "id": 5
+        },
+        {
+            "author": "Shai Erera",
+            "body": "Committed revision 1234450 (3x), 1234451 (trunk).\n\nThanks Doron !",
+            "date": "2012-01-22T05:15:20.102+0000",
+            "id": 6
+        }
+    ],
+    "component": "modules/facet",
+    "description": "DirectoryTaxonomyReader uses the internal IndexReader in order to track its own reference counting. However, when you call refresh(), it reopens the internal IndexReader, and from that point, all previous reference counting gets lost (since the new IndexReader's refCount is 1).\n\nThe solution is to track reference counting in DTR itself. I wrote a simple unit test which exposes the bug (will be attached with the patch shortly).",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-3703",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "DirectoryTaxonomyReader.refresh misbehaves with ref counts",
+    "systemSpecification": true,
+    "version": ""
+}

@@ -1,0 +1,65 @@
+{
+    "comments": [
+        {
+            "author": null,
+            "body": "Created attachment 18668\nProposed fixed version of JAASRealm.\n\nThis version of JAASRealm validates the class names for setUserClassNames and\nsetRoleClassNames. It verifies if the class exists, and if it implements\njava.security.Principal. If not, it logs a message (severe), that allows users\nto detect the incorrect class name.\n\nIt might even be better if it threw an exception.\n\nI've also restructured the code to parse the comma-delimited class name string,\nas it was rather inefficient. It uses a StringTokenizer now.",
+            "date": "20060801T09:00:04",
+            "id": 0
+        },
+        {
+            "author": null,
+            "body": "Created attachment 18669\nImproved version of the patch\n\nNo longer using StringTokenizer, but String.split, as StringTokenizer is\nconsidered legacy. Thanks to Sameer Acharya.",
+            "date": "20060801T11:28:27",
+            "id": 1
+        },
+        {
+            "author": null,
+            "body": "This looks like a good idea to enhance.  However, please submit your patch in\ndiff  format rather than the whole file, that would make its review and\napplication much faster: http://www.apache.org/dev/contributors.html#patches\nprovides more details.",
+            "date": "20061226T05:24:27",
+            "id": 2
+        },
+        {
+            "author": null,
+            "body": "Created attachment 19306\nPatch of JAASRealm.java (in diff format)",
+            "date": "20061227T00:54:31",
+            "id": 3
+        },
+        {
+            "author": null,
+            "body": "Tom, thanks for providing this patch in diff form.  I've applied it to the\nTomcat 5.5 and 6.0 trunks, I really like it.  Sorry it took so long.",
+            "date": "20070325T14:42:32",
+            "id": 4
+        },
+        {
+            "author": null,
+            "body": "While this patch might have improved feedback when an incorrect classnames are\nprovided, it actually fully *breaks* JAASRealm usage when correct classnames are\nprovided but need to be accessed through a ContextClassLoader.\n\nWe at Apache Jetspeed-2 use the useContextClassLoader=true setting for hooking\nup our own custom Principal classes as these are provided through the portal\napplication itself, not from a common/shared classloader.\n\nBecause the new parseClassNames only does a simple Class.forName() check this\nnow fails to validate our classnames for Tomcat 5.5.24 and later and thereby\nbreaking our JAAS based security :(\n\nI suggest this to be solved by either:\n- reverting the patch\n- keep the current patch but *ignore* a ClassNotFoundException except for\nlogging that it happened\n- run this method in the appropriate ContextClassLoader for the web app if possible\n\nFYI: we have a Jetspeed JIRA issue opened on this bug with some additional\ninformation: https://issues.apache.org/jira/browse/JS2-828\n\nHopefully this issue can be resolved quickly as right now we cannot run Jetspeed\non Tomcat >= 5.5.24\n\nRegards, Ate",
+            "date": "20071213T06:13:55",
+            "id": 5
+        },
+        {
+            "author": null,
+            "body": "See http://issues.apache.org/bugzilla/show_bug.cgi?id=44084 for the Tomcat 6\nversion of this issue.  This has been fixed in the Tomcat SVN trunk, and should\nbe integrated into the next 5.5 and 6 releases.\n\n",
+            "date": "20071227T14:33:40",
+            "id": 6
+        },
+        {
+            "author": null,
+            "body": "This has been fixed as per the comments in 44084.",
+            "date": "20080121T13:01:59",
+            "id": 7
+        }
+    ],
+    "component": "Catalina",
+    "description": "org.apache.catalina.realm.JAASRealm does not verify any of the class names that\nare set through setRoleClassNames() and setUserClassNames().\n\nIf an incorrect class name (e.g. a typo) is configured in context.xml, this is\nunnoticed by JAASRealm. The result is that during authentication, when the\nsubject's principals are checked against the configured class names, the\nprincipals are not recognised, and therefore not added to the subject.\n\nThe fact an incorrect configured class name is currently not detected and logged\nmakes it very hard to find the source of the problem. It can be easily fixed by\nchecking the class names in the two methods mentioned above. The class must\nexist, and it must implement java.security.Principal, which is currently not\nenforced/checked by the code.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "40150",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "P2 blocker",
+    "product": "Tomcat 5",
+    "project": "TOMCAT",
+    "summary": "Incorrect User/Role classnames are silently ignored.",
+    "systemSpecification": true,
+    "version": "5.5.17"
+}

@@ -1,0 +1,65 @@
+{
+    "comments": [
+        {
+            "author": "Robert Muir",
+            "body": "patch",
+            "date": "2012-02-02T20:37:55.371+0000",
+            "id": 0
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "+1 looks great!",
+            "date": "2012-02-02T21:02:39.737+0000",
+            "id": 1
+        },
+        {
+            "author": "Robert Muir",
+            "body": "Thanks Mike: i will prematurely commit, just to make try to make some incremental improvements.\n\nI think its especially confusing/horrible in trunk after LUCENE-3555 and as the javadocs are \nout of date since norms are no longer required to be single-bytes, etc, etc.\n\nif anyone objects, or has better ideas (ESPECIALLY NAMING: its the worst!), don't hesitate...\nthis stuff is really important.\n",
+            "date": "2012-02-02T23:58:58.458+0000",
+            "id": 2
+        },
+        {
+            "author": "Robert Muir",
+            "body": "Here's part2: nuking SimilarityProvider (instead use PerFieldSimilarityWrapper if you want special per-field stuff).\n\nThis really simplifies the APIs, especially for say a casual user who just wants to try out a new ranking model.",
+            "date": "2012-02-05T00:25:42.675+0000",
+            "id": 3
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "+1",
+            "date": "2012-02-05T14:03:53.064+0000",
+            "id": 4
+        },
+        {
+            "author": "Neil Hooey",
+            "body": "This change breaks per-field similarity configuration in Solr. Specifically with this commit:\n\n{code}\ncommit 5d371928263d8d78d0e52781340ae95506bd9bf6\nAuthor: Robert Muir <rmuir@apache.org>\nDate:   Mon Feb 6 12:48:01 2012 +0000\n\n    LUCENE-3749: replace SimilarityProvider with PerFieldSimilarityWrapper\n    \n    git-svn-id: https://svn.apache.org/repos/asf/lucene/dev/trunk@1241001 13f79535-47bb-0310-9956-ffa450edef68\n{code}\n\nI have the following configuration in my schema.xml:\n\n{code}\n<fieldtype name=\"payloads\" stored=\"false\" indexed=\"true\" class=\"solr.TextField\" >\n  <analyzer>\n    <tokenizer class=\"com.foo.lucene.analysis.core.PayloadTermTokenizerFactory\"/>\n    <filter class=\"solr.DelimitedPayloadTokenFilterFactory\" encoder=\"float\"/>\n  </analyzer>\n  <analyzer type=\"query\">\n    <tokenizer class=\"solr.WhitespaceTokenizerFactory\"/>\n    <filter class=\"solr.LowerCaseFilterFactory\"/>\n  </analyzer>\n  <similarity class=\"com.foo.lucene.search.PayloadSimilarity\" />\n</fieldtype>\n{code}\n\nBut when I build against and use a version of a Solr with the commit mentioned above, my similarity class is no longer executed. I've confirmed this by putting prints in the scorePayload(), tf() and idf() functions and noticing they print before and don't print after including that commit.\n\nIt seems this is intentional, based on Robert Muir's comments, but how can you get per-field similarity to work in Solr with this new code?",
+            "date": "2012-03-04T23:16:41.296+0000",
+            "id": 5
+        },
+        {
+            "author": "Robert Muir",
+            "body": "This patch does not break anything, it changes the configuration mechanism for an unreleased feature.\n\nif you want a per-field similarity, then configure a <similarity> in your schema.xml that\nextends PerFieldSimilarityWrapper. If you want it to defer to the fieldType in the schema,\nthen make it SchemaAware so that its initialized with an IndexSchema object.\n\nAn example one (SchemaSimilarityFactory) is provided that just this, and here is its test: http://svn.apache.org/repos/asf/lucene/dev/trunk/solr/core/src/test-files/solr/conf/schema-sim.xml",
+            "date": "2012-03-04T23:37:28.349+0000",
+            "id": 6
+        },
+        {
+            "author": "Neil Hooey",
+            "body": "Thanks Robert, I've got it working now. I just set my default similarity to {{SchemaSimilarityFactory}} and it works just as it did before.",
+            "date": "2012-03-05T19:13:31.353+0000",
+            "id": 7
+        }
+    ],
+    "component": "",
+    "description": "As part of adding additional scoring systems to lucene, we made a lower-level Similarity\nand the existing stuff became e.g. TFIDFSimilarity which extends it.\n\nHowever, I always feel bad about the complexity introduced here (though I do feel there\nare some \"excuses\", that its a difficult challenge).\n\nIn order to try to mitigate this, we also exposed an easier API (SimilarityBase) on top of \nit that makes some assumptions (and trades off some performance) to try to provide something \nconsumable for e.g. experiments.\n\nStill, we can cleanup a few things with the low-level api: fix outdated documentation and\nshoot for better/clearer naming etc.\n",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-3749",
+    "issuetypeClassified": "OTHER",
+    "issuetypeTracker": "OTHER",
+    "priority": "Major",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "Similarity.java javadocs and simplifications for 4.0",
+    "systemSpecification": true,
+    "version": "4.0-ALPHA"
+}

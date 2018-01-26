@@ -1,0 +1,89 @@
+{
+    "comments": [
+        {
+            "author": "Bin Chen",
+            "body": "Looks like the problem happens mroe often than I first thought.  I think it \nneeds to be fixed.  I jsut run into one caused by server sid etiming out keep-\nalive socket.  It went into the circular call right from there.\n\njava.net.SocketException: Connection aborted by peer: socket write error\n        at java.net.SocketOutputStream.socketWrite(Native Method)\n        at java.net.SocketOutputStream.write(Unknown Source)\n        at com.sun.net.ssl.internal.ssl.OutputRecord.a(DashoA6275)\n        at com.sun.net.ssl.internal.ssl.SSLSocketImpl.a(DashoA6275)\n        at com.sun.net.ssl.internal.ssl.AppOutputStream.write(DashoA6275)\n        at org.apache.commons.httpclient.HttpConnection$WrappedOutputStream.writ\ne(HttpConnection.java:1274)\n        at java.io.BufferedOutputStream.flushBuffer(Unknown Source)\n        at java.io.BufferedOutputStream.flush(Unknown Source)\n        at org.apache.commons.httpclient.HttpConnection.flushRequestOutputStream\n(HttpConnection.java:750)\n        at org.apache.commons.httpclient.HttpMethodBase.writeRequest(HttpMethodB\nase.java:2161)\n        at org.apache.commons.httpclient.HttpMethodBase.processRequest(HttpMetho\ndBase.java:2494)\n        at org.apache.commons.httpclient.HttpMethodBase.execute(HttpMethodBase.j\nava:1062)\n        at org.apache.commons.httpclient.HttpClient.executeMethod(HttpClient.jav\na:599)\n        at org.apache.commons.httpclient.HttpClient.executeMethod(HttpClient.jav\na:497)\n        at com.sabre.evoya.client.common.tools.ServletProxyCore$HttpClientRunner\n.executeMethod(ServletProxyCore.java:2776)\n        at com.sabre.evoya.client.common.tools.ServletProxyCore$HttpClientRunner\n.sendObject(ServletProxyCore.java:2657)\n        at com.sabre.evoya.client.common.tools.ServletProxyCore.HttpClientSendRe\nceive(ServletProxyCore.java:1446)\n        at com.sabre.evoya.client.common.tools.ServletProxyCore.sendReceive(Serv\nletProxyCore.java:944)\n        at com.sabre.evoya.client.common.tools.ServletProxyCore.sendReceive(Serv\nletProxyCore.java:537)\n        at com.sabre.evoya.client.common.tools.ServletProxyCore.sendReceive(Serv\nletProxyCore.java:531)\n        at com.sabre.jserver.Session.sendReceiveMultiByteBuffer(Session.java:839\n)\n        at com.sabre.jserver.TCPSession.sendReceiveMulti(TCPSession.java:863)\n        at com.sabre.jserver.TCPSession.processPacket(TCPSession.java:262)\n        at com.sabre.jserver.TCPSession.run(TCPSession.java:178)\n        at java.lang.Thread.run(Unknown Source)\n",
+            "date": "2003-05-01T02:53:37.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Created an attachment (id=6115)\npatch\n",
+            "date": "2003-05-01T09:42:40.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Good catch.  This should take care of it.\n\nMike",
+            "date": "2003-05-01T09:43:09.000+0000",
+            "id": 2
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Makes sense to me.\n\nOleg",
+            "date": "2003-05-01T19:38:06.000+0000",
+            "id": 3
+        },
+        {
+            "author": "Bin Chen",
+            "body": "Mike,\n\nI tested the patch and it worked.  Thanks.\n\nBin Chen",
+            "date": "2003-05-02T01:34:39.000+0000",
+            "id": 4
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Patch applied.",
+            "date": "2003-05-02T06:14:45.000+0000",
+            "id": 5
+        },
+        {
+            "author": "Bin Chen",
+            "body": "New problem created bu the patch:\n\nI have done some mroe testing and just realized that a new problem was created \nby the patch.  The \"used\" flag in the HttpConnection class is set to false \ndurign the process of dealing with recursive issue.  As result, the exception \nthrown out is NOT converted to HttpRecoverableException any more (the raw \nSocketException is thrown instead).  The case can be recreated by doing a keep-\nalive connection and wait for the connection to timeout.  The \"Output exception \noccurred on a used connection.  Will treat as recoverable.\" message will \nindicate teh exception is converted.  Missing the message would indicate the \nraw exeption is thrown.",
+            "date": "2003-05-06T00:23:51.000+0000",
+            "id": 6
+        },
+        {
+            "author": "Bin Chen",
+            "body": "Created an attachment (id=6219)\nlog file\n",
+            "date": "2003-05-06T00:27:28.000+0000",
+            "id": 7
+        },
+        {
+            "author": "Bin Chen",
+            "body": "Created an attachment (id=6220)\npatch\n",
+            "date": "2003-05-06T01:02:34.000+0000",
+            "id": 8
+        },
+        {
+            "author": "Bin Chen",
+            "body": "Created an attachment (id=6221)\nlog with patch\n",
+            "date": "2003-05-06T01:03:14.000+0000",
+            "id": 9
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Agreed.  I will path this one tonight.\n\nMike",
+            "date": "2003-05-06T20:42:54.000+0000",
+            "id": 10
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Patch applied.",
+            "date": "2003-05-07T10:33:05.000+0000",
+            "id": 11
+        }
+    ],
+    "component": "HttpClient (classic)",
+    "description": "When the HttpConnection#WrappedOutputStream.flush () encounters IOException \ndruign write, it is calling HttpConnection.close which calls \nHttpConnection.closeSocketAndStreams and which eventually calls \nHttpConnection#WrappedOutputStream.flush again.  The circular calls will cause \nStackOverflowError.\n\nI run into this accidentally when I was trying to extend HttpConnection.  But \nlooking through the code, I believe any IOException may cause the same \nproblem.  The circular calls should be either removed or controlled.  Below is \npart of teh stack trace\n\njava.lang.StackOverflowError\n        at java.lang.Exception.<init>(Unknown Source)\n        at java.io.IOException.<init>(Unknown Source)\n        at java.net.SocketException.<init>(Unknown Source)\n        at java.net.SocketOutputStream.socketWrite(Native Method)\n        at java.net.SocketOutputStream.write(Unknown Source)\n        at org.apache.commons.httpclient.HttpConnection$WrappedOutputStream.writ\ne(HttpConnection.java:1273)\n        at java.io.BufferedOutputStream.flushBuffer(Unknown Source)\n        at java.io.BufferedOutputStream.flush(Unknown Source)\n        at java.io.FilterOutputStream.close(Unknown Source)\n        at org.apache.commons.httpclient.HttpConnection.closeSocketAndStreams(Ht\ntpConnection.java:1083)\n        at org.apache.commons.httpclient.HttpConnection.close(HttpConnection.jav\na:1024)\n        at org.apache.commons.httpclient.HttpConnection$WrappedOutputStream.hand\nleException(HttpConnection.java:1235)\n        at org.apache.commons.httpclient.HttpConnection$WrappedOutputStream.writ\ne(HttpConnection.java:1275)\n        at java.io.BufferedOutputStream.flushBuffer(Unknown Source)\n        at java.io.BufferedOutputStream.flush(Unknown Source)\n        at java.io.FilterOutputStream.close(Unknown Source)\n        at org.apache.commons.httpclient.HttpConnection.closeSocketAndStreams(Ht\ntpConnection.java:1083)\n        at org.apache.commons.httpclient.HttpConnection.close(HttpConnection.jav\na:1024)\n        at org.apache.commons.httpclient.HttpConnection$WrappedOutputStream.hand\nleException(HttpConnection.java:1235)\n        at org.apache.commons.httpclient.HttpConnection$WrappedOutputStream.writ\ne(HttpConnection.java:1275)\n        at java.io.BufferedOutputStream.flushBuffer(Unknown Source)\n        at java.io.BufferedOutputStream.flush(Unknown Source)\n        at java.io.FilterOutputStream.close(Unknown Source)\n        at org.apache.commons.httpclient.HttpConnection.closeSocketAndStreams(Ht\ntpConnection.java:1083)\n        at org.apache.commons.httpclient.HttpConnection.close(HttpConnection.jav\na:1024)\n        at org.apache.commons.httpclient.HttpConnection$WrappedOutputStream.hand\nleException(HttpConnection.java:1235)\n        at org.apache.commons.httpclient.HttpConnection$WrappedOutputStream.writ\ne(HttpConnection.java:1275)\n        at java.io.BufferedOutputStream.flushBuffer(Unknown Source)\n        at java.io.BufferedOutputStream.flush(Unknown Source)\n        at java.io.FilterOutputStream.close(Unknown Source)\n        at org.apache.commons.httpclient.HttpConnection.closeSocketAndStreams(Ht\ntpConnection.java:1083)\n        at org.apache.commons.httpclient.HttpConnection.close(HttpConnection.jav\na:1024)\n        at org.apache.commons.httpclient.HttpConnection$WrappedOutputStream.hand\nleException(HttpConnection.java:1235)\n        at org.apache.commons.httpclient.HttpConnection$WrappedOutputStream.writ\ne(HttpConnection.java:1275)",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "HTTPCLIENT-204",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Critical",
+    "product": "HTTPCLIENT",
+    "project": "HTTPCLIENT",
+    "summary": "StackOverflowError in HttpConnection",
+    "systemSpecification": true,
+    "version": ""
+}

@@ -1,0 +1,59 @@
+{
+    "comments": [
+        {
+            "author": "pschwartau@meer.net",
+            "body": "cc'ing Igor -",
+            "date": "20030425T23:50:07",
+            "id": 0
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "A simpler test case would be one line script:\n\n\"\" + (1==0) ? \"\" : \"\";\n\nwhich execution in Rhino shell gives:\n\nException in thread \"main\" java.lang.IllegalStateException: Stack underflow: -1\n        at org.mozilla.classfile.ClassFileWriter.badStack(ClassFileWriter.java:1154)\n        at org.mozilla.classfile.ClassFileWriter.add(ClassFileWriter.java:401)\n        at org.mozilla.javascript.optimizer.Codegen.addByteCode(Codegen.java:3569)\n        at org.mozilla.javascript.optimizer.Codegen.visitGOTO(Codegen.java:1575)\n        at org.mozilla.javascript.optimizer.Codegen.generateCodeFromNode(Codegen",
+            "date": "20030426T10:12:41",
+            "id": 1
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 121842\nFix for Codege: do not pass trueLabel, falseLabel to recursive generateCodeFromNode from ADD node",
+            "date": "20030427T08:52:50",
+            "id": 2
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "I committed the fix",
+            "date": "20030428T09:51:21",
+            "id": 3
+        },
+        {
+            "author": "pschwartau@meer.net",
+            "body": "Testcase added to JS testsuite:\n\n      mozilla/js/tests/js1_5/Regress/regress-203402.js",
+            "date": "20030429T19:14:27",
+            "id": 4
+        },
+        {
+            "author": "pschwartau@meer.net",
+            "body": "Verified FIXED.\n\nBefore the patch, the testcase passed in interpreted mode (-opt -1)\nbut crashed in any optimized mode (e.g -opt 0, -opt 1, -opt 9):\n\n*-* Testcase js1_5/Regress/regress-203402.js failed:\nExpected exit code 0, got 1\nTestcase terminated with signal 0\nComplete testcase output was:\n\njava.lang.AbstractMethodError\norg.mozilla.javascript.ScriptableObject.getBase(ScriptableObject.java:1583)\norg.mozilla.javascript.ScriptableObject.putProperty(ScriptableObject.java:1473)\norg.mozilla.javascript.ScriptRuntime.setName(ScriptRuntime.java:1137)\norg.mozilla.javascript.gen.c14.call(D:\\JS_trunk\\mozilla\\js\\tests\\js1_5\\Regress\\regress-203402.js:57)\norg.mozilla.javascript.gen.c14.exec(D:\\JS_trunk\\mozilla\\js\\tests\\js1_5\\Regress\\regress-203402.js)\norg.mozilla.javascript.Context.evaluateReader(Context.java:806)\norg.mozilla.javascript.tools.shell.Main.evaluateReader(Main.java:363)\norg.mozilla.javascript.tools.shell.Main.processFileSecure(Main.java:354)\norg.mozilla.javascript.tools.shell.Main.processFile(Main.java:291)\norg.mozilla.javascript.tools.shell.Main.processSource(Main.java:283)\norg.mozilla.javascript.tools.shell.Main.exec(Main.java:103)\norg.mozilla.javascript.tools.shell.Main.main(Main.java:76)\nException in thread \"main\"\n\n\nAfter the patch, the testcase passes in every mode -",
+            "date": "20030429T19:16:18",
+            "id": 5
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Targeting as resolved against 1.5R5",
+            "date": "20040213T11:42:52",
+            "id": 6
+        }
+    ],
+    "component": "Compiler",
+    "description": "User-Agent:       Mozilla/5.0 (Windows; U; Windows NT 5.0; en-US; rv:1.0.2) Gecko/20021216\nBuild Identifier: Mozilla/5.0 (Windows; U; Windows NT 5.0; en-US; rv:1.0.2) Gecko/20021216\n\nThe resultant class generated from the Rhino bytecode generator for the\nfollowing JavaScript causes the JVM to throw a VerifyError.\n\nfunction testit()\n{\n   a = \"a\" + (1==0) ? \"b\" : \"c\";\n}\n\nThe exception is:\n\n[java.lang.VerifyError: (class: org/mozilla/javascript/gen/c156, method: call\nsignature:\n(Lorg/mozilla/javascript/Context;Lorg/mozilla/javascript/Scriptable;Lorg/mozilla/javascript/Scriptable;[Ljava/lang/Object;)Ljava/lang/Object;)\nStack size too large]\n\n\nReproducible: Always\n\nSteps to Reproduce:\n1.  Use the following Java source:\n\nimport org.mozilla.javascript.*;\nimport java.io.StringReader;\n\npublic class RhinoTest\n{\n    public static void failingCase()\n    {\n        Context context = Context.enter();\n        ImporterTopLevel global = new ImporterTopLevel(context);\n        StringReader reader = new StringReader(\"function testit(){ a = \\\"a\\\" +\n(1==0) ? \\\"b\\\" : \\\"c\\\"; }\");\n        try\n        {\n            Script script = context.compileReader(null, reader, \"Example 1\", 1,\nnull);\n            script.exec(context, global);\n        }\n        catch (Exception e)\n        {\n            e.printStackTrace(System.err);\n        }\n        context.exit();\n    }\n\n    public static void main(String[] args)\n    {\n        failingCase();\n    }\n}\n\nActual Results:  \nException in thread \"main\" java.lang.VerifyError: (class: org/mozilla/javascript\n/gen/c1, method: call signature: (Lorg/mozilla/javascript/Context;Lorg/mozilla/j\navascript/Scriptable;Lorg/mozilla/javascript/Scriptable;[Ljava/lang/Object;)Ljav\na/lang/Object;) Stack size too large\n        at org.mozilla.javascript.gen.c2.call(Example 1)\n        at org.mozilla.javascript.gen.c2.exec(Example 1)\n        at RhinoTest.failingCase(RhinoTest.java:14)\n        at RhinoTest.main(RhinoTest.java:25)\n\nExpected Results:  \nShouldn't have gotten a JVM class verification error\n\nIt looks like the placement of the ternary operator is important.  The following\nexample does not have a problem:\n\nfunction testit()\n{\n   a =(1==0) ? \"b\" : \"c\" + \"a\";\n}",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "203402",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "-- major",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "java.lang.VerifyError: stack size too large error when compiling JavaScript containing embedded ternary operator",
+    "systemSpecification": true,
+    "version": "other"
+}

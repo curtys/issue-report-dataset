@@ -1,0 +1,71 @@
+{
+    "comments": [
+        {
+            "author": "hannesw@gmail.com",
+            "body": "Created attachment 237122\npatch for o.m.j.JavaScriptException.details()\n\nThis patch renders the original exception while being fairly defensive about not generating new exceptions.",
+            "date": "20060907T13:58:42",
+            "id": 0
+        },
+        {
+            "author": "timeless@bemail.org",
+            "body": "is this for use in eclipse? if so, can the exception be an untrusted js object?",
+            "date": "20060907T14:48:37",
+            "id": 1
+        },
+        {
+            "author": "hannesw@gmail.com",
+            "body": "> is this for use in eclipse? if so, can the exception be an untrusted js object?\n\nI'm sorry, I don't understand these questions. If you look at the patch, it's pretty simple: It just tries to call ScriptRuntime.toString() with the thrown object, and if that fails find a better string representation for it.",
+            "date": "20061116T12:02:14",
+            "id": 2
+        },
+        {
+            "author": "dfabulich@warpmail.net",
+            "body": "This problem doesn't just affect *rethrown* JavaScript errors; it affects even the simplest program that simply does \"throw new Error('urk');\".  You'll never get to see the message ('urk') in your JavaScript stacktrace.\n\n(This is especially annoying in the embedded Rhino in the new Java 6, because in that case there's absolutely no way to get a reference to the original JS Error object; the ScriptException has no reference to the JavaScriptException object; all you have is the ScriptException.)",
+            "date": "20061212T06:50:32",
+            "id": 3
+        },
+        {
+            "author": "szegedia@freemail.hu",
+            "body": "Fix committed to CVS HEAD.",
+            "date": "20061217T15:14:45",
+            "id": 4
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "Adding target milestone of 1.6R6 based on the date this bug was resolved FIXED.",
+            "date": "20070518T15:10:45",
+            "id": 5
+        },
+        {
+            "author": "hannesw@gmail.com",
+            "body": "Reopening as I still see the following from a java stack trace with current Rhino HEAD:\n\norg.mozilla.javascript.JavaScriptException: [object Error]\n\nThe script being: throw new Error('foo');",
+            "date": "20090512T12:57:06",
+            "id": 6
+        },
+        {
+            "author": "hannesw@gmail.com",
+            "body": "Created attachment 376909\nnew patch that handles NativeError\n\nnew patch that explicitly calls toString() for NativeError instances. Also, try to avoid triggering a RuntimeException for NativeErrors.",
+            "date": "20090512T13:01:00",
+            "id": 7
+        },
+        {
+            "author": "hannesw@gmail.com",
+            "body": "Checking in src/org/mozilla/javascript/JavaScriptException.java;\n/cvsroot/mozilla/js/rhino/src/org/mozilla/javascript/JavaScriptException.java,v  <--  JavaScriptException.java\nnew revision: 1.25; previous revision: 1.24\ndone",
+            "date": "20090512T13:03:51",
+            "id": 8
+        }
+    ],
+    "component": "Core",
+    "description": "User-Agent:       Mozilla/5.0 (X11; U; Linux i686; de; rv:1.8.0.6) Gecko/20060728 Firefox/1.5.0.6\nBuild Identifier: Mozilla/5.0 (X11; U; Linux i686; de; rv:1.8.0.6) Gecko/20060728 Firefox/1.5.0.6\n\nWhen rethrowing an error in JavaScript, the resulting exception's toString() and getMessage() return \"[object Error]\" instead of the original error message. \n\nThe reason is that the implementation of o.m.j.JavaScriptException.details() is too defensive: It doesn't even try to call ScriptRuntime.toString() with the wrapped value object out of fear of generating another exception. I'm adding a patch that always invokes ScriptRuntime.toString(), and catches RuntimeExceptions that may be thrown to fall back to ScriptRuntime.defaultObjectToString().\n\nReproducible: Always\n\nSteps to Reproduce:\nRun the following script:\ntry { a.b } catch (e) { throw e; }\nActual Results:  \nexception from uncaught JavaScript throw: [object Error]\n\n\nExpected Results:  \nexception from uncaught JavaScript throw: ReferenceError: \"a\" is not defined.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "351664",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "-- normal",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "Rethrown JavaScriptException's toString() returns \"[object Error]\"",
+    "systemSpecification": true,
+    "version": "other"
+}

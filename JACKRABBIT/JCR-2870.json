@@ -1,0 +1,65 @@
+{
+    "comments": [
+        {
+            "author": "Chris Schmidt",
+            "body": "Zip of a maven project reproducing the error.  Both Oracle and Derby configurations are provided.",
+            "date": "2011-01-25T14:19:24.162+0000",
+            "id": 0
+        },
+        {
+            "author": "Chris Schmidt",
+            "body": "I'm happy to help with this issue.  Since the ConnectionFactory cannot be used once it has been closed, does it make sense to null the ConnectionFactory after the TransientRepository stops?",
+            "date": "2011-01-25T14:24:35.957+0000",
+            "id": 1
+        },
+        {
+            "author": "Chris Schmidt",
+            "body": "The issue can be worked around if a RepositoryConfig isn't used when creating the TransientRepository.  The ConnectionFactory is cached within the config and used across multiple invocations of the TransientRepository.RepositoryFactory.getRepository() call.\n\nFor my use case, using the config object is necessary. There may be a way to 'reset' the configuration after the repository has shut down and before the getRepository is called.",
+            "date": "2011-01-25T14:59:52.198+0000",
+            "id": 2
+        },
+        {
+            "author": "Chris Schmidt",
+            "body": "Update stacktrace to be smaller",
+            "date": "2011-01-25T20:52:00.698+0000",
+            "id": 3
+        },
+        {
+            "author": "Chris Schmidt",
+            "body": "Proposed patch to the issue.  Add a new static creation method to RepositoryConfig that creates an instance based on an existing configuration.  The new method is then used within the TransientRepository to create a copy of the configuration per call to getRepository from the TransientRepository's custom RepositoryFactory",
+            "date": "2011-01-25T21:38:20.709+0000",
+            "id": 4
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Nice work, thanks! I committed the patch in revision 1065622 and merged it to the 2.2 branch in revision 1065623.\n\nAs a longer term solution it would be cleaner to make the RepositoryConfig objects stateless and move the ConnectionFactory to the RepositoryContext object where it would be tied to the lifecycle of the containing repository instance. But we can do that in a separate improvement issue.",
+            "date": "2011-01-31T14:32:08.825+0000",
+            "id": 5
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "I believe this commit is causing a test failure:\n\nhttps://hudson.apache.org/hudson/job/Jackrabbit-trunk/org.apache.jackrabbit$jackrabbit-jca/1449/testReport/junit/org.apache.jackrabbit.jca.test/ConnectionFactoryTest/testTransactionSupport/",
+            "date": "2011-02-08T09:11:15.501+0000",
+            "id": 6
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "After deeper review I don't think the JCA test failures are caused by this change, so re-resolving. See JCR-2889 for more details.",
+            "date": "2011-02-10T15:05:34.212+0000",
+            "id": 7
+        }
+    ],
+    "component": "jackrabbit-core",
+    "description": "The TransientRepository cannot be used more than once when the repository is configured with the DataSources construct. This has been verified with both Oracle and Derby configurations. Once the TransientRepository closes for the first time, the ConnectionFactory class sets a boolean value named closed to 'true'.  Thereafter, any use of the ConnectionFactory throws a runtime exception.\n\nThe following stacktrace is thrown on the second attempt to utilize the repository:\n\n2011-01-25 08:12:14 DatabaseFileSystem [ERROR] failed to initialize file system\njava.lang.IllegalStateException: this factory has already been closed\n\tat org.apache.jackrabbit.core.util.db.ConnectionFactory.sanityCheck(ConnectionFactory.java:213)\n\tat org.apache.jackrabbit.core.util.db.ConnectionFactory.getDataBaseType(ConnectionFactory.java:134)\n\tat org.apache.jackrabbit.core.fs.db.DbFileSystem.getDataSource(DbFileSystem.java:228)\n\tat org.apache.jackrabbit.core.fs.db.DatabaseFileSystem.init(DatabaseFileSystem.java:190)\n\tat org.apache.jackrabbit.core.config.RepositoryConfigurationParser$6.getFileSystem(RepositoryConfigurationParser.java:1057)\n\tat org.apache.jackrabbit.core.config.RepositoryConfig.getFileSystem(RepositoryConfig.java:892)\n\tat org.apache.jackrabbit.core.RepositoryImpl.<init>(RepositoryImpl.java:284)\n\tat org.apache.jackrabbit.core.RepositoryImpl.create(RepositoryImpl.java:602)\n\tat org.apache.jackrabbit.core.TransientRepository$1.getRepository(TransientRepository.java:179)\n\tat org.apache.jackrabbit.core.TransientRepository.startRepository(TransientRepository.java:279)\n\tat org.apache.jackrabbit.core.TransientRepository.login(TransientRepository.java:375)\n\tat org.apache.jackrabbit.commons.AbstractRepository.login(AbstractRepository.java:123)\n\t...\n\tat com.intellij.rt.execution.application.AppMain.main(AppMain.java:115)\n2011-01-25 08:12:14 RepositoryImpl [ERROR] failed to start Repository: File system initialization failure.\njavax.jcr.RepositoryException: File system initialization failure.\n\tat org.apache.jackrabbit.core.config.RepositoryConfigurationParser$6.getFileSystem(RepositoryConfigurationParser.java:1060)\n\tat org.apache.jackrabbit.core.config.RepositoryConfig.getFileSystem(RepositoryConfig.java:892)\n\tat org.apache.jackrabbit.core.RepositoryImpl.<init>(RepositoryImpl.java:284)\n\tat org.apache.jackrabbit.core.RepositoryImpl.create(RepositoryImpl.java:602)\n\tat org.apache.jackrabbit.core.TransientRepository$1.getRepository(TransientRepository.java:179)\n\tat org.apache.jackrabbit.core.TransientRepository.startRepository(TransientRepository.java:279)\n\tat org.apache.jackrabbit.core.TransientRepository.login(TransientRepository.java:375)\n\tat org.apache.jackrabbit.commons.AbstractRepository.login(AbstractRepository.java:123)\n\tat TransientRepositoryTest.addNodeToRepository(TransientRepositoryTest.java:32)\n\tat TransientRepositoryTest.shouldNotFailWhenUsingTransientRepositoryTwice(TransientRepositoryTest.java:26)\n\t...\n\tat com.intellij.rt.execution.application.AppMain.main(AppMain.java:115)\nCaused by: org.apache.jackrabbit.core.fs.FileSystemException: failed to initialize file system\n\tat org.apache.jackrabbit.core.fs.db.DatabaseFileSystem.init(DatabaseFileSystem.java:210)\n\tat org.apache.jackrabbit.core.config.RepositoryConfigurationParser$6.getFileSystem(RepositoryConfigurationParser.java:1057)\n\t... 42 more\nCaused by: java.lang.IllegalStateException: this factory has already been closed\n\tat org.apache.jackrabbit.core.util.db.ConnectionFactory.sanityCheck(ConnectionFactory.java:213)\n\tat org.apache.jackrabbit.core.util.db.ConnectionFactory.getDataBaseType(ConnectionFactory.java:134)\n\tat org.apache.jackrabbit.core.fs.db.DbFileSystem.getDataSource(DbFileSystem.java:228)\n\tat org.apache.jackrabbit.core.fs.db.DatabaseFileSystem.init(DatabaseFileSystem.java:190)\n\t... 43 more\n2011-01-25 08:12:14 RepositoryImpl [ERROR] Error while closing Version Manager.\njava.lang.NullPointerException\n\tat org.apache.jackrabbit.core.RepositoryImpl.doShutdown(RepositoryImpl.java:1117)\n\tat org.apache.jackrabbit.core.RepositoryImpl.shutdown(RepositoryImpl.java:1063)\n\tat org.apache.jackrabbit.core.RepositoryImpl.<init>(RepositoryImpl.java:388)\n\tat org.apache.jackrabbit.core.RepositoryImpl.create(RepositoryImpl.java:602)\n\tat org.apache.jackrabbit.core.TransientRepository$1.getRepository(TransientRepository.java:179)\n\tat org.apache.jackrabbit.core.TransientRepository.startRepository(TransientRepository.java:279)\n\tat org.apache.jackrabbit.core.TransientRepository.login(TransientRepository.java:375)\n\tat org.apache.jackrabbit.commons.AbstractRepository.login(AbstractRepository.java:123)\n\tat TransientRepositoryTest.addNodeToRepository(TransientRepositoryTest.java:32)\n\tat TransientRepositoryTest.shouldNotFailWhenUsingTransientRepositoryTwice(TransientRepositoryTest.java:26)\n\t...\n\tat com.intellij.rt.execution.application.AppMain.main(AppMain.java:115)\n2011-01-25 08:12:14 RepositoryImpl [ERROR] In addition to startup fail, another unexpected problem occurred while shutting down the repository again.\njava.lang.NullPointerException\n\tat org.apache.jackrabbit.core.RepositoryImpl.doShutdown(RepositoryImpl.java:1136)\n\tat org.apache.jackrabbit.core.RepositoryImpl.shutdown(RepositoryImpl.java:1063)\n\tat org.apache.jackrabbit.core.RepositoryImpl.<init>(RepositoryImpl.java:388)\n\tat org.apache.jackrabbit.core.RepositoryImpl.create(RepositoryImpl.java:602)\n\tat org.apache.jackrabbit.core.TransientRepository$1.getRepository(TransientRepository.java:179)\n\tat org.apache.jackrabbit.core.TransientRepository.startRepository(TransientRepository.java:279)\n\tat org.apache.jackrabbit.core.TransientRepository.login(TransientRepository.java:375)\n\tat org.apache.jackrabbit.commons.AbstractRepository.login(AbstractRepository.java:123)\n\tat TransientRepositoryTest.addNodeToRepository(TransientRepositoryTest.java:32)\n\tat TransientRepositoryTest.shouldNotFailWhenUsingTransientRepositoryTwice(TransientRepositoryTest.java:26)\n\t...\n\tat com.intellij.rt.execution.application.AppMain.main(AppMain.java:115)\n\njavax.jcr.RepositoryException: File system initialization failure.\n\tat org.apache.jackrabbit.core.config.RepositoryConfigurationParser$6.getFileSystem(RepositoryConfigurationParser.java:1060)\n\tat org.apache.jackrabbit.core.config.RepositoryConfig.getFileSystem(RepositoryConfig.java:892)\n\tat org.apache.jackrabbit.core.RepositoryImpl.<init>(RepositoryImpl.java:284)\n\tat org.apache.jackrabbit.core.RepositoryImpl.create(RepositoryImpl.java:602)\n\tat org.apache.jackrabbit.core.TransientRepository$1.getRepository(TransientRepository.java:179)\n\tat org.apache.jackrabbit.core.TransientRepository.startRepository(TransientRepository.java:279)\n\tat org.apache.jackrabbit.core.TransientRepository.login(TransientRepository.java:375)\n\tat org.apache.jackrabbit.commons.AbstractRepository.login(AbstractRepository.java:123)\n\tat TransientRepositoryTest.addNodeToRepository(TransientRepositoryTest.java:32)\n\tat TransientRepositoryTest.shouldNotFailWhenUsingTransientRepositoryTwice(TransientRepositoryTest.java:26)\n\t...\n\tat com.intellij.rt.execution.application.AppMain.main(AppMain.java:115)\nCaused by: org.apache.jackrabbit.core.fs.FileSystemException: failed to initialize file system\n\tat org.apache.jackrabbit.core.fs.db.DatabaseFileSystem.init(DatabaseFileSystem.java:210)\n\tat org.apache.jackrabbit.core.config.RepositoryConfigurationParser$6.getFileSystem(RepositoryConfigurationParser.java:1057)\n\t... 42 more\nCaused by: java.lang.IllegalStateException: this factory has already been closed\n\tat org.apache.jackrabbit.core.util.db.ConnectionFactory.sanityCheck(ConnectionFactory.java:213)\n\tat org.apache.jackrabbit.core.util.db.ConnectionFactory.getDataBaseType(ConnectionFactory.java:134)\n\tat org.apache.jackrabbit.core.fs.db.DbFileSystem.getDataSource(DbFileSystem.java:228)\n\tat org.apache.jackrabbit.core.fs.db.DatabaseFileSystem.init(DatabaseFileSystem.java:190)\n\t... 43 more",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "JCR-2870",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "Transient Repository cannot be used more than once when configured with DataSources",
+    "systemSpecification": true,
+    "version": "2.1.2, 2.1.3, 2.2, 2.2.1"
+}

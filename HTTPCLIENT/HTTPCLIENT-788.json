@@ -1,0 +1,95 @@
+{
+    "comments": [
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Looks good to me.\n\nOleg",
+            "date": "2008-07-21T19:15:16.792+0000",
+            "id": 0
+        },
+        {
+            "author": "Ortwin Gl\u00fcck",
+            "body": "Still needs a little more work to be useful with the list:\n- support for rules like \"*.tr\" which means: deny cookies for ANY second level domain of tr\n- support for exceptions to the above like \"!parliament.uk\" which means to accept cookies for this exact domain\n\nI'll also try to come up with a parser for the list that directly configures the PublicSuffixFilter.\n",
+            "date": "2008-07-22T11:41:50.184+0000",
+            "id": 1
+        },
+        {
+            "author": "Sebb",
+            "body": "Seems to me that it might be a good idea to consider collaborating with Mozilla on writing a parser - so long as a suitable license is used ;-)",
+            "date": "2008-07-22T12:16:00.318+0000",
+            "id": 2
+        },
+        {
+            "author": "Ortwin Gl\u00fcck",
+            "body": "Yes, only that their language of choice is C++.\nAnd we might also need a Punycode / Unicode converter.",
+            "date": "2008-07-22T12:26:13.026+0000",
+            "id": 3
+        },
+        {
+            "author": "Ortwin Gl\u00fcck",
+            "body": "Added file parser and basic pattern matching. Added Punycode support. \nActually the Punycode domain name matching should IMHO be done for all cookie handlers, but that should go into a new ticket.",
+            "date": "2008-07-23T12:19:55.180+0000",
+            "id": 4
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Odi\n\nThe patch looks good to me. There is one issue, though. In its current form the patch introduces dependency on HttpCore SNAPSHOT, which means we would have to release HttpCore 4.0 beta3 before we could release the next version of HttpClient. Can this patch be committed after the HttpClient release? Alternatively would it be acceptable for you to move the IDN conversion code to HttpClient?\n\nOleg",
+            "date": "2008-07-23T13:53:48.891+0000",
+            "id": 5
+        },
+        {
+            "author": "Ortwin Gl\u00fcck",
+            "body": "Good point, Oleg. It may turn out to be important to have the IDN support for Cookies rather sooner than later. If it's a road block to release HttpCore before HttpClient, I would rather move the IDN code to HttpClient level. Because cookies are its only user at the moment. It may be useful for connection management as well (think of connection managers that keep a pool per hostname/port): when the initial request uses a Unicode-URL and a subsequent redirect uses a Punycode-URL an existing connection may not be reused because of a mismatch of the hostname. Which package should the IDN code go into?",
+            "date": "2008-07-23T15:57:29.968+0000",
+            "id": 6
+        },
+        {
+            "author": "Sebb",
+            "body": "I'm not entirely sure that it is OK to include the entire Suffix list as test data.\nMight be better to create our own test data from the documentation of the format; this would allow one to add invalid data as well.\n\nAlso, one of the method names implies that it only works on Java6 - is that the case, or is there a fall-back for Java5?\n\nThe private boolean readLine(Reader r, StringBuilder sb) method seems a bit unsafe.\nAs far as I can tell, it does not flush characters to the end of the line, so any characters after the first white-space will be left for the next call to readLine().\n\nSo as far as I can tell,\n\n*.jp comment\n\nwould be treated as two lines:\n\n*.jp\ncomment\n\nThe Unicode examples in the testUnicode() method might be better encoded using Unicode escapes, as is done for the Idn test cases.\n\n\n\n",
+            "date": "2008-07-23T15:58:42.657+0000",
+            "id": 7
+        },
+        {
+            "author": "Ortwin Gl\u00fcck",
+            "body": "Sebb, very true: we can't \"distribute\" the list in the test cases because of licensing issues. (pulled the patch file)\nThe java.net.IDN class was introduced in 1.6, hence the naming. But I can change it to something else like JdkIdn.\nYou're right about the whitespace / EOL bug. Will fix.\nI'll also use Unicode escapes in the test case. I know, a lot of people have issues saving non-ASCII files (especially Emacs users *g*).\n",
+            "date": "2008-07-23T16:07:45.688+0000",
+            "id": 8
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Odi,\n\nThere is no harm releasing another HttpCore version early with just a few bug fixes, but releases take bloody sweet time. So, we could put that code into o.a.http.url package of HttpClient if you want this code to be included in the next release.\n\nOleg",
+            "date": "2008-07-23T22:11:48.457+0000",
+            "id": 9
+        },
+        {
+            "author": "Ortwin Gl\u00fcck",
+            "body": "what about the o.a.http.client.utils package? It already contains URIUtils and URLEncodedUtils. Seems like a good home.",
+            "date": "2008-07-24T08:30:35.680+0000",
+            "id": 10
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "We avoided having dependencies on o.a.http.client stuff in o.a.http.cookie, o.a.http.auth and o.a.http.conn packages so far. It is no longer relevant as we are not going to split HttpClient into HttpCookie/HttpAuth/HttpConn. If you like o.a.http.client.utils better it is perfectly ok with me.\n\nOleg",
+            "date": "2008-07-24T08:55:38.084+0000",
+            "id": 11
+        },
+        {
+            "author": "Ortwin Gl\u00fcck",
+            "body": "Patch committed.",
+            "date": "2008-07-24T09:28:30.634+0000",
+            "id": 12
+        }
+    ],
+    "component": "HttpClient (classic)",
+    "description": "Hi,\n\nI just found this useful list: http://publicsuffix.org/\nand thought it would be nice to validate cookie domains against it, basically serving as a black list of domain for which never to set any cookies. What do you think about the attached patch? The download/parsing of the list is of course not part of the implementation.\n\nOrtwin",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "HTTPCLIENT-788",
+    "issuetypeClassified": "RFE",
+    "issuetypeTracker": "RFE",
+    "priority": "Minor",
+    "product": "HTTPCLIENT",
+    "project": "HTTPCLIENT",
+    "summary": "Public Suffix List",
+    "systemSpecification": true,
+    "version": "4.0 Alpha 4"
+}

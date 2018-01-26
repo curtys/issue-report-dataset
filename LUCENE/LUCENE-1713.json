@@ -1,0 +1,119 @@
+{
+    "comments": [
+        {
+            "author": "Hoss Man",
+            "body": "Suggestion: TermRangeQuery to be clear about hte fact that it deals with raw Terms in TermEnum order (and doesn't do any fancy collation or anything else people might expect when dealing with \"Strings\" or \"Text\")",
+            "date": "2009-06-22T22:55:02.688+0000",
+            "id": 0
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "bq. Suggestion: TermRangeQuery to be clear about hte fact that it deals with raw Terms in TermEnum order (and doesn't do any fancy collation or anything else people might expect when dealing with \"Strings\" or \"Text\")\n\n+1\n",
+            "date": "2009-06-23T10:50:25.076+0000",
+            "id": 1
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Additionally rename FieldCacheRangeFilter, RangeFilter.\n\nMaybe a good addition to FieldCacheRangeFilter would be to do the same currently only possible with StringIndex for NumericFields?",
+            "date": "2009-06-23T12:35:36.905+0000",
+            "id": 2
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "bq. Maybe a good addition to FieldCacheRangeFilter would be to do the same currently only possible with StringIndex for NumericFields?\n\nsee LUCENE-1461",
+            "date": "2009-06-23T12:47:27.700+0000",
+            "id": 3
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "OK, so:\n\n  * RangeFilter -> TermRangeFilter\n  * RangeQuery -> TermRangeQuery\n\nAnd under LUCENE-1461:\n\n  * FieldCacheRangeFilter -> FieldCacheRangeFilter (on picking up support for numerics...)",
+            "date": "2009-06-24T10:43:27.675+0000",
+            "id": 4
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Should I prepare a patch later?\n\nI would simply rename the files in core and then change the tests and rest to find any references to the old RangeQuery/Filter (compile failures). After that I create a deprecated subclass of TermRange* with the old name and all ctors from the old class. The new class will only supply the new ctors (no deprecated ones using Term, mapping is done in the subclass).",
+            "date": "2009-06-30T08:12:39.944+0000",
+            "id": 5
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "For an issue like this we should go for \"commit without patch\" to keep the history of the classes. If you create a patch and apply it without useing svn copy && svn commit you will loose history which is not worth it in this case. Just a hint.\n\nsimon",
+            "date": "2009-06-30T09:27:02.417+0000",
+            "id": 6
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Yes feel free to take this one Uwe, thanks!  That approach (and using svn move/copy) sounds good.",
+            "date": "2009-06-30T09:30:16.274+0000",
+            "id": 7
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "I know! :-)  We had this problem a lot of times.\n\nThe patch will be only as reference. When I do it, I would assign and also commit with svn copy/move and so on.",
+            "date": "2009-06-30T09:31:45.028+0000",
+            "id": 8
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "bq. Yes feel free to take this one Uwe, thanks! That approach (and using svn move/copy) sounds good.\n\nI was the \"bad-boy\" who invented NumericRangeQuery, so I have to take this one and clean up the rest of Lucene for this change.",
+            "date": "2009-06-30T09:37:03.197+0000",
+            "id": 9
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Here the patch for reference. The deprecated old classes are attached as separate files for a second commit step. Please note, that it will not apply to your checkout, because it needs a SVN rename of RangeQuery, RangeFilter and RangeTermEnum to Term*.\n\nThis patch also converts all tests and contrib to use the new classes and non-deprecated ctors. In TermRange* all deprecated methods are removed and only stay alive in the old classes. The new TermRangeQuery use constant score mode per default (as planned for 3.0), but the old deprecated classes use boolean rewrite per default. I will edit the tests after this commit, to also test boolean rewrite (because of the new defaults, only constant score rewrite ist tested)\n\nI will commit this soon (approx 2 hours) in two steps (first the patch, then svn add of the new deprecated classes) to not prevent people from doing things.\n\nAll tests, especially bw-tests pass.",
+            "date": "2009-07-02T15:03:12.089+0000",
+            "id": 10
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "correct patch.",
+            "date": "2009-07-02T15:15:46.507+0000",
+            "id": 11
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "After comparing the old 2.4.1 javadocs with the new ones, I found out, that RangeQueries in 2.4.1 only had Term ctors and no (field,String,String) ctors. As the new classes are separated (deprecated one and new one), I will change it to not have this strange getLowerTermText methods in the new class.\n\nSo I will prepare a new patch and do all tests again, no commits for now. The current patch had also some minor problems with BW compatibility and a missing collator.",
+            "date": "2009-07-02T17:09:12.323+0000",
+            "id": 12
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "New patch for reference (before all Range* must be svn renamed to TermRange*):\n- Restores original API of RangeQuery and RangeFilter (the backards-tag must be changed to use the original 2.4 tests, see java-dev-mail from me regarding this)\n- RangeQuery is a deprecated dummy class deleagting everything to TermRangeQuery, but is not a subclass, because different semantics of ctors and some getter methods.\n- new classes use cleaner API (no such strange methods like getLowerTermText() because of overriding)",
+            "date": "2009-07-02T22:40:36.576+0000",
+            "id": 13
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "After committing this, I will open an issue for Solr, to change the references to the not yet released RangeQuery/Filter ctors taking String args to the new classes.",
+            "date": "2009-07-02T22:51:03.046+0000",
+            "id": 14
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Last update.\n\nThe patch also contains regenerated QueryParser classes (see LUCENE-1646).",
+            "date": "2009-07-04T20:17:12.353+0000",
+            "id": 15
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Committed revisions 791175 and 791176.",
+            "date": "2009-07-04T20:18:33.719+0000",
+            "id": 16
+        }
+    ],
+    "component": "",
+    "description": "Since we now have NumericRangeQuery (LUCENE-1701) we should rename RangeQuery to TextRangeQuery to make it clear that TextRangeQuery (TermRangeQuery?  StringRangeQuery) is based entirely on text comparison.\n\nAnd, existing users on upgrading to 2.9 and using RangeQuery for [slow] numeric searching would realize they now have a good option for numeric range searching.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-1713",
+    "issuetypeClassified": "REFACTORING",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Major",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "Rename RangeQuery -> TermRangeQuery",
+    "systemSpecification": true,
+    "version": "2.9"
+}

@@ -1,0 +1,35 @@
+{
+    "comments": [
+        {
+            "author": "Tobias Bocanegra",
+            "body": "all the virtually mapped nodestates are initialized on startup or on registration of new nodetypes. the mechanism is a bit obscure, but the createNodeTypeState() method calls the createNodeState() method of the AbstractVISProvider , which puts the newly created state into its cache. the cache is basically implemented with a soft-ref hashmap, so the items could disapear. to prevent this, they are also added as hard reference to the parent node state. imo, the internalGetNodeState() and internalHasNodeState() should never be called since the items should retain in the cache for ever.\nas soon as the cache implementation in the AbstractVISProvider changes, we might reconsider this issue.",
+            "date": "2005-07-17T01:05:05.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "I see. However the nodes are not cached on startup, but only when the root node of the virtual node type hierarchy is accessed for the first time.\n\nA quick dirty fix that worked for me was:\n\nIndex: VirtualNodeTypeStateProvider.java\n===================================================================\n--- VirtualNodeTypeStateProvider.java\t(revision 219171)\n+++ VirtualNodeTypeStateProvider.java\t(working copy)\n@@ -58,6 +58,11 @@\n     public VirtualNodeTypeStateProvider(NodeTypeRegistry ntReg, String rootNodeId, String parentId) {\n         super(ntReg, new NodeId(rootNodeId));\n         this.parentId = parentId;\n+        try {\n+            getRootState();\n+        } catch (ItemStateException e) {\n+            // ignore\n+        }\n     }\n \n     /**\n\n\nBut there is certainly a more elegant solution to this.",
+            "date": "2005-07-18T17:35:25.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Tobias Bocanegra",
+            "body": "fixed using marcels aproach.\n\nAuthor: tripod\nDate: Mon Jul 18 04:09:39 2005\nNew Revision: 219466\n\nURL: http://svn.apache.org/viewcvs?rev=219466&view=rev\nLog:\n[#JCR-170] VirtualItemStates of node types definitions not accessible with uuid\n\nModified:\n   incubator/jackrabbit/trunk/core/src/java/org/apache/jackrabbit/core/nodetype/virtual/VirtualNodeTypeStateProvider.java",
+            "date": "2005-07-18T20:11:58.000+0000",
+            "id": 2
+        }
+    ],
+    "component": "nodetype",
+    "description": "The VirtualNodeTypeStateProvider that maps node type definitions into the workspace under /jcr:system/jcr:nodeTypes does not implement the methods:\n\n- internalGetNodeState(NodeId id)\n- internalHasNodeState(NodeId id)\n\nThis has the effect that ItemStates that reflect node type definitions are not accessible directly with their uuid.",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "JCR-170",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Minor",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "VirtualItemStates of node types definitions not accessible with uuid",
+    "systemSpecification": true,
+    "version": ""
+}

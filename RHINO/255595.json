@@ -1,0 +1,53 @@
+{
+    "comments": [
+        {
+            "author": "igor@mir2.org",
+            "body": "The initial implementation of factory API in the form of\nhttp://lxr.mozilla.org/mozilla/source/js/rhino/src/org/mozilla/javascript/ContextFactory.java\nwas committed during spring 2004. The implementation not only allows for full\ncustomization of Context instances but also provide a way to run several\nindependent Rhino run times in one JVM. \n",
+            "date": "20040814T10:22:29",
+            "id": 0
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 156091\nFixing compatibility problems\n\nThe current implementation of ContextFactory introduced a couple of\ncompatibility problems:\n\n1. It started to require that when calling ScriptableObject.callMethod() a\nContext instance should be associated with the current thread. This is was done\nnot to worry about picking up proper ClassFactory.\n\n2. JavaAdapter also started to require to have active context during adapter\ncreation. This was done to select proper ContextFactory during calls to script\nmethods. This does not matter for ordinary adapter case since it is always\ncalled from a running script, but automatic function to Java interface can be\ncalled without it.\n\nTo solve this compatibility issues patch stores ContextFactory in the top scope\nwhen Context.initStandardObjects is called. In this way the factory is always\nreachable from function scope without the need to have active Context instance.",
+            "date": "20040814T13:38:04",
+            "id": 1
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "I committed the fix but I will keep the bug assigned if more compatibility\nissues will pop up.",
+            "date": "20040814T15:20:20",
+            "id": 2
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 156242\nFixing wrong assumption that Context.getFactory() != null\n\nThe previous patch introduces nasty regression reported by Merten.Schumann:\n\n> This simple stuff\n> \n>  public static void main(String args[]) throws Exception\n>  {\n>   Context cx=Context.enter();\n>   cx.initStandardObjects(null);\n>  }\n> \n> worked in former releases IMHO, now it throws\n> \n> java.lang.IllegalArgumentException\n> at\n> org.mozilla.javascript.ScriptableObject.associateValue(ScriptableObject.\n> java:1574)\n> at\n> org.mozilla.javascript.ScriptRuntime.initStandardObjects(ScriptRuntime.j\n> ava:127)\n> at org.mozilla.javascript.Context.initStandardObjects(Context.java:1108)\n> at org.mozilla.javascript.Context.initStandardObjects(Context.java:1075)\n> at de.rochade.srap.test.Snippet.main(Snippet.java:14) Exception in\n> thread \"main\" \n\nThe fix fixes that.",
+            "date": "20040816T09:56:09",
+            "id": 3
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "The last fix is in CVS. The bug realy should stay open for some time.",
+            "date": "20040816T09:57:59",
+            "id": 4
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Done",
+            "date": "20050801T10:46:28",
+            "id": 5
+        }
+    ],
+    "component": "Core",
+    "description": "Problem: \n\nTo setup instruction counting or to override Context.FEATURE_* Rhino embedding\nshould subclass Context and then pass it explicitly to Context.enter to\nassociate it with the current thread. Unfortunately it does not work with\nJavaAdapter which calls Context.enter() in response to Java calls. If there is\nno Context instance associated with current thread, that would trigger use of\ndefault Context ignoring application wish for customization.\n\nSolution: \n\nA factory class that can be provided to Rhino runtime which will be used for\nContext creation.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "255595",
+    "issuetypeClassified": "OTHER",
+    "issuetypeTracker": "RFE",
+    "priority": "-- enhancement",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "Factory class for Context creation",
+    "systemSpecification": false,
+    "version": "head"
+}

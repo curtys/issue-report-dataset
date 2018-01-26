@@ -1,0 +1,77 @@
+{
+    "comments": [
+        {
+            "author": null,
+            "body": "This can be observed by running Tomcat 5.5.9/5.5.14 with a JVMTI profiler \nattached. Make sure to use a JRE that has \n(http://bugs.sun.com/bugdatabase/view_bug.do?bug_id=5093520) fixed, Mustang >= \nb53 or a prerelease of 1.5 update 7.\n\nThe observed reference list is:\n-----------------------------\n  com.foo.MyEnumClass\n   MY_ENUM_MEMBER of com.foo.MyEnumClass\n    key of  java.util.HashMap$Entry \n     next of  java.util.HashMap$Entry \n      [28] of  java.util.HashMap$Entry[33] \n       table of  java.util.HashMap \n        mBeanInfoManagerByClass of  org.apache.commons.el.BeanInfoManager \n         [547] of  java.lang.Object[641] \n          elementData of  java.util.Vector \n           classes of  org.apache.catalina.loader.StandardClassLoader \n            commonLoader of  org.apache.catalina.startup.Bootstrap [Stack \nLocal]  \n-----------------------------\n\n",
+            "date": "20051227T11:03:44",
+            "id": 0
+        },
+        {
+            "author": null,
+            "body": "Sun AS/Glassfish used commons-el in past (<=8.2) versions, exhibiting exactly\nthis problem. This was fixed using a simple patch, manually releasing cached\nclasses on webapp shutdown.\n\nSee description of bug and solution here:\nhttp://bugs.sun.com/bugdatabase/view_bug.do?bug_id=6390584\n\nIn later versions (>=9.0) commons-el was dropped altogether (quite wise).",
+            "date": "20060603T17:58:20",
+            "id": 1
+        },
+        {
+            "author": null,
+            "body": "Created attachment 18537\nModified WebappClassLoader (from 5.5.17) with EL cache cleanup\n\nI've attached a version of WebappClassLoader.java (from 5.5.17) that cleans up\nthe EL cache (only for classes from the current webapp) on undeploy.",
+            "date": "20060626T14:18:09",
+            "id": 2
+        },
+        {
+            "author": null,
+            "body": "Would it be possible to re-attach as a unified diff format patch ?  Thanks",
+            "date": "20060626T14:41:27",
+            "id": 3
+        },
+        {
+            "author": null,
+            "body": "Created attachment 18538\nPatch from 5.5.17",
+            "date": "20060626T14:45:03",
+            "id": 4
+        },
+        {
+            "author": null,
+            "body": "With the provided patch a number of big webapps with plenty dependencies now can\nbe properly unloaded, as can be verified using a JVMTI agent (YourKit or other).\n\nWith this patch, the only leaks I see are InheritableThreadLocals from Spring.\n(attached to lazy-started subsystem threads like the Java2D Disposer)",
+            "date": "20060626T14:49:10",
+            "id": 5
+        },
+        {
+            "author": null,
+            "body": "Your patch seems ok to me.",
+            "date": "20060626T15:58:18",
+            "id": 6
+        },
+        {
+            "author": null,
+            "body": "Any chance of getting this one in 5.5.x?",
+            "date": "20061009T01:15:17",
+            "id": 7
+        },
+        {
+            "author": null,
+            "body": "Fixed in SVN and will be included in 5.5.21 onwards. Many thanks for the patch.",
+            "date": "20061018T16:32:26",
+            "id": 8
+        },
+        {
+            "author": null,
+            "body": "Thanks.\n\nI'll check 6.x for similar problems as soon as the first early releases show up.",
+            "date": "20061018T23:15:20",
+            "id": 9
+        }
+    ],
+    "component": "Catalina",
+    "description": "The evaluation of JSP 2.0 EL (expression language) in JSP pages can cause \nBeanInfo metadata of the referenced objects to be cached.\n\nThis happens in the class [org.apache.commons.el.BeanInfoManager].\n\nSince the commons-el.jar where this class resides is loaded by the \"Common\" \nClassLoader, this causes a reference leak to the Webapp classloader when the \nBeanInfo refences an object from the Webapp classloader.\n\nOn webapp shutdown, the container should clear the BeanInfoManager cache, or \ndelete all entries pointing to code loaded from the webapp.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "38048",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "BUG",
+    "priority": "P2 major",
+    "product": "Tomcat 5",
+    "project": "TOMCAT",
+    "summary": "Classloader leak caused by EL evaluation",
+    "systemSpecification": true,
+    "version": "5.5.17"
+}

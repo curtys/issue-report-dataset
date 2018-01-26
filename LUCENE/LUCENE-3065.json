@@ -1,0 +1,263 @@
+{
+    "comments": [
+        {
+            "author": "Uwe Schindler",
+            "body": "{quote}\nSpookily, nothing failed in Solr... I assume there's somewhere in Solr\nthat must now be fixed to handle the fact that a field can come back\nas NumericField? Anyone know where...?\n{quote}\n\nThats easy to understand: Solr does not use NumericField at all. It produces a NumericTokenStream and indexes it like any other analyzer. The byte[] field is indexed as a separate Field with only store=true and binary.\n\nThis is what I wanted to say with my last comment.",
+            "date": "2011-05-03T20:03:31.931+0000",
+            "id": 0
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Aboutthe patch: Maybe the byte[] returning methods in NumericUtils should use BytesRef and reuse that for storing (applies to trunk)?",
+            "date": "2011-05-03T20:07:22.424+0000",
+            "id": 1
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "{quote}\nThats easy to understand: Solr does not use NumericField at all. It produces a NumericTokenStream and indexes it like any other analyzer. The byte[] field is indexed as a separate Field with only store=true and binary.\n\nThis is what I wanted to say with my last comment.\n{quote}\nAhhhh, OK.  So, not spooky.\n\nWe should eventually fix that; shouldn't Solr just use NumericField instead of doing this encode/decode itself?  Is there some reason...?",
+            "date": "2011-05-03T20:07:39.126+0000",
+            "id": 2
+        },
+        {
+            "author": "Ryan McKinley",
+            "body": "bq. Is there some reason...?\n\nSolr did its own encoding/decoding so that it could store a binary field -- with this patch, that is not necessary anymore.",
+            "date": "2011-05-03T20:13:05.153+0000",
+            "id": 3
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Uwe: I agree, I'll use BytesRef in trunk.\n\nRyan: OK.  Should we try to fix that w/ this issue?  If so, can you take a crack at it?  Thanks.  Or, we can postpone... not necessary for this initial cutover.",
+            "date": "2011-05-03T20:18:30.959+0000",
+            "id": 4
+        },
+        {
+            "author": "Ryan McKinley",
+            "body": "bq. If so, can you take a crack at it?  Thanks.  Or, we can postpone... not necessary for this initial cutover.\n\nI'll take a crack at it... but I don't think its necessary in the first pass\n",
+            "date": "2011-05-03T20:23:33.705+0000",
+            "id": 5
+        },
+        {
+            "author": "Yonik Seeley",
+            "body": "bq. I'll take a crack at it... but I don't think its necessary in the first pass\n\nShould we try to accept both (binary or numeric field coming back) so this isn't a needless index format break, or is there another lucene index format break in the cards soon anyway?",
+            "date": "2011-05-03T20:36:19.930+0000",
+            "id": 6
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Mike: One thing about the bitmask and the 4 values. There is also an issue open to extend NumericField by byte and short. Maybe we should reserve 3 bits instead of 2 for the numeric field type - so 0x70 instead of 0x30 as mask? I just want to reseve this one extra bit, so we dont need to do any dumb masks and values later, if we extend.\n\nAbout the index format change:\nAs described above, for Solr it's not a problem. New fields are always indexed using NumericField. On the query side, when Document.getField is called, it could simply check the return value with instanceof. If the getter returns not a NumericField, Solr knows that it's binary and can decode manually. This would safe backwards.\n\nElse its no break at all if we support both stored field formats during indexing somehow (in Lucene its string, returning a String Field or new binary NumericField). The index format itsself does not change generally (no need to bump version numbers, as we only use unused bits?)",
+            "date": "2011-05-03T20:45:23.775+0000",
+            "id": 7
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "There is still a problem - first the good news:\n\n- If user calls Document.get(field), the returned string is as before, so there is no break at all. The reason is the implementation of NumericField.stringValue(), it returns what the user is used to from 3.0\n- If a user calls getFieldable(field) all is fine, too. The only change is that it could return NumericField now. If the user simply calls stringValue() all is identical to 3.0\n\nProblems start with:\n\n- If user calls Document.getField(name) it returns Field (internally it casts the getFieldable()) result to Field. But NumericField does not subclass Field -> ClassCastException. \n\nHow to handle this?\n\n- Maybe change those methods to return AbstractField, but thats a binary break and users will complain, because not everything works as expected\n- Make NumericField subclass Field (and Field is unfinalized) - thats a bad idea, because Field has too many methods / members that are out of scope\n- Deprecate Document.getField() and make it internally do an instanceof check, if it gets NumericField transform to a backwards-compatible Field? - This method is already broken. If you request Lazy field loading it also throws ClassCastEx (e.g. LUCENE-609).\n\nNot sure how to proceed. Else the patch looks fine. I think simply ignoring LazyField loading is fine, as numeric fields are a maximum of 8 bytes.... Else we would need LazyNumericField :(",
+            "date": "2011-05-03T21:49:27.752+0000",
+            "id": 8
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Ugh!  Field/Fieldable/AbstractField strikes again.... hmm not sure what to do.",
+            "date": "2011-05-03T22:33:06.779+0000",
+            "id": 9
+        },
+        {
+            "author": "Chris Male",
+            "body": "The Field/Fieldable/AbstractField problem is what I've been addressing in LUCENE-2310.  There I took the step of making NumericField extend Field, with a series of unsupported fields.  This seemed easiest to do particularly with FieldType in mind.  I then deprecated all the Fieldable methods in Document.",
+            "date": "2011-05-04T00:32:04.640+0000",
+            "id": 10
+        },
+        {
+            "author": "Yonik Seeley",
+            "body": "bq. I then deprecated all the Fieldable methods in Document.\n\nHmmm, I thought Fieldable was a step forward.  The Field class is the worst of the bunch!",
+            "date": "2011-05-04T01:06:21.804+0000",
+            "id": 11
+        },
+        {
+            "author": "Chris Male",
+            "body": "Yeah there is an element of truth to that except I'm not convinced we need to have such a complicated hierarchy (although I've since been thinking about field definitions coming from different sources, so maybe an interface is best).  But yes, Field is a mess and I've been trying to clean that out too.",
+            "date": "2011-05-04T03:06:15.821+0000",
+            "id": 12
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Mike:\nI reviewed the patch again: You are currently using 3 bits already. 1 bit is solely for detecting numerics, the other two are the type.\n\nIn my opinion, to check if its a numeric field, use a MASK of 3 bits and check for !=0. As soon as any bit in this mask is set, its numeric. The actual numeric fields have values !=0:\n\n{code}\nprivate static final int _NUMERIC_BIT_SHIFT = 3;\nstatic final byte FIELD_IS_NUMERIC_MASK = 0x07 << _NUMERIC_BIT_SHIFT;\n\nstatic final byte FIELD_IS_NUMERIC_INT = 1 << _NUMERIC_BIT_SHIFT;\nstatic final byte FIELD_IS_NUMERIC_LONG = 2 << _NUMERIC_BIT_SHIFT;\nstatic final byte FIELD_IS_NUMERIC_FLOAT = 3 << _NUMERIC_BIT_SHIFT;\nstatic final byte FIELD_IS_NUMERIC_DOUBLE = 4 << _NUMERIC_BIT_SHIFT;\n// unused: static final byte FIELD_IS_NUMERIC_SHORT = 5 << _NUMERIC_BIT_SHIFT;\n// unused: static final byte FIELD_IS_NUMERIC_BYTE = 6 << _NUMERIC_BIT_SHIFT;\n// and we have still one more over :-)  7 << _NUMERIC_BIT_SHIFT\n\n// check if field is numeric:\nif ((bits & FIELD_IS_NUMERIC_MASK) != 0) {}\n\n// parse type:\nswitch (bits & FIELD_IS_NUMERIC_MASK) {\n  case FIELD_IS_NUMERIC_INT: ...\n}\n{code}",
+            "date": "2011-05-04T09:17:44.740+0000",
+            "id": 13
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "This gives us more freedom in future, as we are limit to completely 8 bits, 3 are already used - this only adds 3 more not 4.\n\nBy the way, for performance reasons all constants should be declared as int not byte, as the byte read from index is already an int.",
+            "date": "2011-05-04T09:21:56.711+0000",
+            "id": 14
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Here the patch with my changes",
+            "date": "2011-05-04T09:49:11.964+0000",
+            "id": 15
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Patch looks great Uwe!  Except we need to resolve this Field/Fieldable/AbstractField.  Probably we should go and finish LUCENE-2310...",
+            "date": "2011-05-04T09:53:20.725+0000",
+            "id": 16
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "More refactoring:\n- Now NumericFields also reproduce the indexed/omitNorms/omitTF settings - only precStep cannot be reproduced\n- Cut over to int instead of byte, this removes lots of casting in FieldsReader",
+            "date": "2011-05-04T10:35:51.224+0000",
+            "id": 17
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "New patch, previous one had a leftover unused constant from Mike's patch.",
+            "date": "2011-05-04T10:42:47.350+0000",
+            "id": 18
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "This patch adds some refactoring because FieldSelectorResult is an enum since 3.0, so the (slow) queue of if-statements can be replaced by a fast switch.\n\nAlso some minor comments and a missing & 0xFF when casting byte to int.",
+            "date": "2011-05-04T11:05:54.489+0000",
+            "id": 19
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Next iteration:\n\nReverted changes in Solr (they should come later), Lucene instead uses natively IndexInput and IndexOutput to write/read ints and longs.\n\nSolr's changes are completely unrelated.",
+            "date": "2011-05-04T11:50:42.045+0000",
+            "id": 20
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Just to note: We also need to change the Forrest index format documentation!",
+            "date": "2011-05-04T11:54:41.410+0000",
+            "id": 21
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Moved test to TestFieldsReader",
+            "date": "2011-05-04T12:22:41.066+0000",
+            "id": 22
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Patch looks great Uwe!\n\nI think we should deprecate Document.getField?  And advertise in CHANGES that this is an [intentional] BW break, ie, you can no longer .getField if it's a NumericField (you'll hit CCE, just like you already do for lazy fields)?  I think that's the lesser evil here?",
+            "date": "2011-05-04T12:34:11.245+0000",
+            "id": 23
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "I added some javadocs to Document class:\n- getField() / getFields() is deprecated [we may change this in LUCENE-2310]\n\nSome thoughts:\n- maybe we should make getField()/getFields() simply return null or does not include the Field into the returned array, if its not instanceof Field? We can add that to documentation, that lazy loaded and numerical fields are not returned.\n- I would also like to add a method Document.getNumericValue(s), that returns Number[] or Number like the NumericField one. Like above getField() it can return null/empty array if the field name has no numeric Fields?\n\nThe CHANGES entry may also be extended, currently it under \"bugs\" - we shold move.",
+            "date": "2011-05-04T14:44:18.171+0000",
+            "id": 24
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "I started a new issue in Solr for the changes there: SOLR-2497",
+            "date": "2011-05-04T22:19:56.990+0000",
+            "id": 25
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Sorry my browser or JIRA deleted wrong comments, so I removed one from me and one from Mike :( - Sorry.",
+            "date": "2011-05-05T16:18:52.717+0000",
+            "id": 26
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Revert of deletion of Mike's first comment (sorry)\n\n{quote}\nPatch against 3.x.\n\nI moved the to/from byte[] methods from Solr's TrieField into Lucene's NumericUtils, and fixed FieldsWriter/Reader to use free bits in the field's flags to know if the field is Numeric, and which type.\n\nI added a random test case to verify we now get the right NumericField back, when we stored NumericField during indexing.\n\nOld indices are handled fine (you'll get a String-ified Field back like you did before).\n\nSpookily, nothing failed in Solr... I assume there's somewhere in Solr that must now be fixed to handle the fact that a field can come back as NumericField?  Anyone know where...?)\n{quote}",
+            "date": "2011-05-05T16:20:23.418+0000",
+            "id": 27
+        },
+        {
+            "author": "Earwin Burrfoot",
+            "body": "It's sad NumericFields are hardbaked into index format.\n\nEg - I have some fields that are similar to Numeric in that they are 'stringified' binary structures, and they can't become first-class in the same manner as Numeric.",
+            "date": "2011-05-05T16:33:53.483+0000",
+            "id": 28
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Earwin: The long-term plan for flexible indexing is to make also stored fields flexible. For now its not possible, so NumericFields are handled separately. In the future, this might be a stored fields codec.",
+            "date": "2011-05-05T16:42:34.085+0000",
+            "id": 29
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Updated patch with some improvements:\n- NumericField now lazy inits the NumericTokenStream only when tokenStreamValue() is caled for the first time. This speeds up stored fields reading, as the TokenStream is generally not needed in that case.\n- I currently dont like the instanceof chains in FieldsWriter and this lazy init code. Maybe NumericField and NumericTokenStream should define an enum type for the value so you can call NumericField.getValueType() - does anybody have a better idea?\n- Improved JavaDocs for NumericField to reflect the new stored fields format",
+            "date": "2011-05-05T23:06:19.284+0000",
+            "id": 30
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "I just add this TODO here:\n*Don't forget to add a new 3.1 index format to TestBackwardsCompatibility!*",
+            "date": "2011-05-05T23:47:23.627+0000",
+            "id": 31
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "New patch with the changes proposed before (no more instanceof chains).\n\nI think this is now ready to commit.",
+            "date": "2011-05-06T07:05:34.319+0000",
+            "id": 32
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Looks great Uwe!  Awesome to finally get NumericField back at search time...",
+            "date": "2011-05-06T10:12:32.402+0000",
+            "id": 33
+        },
+        {
+            "author": "Robert Muir",
+            "body": "{quote}\nI just add this TODO here:\nDon't forget to add a new 3.1 index format to TestBackwardsCompatibility!\n{quote}\n\nCan we also update the description of the bits in fileformats.html?",
+            "date": "2011-05-06T11:58:02.444+0000",
+            "id": 34
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "bq. Just to note: We also need to change the Forrest index format documentation!\n\nI already commented on that :-) [https://issues.apache.org/jira/browse/LUCENE-3065?focusedCommentId=13028718&page=com.atlassian.jira.plugin.system.issuetabpanels:comment-tabpanel#comment-13028718]",
+            "date": "2011-05-06T12:01:35.802+0000",
+            "id": 35
+        },
+        {
+            "author": "Robert Muir",
+            "body": "ahh sorry I missed that. patch looks good to me though!",
+            "date": "2011-05-06T12:02:35.821+0000",
+            "id": 36
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Committed 3.x revision: 1100480\n\nNow forward-porting to trunk...",
+            "date": "2011-05-07T08:38:13.818+0000",
+            "id": 37
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "This is the patch for trunk. Will commit soon!",
+            "date": "2011-05-07T12:20:13.558+0000",
+            "id": 38
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Committed trunk revision: 1100526",
+            "date": "2011-05-07T13:14:46.196+0000",
+            "id": 39
+        },
+        {
+            "author": "Robert Muir",
+            "body": "Bulk closing for 3.2",
+            "date": "2011-06-03T16:37:12.457+0000",
+            "id": 40
+        }
+    ],
+    "component": "core/index",
+    "description": "(Spinoff of LUCENE-3001)\n\nToday when writing stored fields we don't record that the field was a NumericField, and so at IndexReader time you get back an \"ordinary\" Field and your number has turned into a string.  See https://issues.apache.org/jira/browse/LUCENE-1701?focusedCommentId=12721972&page=com.atlassian.jira.plugin.system.issuetabpanels:comment-tabpanel#comment-12721972\n\nWe have spare bits already in stored fields, so, we should use one to record that the field is numeric, and then encode the numeric field in Solr's more-compact binary format.\n\nA nice side-effect is we fix the long standing issue that you don't get a NumericField back when loading your document.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-3065",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Minor",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "NumericField should be stored in binary format in index (matching Solr's format)",
+    "systemSpecification": true,
+    "version": ""
+}

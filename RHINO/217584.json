@@ -1,0 +1,101 @@
+{
+    "comments": [
+        {
+            "author": "pschwartau@meer.net",
+            "body": "cc'ing Igor -",
+            "date": "20030828T18:20:31",
+            "id": 0
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 130589\nExtending JavaScriprException and EvaluatorException to include sourcefile/line information.\n\nThe patch extends Merten Schumann suggestion to cover EvaluatorException and\nJavaScriptException cases.\n\nNow all JavaScriptException are constructed with proper source file and line\ninformation and the only place where EvaluatorException is constructed without\nit is ScriptRuntime.throwAsUncheckedException where WrappedException (a\nsubclass of EvaluatorException) is created. But that is fine as the method is\ncalled to wrap reflection exceptions mostly and they are comming not from Rhino\nbut user-suplied Java functions.",
+            "date": "20030829T11:56:44",
+            "id": 1
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Merten Schumann wrote:\n\n> I would like to help implementing this feature by myself.\n> If this is possible, feel free to give me information about how to join the \n> project.\n\nIt is easy: just start sending patches (unified format is preferable) to Norris\nBoyd or preferably put them into bugzilla.\n",
+            "date": "20030829T12:18:42",
+            "id": 2
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "I committed the fix. If the fix does not work, the bug can be reopened.",
+            "date": "20030829T13:20:48",
+            "id": 3
+        },
+        {
+            "author": "merten.schumann@asg.com",
+            "body": "I will get the latest drop next week and tryout the new exception features.\n\nI've got actually an JavaScriptException which wraps an Error thrown by\njunit.framework.Assert.assertEquals(), this will be a good try if there's now a\nchance to get the line information.\n\nThanx for now!",
+            "date": "20030829T13:31:48",
+            "id": 4
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 130644\nAdditional fix: use Context.getSourcePositionFromStack() to get source information in EvaluatorException(String detail) constructor\n\nThe initial patch would not allow to get script line that triggered\njunit.framework.Assert.assertEquals() since in Rhino CVS tip\nJavaScriptException is used to represent ONLY exceptions thrown by scripts via\nJS throw. The errors from user-supplied Java code called via reflection would\nbe wrapped into WrappedException which extends EvaluatorException. \n\nThe additional fix covers this case and would initialize source name and line\nnumber of the exception object to the script line that called Java code.",
+            "date": "20030830T12:14:58",
+            "id": 5
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "I committed the additional fix.",
+            "date": "20030830T12:15:44",
+            "id": 6
+        },
+        {
+            "author": "pschwartau@meer.net",
+            "body": "Merten: when you try the latest source, if everything is OK,\nplease mark this bug \"Verified\". If not, you can reopen it.\n\nThanks!",
+            "date": "20030901T01:30:39",
+            "id": 7
+        },
+        {
+            "author": "merten.schumann@asg.com",
+            "body": "grmpf, I think I have to wait for the latest sources to appear on the ftp server\n\nI cannot use cvs here at my place, the ugly firewall beast prevents it\nI don't have a cvs client which supports HTTP proxy or so.",
+            "date": "20030901T07:13:04",
+            "id": 8
+        },
+        {
+            "author": "merten.schumann@asg.com",
+            "body": "YEAH, IT WORKS! :-) (finally I got CVS running through the firewall)\n\nThere's now in almost every situations at least the line number information in\nJavaScriptException and WrappedException, that's very very useful.\n\nIgor, many thanx for adding this feature!\n\n   Merten",
+            "date": "20030901T12:10:03",
+            "id": 9
+        },
+        {
+            "author": "merten.schumann@asg.com",
+            "body": "Just a small correction is needed in JavaScriptException IMHO\n\nThe constructor should look like\n\n    public JavaScriptException(Object value, String sourceName, int lineNumber)\n    {\n        super(ScriptRuntime.toString(value));\n        this.value = value;\n        this.lineNumber = lineNumber;\n        this.sourceName = sourceName;\n    }\n\nThe lineNumber/sourceName assignments were missing ...\n\n   ~Merten",
+            "date": "20030902T11:19:44",
+            "id": 10
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "The correction from Merten Schumann is committed, thanks!",
+            "date": "20030902T12:34:00",
+            "id": 11
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Trageting as resolved against 1.5R5",
+            "date": "20040213T11:35:11",
+            "id": 12
+        },
+        {
+            "author": "merten.schumann@asg.com",
+            "body": "Looks like there will be Rhino 1.5R5 available soon, that would be nice. :)\n\nThanx again for implementing this feature!",
+            "date": "20040213T11:44:37",
+            "id": 13
+        }
+    ],
+    "component": "Core",
+    "description": "User-Agent:       Mozilla/5.0 (Windows; U; Windows NT 5.0; en-US; rv:1.2.1) Gecko/20021130\nBuild Identifier: \n\nHello,\n\nis it possible to implement methods like ECMAError::getLineNumber() in\nother exceptions thrown by Rhino (EvaluatorException, JavaScriptException)\ntoo? That would be very helpful in debugging or in general when exceptions\nappear. I saw EvaluatorException's message to include\n   \"<foo>, line 14\"\nwhich means, the line-number information was known at time of throwing the\nexception. A <ex>.getLineNumber() would allow me to implement/document\na well-defined way for a user how to find out where his script crashed ...\n\n   ~Merten\n\nReproducible: Always\n\nSteps to Reproduce:\n\n\n\n\n\nI would like to help implementing this feature by myself.\nIf this is possible, feel free to give me information about how to join the project.\n\nThis is just EvaluatorException.java according to ECMAException.java ...\n\n/* -*- Mode: java; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 4 -*-\n *\n * The contents of this file are subject to the Netscape Public\n * License Version 1.1 (the \"License\"); you may not use this file\n * except in compliance with the License. You may obtain a copy of\n * the License at http://www.mozilla.org/NPL/\n *\n * Software distributed under the License is distributed on an \"AS\n * IS\" basis, WITHOUT WARRANTY OF ANY KIND, either express or\n * implied. See the License for the specific language governing\n * rights and limitations under the License.\n *\n * The Original Code is Rhino code, released\n * May 6, 1999.\n *\n * The Initial Developer of the Original Code is Netscape\n * Communications Corporation.  Portions created by Netscape are\n * Copyright (C) 1997-1999 Netscape Communications Corporation. All\n * Rights Reserved.\n *\n * Contributor(s):\n * Norris Boyd\n *\n * Alternatively, the contents of this file may be used under the\n * terms of the GNU Public License (the \"GPL\"), in which case the\n * provisions of the GPL are applicable instead of those above.\n * If you wish to allow use of your version of this file only\n * under the terms of the GPL and not to allow others to use your\n * version of this file under the NPL, indicate your decision by\n * deleting the provisions above and replace them with the notice\n * and other provisions required by the GPL.  If you do not delete\n * the provisions above, a recipient may use your version of this\n * file under either the NPL or the GPL.\n */\npackage org.mozilla.javascript;\n\n\n/**\n * The class of exceptions thrown by the JavaScript engine.\n */\npublic class EvaluatorException extends RuntimeException\n{\n private String sourceName;\n private int lineNumber;\n private int columnNumber;\n private String lineSource;\n\n /**\n  * Create an exception with the specified detail message.\n  *\n  * Errors internal to the JavaScript engine will simply throw a\n  * RuntimeException.\n  *\n  * @param detail a message with detail about the exception\n  */\n public EvaluatorException(String detail)\n {\n  super(detail);\n }\n\n /**\n  * Create an exception with the specified detail message.\n  *\n  * Errors internal to the JavaScript engine will simply throw a\n  * RuntimeException.\n  *\n  * @param nativeError the Scriptable object constructed for this error.\n           Scripts will get it as an argument to catch statement.\n  * @param sourceName the name of the source reponsible for the error\n  * @param lineNumber the line number of the source\n  * @param columnNumber the columnNumber of the source (may be zero if\n  *                     unknown)\n  * @param lineSource the source of the line containing the error (may be\n  *                   null if unknown)\n  */\n public EvaluatorException(String detail, String sourceName, int lineNumber, int\ncolumnNumber, String lineSource)\n {\n  super(detail);\n\n  this.sourceName=sourceName;\n  this.lineNumber=lineNumber;\n  this.columnNumber=columnNumber;\n  this.lineSource=lineSource;\n }\n\n /**\n  * Get the name of the source containing the error, or null\n  * if that information is not available.\n  */\n public String getSourceName()\n {\n  return sourceName;\n }\n\n /**\n  * Returns the line number of the statement causing the error,\n  * or zero if not available.\n  */\n public int getLineNumber()\n {\n  return lineNumber;\n }\n\n /**\n  * The column number of the location of the error, or zero if unknown.\n  */\n public int getColumnNumber()\n {\n  return columnNumber;\n }\n\n /**\n  * The source of the line causing the error, or zero if unknown.\n  */\n public String getLineSource()\n {\n  return lineSource;\n }\n}\n\nOne usage in DefaultErrorReporter.java would just be\n\npublic EvaluatorException runtimeError(String message, String sourceName,\n int line, String lineSource, int lineOffset)\n{\n return new EvaluatorException(generateErrorMessage(message, sourceName, line),\nsourceName, line, lineOffset, lineSource);\n}",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "217584",
+    "issuetypeClassified": "RFE",
+    "issuetypeTracker": "RFE",
+    "priority": "-- enhancement",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "feature request: Rhino: missing feature, line-number information in all thrown exceptions",
+    "systemSpecification": true,
+    "version": "other"
+}

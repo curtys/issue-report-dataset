@@ -1,0 +1,131 @@
+{
+    "comments": [
+        {
+            "author": "Randy Puttick",
+            "body": "Created an attachment (id=15999)\nThe query component for large integer ranges\n",
+            "date": "2005-08-11T06:30:55.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Randy Puttick",
+            "body": "Created an attachment (id=16000)\nThe scorer component complementing the integer range\n",
+            "date": "2005-08-11T06:31:48.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Randy Puttick",
+            "body": "Created an attachment (id=16001)\nlarge floating point range class\n",
+            "date": "2005-08-11T06:32:26.000+0000",
+            "id": 2
+        },
+        {
+            "author": "Randy Puttick",
+            "body": "Created an attachment (id=16002)\nscorer for floating point range\n",
+            "date": "2005-08-11T06:33:05.000+0000",
+            "id": 3
+        },
+        {
+            "author": "Randy Puttick",
+            "body": "Created an attachment (id=16003)\nmodification to rewrite method of RangeQuery\n\nThis allows you to control the use of the larger numeric range queries by\nmanipulating the maximum subclause member of BooleanQuery.  It catches the\nTooManyClauses exception from the construction of the range and attempts to\ncreate either an integer or floating point query of the new variety.",
+            "date": "2005-08-11T06:35:37.000+0000",
+            "id": 4
+        },
+        {
+            "author": "Randy Puttick",
+            "body": "Created an attachment (id=16004)\nsome quick sort implementations for the range query implementation\n\nMaybe there are better places to get these algorithm implementations but this\nimplementation requires the fastest possible indirect sort of document numbers\nagainst field values.  I hit fields with many repeated values in testing and\ndecided it was worth having a fat pivot implementation.\n\nThe sort used in actual query execution is everyday, non-recursive quicksort.",
+            "date": "2005-08-11T06:38:15.000+0000",
+            "id": 5
+        },
+        {
+            "author": "Randy Puttick",
+            "body": "Created an attachment (id=16005)\ntwo new constants for use against the sorting cache\n",
+            "date": "2005-08-11T06:40:22.000+0000",
+            "id": 6
+        },
+        {
+            "author": "Randy Puttick",
+            "body": "Okay found the attachments.  IMHO numeric range query capability is pretty\nuseful BUT this implementation (like the sorting implementation) introduces a\nfairly lengthy cache-warming cost for the first query executed (like 0.5\nseconds).  The implications of this will vary with application but should\ncertainly be considered in a dynamically updated installation.",
+            "date": "2005-08-11T06:44:25.000+0000",
+            "id": 7
+        },
+        {
+            "author": "Randy Puttick",
+            "body": "Created an attachment (id=16006)\nFieldCacheImpl.java\n\nExtensions of the field cache implementation that build the range data\nstructures\nfor integers and floating point",
+            "date": "2005-08-11T07:07:31.000+0000",
+            "id": 8
+        },
+        {
+            "author": "Ray Tsang",
+            "body": "How about rewriting to BitSetQuery instead of BooleanQueries?",
+            "date": "2005-08-11T14:19:20.000+0000",
+            "id": 9
+        },
+        {
+            "author": "Yonik Seeley",
+            "body": "How I cracked this nut was to manipulate numbers such that they index properly\nand then use a ConstantScoreRangeQuery\nhttp://issues.apache.org/bugzilla/show_bug.cgi?id=34673",
+            "date": "2005-08-12T00:02:40.000+0000",
+            "id": 10
+        },
+        {
+            "author": "Randy Puttick",
+            "body": "(In reply to comment #11)\n> How I cracked this nut was to manipulate numbers such that they index properly\n> and then use a ConstantScoreRangeQuery\n> http://issues.apache.org/bugzilla/show_bug.cgi?id=34673\n\nThanks Yonik, using a filter like this will certainly work functionally but I\nneed range queries to perform well and filtering is kind of like full table\nscans in the relational world.  In my use cases the range queries are the\nprimary document reduction mechanism so I wouldn't benefit from 'skip to'\nimplementation to avoid reading a lot of field values.",
+            "date": "2005-08-12T01:09:54.000+0000",
+            "id": 11
+        },
+        {
+            "author": "Randy Puttick",
+            "body": "(In reply to comment #10)\n> How about rewriting to BitSetQuery instead of BooleanQueries?\n\nI'm not familiar with BitSetQuery and it isn't in the released version I'm\nusing.  What does it do?",
+            "date": "2005-08-12T01:13:10.000+0000",
+            "id": 12
+        },
+        {
+            "author": "Otis Gospodnetic",
+            "body": "Randy, I haven't looked at the source yet, but is the aim to allow for queries\nsuch as \"give me documents that have a price in a range from 0.99 to 9.99\"?\n\nFrom the sound of this, this looks useful.\nI hardly ever use range queries, so could you please explain what you mean by\n\"... searches over numeric ranges that are far too large to be implemented via\nthe current term range rewrite mechanism\"?\n\nHow does the current implementation deal with a large numeric range, and how\ndoes your contribution fix it?\n\nThanks.\n",
+            "date": "2005-08-12T02:24:03.000+0000",
+            "id": 13
+        },
+        {
+            "author": "Randy Puttick",
+            "body": "(In reply to comment #14)\n> Randy, I haven't looked at the source yet, but is the aim to allow for queries\n> such as \"give me documents that have a price in a range from 0.99 to 9.99\"?\n> \n> From the sound of this, this looks useful.\n> I hardly ever use range queries, so could you please explain what you mean by\n> \"... searches over numeric ranges that are far too large to be implemented via\n> the current term range rewrite mechanism\"?\n> \n> How does the current implementation deal with a large numeric range, and how\n> does your contribution fix it?\n> \n> Thanks.\n> \n\n\nYes, this change will efficiently implement floating point ranges like .99 to 9.99.\n\nThe current rewrite scans terms (therefore lexicographically) from the beginning\nof the range and generates a boolean query that is the disjunction of all the\nterms falling in the lexicographic range.  Any large range throws\nTooManyClauses.  You'll note in an earlier comment that 34673 is a contribution\nthat fixes this case essentially by turning the query into a filter.\n\nMy submission catches the TooManyExceptions exception within the rewrite method\nof RangeQuery then attempts to construct either an IntegerRangeQuery or\nFloatRangeQuery (this permits you to control the mechanism by manipulating the\nmaximum boolean clauses).  Both of these work by:\n1) pulling field values for all docnos (as in the numeric sorting solution)\n2) creating an array of docnos then sorting that array relative to the field values\n3) at query time, the bounds are found using (indirect) binary search on the\ndocnos to find the set of docnos that match the range\n4) the query sorts this set of docnos back into docno order and returns that set\n\nRange sorting is useful for e.g. prices, heights etc. etc.",
+            "date": "2005-08-12T02:39:50.000+0000",
+            "id": 14
+        },
+        {
+            "author": "Randy Puttick",
+            "body": "Created an attachment (id=16115)\nIntStack.java\n\nDoh! My fault for not including the attachment",
+            "date": "2005-08-20T01:16:11.000+0000",
+            "id": 15
+        },
+        {
+            "author": "Antoine",
+            "body": "I juste made some junit test using some IntegerRangeQuery's, and I get\nsome strange results.\nI attached the junit test I used. It fails on the last assert. I am\nexpecting only one result: the date between 1981 and 1983, but I get 2\nThe test output is:\n\nterm = date:1980\nterm = date:1982\nterm = date:1984\nRangeQuery q = date:[1981 TO 1983]\nDocument<stored/uncompressed,indexed,tokenized<date:1982>>\nIntegerRangeQuery q = date=[1981 TO 1983]\nDocument<stored/uncompressed,indexed,tokenized<date:1982>>\nDocument<stored/uncompressed,indexed,tokenized<date:1984>>\n",
+            "date": "2005-10-20T16:56:37.000+0000",
+            "id": 16
+        },
+        {
+            "author": "Randy Puttick",
+            "body": "Fix for the bug found by IntegerRangeQueryTest",
+            "date": "2005-10-21T02:07:52.000+0000",
+            "id": 17
+        },
+        {
+            "author": "Mark Miller",
+            "body": "Closing - a few years old now and we currently have NumericRangeQuery.",
+            "date": "2009-12-08T03:58:57.600+0000",
+            "id": 18
+        }
+    ],
+    "component": "core/search",
+    "description": "I have a set of enhancements that build on the numeric sorting cache introduced\nby Tim Jones and that provide integer and floating point range searches over\nnumeric ranges that are far too large to be implemented via the current term\nrange rewrite mechanism.  I'm new to Apache and trying to find out how to attach\nthe source files for the changes for your consideration.",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "LUCENE-421",
+    "issuetypeClassified": "RFE",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Minor",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "Numeric range searching with large value sets",
+    "systemSpecification": true,
+    "version": "1.4"
+}

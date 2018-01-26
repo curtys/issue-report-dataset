@@ -1,0 +1,23 @@
+{
+    "comments": [
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "What was going on was a java.lang.SecurityException: \"Can not make a java.lang.Class constructor accessible\" was getting thrown. So I've restructured the new code for dealing with getting access to privates to handle SecurityExceptions and just use accessible members.\n\nI ran with Context.FEATURE_ENHANCED_JAVA_ACCESS set to true over the regression suite and it turned up a set of cases where a NPE was thrown because a bad scope object was passed down from ScriptRuntime.newCatchScope. I fixed that and tightened up the case where a ClassCache isn't found (which was what was happening with the invalid scope that later resulted in the NPE. \n\nFixed:\n\nChecking in src/org/mozilla/javascript/ClassCache.java;\n/cvsroot/mozilla/js/rhino/src/org/mozilla/javascript/ClassCache.java,v  <--  ClassCache.java\nnew revision: 1.16; previous revision: 1.15\ndone\nChecking in src/org/mozilla/javascript/JavaMembers.java;\n/cvsroot/mozilla/js/rhino/src/org/mozilla/javascript/JavaMembers.java,v  <--  JavaMembers.java\nnew revision: 1.68; previous revision: 1.67\ndone\nChecking in src/org/mozilla/javascript/ScriptRuntime.java;\n/cvsroot/mozilla/js/rhino/src/org/mozilla/javascript/ScriptRuntime.java,v  <-- ScriptRuntime.java\nnew revision: 1.277; previous revision: 1.276\ndone\n",
+            "date": "20070927T19:02:49",
+            "id": 0
+        }
+    ],
+    "component": "Core",
+    "description": "Turning on FEATURE_ENHANCED_JAVA_ACCESS breaks a bunch\nof our unit tests; they're generally failing on line ScriptableObject:1483\n-- obj.getParentScope() is throwing a NullPointerException.\n\nI've been trying to isolate the failure cases, since the exception tends\nto be thrown in fairly complex code.  The first one I found is this:\n\njs> new java.io.File('').getClass().getMethods()\n[Ljava.lang.reflect.Method;@f894ce\n\nYou can call getMethods() on the class object returned by getClass(),\nbut with FEATURE_ENHANCED_JAVA_ACCESS, it can't find the\ngetMethods() method:\n\njs> new java.io.File('').getClass().getMethods()\njs: \"<stdin>\", line 2: uncaught JavaScript runtime exception: TypeError: Cannot find function getMethods.",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "397036",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "-- normal",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "NPE with FEATURE_ENHANCED_JAVA_ACCESS",
+    "systemSpecification": true,
+    "version": "1.7R1"
+}

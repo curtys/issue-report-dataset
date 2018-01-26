@@ -1,0 +1,113 @@
+{
+    "comments": [
+        {
+            "author": "Adrian Sutton",
+            "body": "Created an attachment (id=3482)\nPatch to add buffering to FilePart.\n",
+            "date": "2002-10-16T13:17:11.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Adrian Sutton",
+            "body": "The attached patch adds a buffer to FilePart which stores the file data so it \ncan be resent, allowing FilePart to work correctly with authenticated servers.",
+            "date": "2002-10-16T13:20:37.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Martin Cooper",
+            "body": "I understand the issue the patch is trying to address, but this is not the \nright way to do it. The problem is that the entire file is being buffered in \nmemory. That's fine if the file is small, and there's only one, but if you're \ntrying to upload multiple large files, this will just run the system out of \nmemory.",
+            "date": "2002-10-17T00:20:44.000+0000",
+            "id": 2
+        },
+        {
+            "author": "Adrian Sutton",
+            "body": "Agreed that buffering in memory isn't desirable, however if only an InputStream \nis given there isn't a lot of choice.  This new patch provides the option to \nturn buffering on and off and does not buffer in RAM if a java.io.File is \nprovided (it creates a new FileInputStream each time instead).\n\nWhile it is possible to take an InputStream and buffer the data to a file, this \nseems somewhat redundant when a File can be taken as a parameter anyway and it \nis a part designed for file uploading.\n\nI have enabled buffering by default as without it, HttpClient will hang if \nauthentication or a redirect is required and default settings should avoid that.",
+            "date": "2002-10-17T06:42:09.000+0000",
+            "id": 3
+        },
+        {
+            "author": "Adrian Sutton",
+            "body": "Created an attachment (id=3494)\nNew patch, disregard the previous patch.\n",
+            "date": "2002-10-17T06:42:40.000+0000",
+            "id": 4
+        },
+        {
+            "author": "Martin Cooper",
+            "body": "Another possibility would be to use mark()/reset() if it's available on the \nsupplied InputStream. That would be kinda nice.",
+            "date": "2002-10-17T06:47:30.000+0000",
+            "id": 5
+        },
+        {
+            "author": "Adrian Sutton",
+            "body": "Excellent idea.  I've implemented that so please ignore the current patch.  \nIt's getting too complex for me to be confident without specific test cases \nthough.  I'll look into those when I get a chance.",
+            "date": "2002-10-17T07:08:41.000+0000",
+            "id": 6
+        },
+        {
+            "author": "Adrian Sutton",
+            "body": "Created an attachment (id=3495)\nLatest patch, ignore previous ones.  No test cases yet.\n",
+            "date": "2002-10-17T08:07:54.000+0000",
+            "id": 7
+        },
+        {
+            "author": "Adrian Sutton",
+            "body": "HttpClient test cases won't run for me at all and I don't have time to struggle \nwith it just yet.  I've uploaded the patch in case anyone has the inspiration \nto write tests before I get around to it, otherwise I'll follow up during the \nweek sometime.",
+            "date": "2002-10-17T08:08:57.000+0000",
+            "id": 8
+        },
+        {
+            "author": "Adrian Sutton",
+            "body": "Created an attachment (id=3624)\nPatch to add tests for parts to TestNoHost.\n",
+            "date": "2002-10-28T17:28:59.000+0000",
+            "id": 9
+        },
+        {
+            "author": "Adrian Sutton",
+            "body": "Created an attachment (id=3625)\nTests for resending part data.\n",
+            "date": "2002-10-28T17:29:36.000+0000",
+            "id": 10
+        },
+        {
+            "author": "Adrian Sutton",
+            "body": "These two patches add test cases for this fix.  It would be good to get this \nfix committed.  There's still more test cases that need to be written for \nMultipartPostMethod, but these are the only ones relevant to this bug.",
+            "date": "2002-10-28T17:31:31.000+0000",
+            "id": 11
+        },
+        {
+            "author": "Jeff Dever",
+            "body": "Patches 3495, 3624, 3625 committed.",
+            "date": "2002-10-29T14:43:42.000+0000",
+            "id": 12
+        },
+        {
+            "author": "Jeff Dever",
+            "body": "Adrian, it appears that this bug is fixed.  Can it be closed?",
+            "date": "2003-02-03T23:08:06.000+0000",
+            "id": 13
+        },
+        {
+            "author": "Adrian Sutton",
+            "body": "Yes, I believe this bug should have been closed quite some time ago.",
+            "date": "2003-02-04T07:15:58.000+0000",
+            "id": 14
+        },
+        {
+            "author": "Jeff Dever",
+            "body": "Currently in REMIND state, need to close.",
+            "date": "2003-02-04T11:51:57.000+0000",
+            "id": 15
+        }
+    ],
+    "component": "HttpClient (classic)",
+    "description": "When using a FilePart with the MultipartPostMethod and a server that requires \nauthentication, the first call to FilePart.send() sends the data correctly and \nHttpClient receives an unauthorized response from the server.  If HttpClient is \nset to automatically handle authentication attempts it then attempts to send \nthe FilePart again at which time the InputStream FilePart reads from is empty \nso it doesn't send any data.\n\nDue to this, the data actually sent by HttpClient doesn't match the content \nlength specified so the server continues to wait for the data and doesn't \nrespond, leaving HttpClient to timeout while waiting for a response.\n\nThis occurs with the latest source from CVS as of 16 October 2002.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "HTTPCLIENT-119",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "HTTPCLIENT",
+    "project": "HTTPCLIENT",
+    "summary": "[PATCH] FilePart fails to send data on second call to send",
+    "systemSpecification": true,
+    "version": ""
+}

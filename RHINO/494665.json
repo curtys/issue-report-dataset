@@ -1,0 +1,35 @@
+{
+    "comments": [
+        {
+            "author": "szegedia@freemail.hu",
+            "body": "Created attachment 379424\nPatch that fixes the bug\n\nAttached a patch to fix the bug. Basically, have the JavaMembers objects bind to the scope of the ClassCache instead of the current top-level scope (as the ClassCache scope can be the current top-level scope's prototype).",
+            "date": "20090524T10:27:52",
+            "id": 0
+        },
+        {
+            "author": "szegedia@freemail.hu",
+            "body": "Committed patch to CVS HEAD:\n\n***\ncvs ci -m \"Fix for #494665: Memory leak when using Java reflection & shared scopes\" -l \"/Rhino/src/org/mozilla/javascript/JavaMembers.java\" \"/Rhino/src/org/mozilla/javascript/ClassCache.java\"\n    Checking in src/org/mozilla/javascript/ClassCache.java;\n    /cvsroot/mozilla/js/rhino/src/org/mozilla/javascript/ClassCache.java,v  <--  ClassCache.java\n    new revision: 1.20; previous revision: 1.19\n    done\n    Checking in src/org/mozilla/javascript/JavaMembers.java;\n    /cvsroot/mozilla/js/rhino/src/org/mozilla/javascript/JavaMembers.java,v  <--  JavaMembers.java\n    new revision: 1.80; previous revision: 1.79\n    done\nok (took 0:04.203)\n***",
+            "date": "20090606T14:11:46",
+            "id": 1
+        },
+        {
+            "author": "hannesw@gmail.com",
+            "body": "Comment on attachment 379424\nPatch that fixes the bug\n\nReview of attachment 379424:\n-----------------------------------------------------------------\n\nI haven't seen this at the time, and bugzilla has recently started sending me me reminder emails about it, so yes, this looks perfectly fine :)",
+            "date": "20120214T08:07:49",
+            "id": 2
+        }
+    ],
+    "component": "Core",
+    "description": "From the e-mail Kieran Topping sent to the rhino mailing list: \n\nWhen using the default WrapFactory, ClassCache holds a reference to whatever the top level scope was at the time the class-in-question was cached.\nUsually, this is truly the top-level scope, which doesn't cause any problems.\nHowever, if you're using a shared \"global\" scope, as per:\nhttps://developer.mozilla.org/En/Rhino_documentation/Scopes_and_Contexts#Sharing_Scopes\nthen this sharedScope isn't used by ClassCache; it's actually your \"newScope\", as follows:\n\nScriptable sharedScope = ... create shared scope.\n\ncreate a scope that uses the shared scope\n  Scriptable newScope = cx.newObject(sharedScope);\n  newScope.setPrototype(sharedScope);\n  newScope.setParentScope(null);\nthen run a script in newScope, in particular one that ends up wrapping a java class, either via Context.javaToJS() or actually in your javascript. Even if you don't do this explicitly, things like throwing a java exception will end in WrapFactory being used.\n\nAfter the above, you can end up with the following:\n\nsharedScope\n-stores-reference-to-> classCacheInstance\n\nclassCacheInstance\n-stores-reference-to-> newScope.\n\nThis means that newScope will /never /become eligible for garbage collection. If you created some large objects in newScope then these will never be GC-ed either. Hence....memory leak.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "494665",
+    "issuetypeClassified": "OTHER",
+    "issuetypeTracker": "BUG",
+    "priority": "-- major",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "Memory leak when using Java reflection & shared scopes",
+    "systemSpecification": false,
+    "version": "head"
+}

@@ -1,0 +1,71 @@
+{
+    "comments": [
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 135329\nImplementation\n\nThe patch follows SpiderMonkey semantics with regarding to toSource/uneval and\npasses the following tests that currently excluded from the test suite for\nRhino:\n\n#toSource tests\njs1_5/Regress/regress-44009.js\njs1_5/Object/regress-90596-001.js\njs1_5/Object/regress-96284-001.js\n\n#uneval tests\njs1_5/Object/regress-90596-002.js\njs1_5/Object/regress-96284-002.js\n\n\nThe implementation adds new method to ScriptableObject:\n\nprotected String toSourceImplementation(Context cx, Scriptable scope)\n\nwhich is called from Object.prototype.toSource() if thisObj is instance of of\nScriptableObject. If not, then toString() is used. In this way it was not\nnecessary to define separated toSource JS method in each and every standard\nobject, but rather simple overriding of toSourceImplementation was enough.\n\nIn the patch toSourceImplementation by default calls toString() and only\nNativeObject provides serialization in form of {name:value ...} so if the scope\nis not a subclass of NativeObject (which is the case of Rhino shell), then\nexecuting\n\nvar x = 1;\nprint(toSource())\n\nwould give [object global] rather then ({x:1}) as happens in SM.\n\nPerhaps it would make sense to follow SM in this area as well.",
+            "date": "20031112T16:56:31",
+            "id": 0
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 135396\nuneval(-0) => -0 and someFunction.toSource(0) == someFunction.toSource(0)\n\nIn this version of the patch I changed toSourceImplementation(Context,\nScriptable scope) into toSource(Context, Scriptable scope, Object[] args) so\nBaseFunction can override toSource and get access to the original JS arguments\nand be fully on pair with SpiderMonkey:\n\nRhino 1.5 release 5 0000 00 00\njs> function f() { return 1; }\njs> print(f.toSource())\nfunction f() {return 1;}\njs> print(f.toSource(0))\n\nfunction f() {\n    return 1;\n}\n\njs> print(f.toSource(10))\n\n\t  function f() {\n\t      return 1;\n\t  }",
+            "date": "20031113T15:09:09",
+            "id": 1
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 135407\nScriptableObject.toSource defaults to ({}) form\n\nI changed ScriptableObject.toSource not to return toString() but rather produce\n({}) form of enumeratable properties since in this way uneval would produce by\ndefault syntactically correct JS.",
+            "date": "20031113T16:25:45",
+            "id": 2
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "I committed the latest patch",
+            "date": "20031113T17:15:53",
+            "id": 3
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 135413\nNo need to skip toSource/uneval tests in rhino-n.tests\n\nNow Rhino does not need to skip toSource/uneval tests from the test suite",
+            "date": "20031113T18:00:54",
+            "id": 4
+        },
+        {
+            "author": "pschwartau@meer.net",
+            "body": "Igor: thanks, I have checked in your patch for rhino-n.tests:\n\n[//d/JS_TRUNK/mozilla/js/tests] cvs ci rhino-n.tests\nChecking in rhino-n.tests;\n/cvsroot/mozilla/js/tests/rhino-n.tests,v  <--  rhino-n.tests\nnew revision: 1.56; previous revision: 1.55\ndone\n\n\nThe five tests involved now all pass in Rhino; marking Verified FIXED -",
+            "date": "20031113T18:40:46",
+            "id": 5
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 135729\nFix to exactly match SM during nested toSource\n\nThe patch changes toSource applied for objects not to put () arround nested\nobjects so uneval({x:{y: 0}}) gives \n({x:{y:0}})\nand not \n({x:({y:0})}).\n\nIn this way Rhino matches SpiderMonkey and the test case for bug 225831 that\nrelies on a particular output of toSource() to simplify test code runs fine in\nRhino optimized mode.",
+            "date": "20031117T17:34:11",
+            "id": 6
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "I committed the last fix as well.",
+            "date": "20031117T17:40:12",
+            "id": 7
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Trageting as resolved against 1.5R5",
+            "date": "20040213T11:35:41",
+            "id": 8
+        }
+    ],
+    "component": "Core",
+    "description": "It would be nice if Rhino would support Object.prototype.toSource() and uneval()\nas defined in SpiderMonkey.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "225465",
+    "issuetypeClassified": "RFE",
+    "issuetypeTracker": "RFE",
+    "priority": "-- enhancement",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "Support for Object.prototype.toSource() and uneval()",
+    "systemSpecification": false,
+    "version": "other"
+}

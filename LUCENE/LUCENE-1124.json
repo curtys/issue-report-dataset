@@ -1,0 +1,71 @@
+{
+    "comments": [
+        {
+            "author": "Otis Gospodnetic",
+            "body": "This makes sense, Timo.  Could you please attach a patch + a simple unit test?\n",
+            "date": "2008-01-09T05:57:20.130+0000",
+            "id": 0
+        },
+        {
+            "author": "Mark Miller",
+            "body": "This optimization is correct. Highlights some interesting things about fuzzy query as well i.e. if you put a minsim of 0.9, your query term *has* to be over 10 chars to have any hope of getting a match. For the default of 0.5 its 2 chars, so in the common case the optimization doesn't do much good, and you do have to pay for the check every time no matter what. For larger minsim values though, this will turn a lot of fuzz queries into no ops.\n\n- Mark",
+            "date": "2008-08-17T14:35:57.821+0000",
+            "id": 1
+        },
+        {
+            "author": "Mark Miller",
+            "body": "Computing the needed term length in the constructor is probably better.",
+            "date": "2008-08-17T14:44:38.791+0000",
+            "id": 2
+        },
+        {
+            "author": "Hoss Man",
+            "body": "I don't deal with FuzzyQueries much, but skimming this issue it seems to touch on a lot of hte same things that spawned the creation of the \"mm\" syntax for specifying the \"minNumberShouldMatch\" value on BooleanQueries in the Solr dismax query parser...\n\nhttp://lucene.apache.org/solr/api/org/apache/solr/util/doc-files/min-should-match.html\n\n...perhaps something similar could be used to allow people to specify simpel expressions for dictating the \"fuzzyiness\" of short input vs medium length input, vs long input.",
+            "date": "2008-08-25T19:26:47.968+0000",
+            "id": 3
+        },
+        {
+            "author": "Mark Miller",
+            "body": "Updated to trunk.\n\nIm going to commit in few days if no one objects.",
+            "date": "2009-01-04T15:35:42.819+0000",
+            "id": 4
+        },
+        {
+            "author": "Mark Miller",
+            "body": "Thanks! Committed.",
+            "date": "2009-01-18T18:33:13.860+0000",
+            "id": 5
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "This fix breaks the case when the exact term is present in the index.",
+            "date": "2009-10-16T16:29:31.856+0000",
+            "id": 6
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Attach patch (based on 2.9) showing the bug, along with the fix.  Instead of rewriting to empty BooleanQuery when prefix term is not long enough, I rewrite to TermQuery with that prefix.  This way the exact term matches.\n\nI'll commit shortly to trunk & 2.9.x.",
+            "date": "2009-10-16T16:31:12.475+0000",
+            "id": 7
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Bulk close all 2.9.1 issues.",
+            "date": "2009-11-07T14:57:29.783+0000",
+            "id": 8
+        }
+    ],
+    "component": "core/query/scoring",
+    "description": "I found this (unreplied to) email floating around in my Lucene folder from during the holidays...\n\n{noformat}\nFrom: Timo Nentwig\nTo: java-dev\nSubject: Fuzzy makes no sense for short tokens\nDate: Mon, 31 Dec 2007 16:01:11 +0100\nMessage-Id: <200712311601.12255.lucene@nitwit.de>\n\nHi!\n\nit generally makes no sense to search fuzzy for short tokens because changing\neven only a single character of course already results in a high edit\ndistance. So it actually only makes sense in this case:\n\n           if( token.length() > 1f / (1f - minSimilarity) )\n\nE.g. changing one character in a 3-letter token (foo) results in an edit\ndistance of 0.6. And if minSimilarity (which is by default: 0.5 :-) is higher\nwe can save all the expensive rewrite() logic.\n{noformat}\n\nI don't know much about FuzzyQueries, but this reasoning seems sound ... FuzzyQuery.rewrite should be able to completely skip all TermEnumeration in the event that the input token is shorter then some simple math on the minSimilarity.  (i'm not smart enough to be certain that the math above is right however ... it's been a while since i looked at Levenstein distances ... tests needed)\n",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-1124",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Trivial",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "short circuit FuzzyQuery.rewrite when input token length is small compared to minSimilarity",
+    "systemSpecification": true,
+    "version": ""
+}

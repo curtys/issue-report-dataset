@@ -1,0 +1,41 @@
+{
+    "comments": [
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "I think this issue is a duplicate of HTTPCLIENT-1075. Could you please retest your application with the latest SVN snapshot (either off trunk or 4.1.x branch) and let me know if that fixes the problem for you?\n\nOleg  ",
+            "date": "2011-06-22T11:17:24.357+0000",
+            "id": 0
+        },
+        {
+            "author": "Reuben Pasquini",
+            "body": "Hi Oleg,\n\nThanks for the quick response.  Yes - you're right - a build from SVN runs fine for me.  I don't suppose there's an ETA for a 4.1.2 or 4.2 publish to maven.org ?\n\nThanks again!\n\nCheers,\nReuben\n",
+            "date": "2011-06-22T16:46:22.753+0000",
+            "id": 1
+        },
+        {
+            "author": "Reuben Pasquini",
+            "body": "Oleg already fixed this in SVN for a previous ticket ...",
+            "date": "2011-06-22T16:47:54.101+0000",
+            "id": 2
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "We are probably looking at the second half of July as a likely release time-frame for 4.1.2 and Q1 2012 for 4.2\n\nOleg",
+            "date": "2011-06-22T18:55:46.380+0000",
+            "id": 3
+        }
+    ],
+    "component": "HttpClient (classic)",
+    "description": "Invoking EntityUtils.consume( entity ) after a previous call to entity.getContent (and subsequent processing of the content) throws a java.io.EOFException when gzip decompression support is enabled via ContentEncodingHttpClient or some similar mechanism.  I invoke EntityUtils.consume in a 'finally' block - maybe I'm not using the API correctly ... ?  \n\njava.io.EOFException\n\tat java.util.zip.GZIPInputStream.readUByte(GZIPInputStream.java:207)\n\tat java.util.zip.GZIPInputStream.readUShort(GZIPInputStream.java:197)\n\tat java.util.zip.GZIPInputStream.readHeader(GZIPInputStream.java:136)\n\tat java.util.zip.GZIPInputStream.<init>(GZIPInputStream.java:58)\n\tat java.util.zip.GZIPInputStream.<init>(GZIPInputStream.java:68)\n\tat org.apache.http.client.entity.GzipDecompressingEntity.getContent(GzipDecompressingEntity.java:63)\n\tat org.apache.http.conn.BasicManagedEntity.getContent(BasicManagedEntity.java:88)\n\tat org.apache.http.util.EntityUtils.consume(EntityUtils.java:65)\n\nI believe the problem is that the underlying DecompressingEntity allocates a new GzipInputStream for each call to getContent, rather than caching the stream created by the first getContent call.  \n       http://svn.apache.org/repos/asf/httpcomponents/httpclient/trunk/httpclient/src/main/java/org/apache/http/client/entity/DecompressingEntity.java\nThe \"CustomProtocolInterceptors\" example has the same bug:  http://hc.apache.org/httpcomponents-client-ga/examples.html\n\nI worked around the problem implementing the example with my own GzipDecompressingEntity (scala code - lazy value not evaluated till accessed):\n\n  class GzipDecompressingEntity( entity:http.HttpEntity) extends http.entity.HttpEntityWrapper(entity) {\n    private lazy val gzipStream = new GZIPInputStream( entity.getContent() )\n    \n    /** \n     * Wrap entity stream in GZIPInputStream\n     */\n    override def getContent():java.io.InputStream = gzipStream\n\n    /**\n     * Return -1 - don't know unzipped content size\n     */\n    override def getContentLength():Long = -1L\n  }\n\n",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "HTTPCLIENT-1103",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "HTTPCLIENT",
+    "project": "HTTPCLIENT",
+    "summary": "GzipDecompressingEntity (and therefore ContentEncodingHttpClient) not consistent with EntityUtils.consumeEntity",
+    "systemSpecification": true,
+    "version": "4.1.1"
+}

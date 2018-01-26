@@ -1,0 +1,113 @@
+{
+    "comments": [
+        {
+            "author": "Rajika Kumarasiri",
+            "body": "There is possibility of getting a Class Cast Exception.  Here is a patch for the issue. I also fixed some code indentation for more readability. \n\nRajika",
+            "date": "2011-12-21T04:45:50.763+0000",
+            "id": 0
+        },
+        {
+            "author": "Clinton Nielsen",
+            "body": "Looks like the patch fixes the problems in updateEntry, but fails to fix the same problem in getEntry.",
+            "date": "2011-12-21T14:33:26.001+0000",
+            "id": 1
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "One thing I do not quite understand. Why would there be anything other than byte array in the memcache? In case someone was silly enough to have stuck some arbitrary object in the memcache used by HttpClientCache throwing ClassCastException seems perfectly reasonable.\n\nOleg",
+            "date": "2011-12-21T16:40:42.206+0000",
+            "id": 2
+        },
+        {
+            "author": "Clinton Nielsen",
+            "body": "Could be that somebody is using the cache for other purposes as well, and just happens to set an object with a URL as a key that conflicts with an object that is set by MemcachedHttpCacheStorage.\n -- this could (and also probably should) be mitigated by allowing the client of MemcachedHttpCacheStorage to set a client-defined prefix String that will be prefixed to all keys, thus avoiding potential collisions.\n\n\nIn my case, it is that we are using jmemcacheddaemon for local testing purposes, and (unfortunately) jmemcacheddaemon has a known bug where cache misses return an empty string instead of a null object. This causes MemcachedHttpCacheStorage to throw a ClassCastException instead of just returning null, because String cannot be cast to byte[].",
+            "date": "2011-12-21T16:55:10.011+0000",
+            "id": 3
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "> Could be that somebody is using the cache for other purposes as well, and just happens to set an object with a URL as a key that\n> conflicts with an object that is set by MemcachedHttpCacheStorage\n\nCould be that somebody is using computer to hammer nails. We can't stop people from doing silly stuff.\n\n>  -- this could (and also probably should) be mitigated by allowing the client of MemcachedHttpCacheStorage to set a client-defined \n> prefix String that will be prefixed to all keys, thus avoiding potential collisions. \n\nThis is actually a very reasonable suggestion. Probably what we need is a generic strategy that can be used to generate a unique cache key from a request url. This would also take care of HTTPCLIENT-1153.\n\n> In my case, it is that we are using jmemcacheddaemon for local testing purposes, and (unfortunately) jmemcacheddaemon has \n> a known bug where cache misses return an empty string instead of a null object. \n\nOK. But I do not think that polluting a general purpose library with a hack clearly specific to your local environment is the right thing to do. Simply implement a custom HttpCacheStorage which is aware of the empty string semantics.\n\nOleg",
+            "date": "2011-12-21T18:47:40.393+0000",
+            "id": 4
+        },
+        {
+            "author": "Clinton Nielsen",
+            "body": ">> In my case, it is that we are using jmemcacheddaemon for local testing purposes, and (unfortunately) jmemcacheddaemon has \n>> a known bug where cache misses return an empty string instead of a null object. \n\n>OK. But I do not think that polluting a general purpose library with a hack clearly specific to your local environment is the right thing to do. Simply implement a custom HttpCacheStorage which is aware of the empty string semantics. \n\nFair enough. But as a general principle, if memcached ever retrieves an object that isn't the expected type, it should count as a cache-miss. It certainly shouldn't throw a ClassCastException. Just 'miss' and move on.\n\n\n--- I actually had already extended MemcachedHttpCacheStorage to make it aware of the empty-string problem, and also to hash URLs using SHA-512, and to allow a custom prefix on the keys. So I'm good. I just opened these bugs so you could be aware and make changes if you want.  :)",
+            "date": "2011-12-21T18:51:36.713+0000",
+            "id": 5
+        },
+        {
+            "author": "Jon Moore",
+            "body": "I'm actually going to reopen this, as I think it's a pretty small change that adds to the robustness of the library (and I'll work on integrating and committing it). Upon encountering something weird coming back out of memcached, I think logging a warning and then acting as if it were a cache miss is good and prudent behavior.\n",
+            "date": "2011-12-21T18:55:07.352+0000",
+            "id": 6
+        },
+        {
+            "author": "Jon Moore",
+            "body": "@Clinton: I've been thinking about adding an optional string-prefix configuration option to the memcached storage as well; would you mind opening that as a separate improvement request?\n",
+            "date": "2011-12-21T18:56:45.742+0000",
+            "id": 7
+        },
+        {
+            "author": "Clinton Nielsen",
+            "body": "Yup, I'll do that right away.",
+            "date": "2011-12-21T19:06:25.266+0000",
+            "id": 8
+        },
+        {
+            "author": "Jon Moore",
+            "body": "@Rajika: just checked your patch in, along with the addition of a WARN-level log message if we encounter memcached giving us something other than a byte[] back. Will work on porting this to the 4.1.x branch next.",
+            "date": "2012-01-09T14:35:05.156+0000",
+            "id": 9
+        },
+        {
+            "author": "Jon Moore",
+            "body": "Checked into trunk and backported to 4.1.x.\n\n@Clinton - can you review and close this issue if you're satisfied?\n",
+            "date": "2012-01-09T14:46:26.755+0000",
+            "id": 10
+        },
+        {
+            "author": "Clinton Nielsen",
+            "body": "Checked the diff. It looks like the issue is only half-fixed.\nThe fix has been applied to the updateEntry function, but not to the getEntry function.\n\nThanks.",
+            "date": "2012-01-09T14:57:02.646+0000",
+            "id": 11
+        },
+        {
+            "author": "Jon Moore",
+            "body": "@Clinton - good catch; will fix forthwith.",
+            "date": "2012-01-09T15:11:54.121+0000",
+            "id": 12
+        },
+        {
+            "author": "Jon Moore",
+            "body": "@Clinton - added the same checking to the getEntry() side and refactored the commonality out. This is checked into trunk now.\n",
+            "date": "2012-01-09T15:28:31.399+0000",
+            "id": 13
+        },
+        {
+            "author": "Clinton Nielsen",
+            "body": "Verified as fixed in trunk.",
+            "date": "2012-01-09T15:44:51.275+0000",
+            "id": 14
+        },
+        {
+            "author": "Jon Moore",
+            "body": "Ok, also backported to 4.1.x.",
+            "date": "2012-01-09T21:27:14.266+0000",
+            "id": 15
+        }
+    ],
+    "component": "HttpCache, HttpClient (classic)",
+    "description": "org.apache.http.impl.client.cache.memcached.MemcachedHttpCacheStorage\n\nOriginal (in getEntry function): \n  byte[] data = (byte[]) client.get(url);\n\nShould be:\n  Object obj= client.get(url);\n  if (null == obj || !(objinstanceof byte[])) {\n    return null;\n  }\n  byte[] data = (byte[])obj;\n\n\nOriginal (in updateEntry function):\n  byte[] oldBytes = (v != null) ? (byte[]) v.getValue() : null;\n\nShould be:\n  byte[] oldBytes = (v != null && (v.getValue() instanceof byte[])) ? (byte[]) v.getValue() : null;\n\n\n\n  \n",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "HTTPCLIENT-1152",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Minor",
+    "product": "HTTPCLIENT",
+    "project": "HTTPCLIENT",
+    "summary": "org.apache.http.impl.client.cache.memcached.MemcachedHttpCacheStorage should verify class of returned object before casting",
+    "systemSpecification": true,
+    "version": "4.1.1"
+}

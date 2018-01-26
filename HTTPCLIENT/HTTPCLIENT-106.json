@@ -1,0 +1,83 @@
+{
+    "comments": [
+        {
+            "author": "Jeff Dever",
+            "body": "Some overhaul was done to the URIUtil package recently.  Is this still a problem?",
+            "date": "2002-10-29T14:53:27.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Armando Ant\u00f3n",
+            "body": "I don't understand why the path is encoded but the queryString not\nI think it is a bug and the path must not be encoded because the path and query \nare well-formed in this point and encoding them can cause unexpected behaviours\n\n(more info)The query encoding was removed in revision 1.69\n\nHttpMethodBase v1.95 (generateRequestLine method). Current code:\n\n        StringBuffer buf = new StringBuffer();\n        String path = null;\n        try {\n            path = (requestPath == null) ? \"/\" : URIUtil.encodePath\n(requestPath);\n        } catch (URIException urie) {\n            log.error(\"URI path encoding error\");\n            path = requestPath;\n        }\n        buf.append(path);\n        if (query != null) {\n            if (query.indexOf(\"?\") != 0) {\n                buf.append(\"?\");\n            }\n            String queryString = null;\n            queryString = (query == null) ? \"/\" : query;\n            buf.append(queryString);\n        }",
+            "date": "2003-01-17T03:11:04.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Created an attachment (id=5213)\nHttpMethodBase#generateRequestLine() refactored\n",
+            "date": "2003-03-08T01:47:50.000+0000",
+            "id": 2
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Currently HttpMethodBase#generateRequestLine() is a bloody mess. Any reasonable \nsolution to this problem should be preceded by method re-write. Here's my shot \nat it\n\nOleg",
+            "date": "2003-03-08T01:49:56.000+0000",
+            "id": 3
+        },
+        {
+            "author": "Adrian Sutton",
+            "body": "This patch doesn't look right to me. I'm no expert but have just recently had \nto review our URL encoding code so it concerns me that we don't seem to be \nencoding the query string.  RFC 1738 (Uniform Resource Locators), specifies \nthat:\n\n   Octets must be encoded if they have no corresponding graphic\n   character within the US-ASCII coded character set, if the use of the\n   corresponding character is unsafe, or if the corresponding character\n   is reserved for some other interpretation within the particular URL\n   scheme.\n\nThe unsafe characters listed in the rfc are:\n\"{\", \"}\", \"|\", \"\\\", \"^\", \"~\",\n   \"[\", \"]\", \"`\", \"<\", \">\", \"\"\", \"#\", \"%\"\n\nin addition the reserved characters are:\n\";\", \"/\", \"?\", \":\", \"@\", \"=\" and \"&\"\n\nIt then adds:\n   Thus, only alphanumerics, the special characters \"$-_.+!*'(),\", and\n   reserved characters used for their reserved purposes may be used\n   unencoded within a URL.\n\n   On the other hand, characters that are not required to be encoded\n   (including alphanumerics) may be encoded within the scheme-specific\n   part of a URL, as long as they are not being used for a reserved\n   purpose.\n\nNow, what this implies to me is that the process for encoding any given URL is:\n\n1. Break the URL into it's various parts, for HTTP this would be:\nhttp://<host>:<port>/<path>?<searchpart>\n\n2. Take each part of the URL and encode it (though one would hope that a host \nname contains only US-ASCII characters or the DNS system is going to have \ntrouble with it anyway).\n\n3. Reassemble the URL.\n\nNow, I'm somewhat unsure as to whether the URL we are given is encoded or not \nand the JavaDocs for the methods do not specify this.  So the first action \nitem of this bug must be to decide whether methods should be passed an encoded \nor an unencoded URL and document it.\n\nIF we decide that URLs passed into the methods should be encoded, then we need \nto stop encoding the path, on the other hand, IF we decide that URLs passed \ninto the methods should be unencoded, then we need to encode the query string \nas well.\n\nAlso, if all URLs are being passed in encoded, then we should have no need for \nURL encoding functionality as we should only ever use encoded URLs.\n\nMy suggestion would be to only ever work with encoded URLs, but then do one of \nthe following:\n\n1. add a new constructor to each of the methods which takes a boolean to \ndetermine whether the URL is encoded or not.  If not we encode it before \npassing it through to anywhere else.\n\n2. provide the URIUtils class (possibly as a separate project) to allow the \nuser to easily encode URLs.  We should ensure that there is a method in \nURIUtils that can take a full URL with non displayable US-ASCII characters and \nunsafe characters (but no extra reserved characters) and encode it correctly.  \nThis prevents the user having to break up the URL to encode it.",
+            "date": "2003-03-08T07:13:27.000+0000",
+            "id": 4
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Adrian,\n\n- In fact, the patch does nothing differently compared to what HttpClient does\nin its present form. The patch is merely a code clean-up.\n\n- Currently HttpMethodBase#generateRequestLine(...) assumes the query parameter\nto be URL encoded and the path parameter to be not URL encoded. This\ninconsistency is the essence of the problem, I think\n\n- I tend to prefer the second of your suggestions. I believe that we should just\nclearly state in the documentation that URIs or URI elements are assumed to be\nURL encoded prior to be passed as input the HttpClient.\nHttpMethodBase#setQueryString(NameValuePair[]) and the likes are exceptions from\nthe rule, which should also be clearly reflected in the documentation.\n\n- URLUtils class should already provide all necessary method needed to URL\nencode strings. URL related classes just need to be better documented and\neventually should be spun off into a package of their own.",
+            "date": "2003-03-09T07:16:42.000+0000",
+            "id": 5
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Created an attachment (id=5235)\nPatch (take 1)\n",
+            "date": "2003-03-10T06:30:16.000+0000",
+            "id": 6
+        },
+        {
+            "author": "Adrian Sutton",
+            "body": "Oleg,\nAgreed on all your comments.  Your patch appears okay to me.  We may need to \nreview the appropriate JavaDoc comments to make sure that any URLs being passed \nin are clearly marked as needing to be URL encoded.",
+            "date": "2003-03-10T06:40:01.000+0000",
+            "id": 7
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Created an attachment (id=5313)\nPatch (take 2)\n",
+            "date": "2003-03-14T00:02:46.000+0000",
+            "id": 8
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Method descriptions updated\nOleg",
+            "date": "2003-03-14T00:03:45.000+0000",
+            "id": 9
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Patch committed",
+            "date": "2003-03-14T01:54:25.000+0000",
+            "id": 10
+        }
+    ],
+    "component": "HttpClient (classic)",
+    "description": "I suggest to change the protocol or add a new method for this one\n\nprotected static String generateRequestLine(HttpConnection connection,\n\tString name, String reqPath,\n\tString qString, String protocol);\nso that we can choose to use URIUtil.encode(reqPath, URIUtil.pathSafe()) or not\n\nThe reason is that after the encoding process, some server cannot recognize this\nActually, I am handling a project of the Method Propfind(for getting mail from \nHotmail) and I find that the restriction of Hotmail server is quite high, and \nif the address is encoded, it does not work.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "HTTPCLIENT-106",
+    "issuetypeClassified": "RFE",
+    "issuetypeTracker": "BUG",
+    "priority": "Critical",
+    "product": "HTTPCLIENT",
+    "project": "HTTPCLIENT",
+    "summary": "Path should not be encoded in HttpMethodBase",
+    "systemSpecification": true,
+    "version": ""
+}

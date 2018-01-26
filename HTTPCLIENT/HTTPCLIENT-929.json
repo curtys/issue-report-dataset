@@ -1,0 +1,47 @@
+{
+    "comments": [
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "> When a request is made, the DefaultRequestDirector invokes rewriteRequestURI(). \n> I don't fully understand why this method does what it does\n\nDefaultRequestDirector rewrites the request URI in order to comply with the requirements of the RFC 2626\n\n---\n5.1.2 Request-URI\n\n...\n\n   The most common form of Request-URI is that used to identify a\n   resource on an origin server or gateway. In this case the absolute\n   path of the URI MUST be transmitted (see section 3.2.1, abs_path) as\n   the Request-URI, and the network location of the URI (authority) MUST\n   be transmitted in a Host header field. For example, a client wishing\n   to retrieve the resource above directly from the origin server would\n   create a TCP connection to port 80 of the host \"www.w3.org\" and send\n   the lines:\n\n       GET /pub/WWW/TheProject.html HTTP/1.1\n       Host: www.w3.org\n---\n\nThe only thing that can be done about this problem is replacing multiple \"/\" in the abs_path with a single one.\n\nWould that solve the problem for you?\n\nOleg",
+            "date": "2010-04-02T19:07:26.753+0000",
+            "id": 0
+        },
+        {
+            "author": "Ryan Stewart",
+            "body": "Yes, I think that's the right approach. The problem should only happen when the path is composed of nothing but two or more slashes, but it should also be safe to replace any series of multiple slashes with a single one. Alternately, while I was looking into it, I discovered that URI has a relativize method that works like so: \n        URI uri1 = URI.create(\"http://www.google.com/foo\"); \n        URI uri2 = URI.create(\"http://www.google.com\").relativize(uri1); \n\nFinal content of uri2: path=\"foo\". When you tell it to relativize \"http://www.google.com//\", you get an empty URI, which is accurate. Could you just use this instead of reconstructing the URI manually?",
+            "date": "2010-04-03T03:34:57.220+0000",
+            "id": 1
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Fixed in SVN trunk\n\nhttp://svn.apache.org/viewvc?rev=930558&view=rev\n\nI looked at #relativize method but felt it was an overkill. I opted for a simpler and likely faster custom routine. Please review.\n\nOleg",
+            "date": "2010-04-03T18:24:18.274+0000",
+            "id": 2
+        },
+        {
+            "author": "Ryan Stewart",
+            "body": "The change looks good. I built the latest SVN trunk, and it runs the test case above without problem.",
+            "date": "2010-04-04T02:15:49.442+0000",
+            "id": 3
+        },
+        {
+            "author": "Angus Ng",
+            "body": "I am using httpclient 4.1. I had a problem with this fix. In DefaultRequestDirector.rewriteRequestURI method, for non-proxied URI and when it is a absolute URI, it will call the URIUtils.rewriteURI, which then take the \"RawPath\" from an uri and normalize it. So when I pass an uri, for example, http://www.whatever.com/1//3, it will automatically remove the extra slash and become http://www.whatever.com/1/3. I've got a REStful service to accept the uri (/{param1}/{param2}/{param3}) and it takes when there is an empty value past in. Now because of the auto slash removal, the \"3\" value shift left for a position and match to the {param2}. I wouldn't say the above solution is wrong, but I guess it should not change what value that user pass in.",
+            "date": "2011-03-02T23:07:58.952+0000",
+            "id": 4
+        }
+    ],
+    "component": "HttpClient (classic)",
+    "description": "The following code demonstrates the problem:\n        DefaultHttpClient client = new DefaultHttpClient();\n        client.execute(new HttpGet(\"http://www.google.com//\"));\n\nWhen a request is made, the DefaultRequestDirector invokes rewriteRequestURI(). I don't fully understand why this method does what it does. For a non-proxied request, it attempts to render the URI to a relative URI. In doing so, it tries to create a relative URI whose content is \"//\". Per RFC 2396 section 5 (Relative URI References), a relative URI that begins with \"//\" is a network-path reference, and the \"//\" must be immediately followed by an authority. Therefore, while \"http://www.google.com//\" is a valid absolute URI, \"//\" is not a valid relative one. The resulting exception:\n\n[...]\nCaused by: org.apache.http.ProtocolException: Invalid URI: http://www.google.com//\n\tat org.apache.http.impl.client.DefaultRequestDirector.rewriteRequestURI(DefaultRequestDirector.java:339)\n\tat org.apache.http.impl.client.DefaultRequestDirector.execute(DefaultRequestDirector.java:434)\n\tat org.apache.http.impl.client.AbstractHttpClient.execute(AbstractHttpClient.java:641)\n\t... 31 more\nCaused by: java.net.URISyntaxException: Expected authority at index 2: //\n\tat java.net.URI$Parser.fail(URI.java:2809)\n\tat java.net.URI$Parser.failExpecting(URI.java:2815)\n\tat java.net.URI$Parser.parseHierarchical(URI.java:3063)\n\tat java.net.URI$Parser.parse(URI.java:3024)\n\tat java.net.URI.<init>(URI.java:578)\n\tat org.apache.http.client.utils.URIUtils.createURI(URIUtils.java:106)\n\tat org.apache.http.client.utils.URIUtils.rewriteURI(URIUtils.java:141)\n\tat org.apache.http.client.utils.URIUtils.rewriteURI(URIUtils.java:159)\n\tat org.apache.http.impl.client.DefaultRequestDirector.rewriteRequestURI(DefaultRequestDirector.java:333)\n\t... 33 more\n",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "HTTPCLIENT-929",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "HTTPCLIENT",
+    "project": "HTTPCLIENT",
+    "summary": "Request with two forward slashes for path fails",
+    "systemSpecification": true,
+    "version": "4.0.1"
+}

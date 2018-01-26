@@ -1,0 +1,59 @@
+{
+    "comments": [
+        {
+            "author": null,
+            "body": "Is it a security hole? Yes, but only if you specifically turned on debug tracing. This isn't done by default. \nTo your point, it \"should require unusual and explicit configuration to get JAASRealm to emit plaintext \npasswords\". It DOES require unusual configuration---tracing.\n\nSecond, the function of the trace is to report what the JAASCallbackHandler passes back to the \nLoginModule, and only in a debug/trace scenario. This is very handy for troubleshooting JAAS login \nmodules, which frequently access enterprise resources. If the realm has password digesting turned on, \nit will log the digest value. It sounds like you don't use digesting in your LoginModule; maybe you \nshould!\n\nI'd say the hole isn't \"huge,\" but if this is really a problem, simply snipping this line out of \nJAASCalbackHandler#handle() would fix the issue:\n\nif (realm.getContainer().getLogger().isTraceEnabled())\n                    realm.getContainer().getLogger().trace(sm.getString(\"jaasCallback.password\", password));",
+            "date": "20050121T05:40:31",
+            "id": 0
+        },
+        {
+            "author": null,
+            "body": "Tomcat bills itself as a very secure system.  (see \"Tomcat's security record is \nimpeccable\" at http://jakarta.apache.org/tomcat/faq/security.html ) Exposure of \npasswords in plain text is something not even MS Windows would allow.\n\nSetting the log to a DEBUG level is not uncommon or unusual.  It happens all \nthe time.\n\nI don't know exactly how the JAAS properties are set or what the \"sm\" in the \ncode in question refers to, but I can generally propose a separate JAASRealm \nproperty \"tracePasswords\" which defaults to false and a change to the code in \nquestion to something like:\n\nif (realm.getContainer().getLogger().isTraceEnabled())\n                    realm.getContainer().getLogger().trace(\n    tracePasswords ? sm.getString(\"jaasCallback.password\",password)\n           : \"<suppressed, set jaasCallaback.tracePassword=true to show>\"));\n\n\nFor the record, JAAS Password digests, while better than plain text, are \nvulnerable to dictionary attacks and thus not particulary secure.  Exposing \nthem in the logs would still be a security risk.\n\n",
+            "date": "20050121T06:41:29",
+            "id": 1
+        },
+        {
+            "author": null,
+            "body": "I think it would be better simply to snip the offending logging lines entirely. If somebody needs to \ndebug a LoginModule password issue, it could be done inside the LoginModule as a hack (since it's \nprobably a custom code module anyway) instead of in the callback handler. A quick skim of the JDBC \nand JNDI realm implementations shows that those classes don't log passwords, so JAASRealm probably \nshouldn't either.\n\nTherefore, there is a second line---in the class constructor for JAASCallbackHandler---that should also \nbe snipped:\n\n            if (log.isDebugEnabled()) {\n                log.debug(sm.getString(\"jaasCallback.digestpassword\", password, this.password));\n            }\n\nAs for the claim that \"Tomcat's security record is impeccable\" --- well, I don't know who wrote that \ntext. It is a foolish thing to boast publicly, IMO. Tomcat's record is pretty good, just not impeccable.",
+            "date": "20050121T07:18:45",
+            "id": 2
+        },
+        {
+            "author": null,
+            "body": "Setting the log to DEBUG is quite unusual. You seriously need to be nicer in\nyour bug reports.",
+            "date": "20050121T09:04:30",
+            "id": 3
+        },
+        {
+            "author": null,
+            "body": "I looked at the code, and I agree with Andrew's suggestion.",
+            "date": "20050121T09:41:33",
+            "id": 4
+        },
+        {
+            "author": null,
+            "body": "I like Andrew's suggestion even better than mine.  Thank you for fixing this promptly.",
+            "date": "20050121T23:17:08",
+            "id": 5
+        },
+        {
+            "author": null,
+            "body": "(In reply to comment #1 and comment #4)\n\nTracing is turned on in the example provided in the documentation, which I (and I suspect many others) \nsimply copied as a baseline.  That's the point of an example, isn't it?\n\nhttp://jakarta.apache.org/tomcat/tomcat-5.0-doc/realm-howto.html#JAASRealm\n(also http://jakarta.apache.org/tomcat/tomcat-5.5-doc/realm-howto.html#JAASRealm )\n\nExample\n\nHere is an example of how your server.xml snippet should look.\n\n<Realm className=\"org.apache.catalina.realm.JAASRealm\"                 \n                appName=\"MyFooRealm\"       \n    userClassNames=\"org.foobar.realm.FooUser\"       \n     roleClassNames=\"org.foobar.realm.FooRole\" \n                      debug=\"99\"/>\n\nIf you want tracing to be an unusual configuration, please change the documentation.\n",
+            "date": "20050129T05:25:17",
+            "id": 6
+        }
+    ],
+    "component": "Catalina:Modules",
+    "description": "JAASRealm logs passwords in the clear:\n\n2005-01-20 17:26:51 JAASRealm[Catalina]: Returning username bob\n2005-01-20 17:26:51 JAASRealm[Catalina]: Returning password asdf\n\nThis is a huge security hole.  It should require unusual and explicit \nconfiguration to get JAASRealm to emit plaintext passwords if it is even \nallowed at all.",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "33187",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "P2 normal",
+    "product": "Tomcat 5",
+    "project": "TOMCAT",
+    "summary": "JAASRealm logs passwords in the clear",
+    "systemSpecification": false,
+    "version": "5.0.28"
+}

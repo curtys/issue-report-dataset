@@ -1,0 +1,35 @@
+{
+    "comments": [
+        {
+            "author": "Felix Meschberger",
+            "body": "Added said extension in Rev. 440026.\n\nUse of this functionality is very crude as the default class loader has to be set before loading the configuration:\n\n    BeanConfig.setDefaultClassLoader(someNewClassLoader)\n    RepositoryConfig crc = RepositoryConfig.create(ins, home);\n\nThis way, all BeanConfig instances (actually all configurtion objects extending BeanConfig) are set with the given someNewClassLoader. Of course, for this to work, the class loader set must also see the Jackrabbit classes.\n\nThe default class loader used, if the setDefaultClassLoader is not called, is the class loader of the BeanConfig class. As such, this enhancement is fully backwards compatible.",
+            "date": "2006-09-04T11:02:56.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Felix Meschberger",
+            "body": "As committed in Rev. 440026.",
+            "date": "2006-09-04T11:03:29.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Felix Meschberger",
+            "body": "I think this can be closed now.",
+            "date": "2006-09-06T08:15:55.000+0000",
+            "id": 2
+        }
+    ],
+    "component": "config",
+    "description": "The configuration framework is based around a BaseConfig class, which provides functionality to instantiate a class whose name is configured in the repository configuration file. Examples of such classes are the FileSystem or the PersistenceManager elements.\n\nThe current implementation of the BeanConfig.newInstance() method is to use the \"default classloader\" to load configured classes. That is, the class loader of the BeanConfig class is actually used. This is - generally - the class loader which loads the repository. In certain environments, classes may be provided from outside the core repository class loader. An example fo such an environment is an OSGi setup where each bundle gets its own class laoder, which is separate from all other class loaders except declared by configuration.\n\nI propose to enhance the BeanConfig class as follows:\n\npublic class BeanConfig {\n ...\n // Current default class loader, default is BeanConfig's class loader\n private static ClassLoader defaultClassLoader =\nBeanConfig.class.getClassLoader();\n // Current instance class loader\n private ClassLoader classLoader;\n ...\n // Sets the default class loader for new BeanConfig instances\n public static void setDefaultClassLoader(ClassLoader loader);\n // Returns the default class loader for new BeanConfig instances\n public static ClassLoader getClassLoader();\n // Sets the class loader of this BeanConfig instance\n public void setClassLoader(ClassLoader loader);\n // Returns the class loader of this BeanConfig instance\n public ClassLoader getClassLoader();\n}\n\nThe BeanConfig.newInstance method would then use the following to use the class:\n\npublic Object newInstance() throws ConfigurationException {\n Class clazz = Class.forName(getClassName(), true, getClassLoader());\n ...\n}\n\n\nThis has also been discussed on the dev list: http://mail-archives.apache.org/mod_mbox/jackrabbit-dev/200607.mbox/%3cae03024e0607272341l52aff9b2h3957131411790bc9@mail.gmail.com%3e",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "JCR-561",
+    "issuetypeClassified": "RFE",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Major",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "Add support to provide custom classloader for class instantiation from configuration",
+    "systemSpecification": true,
+    "version": "0.9, 1.0, 1.0.1"
+}

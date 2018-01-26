@@ -1,0 +1,59 @@
+{
+    "comments": [
+        {
+            "author": "angela",
+            "body": "(second try, sorry if the first comment made it anyway to jira)\n\nthis would required the following api methods to be change or - perhaps better - deprecated/replaced:\n\n- DavResource#alterProperties\n  > method signature\n  > ev. mark deprecated and add improved alterProperties method\n\n- DavServerRequest#getPropPatchRemoveProperties\n- DavServerRequest#getPropPatchSetProperties\n  > merged to a single method that returns list of sets and removals\n  > ev. rather mark those methods deprecated and add improved method.\n\nis there a policy how to handle api changes between releases?\ni had a lot of troubles with jdom and compatibility issues and would wish to avoid such annoyance within jcr-server.\n\nregards\nangela",
+            "date": "2006-04-19T21:10:45.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Julian Reschke",
+            "body": "Indeed... What's the strategy for API changes?\n\nAnyway, I'm currently preparing a patch a long the lines of Angela's proposal (adding new methods, deprecating the old ones). Should be ready early next week.\n\n",
+            "date": "2006-04-21T21:54:31.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Julian Reschke",
+            "body": "OK,\n\nthe attached patch:\n\n- deprecates the old alterProperties method,\n- introduces a new method with List parameter as discussed,\n- implements the deprecated methods in terms of the new call (so we don't have two differing implementations of basically the same thing),\n- uses the new method in AbstractWebdavServlet.\n\nBest regards, Julian\n",
+            "date": "2006-04-24T18:29:20.000+0000",
+            "id": 2
+        },
+        {
+            "author": "Julian Reschke",
+            "body": "Sorry, forgot to mention that this change is *not* well tested yet (I've verified in the debugger that the code executes as designed, but I currently don't have a setup with a repository where property modifications are actually supported).\n",
+            "date": "2006-04-24T18:35:09.000+0000",
+            "id": 3
+        },
+        {
+            "author": "angela",
+            "body": "looks good.\ni will perform some tests and commit the modifications.",
+            "date": "2006-04-24T22:10:07.000+0000",
+            "id": 4
+        },
+        {
+            "author": "angela",
+            "body": "Committed revision: 397835  \n\nThe following modifications were made to the original patch:\n\n- with jcr package two implementations were missing -> added changed impl for alterProperties\n   and moved the handling of the old-alterProperties method to AbstractResource.\n\n- calling the list entries 'item' shadowed an instance field in the 'jcr' package.\n  since 'item' could be misleading due to the fact the jsr170 defines Items, i renamed the variables.\n\n- removed comment on outdated todo (and todo ;)\n\notherwise it was fine (although removal of extra catch for exception not related to property modification e.g. lock was not part of this issue :)). thanks for the careful work.\n\nregards\nangela\n",
+            "date": "2006-04-28T17:07:36.000+0000",
+            "id": 5
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Merged for 1.0.1 in revision 409587.\n\nAbout the API change: I'm accepting this in the patch release as the main API in this case is the WebDAV PROPPATCH method, whose implementation is corrected by this change. For now I consider the classes in jcr-server internal, so a Java signature change is allowed. We may want to reconsider this approach if a number of people are extending or otherwise depending on the code.",
+            "date": "2006-05-26T15:41:34.000+0000",
+            "id": 6
+        }
+    ],
+    "component": "jackrabbit-webdav",
+    "description": "PROPPATCH is currently implemented in terms of DavResource.alterProperties(...), which takes a set of properties to be set and a set of properties to be removed. This is not sufficient to model WebDAV's method semantics, as the order in which set/remove instructions appear is supposed to be relevant.\n\nI have submitted a patch to the Litmus mailing list checking this (see <http://mailman.webdav.org/pipermail/litmus/2006-April/000196.html>).\n\nIn jcr-server, alterProperties probably should be changed to take an (ordered) list of set/remove instructions instead. The simplest approach for that would probably be to use a List containing either DavProperty (set) or DavPropertyName (remove) objects.\n",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "JCR-405",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Minor",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "PROPPATCH doesn't respect document order",
+    "systemSpecification": true,
+    "version": "1.0"
+}

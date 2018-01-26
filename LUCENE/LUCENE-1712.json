@@ -1,0 +1,149 @@
+{
+    "comments": [
+        {
+            "author": "Uwe Schindler",
+            "body": "Should be:\n\n{code}\ndoc.add(new NumericField(\"price\").setFloatValue(15.50f));\n{code}\n\nWith a direct constructor, there would be the problem of missing data type information.",
+            "date": "2009-06-22T21:12:14.403+0000",
+            "id": 0
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "bq. With a direct constructor, there would be the problem of missing data type information.\n\nSorry, what does that mean?",
+            "date": "2009-06-22T21:19:30.482+0000",
+            "id": 1
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "The methods setFloatValue() etc are for specifying the exact data type. If you would do it in the constructor, the resulting code would be very error-prone. e.g., new NumericField(\"price\", 12.5): Does this mean 12.5 as double or float, is 15 alone meant as (in future) short, byte or int? OK users can add \"f\" in the float case to it, but this makes it very hard to prevent errors, because Java automatically casts all numeric types to each other suddenly. This is why I added these factories for NumericRangeQuery and the setters here.",
+            "date": "2009-06-22T21:27:06.984+0000",
+            "id": 2
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "OK, I agree it's dangerous to let javac auto cast.\n\nSo, can we set an across the board default of 4?",
+            "date": "2009-06-22T21:30:37.689+0000",
+            "id": 3
+        },
+        {
+            "author": "Earwin Burrfoot",
+            "body": "Am I misunderstanding something or the problem still persists?\nEven if you use a common default, what is your base type - int or long? Are floats converted to ints, or to longs?",
+            "date": "2009-06-22T21:35:44.083+0000",
+            "id": 4
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "I think this is simple, we just overload all ctors and factories and remove the precisionStep there. These methods use NumericUtils.DEFAULT_PRECISION_STEP = 4 then. But thee should be a clear not, to do also tests with other step values.\n\nadditional variants:\n- NumericField(name), NumericField(name,store,index)\n- NumericTokenStream()\n- NumericRangeQuery.newXxxRange(field, min, max,...)\n\nI am currentlly not sure (I was thinking the whole time during including into core) to also make NumericRangeQuery work like the other two classes: generic Constructor without datatype and then set the range explicit:\n\n{code}\nnew NumericRangeQuery(fieldname[, precisionStep]).setFloatRange(....)\n{code}\n\nNot sure, in this case the API where similar and I have to override only one ctor for different construction parameters. My only problem is, that Queries are normally almost everywhere in Lucene static and unmodifable  (beyond boost).",
+            "date": "2009-06-22T21:38:37.909+0000",
+            "id": 5
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "bq. Even if you use a common default, what is your base type - int or long? Are floats converted to ints, or to longs? \nFloat are indexed like ints and doubles like longs.\n\nThe problem here is more that if you would specify the value direct in the constructor, you cannot for sure always give the right type (because Java auto-casts). This is why I have these setFloatValue(), setLongValue() and so on.",
+            "date": "2009-06-22T21:41:21.238+0000",
+            "id": 6
+        },
+        {
+            "author": "Earwin Burrfoot",
+            "body": "Aha! And each time you invoke setFloatValue/setDoubleValue it switches base type behind the scenes? Eeek.",
+            "date": "2009-06-22T21:45:41.290+0000",
+            "id": 7
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "bq.  each time you invoke setFloatValue/setDoubleValue it switches base type behind the scenes?\n\nI think that's an acceptable risk.  I suppose we could add checking to catch you but I don't think that's needed (we should document clearly that you can't \"mix types\").",
+            "date": "2009-06-22T22:08:54.625+0000",
+            "id": 8
+        },
+        {
+            "author": "Hoss Man",
+            "body": "behind the scenes precision changes based on which set*Value() method is called smells really wrong.\n\nI'm not overly familiar with NumericField, but i'm i'm understanding the current suggestion, wouldn't that mkae situations like this come up...\n\n{code}\nNumericField a = new NumericField(\"price\", MY_CUSTOM_PRECISION_STEP, ...);\na.setFloatValue(23.4f); // blows away my custom precision\n\nNumericField b = new NumericField(\"price\", ...);\nb.setPrecisionStep(MY_CUSTOM_PRECISION_STEP);\nb.setFloatValue(23.4f); // blows away my custom precision\n\nNumericField c = new NumericField(\"price\", ...);\nc.setFloatValue(23.4f); \nc.setPrecisionStep(MY_CUSTOM_PRECISION_STEP); // only way to get my value used\n{code}\n\n...that seems sketchy, and really anoying if people try reusing NumericField instances.\n\nIf the goal is to have good \"defaults\" based on type then why not just have a constant per type that people can refer to explicitly? if they don't know what number to pick ... as well as a true \"default\" if they pick nothing.\n\n{code}\nint DEFAULT_STEP = ...;\nint SUGGESTED_INT_STEP = ...;\nint SUGGESTED_FLOAT_STEP = ...;\n{code}\n\n\n\n\n",
+            "date": "2009-06-22T22:53:42.040+0000",
+            "id": 9
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "In my opinion, I would like to keep the precisionStep parameter required and give the 4 constants for each data type in NumericUtils.\n\nOn the other hand 4 is a (maybe) good default, so I propose, that all ctors/factories getting a precisionStep default it to 4, if left out. precisionStep is a final variable in NumericTokenStream (and so in NumericField), because it does not make sense to change it. If \"field\" is final, also precisionStep should be final (one field must always use the same precision step). In principle Mike is right, the type is also fixed after first calling setXxxValue, so I could throw an IAE, if somebody calles a setter for a different datatype after the first one. A IllegalStateEx is thrown, when the value was not initialized and the docinverter tries to use the token stream.\n\nHere are two ideas to fix this the defaultPrecStep per type:\n\n1. Special value 0 as default precStep:\n- the no-precStep ctor sets the precStep in NumTokenStream to 0 (invalid value), if one is given it must be >0 and <=valsize\n- when delivering the tokens, NumTokenStream uses the default for this data type if precStep==0 and the given value in all other cases\nIn this case the precStep is still final in NumericTokenStream, with 0 means \"automatic\".\n\n\n2. There is one other idea:\nNumericField/-TokenStream could have a required ctor param type that can be NumericField.Type.INT,... In this case the default could be choosen very simple at the beginning. And it also fixes the data type. If somebody calls setDoubleValue but has initialized the TokenStream with NumericField.Type.INT, he will get an UOE.\n\n\nThe javadocs should always clearly note, that one should check out a good precStep.\n\n---\nBy the way: It is also a good idea to use valSize (32 or 64) as precisionStep in the case that you do not want to do range queries on the field (and use it only for sorting). RangeQueries would still work, but are as slow as conventional ones (current solr trunk contains this hint in its TrieField docs/schema)",
+            "date": "2009-06-23T07:35:52.341+0000",
+            "id": 10
+        },
+        {
+            "author": "Earwin Burrfoot",
+            "body": "Having half of your methods constantly fail with an exception depending on constructor parameter. That just screams - \"Split me into two classes!\"",
+            "date": "2009-06-23T08:02:36.411+0000",
+            "id": 11
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Four classes! And with LUCENE-1710 there will be six! Not a good idea. 6 classes for NumericTokenStream, 6 for NumericField and maybe 6 for NumRangeQuery/Filter. brrrrr",
+            "date": "2009-06-23T08:09:54.921+0000",
+            "id": 12
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "...and unmaintainable. I merged the two classes from contrib because of this. It was just duplicate code with some small variances. Always a problem for copy/paste operations.",
+            "date": "2009-06-23T08:13:17.331+0000",
+            "id": 13
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "bq. I propose, that all ctors/factories getting a precisionStep default it to 4\n\n+1, with javadocs encouraging experimentation.\n\nI think the ideas to conditionalize the default according to type add\nspooky complexity\n\nbq. By the way: It is also a good idea to use valSize (32 or 64) as precisionStep in the case that you do not want to do range queries on the field (and use it only for sorting).\n\nLet's be sure to call out this use-case in the javadocs!\n",
+            "date": "2009-06-23T10:33:37.008+0000",
+            "id": 14
+        },
+        {
+            "author": "Hoss Man",
+            "body": "{quote}\nBy the way: It is also a good idea to use valSize (32 or 64) as precisionStep in the case that you do not want to do range queries on the field (and use it only for sorting).\n{quote}\n\nThis screams out for additional (redundant) constants that are self documenting in their names...\n\n{code}\nint PRECISION_STEP_DEFAULT = 4; // i think?\nint PRECISION_STEP_SUGGESTED_INT_RANGEANDSORT = ...; // no idea what this should be\nint PRECISION_STEP_SUGGESTED_INT_SORTONLY = 32; // i think?\nint PRECISION_STEP_SUGGESTED_FLOAT_RANGEANDSORT = ...; // no idea what this should be\nint PRECISION_STEP_SUGGESTED_FLOAT_SORTONLY = 32; // i think?\n...\n{code}",
+            "date": "2009-06-23T21:59:22.749+0000",
+            "id": 15
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "How about we add PRECISION_STEP_DEFAULT=4, make that the default for all types, and then note in the javadocs the \"interesting\" values for precision step (ie for sorting only)?",
+            "date": "2009-07-09T22:29:11.918+0000",
+            "id": 16
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "I'm assuming this one is yours Uwe!",
+            "date": "2009-07-09T22:30:39.946+0000",
+            "id": 17
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Attached is a patch with the default precisionStep of 4. The javadocs of NumericRangeQuery list all possible and senseful values.\n\nThis patch also contains some cleanup in NumericUtils (rename constants) and a lot of other JavaDocs fixes. It also changes the token types of the TokenStream (no difference between 32/64 bit vals needed) and adds a test for them.",
+            "date": "2009-07-13T20:59:41.871+0000",
+            "id": 18
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Patch looks good Uwe!",
+            "date": "2009-07-13T21:50:47.190+0000",
+            "id": 19
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Some updates:\n- remove the limitation of the precisionStep to the value size (32 or 64). To index a non-trie-encoded numeric field, you can simply use Integer.MAX_VALUE or any other value>=64 as precStep. The lower limit of precStep is 1.\n- add a test for 64 bit values with recommended precStep=6\n- add simple test for unlimited precStep as above\nI will commit this shortly.",
+            "date": "2009-07-14T09:14:03.947+0000",
+            "id": 20
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Committed revision: 793823\n\nThanks Mike!",
+            "date": "2009-07-14T09:18:24.975+0000",
+            "id": 21
+        }
+    ],
+    "component": "",
+    "description": "This is a spinoff from LUCENE-1701.\n\nA user using Numeric* should not need to understand what's\n\"under the hood\" in order to do their indexing & searching.\n\nThey should be able to simply:\n{code}\ndoc.add(new NumericField(\"price\", 15.50);\n{code}\n\nAnd have a decent default precisionStep selected for them.\n\nActually, if we add ctors to NumericField for each of the supported\ntypes (so the above code works), we can set the default per-type.  I\nthink we should do that?\n\n4 for int and 6 for long was proposed as good defaults.\n\nThe default need not be \"perfect\", as advanced users can always\noptimize their precisionStep, and for users experiencing slow\nRangeQuery performance, NumericRangeQuery with any of the defaults we\nare discussing will be much faster.\n",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-1712",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Minor",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "Set default precisionStep for NumericField and NumericRangeFilter",
+    "systemSpecification": true,
+    "version": "2.9"
+}

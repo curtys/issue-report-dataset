@@ -1,0 +1,137 @@
+{
+    "comments": [
+        {
+            "author": "Robert Muir",
+            "body": "+1 to hook this into our 'ant test'. This is more important than if the junit tests pass.\n",
+            "date": "2011-03-07T14:23:12.362+0000",
+            "id": 0
+        },
+        {
+            "author": "Grant Ingersoll",
+            "body": "No where near being ready, but putting up something to flesh this out a little bit.  I don't think it even compiles yet. \n\nIdea:  Add dev-tools/validation and hook in code into it that does work to validate our systems for things like licenses, etc.  It will then be hooked in at compile time for both Lucene and Solr.\n\nIn this particular case, it will look for license files for each jar file and fail if one is missing.  This requires there to be, for every JAR file, a file with the same name and the name of the license.txt appended to it, as in foo.jar.BSD.txt or something like that (still being worked out)",
+            "date": "2011-03-10T13:57:15.030+0000",
+            "id": 1
+        },
+        {
+            "author": "Grant Ingersoll",
+            "body": "Here's some real progress on this.  Works in standalone mode, but is not hooked into the build process yet.",
+            "date": "2011-03-11T14:47:59.166+0000",
+            "id": 2
+        },
+        {
+            "author": "Grant Ingersoll",
+            "body": "Should note, I've only hooked it up for lucene/lib and solr/lib and not any of the modules or contrib.",
+            "date": "2011-03-11T14:57:35.138+0000",
+            "id": 3
+        },
+        {
+            "author": "Grant Ingersoll",
+            "body": "Pretty close to standalone completion.  Next step to hook it in.  I'm going to commit the license naming normalization now but not the validation code yet.\n\nAlso, renamed LicenseChecker to DependencyChecker as it might be useful for checking other things like that all jars have version numbers.",
+            "date": "2011-03-15T14:05:09.948+0000",
+            "id": 4
+        },
+        {
+            "author": "Grant Ingersoll",
+            "body": "This hooks it into compile-core, but has the unfortunate side-effect of being called a whole bunch of times, which is not good.  Need to read up on how to avoid that in ant (or if anyone has suggestions, that would be great).\n\nOtherwise, I think the baseline functionality is ready to go.",
+            "date": "2011-03-15T14:38:24.560+0000",
+            "id": 5
+        },
+        {
+            "author": "Grant Ingersoll",
+            "body": "This minimizes the number of calls to validate (there is still one extra call via the benchmark module since it invokes the common lucene compile target).  Also splits it out into Lucene, Solr and Modules.\n\nI'd consider it close to good enough at this point.",
+            "date": "2011-03-15T21:33:31.973+0000",
+            "id": 6
+        },
+        {
+            "author": "Grant Ingersoll",
+            "body": "latest patch",
+            "date": "2011-03-17T15:02:13.750+0000",
+            "id": 7
+        },
+        {
+            "author": "Grant Ingersoll",
+            "body": "I think this is ready to go.  It checks licenses, it checks notices.  It leaves room for other validation tasks (version conflicts, etc.)  It is fast.  It is only called for each top dir: lucene, modules, solr (there is one extra call when modules/benchmark gets called, but I can live with it).\n\nI believe all LICENSE, NOTICE files are properly set now.",
+            "date": "2011-03-17T15:18:51.649+0000",
+            "id": 8
+        },
+        {
+            "author": "Robert Muir",
+            "body": "the current situation (with the macros in the root in a common-build.xml, and the code in dev-tools breaks the lucene build when lucene is by itself: lucene-only releases for example, or someone just svn checking out lucene)\n\nI don't think we should be using dev-tools for anything thats integral to the build: the whole point of dev-tools is to be optional, maintained on as-is basis type stuff for developers only.\n\nSo i think the code should go in test-framework or something like that instead? and the ant logic should go in lucene's common-build, which anything can use.\n",
+            "date": "2011-03-18T11:45:05.120+0000",
+            "id": 9
+        },
+        {
+            "author": "Grant Ingersoll",
+            "body": "I'm fine w/ moving it out of dev-tools.  I'm not sure about test-framework, which I see more as something people building applications on Lucene/Solr use to test their applications on.\n\nHow about we put it in modules?  As in modules/validation?  It is, after all, pertinent to both L & S.",
+            "date": "2011-03-18T15:29:05.620+0000",
+            "id": 10
+        },
+        {
+            "author": "Grant Ingersoll",
+            "body": "Actually, the more I think about it, it doesn't belong in modules either.\n\nI'm inclined to say a new top level dir called committer-tools (slightly different from dev-tools which are redistributed.  committer-tools are not)",
+            "date": "2011-03-18T16:52:43.787+0000",
+            "id": 11
+        },
+        {
+            "author": "Grant Ingersoll",
+            "body": "I'm just going to move to the test-framework.  As Robert points out, if in the future we get more sophisticated about checking the classpath/libs, it will fit well there.",
+            "date": "2011-03-18T17:38:38.434+0000",
+            "id": 12
+        },
+        {
+            "author": "Grant Ingersoll",
+            "body": "OK, I shuffled some things around, putting the code in test-framework and made the appropriate changes to the builds.  Will now backport to 3_x (but not 3.1)",
+            "date": "2011-03-18T19:03:29.535+0000",
+            "id": 13
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "The nightly builds now fail because clover breaks because the checker classes are in test-framework, and clover is not available there. The checker classes should be build through compile-tools task (without clover) and then used.\n\nIn my opinion, this license-checker main() should be in /lucene/dev/src/tools not /lucene/dev/src/test-framework. We already have this folder to e.g. rebuild the files of StandardTokenizer and so on.\n\nAlso executing this in clover would create code coverage which is not really runtime-created.\n\nA quick fix would be to disable the license checker if run.clover=1, but I don't like it how it is now.",
+            "date": "2011-03-21T12:32:16.345+0000",
+            "id": 14
+        },
+        {
+            "author": "Grant Ingersoll",
+            "body": "Third time is the charm.  I don't really care where it lives and it sounds like tools makes sense.  Not sure why I didn't notice that sooner.  I'll take care of it later today.",
+            "date": "2011-03-21T15:26:12.519+0000",
+            "id": 15
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Unfortunately as analyzers moved to modules in trunk, so the tools folder is no longer in trunk's lucene/src. But we should use the same concept, its used at different places, e.g. in ICU contrib, StandarAnalyzer and other autogenerated code. I can help setting it up again.",
+            "date": "2011-03-21T15:32:17.582+0000",
+            "id": 16
+        },
+        {
+            "author": "Doron Cohen",
+            "body": "Eclipse complains for top common-build.xml (trunk, 3x) that default target \"validate\" does not exist in the project:\n{code}<project name=\"all-common\" default=\"validate\" basedir=\".\"{code}\nTarget \"validate\" was removed in r1083010.\nShould *default=\"validate\"* be removed as well?",
+            "date": "2011-03-24T19:06:50.833+0000",
+            "id": 17
+        },
+        {
+            "author": "Grant Ingersoll",
+            "body": "I'll fix it, Doron.",
+            "date": "2011-03-24T19:29:47.052+0000",
+            "id": 18
+        },
+        {
+            "author": "Robert Muir",
+            "body": "Bulk closing for 3.2",
+            "date": "2011-06-03T16:37:12.099+0000",
+            "id": 19
+        }
+    ],
+    "component": "",
+    "description": "Instead of waiting until release to check licenses are valid, we should make it a part of our build process to ensure that all dependencies have proper licenses, etc.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-2952",
+    "issuetypeClassified": "OTHER",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Minor",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "Make license checking/maintenance easier/automated",
+    "systemSpecification": true,
+    "version": ""
+}

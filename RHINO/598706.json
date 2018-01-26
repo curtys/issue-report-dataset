@@ -1,0 +1,35 @@
+{
+    "comments": [
+        {
+            "author": "rbri@rbri.de",
+            "body": "Created attachment 477595\nsuggested patch",
+            "date": "20100922T18:50:56",
+            "id": 0
+        },
+        {
+            "author": "hannesw@gmail.com",
+            "body": "Thanks for your patch, I committed it. \n\nOut of curiosity (and in the light of bug #390659): what are you using to replace Rhino's RegExp implementation?",
+            "date": "20101002T19:46:15",
+            "id": 1
+        },
+        {
+            "author": "mguillemot@yahoo.fr",
+            "body": "HtmlUnit uses a java.util.regex based implementation of RegExp backed by Rhino's current implementation for cases where our conversion to java.util.regex has failed. It is not the perfect solution but it is much faster than Rhino's RegExp and this fixes many of Rhino currently opened RegExp issues.\n\nI think that ideally Rhino should pick Mozilla's C++ RegExp code and convert it to Java as it has obviously already be done for many many years.",
+            "date": "20101004T06:30:00",
+            "id": 2
+        }
+    ],
+    "component": "Core",
+    "description": "User-Agent:       Mozilla/5.0 (Windows; U; Windows NT 5.0; de; rv:1.9.2.10) Gecko/20100914 Firefox/3.6.10\nBuild Identifier: Sources from CVS\n\nIt is possible to replace Rhino's RegExpImpl my own subclass (ScriptRuntime.setRegExpProxy(...)). This works so far, but if e.g. RegExp.$1 is evaluated, this evaluation is done based on attributes of class RegExpImpl. My replacement class is already a subclass of RegExpImpl. But at the moment i have no chance to modify the fields of RegExpImp (without placing my class in a rhino package).\nPlease make the fields (patach attached) package protected. Because some fields are refering to SubString this class has to be public (see patch).\n\nReproducible: Always\n\nSteps to Reproduce:\n1. See description;\nThe concrete subclass i use is part of the HtmlUnit project.\n\n\n\nIndex: src/org/mozilla/javascript/regexp/SubString.java\n===================================================================\nRCS file: /cvsroot/mozilla/js/rhino/src/org/mozilla/javascript/regexp/SubString.java,v\nretrieving revision 1.10\ndiff -u -r1.10 SubString.java\n--- src/org/mozilla/javascript/regexp/SubString.java\t21 Apr 2008 19:54:01 -0000\t1.10\n+++ src/org/mozilla/javascript/regexp/SubString.java\t22 Sep 2010 18:35:57 -0000\n@@ -37,7 +37,7 @@\n \n package org.mozilla.javascript.regexp;\n \n-class SubString {\n+public class SubString {\n \n     public SubString()\n     {\n@@ -67,7 +67,7 @@\n                : new String(charArray, index, length);\n     }\n \n-    static final SubString emptySubString = new SubString();\n+    public static final SubString emptySubString = new SubString();\n \n     char[] charArray;\n     int    index;\nIndex: src/org/mozilla/javascript/regexp/RegExpImpl.java\n===================================================================\nRCS file: /cvsroot/mozilla/js/rhino/src/org/mozilla/javascript/regexp/RegExpImpl.java,v\nretrieving revision 1.39\ndiff -u -r1.39 RegExpImpl.java\n--- src/org/mozilla/javascript/regexp/RegExpImpl.java\t18 Jan 2010 09:56:34 -0000\t1.39\n+++ src/org/mozilla/javascript/regexp/RegExpImpl.java\t22 Sep 2010 18:35:57 -0000\n@@ -727,14 +727,14 @@\n         return (i != -1) ? i : length;\n     }\n \n-    String          input;         /* input string to match (perl $_, GC root) */\n-    boolean         multiline;     /* whether input contains newlines (perl $*) */\n-    SubString[]     parens;        /* Vector of SubString; last set of parens\n+    protected String          input;         /* input string to match (perl $_, GC root) */\n+    protected boolean         multiline;     /* whether input contains newlines (perl $*) */\n+    protected SubString[]     parens;        /* Vector of SubString; last set of parens\n                                       matched (perl $1, $2) */\n-    SubString       lastMatch;     /* last string matched (perl $&) */\n-    SubString       lastParen;     /* last paren matched (perl $+) */\n-    SubString       leftContext;   /* input to left of last match (perl $`) */\n-    SubString       rightContext;  /* input to right of last match (perl $') */\n+    protected SubString       lastMatch;     /* last string matched (perl $&) */\n+    protected SubString       lastParen;     /* last paren matched (perl $+) */\n+    protected SubString       leftContext;   /* input to left of last match (perl $`) */\n+    protected SubString       rightContext;  /* input to right of last match (perl $') */\n }",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "598706",
+    "issuetypeClassified": "OTHER",
+    "issuetypeTracker": "BUG",
+    "priority": "-- normal",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "Please make some RegExpImpl fields protected",
+    "systemSpecification": false,
+    "version": "other"
+}

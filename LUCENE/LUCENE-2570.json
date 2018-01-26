@@ -1,0 +1,89 @@
+{
+    "comments": [
+        {
+            "author": "Robert Muir",
+            "body": "bq. In that regard, we might want to output all the classes that obtained a static seed in reportAdditionalFailures(), instead of just the class that ran the test.\n\nI think that one might be confusing? because one test class can't really affect another. I like all your other suggestions though!",
+            "date": "2010-07-27T08:40:10.254+0000",
+            "id": 0
+        },
+        {
+            "author": "Shai Erera",
+            "body": "I was thinking of the fix to getTempDir that I proposed. If _TestUtil should obtain such static random, then it (1) needs to extend LuceneTestCaseJ4 and (2) will affect all the classes that call this method.\n\nI'm not sure I like having _TestUtil extending LTCJ4, and not sure that particular random can affect any test failure ... so perhaps I'll leave that fix outside?",
+            "date": "2010-07-27T08:51:13.791+0000",
+            "id": 1
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "We can remove the whole class and move the code to LTC(J4)?",
+            "date": "2010-07-27T08:58:17.324+0000",
+            "id": 2
+        },
+        {
+            "author": "Robert Muir",
+            "body": "Another option, is if _TestUtil has methods that need a random, make it a required argument?",
+            "date": "2010-07-27T09:18:41.624+0000",
+            "id": 3
+        },
+        {
+            "author": "Shai Erera",
+            "body": "I don't think that removing the class is a good idea. Some methods like rmDir can exist on the base test classes, however the class also contains large arrays blockStarts/Ends and it will just clatter the base test class, I think. What do you think?\n\nbq. Another option, is if _TestUtil has methods that need a random, make it a required argument? \n\nI had thought about it, but that method is called from several places in the code, and the randomness seems very insignificant. It just adds a random number to the directory name the caller requested. If it is in order to prevent collisions, then the code isn't safe because there is a chance the same number will be generated twice ...",
+            "date": "2010-07-27T10:25:01.989+0000",
+            "id": 4
+        },
+        {
+            "author": "Shai Erera",
+            "body": "Most of the patch is about replacing the calls to getRandomMultiplier w/ the static constant reference. All tests pass, except the one that is fixed in LUCENE-2568 (but not committed yet). Unless you have more comments, I'd like to commit this shortly.",
+            "date": "2010-07-27T10:44:04.793+0000",
+            "id": 5
+        },
+        {
+            "author": "Robert Muir",
+            "body": "the only comment i have is exposing TEST_CODEC as public... can it be private? \n\nI don't think its very useful since it could be a value like \"random\" (and is by default!) which isnt actually a valid codec, its basically just internal to LuceneTestCase[J4]",
+            "date": "2010-07-27T10:49:46.101+0000",
+            "id": 6
+        },
+        {
+            "author": "Shai Erera",
+            "body": "I can make it private, but then I'll need to repeat the declaration line in both LTC and LTCJ4. Currently, LTC just references the one in LTCJ4. If that matters, I can make it package-private?",
+            "date": "2010-07-27T11:03:02.495+0000",
+            "id": 7
+        },
+        {
+            "author": "Robert Muir",
+            "body": "package-private works... i just wanted to prevent confusion since i don't think its very useful outside of LuceneTestCase[J4] ",
+            "date": "2010-07-27T11:13:20.828+0000",
+            "id": 8
+        },
+        {
+            "author": "Shai Erera",
+            "body": "ok will do, and commit.",
+            "date": "2010-07-27T11:18:42.035+0000",
+            "id": 9
+        },
+        {
+            "author": "Shai Erera",
+            "body": "Committed revision 979646 (trunk).\nCommitted revision 979720 (3x).",
+            "date": "2010-07-27T14:28:21.078+0000",
+            "id": 10
+        },
+        {
+            "author": "Grant Ingersoll",
+            "body": "Bulk close for 3.1",
+            "date": "2011-03-30T15:50:26.421+0000",
+            "id": 11
+        }
+    ],
+    "component": "",
+    "description": "I've started this issue because I've noticed that _TestUtil.getRandomMultiplier() is called from many loops' condition check, sometimes hundreds and thousands of times. Each time it does Integer.parseInt after calling System.getProperty. This really can become a constant IMO, either in LuceneTestCase(J4) or _TestUtil, as it's not expected to change while tests are running ...\n\nI then reviewed the class and spotted some more things that I think can be fixed/improved:\n# getTestCodec() can become a constant as well\n# arrayToString is marked deprecated. I've checked an no one calls them, so I'll delete them. This is a 4.0 code branch + a test-only class. No need to deprecate anything.\n# getTempDir calls new Random(), instead of newRandom() in LuceneTestCaseJ4, which means that if something fails, we won't know the random seed used ...\n#* In that regard, we might want to output all the classes that obtained a static seed in reportAdditionalFailures(), instead of just the class that ran the test.\n# rmDir(String) can be removed IMO, and leave only rmDir(File)\n# I suggest we include some recursion in rmDir(File) to handle the deletion of nested directories.\n#* Also, it does not check whether the dir deletion itself succeeds (but it does so for the files). This can bite us on Windows, if some test did not close things properly.\n\nI'll work out a patch.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-2570",
+    "issuetypeClassified": "OTHER",
+    "issuetypeTracker": "OTHER",
+    "priority": "Minor",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "Some improvements to _TestUtil and its usage",
+    "systemSpecification": true,
+    "version": ""
+}

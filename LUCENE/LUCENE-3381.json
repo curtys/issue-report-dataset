@@ -1,0 +1,101 @@
+{
+    "comments": [
+        {
+            "author": "Chris Male",
+            "body": "Patch which does the following:\n\n- Establishes a sandbox contrib\n- Moves the queries from the queries contrib to the sandbox.  FuzzyLikeThisQuery has grown on me so I've given it a clean and pushed it to the queries module.  \n- Removes the queries contrib",
+            "date": "2011-08-18T08:20:39.688+0000",
+            "id": 0
+        },
+        {
+            "author": "Chris Male",
+            "body": "Command for patch:\n\n{code}\nsvn move lucene/contrib/queries/src/java/org/apache/lucene/search/FuzzyLikeThisQuery.java modules/queries/src/java/org/apache/lucene/queries/FuzzyLikeThisQuery.java\nsvn move lucene/contrib/queries/src/test/org/apache/lucene/search/FuzzyLikeThisQueryTest.java modules/queries/src/test/org/apache/lucene/queries/FuzzyLikeThisQueryTest.java\nsvn move --parents lucene/contrib/queries/src/java/org/apache/lucene/search/* lucene/contrib/sandbox/src/java/org/apache/lucene/sandbox/queries/\nsvn move --parents lucene/contrib/queries/lib/* lucene/contrib/sandbox/lib/\nsvn move --parents lucene/contrib/queries/src/test/org/apache/lucene/search/*  lucene/contrib/sandbox/src/test/org/apache/lucene/sandbox/queries/\nsvn delete dev-tools/idea/lucene/contrib/queries\nsvn delete dev-tools/maven/lucene/contrib/queries\nsvn delete lucene/contrib/queries\n{code}",
+            "date": "2011-08-18T08:21:22.292+0000",
+            "id": 1
+        },
+        {
+            "author": "Mark Harwood",
+            "body": "bq. FuzzyLikeThisQuery has grown on me so I've given it a clean and pushed it to the queries module\n\nI have thousands of people using it daily in dozens of different installations so keen to avoid any significant changes/loss.",
+            "date": "2011-08-18T08:55:44.225+0000",
+            "id": 2
+        },
+        {
+            "author": "Robert Muir",
+            "body": "But this query has serious problems:\n* the fact it caches 'rewrittenQuery' in the *QUERY* itself, this means the Query is keeping IndexSearcher-dependent state in the Query: this is broken.\n* the static similarity, which at the moment must extend TFIDFSimilarity (does not work with other scoring systems)\n\nSorry, I think these problems should be fixed first!",
+            "date": "2011-08-18T09:00:44.490+0000",
+            "id": 3
+        },
+        {
+            "author": "Chris Male",
+            "body": "{quote}\nI have thousands of people using it daily in dozens of different installations so keen to avoid any significant changes/loss.\n{quote}\n\nI have no intention of removing it but as Robert has pointed out in a couple of issues there is huge scope for improvement which we cannot ignore.  I'll make sure to document any changes.\n\n{quote}\n- the fact it caches 'rewrittenQuery' in the QUERY itself, this means the Query is keeping IndexSearcher-dependent state in the Query: this is broken.\n- the static similarity, which at the moment must extend TFIDFSimilarity (does not work with other scoring systems)\n{quote}\n\nGood points.  The cached rewrittenQuery seems like an easy fix (albeit a change that should be documented).  I see your comments in code about averaging out statistics.  That seems like a bigger issue.  Moving away from a static similarity seems like its doable at this stage.  Is the agnostic scoring model support a showstopper?\n",
+            "date": "2011-08-18T09:14:33.085+0000",
+            "id": 4
+        },
+        {
+            "author": "Robert Muir",
+            "body": "{quote}\nGood points. The cached rewrittenQuery seems like an easy fix (albeit a change that should be documented).\n{quote}\n\nWell its a bug? We document that you can safely reuse Query, so if a system like Solr or ElasticSearch that caches queries caches this query, this stuff won't function correctly?\n\n{quote}\nIs the agnostic scoring model support a showstopper?\n{quote}\n\nYes, in my opinion it is, we have to think this through.\n",
+            "date": "2011-08-18T09:21:55.136+0000",
+            "id": 5
+        },
+        {
+            "author": "Chris Male",
+            "body": "{quote}\nWell its a bug? We document that you can safely reuse Query, so if a system like Solr or ElasticSearch that caches queries caches this query, this stuff won't function correctly?\n{quote}\n\nYes its a bug in that it doesn't conform to Query's requirements, but its a change in behaviour for this particular Query impl.  I'm happy to document the change under the bugs section in CHANGES.txt so we cover both bases.\n\n{quote}\nYes, in my opinion it is, we have to think this through.\n{quote}\n\nTo sandbox it goes!\n\n\n",
+            "date": "2011-08-18T09:36:21.158+0000",
+            "id": 6
+        },
+        {
+            "author": "Mark Harwood",
+            "body": "bq. Sorry, I think these problems should be fixed first!\n\nI acknowledge those are issues to be addressed for more general use and (luckily) do not affect my existing usage of this class. I expect the query-caching issue can be fixed relatively simply. The scoring system issue gets interesting because this fuzzy functionality relies on tweaking IDF in particular. To work across different scoring systems generically I expect IDF-tweakage would need to be made a pluggable aspect of all these scoring strategies e.g. through a common interface. Messy.\n\nThe point of my previous comment was to register that this was one of the queries languishing outside of core that was genuinely in active use. I imagined this would be  useful information if folks are in the process of cleaning out some of the \"dead wood\" (including relegation to a \"useless-but-stored-for-historical-purposes\" pile).  \n",
+            "date": "2011-08-18T09:42:02.873+0000",
+            "id": 7
+        },
+        {
+            "author": "Robert Muir",
+            "body": "{quote}\nTo work across different scoring systems generically I expect IDF-tweakage would need to be made a pluggable aspect of all these scoring strategies e.g. through a common interface. Messy.\n{quote}\n\nI don't think think we need to do that?\nI added a comment to the source code:\n{noformat}\n    // TODO: generalize this query (at least it should not reuse this static sim!\n    // a better way might be to convert this into multitermquery rewrite methods.\n    // the rewrite method can 'average' the TermContext's term statistics (docfreq,totalTermFreq) \n    // provided to TermQuery, so that the general idea is agnostic to any scoring system...\n{noformat}\n\nI don't think this is really that hard, nor messy? \nThen this Query just invokes rewrite() to a BooleanQuery of ordinary fuzzyqueries, setting its custom rewrite methods (it looks like we need to implement 2 here, depending upon configuration) on each.\n\nThe rewrite methods would average docfreq and totaltermfreq (the only two \"collection-wide\" term statistics lucene supports), and set these in the TermContexts that they pass to TermQuery. Then the concept works for all scoring systems.\n\nAs a side benefit, this would give some performance benefits anyway since by doing this, the term rewrite will become single pass instead of doing wasted seeks per-segment * per-term.\n",
+            "date": "2011-08-18T09:52:41.710+0000",
+            "id": 8
+        },
+        {
+            "author": "Mark Harwood",
+            "body": "It's more nuanced than averaging IDF of variants (as discussed at length in LUCENE-329).\nTo summarise: the original search term is the closest thing we have to the user's intent. If we average its IDF against all fuzzy variants it is most likely to dilute this value with a set of rare terms (most terms in the termEnum are e.g. typos) that happen to share some characters.\nWhen sitting this sort of expanded fuzzy query alongside other search terms in a BooleanQuery (e.g. robert~ OR muir) we end up making the \"robert~\" branch of the query look comparatively rare compared to the straight \"muir\" term thanks to the IDF dilution from a hundred rare \"robert\" variations. In my view the correct fix is to use the root term's IDF only (assuming \"robert\" actually exists in the index otherwise we must drop back to the average of variants).\n\nThat's the trick employed by FuzzyLikeThis that stops my customers complaining about \"bad fuzzy matches\".\n",
+            "date": "2011-08-18T10:31:59.983+0000",
+            "id": 9
+        },
+        {
+            "author": "Chris Male",
+            "body": "New patch that moves FuzzyLikeThisQuery into the sandbox.  DuplicateFilter also goes into the sandbox (incorrectly pushed to the queries module).\n\nEverything passes and is ready to go.\n\nI'll open an issue for the fixes to FuzzyLikeThisQuery.",
+            "date": "2011-08-18T12:31:03.703+0000",
+            "id": 10
+        },
+        {
+            "author": "Chris Male",
+            "body": "Command for patch:\n\n{code}\nsvn move --parents lucene/contrib/queries/src/java/org/apache/lucene/search/* lucene/contrib/sandbox/src/java/org/apache/lucene/sandbox/queries/\nsvn move --parents lucene/contrib/queries/src/test/org/apache/lucene/search/* lucene/contrib/sandbox/src/test/org/apache/lucene/sandbox/queries/\nsvn move modules/queries/src/java/org/apache/lucene/queries/DuplicateFilter.java lucene/contrib/sandbox/src/java/org/apache/lucene/sandbox/queries/DuplicateFilter.java\nsvn move modules/queries/src/test/org/apache/lucene/queries/DuplicateFilterTest.java lucene/contrib/sandbox/src/test/org/apache/lucene/sandbox/queries/DuplicateFilterTest.java\nsvn move --parents lucene/contrib/queries/lib/* lucene/contrib/sandbox/lib/\nsvn delete dev-tools/idea/lucene/contrib/queries\nsvn delete dev-tools/maven/lucene/contrib/queries\nsvn delete lucene/contrib/queries\n{code}",
+            "date": "2011-08-18T12:31:30.158+0000",
+            "id": 11
+        },
+        {
+            "author": "Robert Muir",
+            "body": "{quote}\nIt's more nuanced than averaging IDF of variants (as discussed at length in LUCENE-329).\n{quote}\n\nMark, yeah but when the term exists providing term B term A's docfreq is trivial.\n\nthe averaging is the part thats a pain in the ass with a TopTermsRewrite :)",
+            "date": "2011-08-18T14:20:29.110+0000",
+            "id": 12
+        },
+        {
+            "author": "Chris Male",
+            "body": "Committed revision 1159846.\n",
+            "date": "2011-08-20T04:58:31.342+0000",
+            "id": 13
+        }
+    ],
+    "component": "",
+    "description": "In LUCENE-3271, I moved the 'good' queries from the queries contrib to new destinations (primarily the queries module).  The remnants now need to find their home.  As suggested in LUCENE-3271, these classes are not bad per se, just odd.  So lets create a sandbox contrib that they and other 'odd' contrib classes can go to.  We can then decide their fate at another time.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-3381",
+    "issuetypeClassified": "OTHER",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Major",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "Sandbox remaining contrib queries",
+    "systemSpecification": true,
+    "version": ""
+}

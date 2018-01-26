@@ -1,0 +1,77 @@
+{
+    "comments": [
+        {
+            "author": "Roman Puchkovskiy",
+            "body": "Attaching the test web-application.",
+            "date": "2008-07-02T13:22:30.887+0000",
+            "id": 0
+        },
+        {
+            "author": "Alexander Klimetschek",
+            "body": "Patch for JCR-1636 seems to open this new issue (or at least is one case for classes that won't get unloaded)",
+            "date": "2008-07-02T23:32:13.789+0000",
+            "id": 1
+        },
+        {
+            "author": "Roman Puchkovskiy",
+            "body": "Attaching a patch improving initial JCR-1636 patch. The patch stops the reaper thread too when shutting the TransientFileFactory down.\nBut even with this patch applied, web-application behaves the same way when redeploying: classes are not unloaded.",
+            "date": "2008-07-03T05:16:01.343+0000",
+            "id": 2
+        },
+        {
+            "author": "Roman Puchkovskiy",
+            "body": "Attaching a second version of web-application. It unregisters database drivers and shuts log4j down on servlet destroy. Introspector caches are flushed.\nBut still cannot be unloaded.",
+            "date": "2008-07-03T15:26:45.115+0000",
+            "id": 3
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "The following worked for me:\n\n- Deploy jackrabbit-webapp-1.5-SNAPSHOT into tomcat\n- Stop tomcat\n- *Move* derby-10.2.1.6.jar from WEB-INF/lib to commons/lib\n- Redeploying the webapp several times will eventually unload obsolete classes\n\nIt seems there is a background thread in derby that prevents unloading of classes (AntiGC), unless you shutdown derby completely.\nSee: http://db.apache.org/derby/docs/10.4/devguide/tdevdvlp20349.html\n",
+            "date": "2008-07-04T13:49:28.996+0000",
+            "id": 4
+        },
+        {
+            "author": "Roman Puchkovskiy",
+            "body": "Marcel, thanks for the link. The following line does the trick:\nDriverManager.getConnection(\"jdbc:derby:;shutdown=true\");\n",
+            "date": "2008-07-06T19:03:33.900+0000",
+            "id": 5
+        },
+        {
+            "author": "Martijn Hendriks",
+            "body": "There's yet another background thread that gives a memory leak in environments where the jackrabbit libraries can be dynamically updated (OSGi, webapps, ...): the revision table janitor in the DatabaseJournal class. This thread must be stopped when the \"stop\" method of the journal is called.\n\nW.r.t. the TransientFileFactory: can't we automate the call to shutdown? If RepositoryImpl.create registers the just created instance at the TransientFileFactory and RepositoryImpl.doShutdown de-registers the current instance, then TransientFileFactory can keep a reference count and call shutDown itself when the reference count is 0. Mmm...that will not work if the TransientFileFactory is used outside the scope of an active repository instance and that could very well be the case judging from the classes that use it...",
+            "date": "2009-07-16T11:34:10.240+0000",
+            "id": 6
+        },
+        {
+            "author": "Martijn Hendriks",
+            "body": "Here's a patch based on Roman's patch. It additionally avoids raw types, makes some fields final, and makes the \"stopping\" field volatile. It also contains the code to properly stop the revision table janitor.",
+            "date": "2009-07-19T12:36:38.139+0000",
+            "id": 7
+        },
+        {
+            "author": "Martijn Hendriks",
+            "body": "Committed revision 796955.",
+            "date": "2009-07-23T05:50:57.276+0000",
+            "id": 8
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Merged to the 1.x branch in revision 801136.",
+            "date": "2009-08-05T11:37:49.662+0000",
+            "id": 9
+        }
+    ],
+    "component": "jackrabbit-core, jackrabbit-jcr-commons",
+    "description": "I've built a simple web-application, which contains one servlet loaded at start-up. In its init() method an instance of RepositoryImpl() is created, in its destroy() method this instance is stopped (using shutdown()).\nFrom the servlet code, only classes in jackrabbit-core, JCR API and Servlet API are referenced.\njackrabbit-core version is 1.4.5, and jackrabbit-jcr-commons version is 1.4.2. Other jackrabbit libs are all of 1.4 version.\n\nEven if servlet's doGet() method never gets called, when the web-application is redeployed, all its classes still hang in memory, which produces a memory leak.\n\ninit() method is \n\n    public void init() throws ServletException {\n        super.init();\n        try {\n            RepositoryConfig repoConfig = RepositoryConfig.create(getClass().getResourceAsStream(\"repository.xml\"), \".\");\n            repo = RepositoryImpl.create(repoConfig);\n        } catch (Exception e) {\n            throw new ServletException(e);\n        }\n    }\n\nwhile destroy() method is\n\n    public void destroy() {\n        repo.shutdown();\n        super.destroy();\n    }\n\nEven when I applied patches from JCR-1636 and added TransientFileFactory.shutdown() call to destroy() method, nothing has changed.\nTested this in Jetty 6.1.9 and Tomcat 6.0.14.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "JCR-1668",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "After RepositoryImpl instance has been created and shut down, some classes cannot be unloaded",
+    "systemSpecification": true,
+    "version": "1.4, commons 1.4.2, core 1.4.5"
+}

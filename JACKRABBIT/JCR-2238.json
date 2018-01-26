@@ -1,0 +1,71 @@
+{
+    "comments": [
+        {
+            "author": "Marcel Reutegger",
+            "body": "As can be seen in the test output, the property always returns the same Binary instance. For most implementations this is not an issue because they are immutable and Binary.dispose() is a noop. Without the data store, the binary instance is a BLOBInTempFile, which has state and will delete the underlying temp file on dispose().\n\nIt seems to me that ownership of a binary instance is not well defined (that includes the spec, as well as in our jackrabbit modules). I think we should clarify the following questions and adjust the implementation accordingly:\n\n1) Does Value return a new instance of Binary on Value.getBinary()?\n\nI'd say yes, because Binary.dispose() may change the state of the object. though an implementation may chose to return a binary that has no state and dispose() is a noop. see our various Binary implementations in jackrabbit-core.\n\nimplementation consequences: we need to change our Binary implementations that are not immutable, otherwise a call to getBinary() will become potentially expensive because a new instance needs to be created (i.e. a new temp file spooled). some sort of reference counting might be a solution. we need to make sure dispose() is called whenever getBinary() is used internally in jackrabbit. it seems this is not always the case yet.\n\n- Does Value become the owner of the given Binary on ValueFactory.createValue() ?\n\nI'd say no, because Value does not have a defined life cycle. there is no dispose (or similar) method on Value, hence a client does not know when the given Binary is disposed. furthermore a client may wish to still use the given binary after the call to createBinary().\n\nso, this is how we use Binaries already in our code:\n\nNode n = ...\nBinary bin = ...\ntry {\n    Value v = vf.createValue(bin);\n    n.setProperty(\"foo\", v);\n    n.setProperty(\"bar\", v);\n} finally {\n    bin.dispose();\n}\n\nbut it seems Value must come the owner of a Binary, even if it is not the instance passed in createValue(), because otherwise the following code will not work:\n\nNode n = ...\nBinary bin = ...\nValue v;\ntry {\n    v = vf.createValue(bin);\n} finally {\n    bin.dispose();\n}\nn.setProperty(\"foo\", v);\nn.setProperty(\"bar\", v);\n\nquestion: is this valid?\n\nI think, yes. the implementation in jackrabbit core already creates a new Binary instance in this situation. (but the implementation in jcr-commons doesn't :-/)\nUnfortunately this has the consequence that we need to add a finalize method to either the temporary (?) resource backed Binary implementations or the Value implementation. whenever possible we should avoid creating a Value instance for a binary (at least internally in jackrabbit).\n\ndoes anyone have an alternative solution?",
+            "date": "2009-08-04T10:23:00.299+0000",
+            "id": 0
+        },
+        {
+            "author": "Tobias Bocanegra",
+            "body": "i think the creator is responsible to dispose the binary, no matter if the binary was\n\n- created using ValueFactory.createBinary(InputStream)\n- retrieved from a property, eg: Property.getValue().getBinary();\n- created in a own object implementing javax.jcr.Binary\n\nthe most common code is probably:\n\nBinary bin = vf.createBinary(in); \ntry { \n    n.setProperty(\"foo\", bin); \n    n.setProperty(\"bar\", bin); \n} finally { \n    bin.dispose(); \n} \n\n",
+            "date": "2009-08-04T11:11:44.103+0000",
+            "id": 1
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "> 1) Does Value return a new instance of Binary on Value.getBinary()?\n> we need to change our Binary implementations that are not immutable, otherwise a call to getBinary() will become potentially expensive\n\nI think whether Value.getBinary() returns a new object should be implementation defined (not part of the spec). For Jackrabbit, we could do that always if that's easier (even if using the data store). I know creating new objects is slow if the class has a finalize method, but I think it's not such an important performance problem because most applications will not call Value.getBinary() multiple times I guess. Even creating a new temporary file each time it is called is probably OK - or is there an important use case where getBinary() needs to be called multiple times for the same value?\n\n> Value v;\n> try {\n>    v = vf.createValue(bin);\n> } finally {\n>     bin.dispose();\n> }\n> n.setProperty(\"foo\", v); \n\nI think that should be valid.\n\nWith the data store:\na) getBinary() could always return the same Binary object\nb) dispose() would be a noop\n\nWithout the data store (when using a temp file)\nc) getBinary() could always create a new temp file (or use a shared file, if we find an important use case)\nc) I think dispose() should close the stream and make the Binary object unusable (delete the temp file, maybe using a reference count)\nd) finalize() should call dispose() for such Binary objects if needed\ne) Maybe closing the session should call Binary.dispose() (session would need a weak reference to all Binary objects)\n",
+            "date": "2009-08-04T11:49:14.411+0000",
+            "id": 2
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "Proposed patch.",
+            "date": "2009-08-05T12:24:12.011+0000",
+            "id": 3
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "I'm not sure if RefCountingBLOBFileValue is really important... if yes refCount access should be synchronized \n(or use java.util.concurrent.atomic.AtomicInteger).\n\nThat's all I found. I hope we can some day simplify blob handling, the code is really complicated...\n",
+            "date": "2009-08-05T12:58:11.642+0000",
+            "id": 4
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "Good point. I've updated the patch accordingly. Though, I think the RefCountingBLOBFileValue is currently only used by a single thread while a session writes to the repository.",
+            "date": "2009-08-06T09:35:56.150+0000",
+            "id": 5
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "Updated patch.\n\nRemoved BLOBFileValue.discard() and replaced calls to that method with dispose().",
+            "date": "2009-08-06T13:39:18.517+0000",
+            "id": 6
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "Applied patch (with minor modifications: commented System.out.println() in test class) in revision: 802676",
+            "date": "2009-08-10T07:35:41.025+0000",
+            "id": 7
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "Thomas reported a flaw in the use of AtomicInteger.\n\nReplaced usage of AtomicInteger with plain old synchronized methods.\n\nsvn revision: 802690",
+            "date": "2009-08-10T08:25:23.595+0000",
+            "id": 8
+        }
+    ],
+    "component": "jackrabbit-core",
+    "description": "Precondition: repository with datastore disabled!\n\nSteps to reproduce:\n\n1) create binary from stream\n2) set binary on property\n3) dispose binary\n4) get binary from property and dispose it immediately\n5) go to 4)\n\nBinary.dispose() will throw a NullPointerException when 4) is executed the second time.\n\nThe exception is not thrown if the property is saved after 2).\n\nSee also attached test.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "JCR-2238",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "Binary throws NullPointerException ",
+    "systemSpecification": true,
+    "version": ""
+}

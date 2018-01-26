@@ -1,0 +1,95 @@
+{
+    "comments": [
+        {
+            "author": null,
+            "body": "Created attachment 19030\nThe stack trace",
+            "date": "20061019T05:18:10",
+            "id": 0
+        },
+        {
+            "author": null,
+            "body": "Created attachment 19031\nPortion of the jsp that create the problem",
+            "date": "20061019T05:18:38",
+            "id": 1
+        },
+        {
+            "author": null,
+            "body": "Check the entire JSP that is causing the error for malformed XML.  Your stack\ntrace is trying to tell you that you have an escape character (0x1b) in the\nCDATA of a c and fmt element in that JSP.  That's not a bug IMHO, but it is\nstrange that the older parsers don't throw the same errors.  Are the same source\nfiles used in both versions tested, or were the source files copied to the new\nversion?\n\nValidation error messages from TagLibraryValidator for c in\n/common/templates/publicPage.jsp\nnull: org.xml.sax.SAXParseException: An invalid XML character (Unicode: 0x1b)\nwas found in the CDATA section.\n\nValidation error messages from TagLibraryValidator for fmt in\n/common/templates/publicPage.jsp\nnull: org.xml.sax.SAXParseException: An invalid XML character (Unicode: 0x1b)\nwas found in the CDATA section.\n\nDouble-check that your JSPs are clean and aren't hiding any objectionable data\nand rerun your test.",
+            "date": "20061020T10:43:03",
+            "id": 2
+        },
+        {
+            "author": null,
+            "body": "Chris,\n\n0x1b is inserted and then later removed by Tomcat in certain cases as part of\nthe translation of the JSP. This is almost certinaly related this internal\nTomcat behaviour rather than the user's JSP.",
+            "date": "20061020T15:35:01",
+            "id": 3
+        },
+        {
+            "author": null,
+            "body": "Created attachment 19063\nSimple JSP file that reproduces 0x1b problem\n\nThe bug is not stable, you should click F5 in a browser several times to\nreproduce it.",
+            "date": "20061101T05:01:07",
+            "id": 4
+        },
+        {
+            "author": null,
+            "body": "One more thing: to reproduce error with file.jsp (attached above) you should\ndownload apache standard tag libraries jar (standard.jar) and put it in the\nWEB-INF\\lib. Bug will not appear if you remove reference to tag library from jsp.",
+            "date": "20061101T05:43:40",
+            "id": 5
+        },
+        {
+            "author": null,
+            "body": "I experienced the same problems when upgrading to Tomcat 5.5.20.  After taking\nblocks of code in and out of my JSP page, I found that my javascript was the\ncause for the page to not be compiled properly.  Looking closer at my\njavascript, I found that the following line caused the JSP compiler to fail\nevery time it was included:\n\nvar re =\n/[A-Za-z0-9\\!\\\"\\#\\$\\%\\&\\'\\(\\)\\*\\+\\,\\-\\.\\/\\:\\;\\<\\=\\>\\?\\@\\[\\\\\\]\\^\\_\\`\\{\\|\\}\\~]/g;\n\nBy changing this regular expressing to:\n\nvar re = /[\\S]/g;\n\nmy problem was resolved.  I'm not sure what specifically about the original\nregular expression was causing the compiler problems, nor do I know why that\nregular expression was written the way it was.  \n\nHope this helps.",
+            "date": "20061108T04:28:19",
+            "id": 6
+        },
+        {
+            "author": null,
+            "body": "This regression is as a result of the fix for bug 33407. I'm looking into an\nalternative fix.",
+            "date": "20061111T19:37:20",
+            "id": 7
+        },
+        {
+            "author": null,
+            "body": "This has been fixed in SVN (using an alternative character that doesn't break\nvalidation) and will be included in 5.5.21 onwards.",
+            "date": "20061111T20:27:54",
+            "id": 8
+        },
+        {
+            "author": null,
+            "body": "(In reply to comment #9)\n> This has been fixed in SVN (using an alternative character that doesn't break\n> validation) and will be included in 5.5.21 onwards.\n\nIs there a workaround for this? this only happens on one of my JSPs, and the\nonly <c:> tags are in a header that I include in every page. I can't figure out\nhow to workaround it.",
+            "date": "20061112T11:41:40",
+            "id": 9
+        },
+        {
+            "author": null,
+            "body": "Options are:\n- remove the \\$ character sequence from the page\n- turn off tldValidation for the context\n- use the libs from 5.5.17\n\nHTH",
+            "date": "20061112T11:48:28",
+            "id": 10
+        },
+        {
+            "author": null,
+            "body": "Oh I see, the \\$ explains it! I didnt realize that was the cause of the problem.\nIs there another way I can safely display a dollar sign character in jsp?",
+            "date": "20061112T11:54:34",
+            "id": 11
+        },
+        {
+            "author": null,
+            "body": "nevermind, i've been staring at the screen too long. I was trying to escape a\nstring like this: \\${713} so I could actually show ${713} on screen instead of\njust  713. So, I changed it to ${'${713}'} and I'm ok now. ",
+            "date": "20061112T11:58:06",
+            "id": 12
+        }
+    ],
+    "component": "Jasper",
+    "description": "I'm working with 5.5.20 version, on a SuSE linux (both 10 and 10.1).\nI've found library problems in libraries in \"common/lib\". \nI've changed these libraries with the ones found on a 5.5.17 version an all \nwork fine...Is that a bug???\n\nThe attachments contains the stack trace e the jsp that create the problem.",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "40797",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "P2 blocker",
+    "product": "Tomcat 5",
+    "project": "TOMCAT",
+    "summary": "Library problems",
+    "systemSpecification": true,
+    "version": "5.5.20"
+}

@@ -1,0 +1,53 @@
+{
+    "comments": [
+        {
+            "author": "Stefan Guggisberg",
+            "body": "changed issue type/priority",
+            "date": "2009-03-11T09:25:47.720+0000",
+            "id": 0
+        },
+        {
+            "author": "Stefan Guggisberg",
+            "body": "i can see your use case. however, setPrimaryType and add/removeMixin do behave differently because the former is an atomic operation whereas the latter isn't. mimicing the behavior of setPrimaryType for changing the assigned mixins woud require to defer the actual change to the save operation (as you correctly mentionend). this OTOH would cause backwards compatibility issues because\nthe (transient) effect of an add/remove mixin would only be visible after a save call. IMO that's not an option.\n\n> This is not strictly a bug, as JSR-283 seems to leave the details of assigning node types (section 5.5) unspecified. However, it does say for Node.removeMixin(String) that \"Both the semantic change in effective node type and the persistence of the \nchange to the jcr:mixinTypes property occur on save\" and ideally we could emulate the nice behaviour in NodeImpl.setPrimaryType(String) for mixin types.\n\nthe current implementation of add/remove mixin are IMO according to the spec. 'semantic change' refers to node types with special semantics (e.g. mix:versionable). adding mix:versionable to a node does create the necessary properties on the node. the node does become 'versionable' only after calling save.    ",
+            "date": "2009-03-11T09:43:20.014+0000",
+            "id": 1
+        },
+        {
+            "author": "Charles Brooking",
+            "body": "When you say \"'semantic change' refers to node types with special semantics (e.g. mix:versionable)\", do you have a reference for this? I'd be interested in finding out what the spec actually means.\n\nIt says\n\n    \"the semantic change in effective node type\n     and the persistence of the change to the jcr:mixinTypes property\n     occur on save\",\n\nso surely this encompasses the change in effective node type! My interpretation of the phrase \"semantic change\" is that it just distinguishes the meaningful effects of changing types from the \"literal change\", which is the setting of the jcr:mixinTypes attribute.\n\nSo my (humble) interpretation is that if the change in effective node type should be persisted on save, then this issue is valid. Say I remove one mixin type that includes a \"foo\" property but add another mixin type including an identical \"foo\" property. If I do both of these things before saving, then the \"semantic change in effective node type\" would be nil.\n\nBy the way, the spec for Node.setPrimaryType(String) also says: \"Semantically, the new node type may take effect immediately and must take effect on save. Whichever behavior is adopted it must be the same as the behavior adopted for addMixin() and the behavior that occurs when a node is first created.\" (section 5.5.3) This may mean that add/removeMixin should happen on save (thus collectively being atomic like setPrimaryType), and maybe this is a bug rather than improvement?\n\nSome discussion on the list would be good, because I'm no JCR expert.",
+            "date": "2009-03-11T11:05:28.518+0000",
+            "id": 2
+        },
+        {
+            "author": "Alexander Klimetschek",
+            "body": "The problems of the property being removed can also be circumvented by using nt:unstructured (or another node type with residual property definitions) as primary type in the first place. Unstructured-ness is what JCR is optimized for.",
+            "date": "2009-03-11T14:03:13.220+0000",
+            "id": 3
+        },
+        {
+            "author": "Stefan Guggisberg",
+            "body": "resolved by JCR-2788 which provides a JackrabbitNode#setMixins() method",
+            "date": "2010-10-25T16:27:55.515+0000",
+            "id": 4
+        },
+        {
+            "author": "Stefan Guggisberg",
+            "body": "resolved as duplicate of JCR-2788",
+            "date": "2010-10-25T16:28:20.321+0000",
+            "id": 5
+        }
+    ],
+    "component": "jackrabbit-core",
+    "description": "NodeImpl.setPrimaryType(String) attempts to \"redefine\" nodes and properties that were defined by the previous node type if they also appear in the new type. If there is no matching definition for a node/property in the new type - or value conversion for matched node/property fails - only then are children removed. For example, say I have a node \"harry\", with a primary type \"Human\" that defines a \"bloodgroup\" property. If I set the primary type to be an unrelated type \"Animal\" that has a similar \"bloodgroup\" property, then its property value will survive the call to setPrimaryType(\"Animal\").\n\nThe same is apparently not possible with mixins. NodeImpl.removeMixin(Name) immediately removes all children that were defined by the mixin (strictly, those that are not present in the effective node type resulting from the mixin being removed). In addition, NodeImpl.addMixin(Name) immediately throws a NodeTypeConflictException if you attempt to add a mixin defining an identically-named property prior to calling removeMixin. For example, say I have a node \"matrix\", with a mixin type \"movie\" that defines a \"title\" property. If I wish to replace the \"movie\" mixin on that node with another \"jcr:title\" mixin type, the existing \"title\" property will be deleted.\n\nThis occurs regardless of the order in which removeMixin and addMixin are called, and without session.save() being called between them. One option for coding this is to defer validation (and possible node/property removal) until session.save() is called.\n\nThis is not strictly a bug, as JSR-283 seems to leave the details of assigning node types (section 5.5) unspecified. However, it does say for Node.removeMixin(String) that \"Both the semantic change in effective node type and the persistence of the\nchange to the jcr:mixinTypes property occur on save\" and ideally we could emulate the nice behaviour in NodeImpl.setPrimaryType(String) for mixin types.",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "JCR-2011",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Minor",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "Replacing mixin type doesn't preserve properties",
+    "systemSpecification": true,
+    "version": ""
+}

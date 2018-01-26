@@ -1,0 +1,119 @@
+{
+    "comments": [
+        {
+            "author": "Yonik Seeley",
+            "body": "As previously noted, FieldCache.DEFAULT is final because FieldCache is an interface, so no one could have had a different implementation they were using with Lucene, hence it would not have broken back compat in a meaningful way  to add some new methods.",
+            "date": "2009-06-12T14:03:03.489+0000",
+            "id": 0
+        },
+        {
+            "author": "Grant Ingersoll",
+            "body": "True, but you know how we are about adding methods to an interface!",
+            "date": "2009-06-12T14:14:05.878+0000",
+            "id": 1
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "+1",
+            "date": "2009-06-12T14:49:57.360+0000",
+            "id": 2
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "bq. True, but you know how we are about adding methods to an interface! \nYonik said it: Because nobody can change a static variable in an interface (its always final), there is no posibility to change the cache impl, so nobody would ever implement FieldCache. A short notice should be enough.\n\nShould I fix this together with LUCENE-1701? If yes, I would assign myself to this issue and add this to my own patch (which also fixes some issues by making the default parsers public).\n\nI would then only deprecate  ExtendedFieldCache (as sub-interface of FieldCache, without new methods) and merge the two package-private impls behind.\n",
+            "date": "2009-06-20T13:36:05.610+0000",
+            "id": 3
+        },
+        {
+            "author": "Grant Ingersoll",
+            "body": "Go for it.  No need to deprecate EFC, just delete it.",
+            "date": "2009-06-20T13:42:31.202+0000",
+            "id": 4
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Removing ExtendedFieldCache complete would break backwards compatibility, e.g. when users implemented an own LongParser and so on. And code referring to ExtendedFieldCache.EXT_DEFAULT would also break.\n\nI changed ExtendedFieldCache to only export this really needed and named parts:\n\n{code}\n/**\n * This interface is obsolete, use {@link FieldCache} instead.\n * @deprecated Will be removed in Lucene 3.0\n **/\npublic interface ExtendedFieldCache extends FieldCache {\n  \n  /** @deprecated Use {@link FieldCache#DEFAULT}; this will be removed in Lucene 3.0 */\n  public static ExtendedFieldCache EXT_DEFAULT = (ExtendedFieldCache)FieldCache.DEFAULT;\n  \n  /** @deprecated Use {@link FieldCache.LongParser}, this will be removed in Lucene 3.0 */\n  public interface LongParser extends FieldCache.LongParser {\n  }\n\n  /** @deprecated Use {@link FieldCache.DoubleParser}, will be removed in Lucene 3.0 */\n  public interface DoubleParser extends FieldCache.DoubleParser {\n  }\n\n}\n{code}",
+            "date": "2009-06-20T13:59:59.703+0000",
+            "id": 5
+        },
+        {
+            "author": "Grant Ingersoll",
+            "body": "The whole point of this issue is that it breaks back compatibility.  EFC is a pointless class.  Read the description.\n\nBesides the fact that adding methods to FieldCache itself breaks back compatibility since it is an interface, even if no one can implement it.",
+            "date": "2009-06-20T14:06:06.473+0000",
+            "id": 6
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "It breaks backwards compatibility in the case that somebody *implements* FieldCache/ExtendedFieldCache. As Yonik pointed out, this is unlikely the case, as there is no possibility to plug this implementation into Lucene, because you *cannot* change the FieldCache.DEFAULT interface variable (static final). Because of this nobody would ever want to implement this interface, and if he does, it would be nonsense and can break without problems.\n\nSo, removing/changing this interfaces would *not* be a BW break, as long as we only think of implementing FieldCache/ExtendedFieldCache\n\nBut we would really break backwards compatibility for all who *refer* to this interface! And because of this, the dummy stub keeps there, that classes still referencing parsers and ExtendedFieldCache.EXT_DEFAULT can still work.\n\nWe should here think about not that this *theoretically* breaks bw, we should discuss where this break would affect users.",
+            "date": "2009-06-20T14:16:13.725+0000",
+            "id": 7
+        },
+        {
+            "author": "Grant Ingersoll",
+            "body": "Uwe,\n\nThe ENTIRE point of this issue is to get rid of EFC.  It is purposely breaking backwards compatibility.  It is a stupid class put in for stupid reasons.  If anyone is referring to this class, they can change to use the FieldCache.\n\nIf you're not going to remove it, I will.  ",
+            "date": "2009-06-20T14:21:49.907+0000",
+            "id": 8
+        },
+        {
+            "author": "Yonik Seeley",
+            "body": "Uwe is right - EFC has been around since 2.3, we should not delete it, but deprecate it.\nEFC's extra \"stuff\" should be moved to FieldCache.",
+            "date": "2009-06-20T14:28:01.932+0000",
+            "id": 9
+        },
+        {
+            "author": "Grant Ingersoll",
+            "body": "Why?  \n\nSo much for case-by-case back compatibility.",
+            "date": "2009-06-20T14:34:42.529+0000",
+            "id": 10
+        },
+        {
+            "author": "Grant Ingersoll",
+            "body": "And Yonik, if you're argument is b/c Solr uses it, I will change it.  It's like 5 lines of code.",
+            "date": "2009-06-20T14:37:01.941+0000",
+            "id": 11
+        },
+        {
+            "author": "Yonik Seeley",
+            "body": "bq. And Yonik, if you're argument is b/c Solr uses it, I will change it. It's like 5 lines of code. \n\nNot at all the issue - as you say, it's simple to change in Solr and doesn't represent a back compat issue to Solr users.\n\nbq. So much for case-by-case back compatibility.\n\nThis is entirely case-by-case:\ncase #1: *adding* methods to FieldCache could technically be viewed as breaking back compat, but in this specific case it's OK since no one implements FieldCache.\ncase #2: *removing* ExtendedFieldCache breaks all applications that *refer* to ExtendedFieldCache.  it should be deprecated first.",
+            "date": "2009-06-20T14:44:20.544+0000",
+            "id": 12
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "I implemented it now, when removing EFC completely, a lot of tests from backwards 2.4 fail, especially TestSort and TestDateSort and FunctionQuery tests, because they:\n- reference ExtendedFieldCache for parsers\n- reference EXT_DEFAULT\n\nThere are a lot of projects that use this references, e.g. Compass and many more.\n\nI left over a stub like noted above - and suddenly, all tests pass, only TestExtendedFieldCache, which is obsolete (will be removed from Tag). Nobody is hurted by this stub (it is just an empty declaration), all code is in FieldCache and FieldCacheImpl, as you suggested.\n\nIn 3.0 we remove the stub and voila!",
+            "date": "2009-06-20T14:58:00.585+0000",
+            "id": 13
+        },
+        {
+            "author": "Grant Ingersoll",
+            "body": "OK",
+            "date": "2009-06-20T15:04:38.324+0000",
+            "id": 14
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Patch available in LUCENE-1701!\n\nI close this issue after 1701 is committed.",
+            "date": "2009-06-20T16:47:20.127+0000",
+            "id": 15
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Committed together with LUCENE-1701 in revision 787723.",
+            "date": "2009-06-23T15:44:43.549+0000",
+            "id": 16
+        }
+    ],
+    "component": "",
+    "description": "It is silly that we have ExtendedFieldCache.  It is a workaround to our supposed back compatibility problem.  This patch will merge the ExtendedFieldCache interface into FieldCache, thereby breaking back compatibility, but creating a much simpler API for FieldCache.",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "LUCENE-1687",
+    "issuetypeClassified": "REFACTORING",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Minor",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "Remove ExtendedFieldCache by rolling functionality into FieldCache",
+    "systemSpecification": true,
+    "version": ""
+}

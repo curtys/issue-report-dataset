@@ -1,0 +1,41 @@
+{
+    "comments": [
+        {
+            "author": null,
+            "body": "BTW: I only use the HTTP connector, not jk or apr. This is a standalone Tomcat\nserver.",
+            "date": "20060102T18:28:51",
+            "id": 0
+        },
+        {
+            "author": null,
+            "body": "I went one step further and tried comparing the output of\nHttpServletRequest.getRemoteHost() and InetAddress.getHostname():\n\n        String remoteHost = request.getRemoteHost();\n        String ip = request.getRemoteAddr();\n        text.append(\"ip \" + ip + \" maps to \" + remoteHost);\n        String hostname = InetAddress.getByName(ip).getHostName();\n        if (!hostname.equals(remoteHost))\n        {\n          text.append(\" but the actual hostname is \" + hostname);\n          log.debug(text);\n        }\n\n\nand got output like this:\n\nip 210.111.94.102 maps to vz4-vlan1.networx-bg.com but the actual hostname is\n210.111.94.102\n\ndoing \"nslookup\" locally I clearly see that 210.111.94.102 has no reverse lookup\nand that vz4-vlan1.networx-bg.com actually maps to 82.147.153.200 so now I'm\n100% certain this is a Tomcat bug.",
+            "date": "20060102T19:05:43",
+            "id": 1
+        },
+        {
+            "author": null,
+            "body": "Have you guys had a chance to look at this issue? Any idea what piece of code\nmight be at fault?",
+            "date": "20060115T23:09:10",
+            "id": 2
+        },
+        {
+            "author": null,
+            "body": "This should be fixed now in the SVN trunk, and should appear in 5.5.16.\n\nReviewing the commit logs shows that this should have been there for a very \nlong time (but shouldn't happen very often).",
+            "date": "20060116T00:47:03",
+            "id": 3
+        }
+    ],
+    "component": "Connector:Coyote",
+    "description": "This issue might be related to\nhttp://issues.apache.org/bugzilla/show_bug.cgi?id=33971\n\nWhat i am seeing is that at runtime, HttpServletRequest.getRemoteHost() is\nreturning invalid results. That is, it sometimes returns unqualified hostnames\n(instead of an ip, which is expected if it can't get a fully-qualified\nhostname). Other times it returns a hostname that has absolutely nothing to do\nwith the IP.\n\nSome examples I see in my logs:\n\n86.125.53.140 maps to msnbot.msn.com\n88.7.11.140 maps to msnbot.msn.com\n210.111.94.102 maps to crawl-66-249-66-138.googlebot.com\n218.190.175.145 maps to msnbot.msn.com\n\n   These are all logged by the servlet being hit, with it logging: \"ip \" +\nrequest.getRemoteAddr() + \" maps to \" + request.getRemoteHost()\n\nNow, if you try looking up the hostname associated with the above IPs after the\nfact you will notice none of them map to the hostnames that Tomcat claims it\ndoes. I suspect that sometimes when reverse lookup fails, Tomcat retains the\nrDNS result from the previous lookup instead of returning the string format of\nthe IP. This might also be a new bug introduced between 5.5.9 and 5.5.12 because\nI don't recall having this problem with 5.5.9.\n\n( I'm leaving the country today for a few weeks so please excuse me if I don't\nreply right away to any questions you might follow up with )",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "38100",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "P3 normal",
+    "product": "Tomcat 5",
+    "project": "TOMCAT",
+    "summary": "HttpServletRequest.getRemoteHost() returning invalid results",
+    "systemSpecification": true,
+    "version": "5.5.12"
+}

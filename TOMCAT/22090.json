@@ -1,0 +1,47 @@
+{
+    "comments": [
+        {
+            "author": null,
+            "body": "Created attachment 7630\nenable caches",
+            "date": "20030803T10:47:16",
+            "id": 0
+        },
+        {
+            "author": null,
+            "body": "Evidence (threaddumps) supports that the problem is not the parsing performance\nper se, but the allocation of three (8k+16k+16k) buffers per parser invocation:\n\nSimpleCharStream.java:\n#245:    buffer = new char[buffersize];\n#246:    bufline = new int[buffersize];\n#247:    bufcolumn = new int[buffersize];\n\n\"tcpConnection-8001-14\" daemon prio=1 tid=0x4e102df8 nid=0x33ca waiting for\nmonitor entry [bbdfe000..bbdff908]\n        at\norg.apache.commons.el.parser.SimpleCharStream.<init>(SimpleCharStream.java:245)\n        at\norg.apache.commons.el.parser.SimpleCharStream.<init>(SimpleCharStream.java:253)\n        at org.apache.commons.el.parser.ELParser.<init>(ELParser.java:1721)\n\nThis is kind of a commons/el problem, not a jasper one. I will try to patch el\nto use smaller buffers (which expression is 4k???). If that improves matters, I\nmight close this report although I still consider it valid.\n",
+            "date": "20030804T09:24:38",
+            "id": 1
+        },
+        {
+            "author": null,
+            "body": "Good findings.\n\nI think those buffers should be owned by another component (Jasper's\nPageContextImpl IMO), and passed to commons-el), to allow reuse and avoid the\nallocation. This could be optional (commons-el would allocate buffers if none\nare passed): a new constructor would simply need to be added.\n\nBuffers bigger than 1K take a significant amount of time to allocate (and making\nthem too small might impact functionality), so even 4K would be too big IMO.",
+            "date": "20030804T09:35:39",
+            "id": 2
+        },
+        {
+            "author": null,
+            "body": "Some measurements:\n\n1. no el cache, parser default buffers: 40 req/s, 1.8m/s\n2. no el cache, small parser buffers: 90req/s, 3.7m/s\n3. el cache: 200req/s, 8m/s\n4. non-synchronized el-cache (simulates parsed expression trees stored per\ntagfile instance): 210req/s, 8.5m/s\n\nlinux dual proc, 100mbit ethernet, j2sdk 1.4.2, resin 2.1.9, jasper 5.0.6\npage data completely in memory, ~70 simple el evaluations, 40k html\n\nstill voting for option 3 or 4.\nlast post on this subject.\n",
+            "date": "20030804T10:53:56",
+            "id": 3
+        },
+        {
+            "author": null,
+            "body": "Well, I thought your second post meant that the benefit of using caching was\noffset by some buffer allocation. Looking at the code, the allocation doesn't\nseem to happen with the cache, so there's no problem.\nYour patch seems good, sorry for the misunderstanding.",
+            "date": "20030804T12:30:45",
+            "id": 4
+        }
+    ],
+    "component": "Jasper",
+    "description": "EL expressions are parsed on every evaluation. PageContextImpl uses an ExpressionEvaluator with \nbypassCaches=true. Either the standard caches should be used OR rather, a compiled page should \nhold parsed expressions in static fields. Then contention on the caches could be avoided, too.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "22090",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "P3 normal",
+    "product": "Tomcat 5",
+    "project": "TOMCAT",
+    "summary": "EL evaluation should cache parse results",
+    "systemSpecification": true,
+    "version": "5.0.5"
+}

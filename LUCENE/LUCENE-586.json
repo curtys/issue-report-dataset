@@ -1,0 +1,29 @@
+{
+    "comments": [
+        {
+            "author": "Yonik Seeley",
+            "body": "Thanks Andrew, I just committed this.",
+            "date": "2006-06-02T03:35:04.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Closing all issues that were resolved for 2.1.",
+            "date": "2007-02-27T18:10:34.276+0000",
+            "id": 1
+        }
+    ],
+    "component": "core/index, core/search",
+    "description": "In our application anytime the index was unoptimized/contained more than one segment there was a sharp drop in performance, which amounted to over 50ms per search on average.  We would consistently see this drop anytime an index went from an optimized state to an unoptimized state.\n\nI tracked down the issue to the implementation of MultiTermDocs.skipTo function (found in MultiReader.java).  Optimized indexes do not use this class during search but unoptimized indexes do.  The comment on this function even explicitly states 'As yet unoptimized implementation.'  It was implemented just by calling 'next' over and over so even if it knew it could skip ahead hundreds of thousands of hits it would not.\n\nSo I re-implemented the function very similar to how the MultiTermDocs.next function was implemented and tested it out on or application for correctness and performance and it passed all our tests and the performance penalty of having multiple segments vanished.  We have already put the new jar onto our production machines.\n\nHere is my implementation of skipTo, which closely mirrors the accepted implementation of 'next', please feel free to test it and commit it.\n\n  /** Much more optimized implementation. Could be\n   * optimized fairly easily to skip entire segments */\n  public boolean skipTo(int target) throws IOException {\n    if (current != null && current.skipTo(target-base)) {\n      return true;\n    } else if (pointer < readers.length) {\n      base = starts[pointer];\n      current = termDocs(pointer++);\n      return skipTo(target);\n    } else\n      return false;\n  }",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "LUCENE-586",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Major",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "Very inefficient implementation of MultiTermDocs.skipTo",
+    "systemSpecification": true,
+    "version": ""
+}

@@ -1,0 +1,65 @@
+{
+    "comments": [
+        {
+            "author": "Ralf Hauser",
+            "body": "Suggestion: add least add an abstract wrapper interface whose implementations either use the current getByName or do something smarter such as using dnsjava.org\n\n\nif you were to use the implementation as is, I guess it is important to do something like \n   Security.setProperty(\"networkaddress.cache.ttl\", \"300\");\n\notherwise, long running applications may reach the wrong physical servers if the dns servers changed the ip addresses while the application was running\n\n   see also JAMES-679",
+            "date": "2007-07-17T09:49:27.521+0000",
+            "id": 0
+        },
+        {
+            "author": "Ortwin Gl\u00fcck",
+            "body": "-Dnetworkaddress.cache.ttl=60 definitely belongs into every server startup script, along with sensible values for heap / non-heap, DGC intervals etc. \n\nI don't think we are going to introduce new interfaces or abstract classes in 3.x. However you can implement your own ProtocolSocketFactory that uses the DNS implementation of your choice.",
+            "date": "2007-07-17T10:03:01.011+0000",
+            "id": 1
+        },
+        {
+            "author": "Armin H\u00e4berling",
+            "body": "So are there any plans for such an interface in version 4.x? For me it would make sense take the DNS resolving out of the ProtocolSocketFactory, cause it's an othogonal problem.\n\nFor 3.x I think I will write a wrapper for the ProtocolSocketFactory and the SecureProtocolSocketFactory with my own DNS implemetation.\n",
+            "date": "2007-07-17T11:51:09.543+0000",
+            "id": 2
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "> So are there any plans for such an interface in version 4.x?\n\nHttpClient 4.0 has a much more modular architecture compared to HttpClient 3.x. There are several points where one could (fairly easily) inject such functionality: connection operator, connection manager, protocol socket factory. Probably connection operator interface is already perfectly sufficient. If not, we could add another interface specifically for DNS name to IP resolution.\n\nOleg\n\nPS: Folks, generally, if you want something happen (or happen faster), the best way to go about it is rolling up your sleeves and getting it done yourself (by contributing a patch)",
+            "date": "2007-07-17T12:07:10.629+0000",
+            "id": 3
+        },
+        {
+            "author": "Daniel M\u00fcller",
+            "body": "If you have access to the JVM and if it's a Sun JVM, you can change the DNS provider directly. Check [1] on how to do that. I think the request still makes sense, but when changing the DNS provider directly, you don't have to touch the code (never done it though, and I think they changed the SPI interface for 1.6 (very unfriendly, see bug at [2])).\n\nBy the way, there's a way on Sun VMs to set the TTL as a commandline option [3].\n\nHope that helps...\n\nCheers,\nDaniel\n\n[1] http://www.dnsjava.org/dnsjava-current/doc/org/xbill/DNS/spi/DNSJavaNameService.html\n[2] http://sourceforge.net/tracker/index.php?func=detail&aid=1702231&group_id=18000&atid=118000\n[3] http://www.rgagnon.com/javadetails/java-0445.html",
+            "date": "2007-07-17T18:55:21.181+0000",
+            "id": 4
+        },
+        {
+            "author": "Ralf Hauser",
+            "body": "Daniel, thx for the interesting hints. Unfortunately, we do plan to use it also with 1.6.\n\nalso, as per your ref[1], that sun.net.spi.nameservice.NameService interface only has a \n\n  byte[][] \tlookupAllHostAddr(String host) \n\nmethod, while InetAddress.getByName() doesn't expect multiple responses - haven't looked at the implementation details - will it just return the first if there are multiple ? Interestingly, http://java.sun.com/j2se/1.5.0/docs/api/java/net/InetAddress.html#getByName(java.lang.String) doesn't mention the possiblity that there are multiple numeric address for one mnemonic one.",
+            "date": "2007-07-18T07:54:48.794+0000",
+            "id": 5
+        },
+        {
+            "author": "Ralf Hauser",
+            "body": "ok, the below probably answers my previous issue - getAllByName0 probably uses lookupAllHostAddr()\n\njava.net.UnknownHostException: ns3.interway.ch:\nns3.interway.ch\n\tat java.net.InetAddress.getAllByName0(Unknown Source)\n\tat java.net.InetAddress.getAllByName0(Unknown Source)\n\tat java.net.InetAddress.getAllByName(Unknown Source)\n\tat java.net.InetAddress.getByName(Unknown Source)\n\tat org.xbill.DNS.SimpleResolver.<init>(SimpleResolver.java:56)\n\tat org.xbill.DNS.ExtendedResolver.<init>(ExtendedResolver.java:281)",
+            "date": "2007-07-18T12:33:09.906+0000",
+            "id": 6
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Implemented in SVN trunk\n\nOleg",
+            "date": "2008-05-22T18:43:21.823+0000",
+            "id": 7
+        }
+    ],
+    "component": "HttpClient (classic)",
+    "description": "Currently Httpclient implicitly uses InetAddress.getByName() for DNS resolution.\nThis has some drawbacks. One is that the DNS cache of Java per default caches entries forever.\n\nSo I'd like to be able to replace InetAddress.getByName() with another DNS client implementation.\n\n",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "HTTPCLIENT-670",
+    "issuetypeClassified": "RFE",
+    "issuetypeTracker": "RFE",
+    "priority": "Major",
+    "product": "HTTPCLIENT",
+    "project": "HTTPCLIENT",
+    "summary": "add an interface for plugable dns clients",
+    "systemSpecification": true,
+    "version": ""
+}

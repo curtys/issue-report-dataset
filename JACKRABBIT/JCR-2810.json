@@ -1,0 +1,23 @@
+{
+    "comments": [
+        {
+            "author": "Jukka Zitting",
+            "body": "Thanks! Changes committed in revision 1060753 and merged to the 2.2 branch in revision 1060756.",
+            "date": "2011-01-19T10:39:25.021+0000",
+            "id": 0
+        }
+    ],
+    "component": "clustering, jackrabbit-core",
+    "description": "Hi guys,\n\nFirst of all, congratulations for the fantastic job.\n\nI'm deploying a Jackrattbit-JCA resource adapter to a clustered Websphere environment and using a DB2 for storing data and realized some missing code to add DB2 support.\n\nHere is:\n\nJACKRABBIT-CORE, @ org.apache.jackrabbit.core.util.db, method guessValidationQuery (the last one), I adjusted as follows to add a DB2 validation query:\n\n----------------------------------------------------------------------------------------------------------\n    private String guessValidationQuery(String url) {\n        if (url.contains(\"derby\")) {\n            return \"values(1)\";\n        } else if (url.contains(\"mysql\")) {\n            return \"select 1\";\n        } else if (url.contains(\"sqlserver\") || url.contains(\"jtds\")) {\n            return \"select 1\";\n        } else if (url.contains(\"oracle\")) {\n            return \"select 'validationQuery' from dual\";\n        } else if (url.contains(\"h2\")) {\n            return \"select 1\";\n        } else if (url.contains(\"db2\")) {\n        \treturn \"values(1)\";\n        }\n        log.warn(\"Failed to guess validation query for URL \" + url);\n        return null;\n----------------------------------------------------------------------------------------------------------\n\nAnd as a final touch, a DDL to build the tables:\n\nJACKRABBIT-CORE, @ src/main/resources/org/apache/jackrabbit/core/journal, added a file named db2.dll as follows (actually I copied this from derby.dll)\n\n----------------------------------------------------------------------------------------------------------\n#  Licensed to the Apache Software Foundation (ASF) under one or more\n#  contributor license agreements.  See the NOTICE file distributed with\n#  this work for additional information regarding copyright ownership.\n#  The ASF licenses this file to You under the Apache License, Version 2.0\n#  (the \"License\"); you may not use this file except in compliance with\n#  the License.  You may obtain a copy of the License at\n#\n#      http://www.apache.org/licenses/LICENSE-2.0\n#\n#  Unless required by applicable law or agreed to in writing, software\n#  distributed under the License is distributed on an \"AS IS\" BASIS,\n#  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.\n#  See the License for the specific language governing permissions and\n#  limitations under the License.\ncreate table ${schemaObjectPrefix}JOURNAL (REVISION_ID BIGINT NOT NULL, JOURNAL_ID varchar(255), PRODUCER_ID varchar(255), REVISION_DATA blob)\ncreate unique index ${schemaObjectPrefix}JOURNAL_IDX on ${schemaObjectPrefix}JOURNAL (REVISION_ID)\ncreate table ${schemaObjectPrefix}GLOBAL_REVISION (REVISION_ID BIGINT NOT NULL)\ncreate unique index ${schemaObjectPrefix}GLOBAL_REVISION_IDX on ${schemaObjectPrefix}GLOBAL_REVISION (REVISION_ID)\ncreate table ${schemaObjectPrefix}LOCAL_REVISIONS (JOURNAL_ID varchar(255) NOT NULL, REVISION_ID BIGINT NOT NULL)\n\n# Inserting the one and only revision counter record now helps avoiding race conditions\ninsert into ${schemaObjectPrefix}GLOBAL_REVISION VALUES(0)\n----------------------------------------------------------------------------------------------------------\n\n\nBest regards,\n\n\nJ Marcos",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "JCR-2810",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "Error creating DB2 table for Journaling",
+    "systemSpecification": true,
+    "version": "2.1.1, 2.1.2"
+}

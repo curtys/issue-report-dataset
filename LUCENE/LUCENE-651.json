@@ -1,0 +1,53 @@
+{
+    "comments": [
+        {
+            "author": "Oliver Hutchison",
+            "body": "The attached patch resolves this issue by forcing multiple concurrent requests to block and wait for a single thread to do the cached value generation.",
+            "date": "2006-08-14T01:36:15.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Otis Gospodnetic",
+            "body": "FieldCache bit us in the ass recently, so I'm looking at other FieldCache issues.\nThis one looks good to me\n(discussion that led to the patch is at http://www.gossamer-threads.com/lists/lucene/java-user/38717 )\n\nQuestion about this snippet:\n+        synchronized (value) {\n+          CreationPlaceholder progress = (CreationPlaceholder) value;\n+          if (progress.value == null) {\n+            progress.value = createValue(reader, key);\n+            synchronized (readerCache) {\n+              innerCache.put(key, progress.value);\n+            }\n+          }\n\nIs that synchronization on value really needed here?  Wouldn't synchronizing on readerCache be sufficient here?  Something like:\n\n+        synchronized (readerCache) {\n+          CreationPlaceholder progress = (CreationPlaceholder) value;\n+          if (progress.value == null) {\n+            progress.value = createValue(reader, key);\n+             innerCache.put(key, progress.value);\n+          }\n\nOr would that be too coarse?  Maybe, I see createValue does a fair bit of work.\n\nI'll commit this shortly.",
+            "date": "2006-11-10T22:43:09.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Yonik Seeley",
+            "body": "> Wouldn't synchronizing on readerCache be sufficient here?\n\nThat would be deadly, esp to something like Solr.  It would kill any ability to warm in the background as *any* index reader filling an entry would block all other readers from using the cache.",
+            "date": "2006-11-11T21:49:31.000+0000",
+            "id": 2
+        },
+        {
+            "author": "Otis Gospodnetic",
+            "body": "Ah, yes, you mentioned that in that email thread, too.  Ignore my comment.",
+            "date": "2006-11-12T04:33:40.000+0000",
+            "id": 3
+        },
+        {
+            "author": "Otis Gospodnetic",
+            "body": "Committed, thanks Oliver!",
+            "date": "2006-11-20T07:11:30.000+0000",
+            "id": 4
+        },
+        {
+            "author": "Otis Gospodnetic",
+            "body": "For the record, this patch had a small mistake in it, causing memory leakage.  The fix is in LUCENE-754.\n",
+            "date": "2006-12-20T03:56:33.000+0000",
+            "id": 5
+        }
+    ],
+    "component": "core/search",
+    "description": "A race condition exists in FieldCacheImpl that causes a significant performance degradation if multiple threads concurrently request a value that is not yet cached. The degradation is particularly noticable in large indexes and when there a many concurent requests for the cached value.\n\nFor the full discussion see the mailing list thread 'Poor performance \"race condition\" in FieldSortedHitQueue' (http://www.gossamer-threads.com/lists/lucene/java-user/38717).",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-651",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Minor",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "Poor performance race condition in FieldCacheImpl",
+    "systemSpecification": true,
+    "version": "2.0.0"
+}

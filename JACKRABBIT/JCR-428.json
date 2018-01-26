@@ -1,0 +1,71 @@
+{
+    "comments": [
+        {
+            "author": "Michael Frericks",
+            "body": "Sorry, patch should be:\n\nIndex: BLOBFileValue.java\n===================================================================\nretrieving revision 1.1\ndiff -u -r1.1 BLOBFileValue.java\n--- BLOBFileValue.java 8 May 2006 13:57:49 -0000 1.1\n+++ BLOBFileValue.java 8 May 2006 15:19:54 -0000\n@@ -142,6 +142,7 @@\n                     len += read;\n                 }\n             }\n+ in.close();\n         } finally {\n             if (out != null) {\n                 out.close();\n@@ -151,8 +152,15 @@\n         // init vars\n         file = spoolFile;\n         fsResource = null;\n- // this instance is backed by a temporarily allocated resource/buffer\n- temp = true;\n+ if (file != null)\n+ {\n+ // this instance is backed by a temporarily allocated resource\n+ temp = true;\n+ }\n+ else\n+ {\n+ temp = false;\n+ }\n     }\n \n     /**\n\n\n",
+            "date": "2006-05-08T23:03:05.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Stefan Guggisberg",
+            "body": "the current implementation is IMO correct. \n\nthe 'temp' flag is set to true because either a temp file has been created *or* a \nbuffer has been dynamically allocated, which the in-line comment correclty states:\n\n        // this instance is backed by a temporarily allocated resource/buffer\n        temp = true;\n\non #discard the buffer is correctly disposed.\n\nplease note that BLOBFileValue is for Jackrabbit-internal use only:\nhttp://jackrabbit.apache.org/api-1/org/apache/jackrabbit/core/value/BLOBFileValue.html\n\n",
+            "date": "2006-05-08T23:05:32.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Michael Frericks",
+            "body": "I think the bug ist that BLOBFileValue is reused after discard ist called. Discard erases the field buffer or the file. At the point of resue this leads to a empty property not matching the correct value of the property.\n\nAnd this is what i observed using the org.apache.jackrabbit.core.state.orm.ojb.OJBPersistenceManager.\n\nInside its method #load(PropertyId propId) this class calls  \n\nInternalValue create(InputStream value)-> public BLOBFileValue(InputStream in)\n\nwhich is the only constructor of BLOBFileValue that sets \"temp = true\".",
+            "date": "2006-05-10T15:25:13.000+0000",
+            "id": 2
+        },
+        {
+            "author": "Stefan Guggisberg",
+            "body": "> I think the bug ist that BLOBFileValue is reused after discard ist called. \n> Discard erases the field buffer or the file. At the point of resue this leads \n> to a empty property not matching the correct value of the property. \n\nwhere in jackrabbit's code are BLOBFileValue instances reused after they \nhave been discarded? \n\nwhat's the exact issue here? are there any jcr api calls that fail?\n\nplease provide a simple test case that, using the default configuration,\ni.e. DerbyPersistenceManager, demonstrates  the issue.",
+            "date": "2006-05-10T21:11:11.000+0000",
+            "id": 3
+        },
+        {
+            "author": "Przemo Pakulski",
+            "body": "I think this can be related also of JCR-262 (restore sometime throws error about missing tmp files).\n\nWe are getting following exceptions often:\n\njavax.jcr.RepositoryException: file backing binary value not found: C:\\tomcat\\temp\\bin63780.tmp (The system cannot find the file specified): C:\\tomcat\\temp\\bin63780.tmp (The system cannot find the file specified)\n    at com.day.crx.core.value.BLOBFileValue.getStream(BLOBFileValue.java:457) \n\nI can't reproduce this yet and I don't  know where BLOBFileValue instances reused after discard but it looks it is (maybe cache?).",
+            "date": "2006-05-16T23:41:56.000+0000",
+            "id": 4
+        },
+        {
+            "author": "Tobias Bocanegra",
+            "body": "the problem is, that in the first place, BLOBFileValues were not thought of beeing produced by the backend, but rather via the client, from the transient side. the late introduction of db-stored blobs just reused them without checking all invariants. \n\nthe following example shows this error (when having db-blobs):\n\n            Node rootNode = session.getRootNode();\n\n            Node blobNode = rootNode.addNode(\"blobNode\");\n            rootNode.save();\n\n            blobNode.setProperty(\"data\", BlobTest3.createStream(70000));\n            blobNode.save();\n\n            blobNode.setProperty(\"data\", BlobTest3.createStream(70000));\n            blobNode.refresh(false);\n\n            blobNode.getProperty(\"data\").getString();\n\nand throws an exception on the last .getString() since the BLOBFileValue gets discarded in the 2nd setProperty() call.\n\ni think in the long run, we need a proper Blob/BlobFactory/reference counting framework in place, in order to properly support both client and backend usage of those blob file values. that's why i also opt for having a new value type: Binary in the jcr283 spec.\n\nin the meantime, i think it helps to make the blobvalues of the transient items non-temporary, so that they don't get discarded.",
+            "date": "2006-05-19T06:03:41.000+0000",
+            "id": 5
+        },
+        {
+            "author": "Tobias Bocanegra",
+            "body": "fixed. \n\nCommitted revision 407709.\n",
+            "date": "2006-05-19T11:54:28.000+0000",
+            "id": 6
+        },
+        {
+            "author": "Stefan Guggisberg",
+            "body": "ok, michael was right. in certain scenarios a BLOBFileValue instance could indeed \nget accidentaly discarded because of jackrabbit's copy-on-write implementation\nwhich does a shallow copy of the value(s) for efficiency and performance reasons.\n\na blob read from the db was wrongly considered being 'transient' because it was \ninternally created from a stream. if a copy thereof would be lateron discarded the \nunderlying value would be discarded as well (because of the shallow copy-on-write).\n\ni added a specialized constructor for creating BLOBFileValue instances from a stream\nwhich won't get discarded:\n\n    public BLOBFileValue(InputStream in, boolean temp) throws IOException\n\nfixed in svn r408647",
+            "date": "2006-05-22T19:57:21.000+0000",
+            "id": 7
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Merged for 1.0.1 in revision 409535.",
+            "date": "2006-05-26T08:27:47.000+0000",
+            "id": 8
+        }
+    ],
+    "component": "jackrabbit-core",
+    "description": "Situation:\n\nif the internal value of a property of type binary is created by the constructor BLOBFileValue(InputStream in) and the content is not stored in an temp-file, then calling the methods \n\na) #setProperty(InputStream in) on this node and then\nb) #refresh(false) on the node of this property \n\non the node of this property leads to an internal value of this property with an erased byte[].\n\nSolution:\n\nOnly if the spoolFile is created the field 'temp' should be set to true.\nIf the InputStream is stored in the byte[] the field 'temp' should be set to false.\n\nPatch:\n\nIndex: BLOBFileValue.java\n===================================================================\nretrieving revision 1.1\ndiff -u -r1.1 BLOBFileValue.java\n--- BLOBFileValue.java\t8 May 2006 13:57:49 -0000\t1.1\n+++ BLOBFileValue.java\t8 May 2006 15:19:54 -0000\n@@ -142,6 +142,7 @@\n                     len += read;\n                 }\n             }\n+            in.close();\n         } finally {\n             if (out != null) {\n                 out.close();\n@@ -151,8 +152,15 @@\n         // init vars\n         file = spoolFile;\n         fsResource = null;\n-        // this instance is backed by a temporarily allocated resource/buffer\n-        temp = true;\n+        if (file != null)\n+        {\n+            // this instance is backed by a temporarily allocated resource\n+            temp = true;\n+        }\n+        else\n+        {\n+            temp = true;\n+        }\n     }\n \n     /**\n\n\n",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "JCR-428",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "BLOBFileValue() might be discarded to early",
+    "systemSpecification": true,
+    "version": "1.0"
+}

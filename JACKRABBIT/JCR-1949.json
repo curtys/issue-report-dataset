@@ -1,0 +1,41 @@
+{
+    "comments": [
+        {
+            "author": "Jukka Zitting",
+            "body": "This is related to the new event user data feature.",
+            "date": "2009-02-16T16:57:41.817+0000",
+            "id": 0
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "The attached patch should fix the issue, but I'm not too familiar with the JCR-1904 details to know if this is the best way to do this.",
+            "date": "2009-02-16T16:59:58.490+0000",
+            "id": 1
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "The patch seems incomplete. Here's my try at it.",
+            "date": "2009-02-18T16:34:26.223+0000",
+            "id": 2
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "Committed my version of the patch in revision: 745824",
+            "date": "2009-02-19T11:39:48.137+0000",
+            "id": 3
+        }
+    ],
+    "component": "indexing, jackrabbit-core, versioning",
+    "description": "There is a NullPointerException when jackrabbit try to synchronise its indexes :\n22 janv. 2009 09:53:56 INFO  [ClusterNode] - Processing revision: 4485\n22 janv. 2009 09:53:56 ERROR [ClusterNode] - Unexpected error while syncing of journal: null\njava.lang.NullPointerException\n        at org.apache.jackrabbit.core.observation.DelegatingObservationDispatcher.createEventStateCollection(DelegatingObservationDispatcher.java:80)\n        at org.apache.jackrabbit.core.version.VersionManagerImpl$DynamicESCFactory.createEventStateCollection(VersionManagerImpl.java:556)\n        at org.apache.jackrabbit.core.version.VersionManagerImpl.externalUpdate(VersionManagerImpl.java:500)\n        at org.apache.jackrabbit.core.cluster.ClusterNode.process(ClusterNode.java:853)\n        at org.apache.jackrabbit.core.cluster.ChangeLogRecord.process(ChangeLogRecord.java:457)\n        at org.apache.jackrabbit.core.cluster.ClusterNode.consume(ClusterNode.java:799)\n        at org.apache.jackrabbit.core.journal.AbstractJournal.doSync(AbstractJournal.java:213)\n        at org.apache.jackrabbit.core.journal.AbstractJournal.sync(AbstractJournal.java:188)\n        at org.apache.jackrabbit.core.cluster.ClusterNode.sync(ClusterNode.java:315)\n        at org.apache.jackrabbit.core.cluster.ClusterNode.run(ClusterNode.java:286)\n        at java.lang.Thread.run(Thread.java:595)\n\nIn fact the method createEventStateCollection() of DelegatingObservationDispatcher is called by the VersionManagerImpl with session parameter as null...\n\nDelegatingObservationDispatcher:\n\n public EventStateCollection createEventStateCollection(SessionImpl session,\n                                                           Path pathPrefix) {\n        String userData = null;\n        try {\n            userData = ((ObservationManagerImpl) session.getWorkspace().getObservationManager()).getUserData();\n        } catch (RepositoryException e) {\n            // should never happen because this\n            // implementation supports observation\n        }\n        return new EventStateCollection(this, session, pathPrefix, userData);\n    }\n\nVersionManagerImpl$DynamicESCFactory :\n public EventStateCollection createEventStateCollection(SessionImpl source) {\n            return obsMgr.createEventStateCollection(source, VERSION_STORAGE_PATH);\n        }\n\nVersionManagerImpl :\npublic void externalUpdate(ChangeLog changes, List events,\n                               long timestamp, String userData)\n            throws RepositoryException {\n        EventStateCollection esc = getEscFactory().createEventStateCollection(null);\n        esc.addAll(events);\n        esc.setTimestamp(timestamp);\n        esc.setUserData(userData);\n\n        sharedStateMgr.externalUpdate(changes, esc);\n    }",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "JCR-1949",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Blocker",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "NullPointerException on DelegatingObservationDispatcher cause by parameter null on call : createEventStateCollection(null)",
+    "systemSpecification": true,
+    "version": "1.6"
+}

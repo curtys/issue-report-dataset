@@ -1,0 +1,137 @@
+{
+    "comments": [
+        {
+            "author": "Jukka Zitting",
+            "body": "Attached a patch that merges NodeId and UUID. The patch is pretty straightforward and should cause no functional changes, but given the size of the patch and the central role of NodeId I wanted to put the patch up for review before committing it.\n\nThe main potential concerns that I could think of are the changed serialization format of NodeId and the removed SessionImpl.getNodeByUUID(UUID) method.\n\nAll of our persistence managers use a custom serialization mechanisms, so the change in the Java serialization format of NodeId should not cause problems.\n\nI removed the SessionImpl.getNodeByUUID(UUID) method since we already have the standard Session.getNodeByUUID(String) and the internal SessionImpl.getNodeById(NodeId) methods that should cover all use cases. If someone wants, I can restore the method signature with a deprecation mark.",
+            "date": "2007-11-23T02:26:36.148+0000",
+            "id": 0
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "+1",
+            "date": "2007-11-23T10:43:21.928+0000",
+            "id": 1
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "The name 'UUID' is currently used by some central components (for example persistence managers). To simplify migration, what about:\n\n- Create a interface UUID a interface\n- Let NodeId implement UUID (the interface)\n- Merge NodeId and UUID (the class) like you did \n- UUID NodeId.getUUID() { return this; }\n\nWhat do you think?\nThomas",
+            "date": "2007-11-23T11:01:59.458+0000",
+            "id": 2
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Thomas:\n> Create a interface UUID a interface \n\nI like the idea, but it would change also jackrabbit-jcr-commons instead of just jackrabbit-core.\n\nAlso, I really prefer to get rid of the NodeId.getUUID() method, so we'll have easier time refactoring NodeIds in the future if we need to.",
+            "date": "2007-11-23T11:17:06.890+0000",
+            "id": 3
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "If needed, we could keep the getUUID() method around as a deprecated one for 1.4 (assuming we want to apply this change for 1.4). Something like this should do the trick:\n\n    /**\n     * @deprecated\n     */\n    public UUID getUUID() {\n        return new UUID(msb, lsb);\n    }\n",
+            "date": "2007-11-23T11:22:00.668+0000",
+            "id": 4
+        },
+        {
+            "author": "Stefan Guggisberg",
+            "body": "nice! +1 for jukka's patch",
+            "date": "2007-11-23T11:31:27.117+0000",
+            "id": 5
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "> public UUID getUUID() { return new UUID(msb, lsb); } \n\nThat would be a solution (however 'return this' would mean no overhead).\n\n> change also jackrabbit-jcr-commons instead of just jackrabbit-core. \n\nThe title suggest you want to merge the classes UUID and NodeId, and I fully agree that would be great. But now I understand you want to copy & paste the source code? Sorry, I really prefer having only one copy of the UUID code. It doesn't matter to me in what class that is, but copying the source code is not an option for me; that would be -1.\n",
+            "date": "2007-11-23T11:38:37.409+0000",
+            "id": 6
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "> Sorry, I really prefer having only one copy of the UUID code. It doesn't matter to me in what class that is,\n> but copying the source code is not an option for me; that would be -1. \n\nI was contemplating removing or deprecating the UUID class, but it being a jackrabbit-jcr-commons class I'm not sure how widely it is used outside jackrabbit-core.\n\nIn any case I think the duplication of code in this case is really trivial (the most complex parts I'm duplicating are two if statements and a number of trivial bit shifts), so I think the benefits should outweight concerns over duplication.",
+            "date": "2007-11-23T11:54:39.946+0000",
+            "id": 7
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Hmm, a nice alternative:\n\nWe should in fact be making NodeId an interface and have an implementing class that extends UUID:\n\n    public class UUIDNodeId extends UUID implements NodeId { ... }\n\nThat should also nicely open the door for potential future non-UUID node identifiers.\n\nI'll come up with a patch for this.",
+            "date": "2007-11-23T12:28:12.694+0000",
+            "id": 8
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "> public class UUIDNodeId extends UUID implements NodeId { ... }\n\nCool!  (Or just 'NodeId extends UUID', but having a NodeId interface is probably even better).\n+1 for this",
+            "date": "2007-11-23T12:54:47.433+0000",
+            "id": 9
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "> public class UUIDNodeId extends UUID implements NodeId { ... } \n\nI don't like this approach. Today we don't have a reason to introduce an interface for NodeId and I would rather stay away from it as long as possible. Otherwise we'll probably run into issues when it comes to equals methods:\n\n- Is a UUIDNodeId equal to a UUID instance which contains the same value? What about the other way around?\n- What about other implementations of NodeId.\n\nWell, basically the issues described by Joshua Bloch in Effective Java (Item 7: Obey the general contract when overriding equals).",
+            "date": "2007-11-23T13:14:02.186+0000",
+            "id": 10
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "In my view duplicating source code is worse than adding an interface, but NodeId extends UUID would be a solution as well.\n\n> Is a UUIDNodeId equal to a UUID instance which contains the same value? What about the other way around? \n\nI don't think the current situation is much different. NodeId equals should return false when comparing with any other class. Similar to Short.equals: One could argue the equals should return true when comparing with Short(1) with Integer(1), but it does not:\n\n    public boolean equals(Object obj) {\n\tif (obj instanceof Short) {\n\t    return value == ((Short)obj).shortValue();\n\t}\n\treturn false;\n    }\n\n",
+            "date": "2007-11-23T13:58:43.999+0000",
+            "id": 11
+        },
+        {
+            "author": "Esteban Franqueiro",
+            "body": "If getUUID() is used by applications, then I would say a behavior like the following is necessary, at least for the near future in order not to break them.\n\n>    /**\n>     * @deprecated\n>     */\n>    public UUID getUUID() {\n>        return new UUID(msb, lsb);\n>    }\n\nIf not, the docs should say how to replace its functionality.",
+            "date": "2007-11-23T14:55:08.582+0000",
+            "id": 12
+        },
+        {
+            "author": "Stefan Guggisberg",
+            "body": "while i do share tom's concerns regarding code duplication in general i don't care about code duplication in this particular case as it's only minimal and the benefits are obvious (at least for me).\n\ntherefore, in the light of the previous comments, still +1 for jukka's original patch.",
+            "date": "2007-11-23T14:56:44.490+0000",
+            "id": 13
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "What about this:\n\npublic interface ItemId {    \n  boolean denotesNode();\n}\n\npublic class PropertyId implements ItemId...\n\npublic class NodeId extends UUID implements ItemId...\n\nHere is the patch",
+            "date": "2007-11-23T15:59:43.378+0000",
+            "id": 14
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "sorry I named my patch the same as you did. Mine is the shorter one.",
+            "date": "2007-11-23T16:00:36.102+0000",
+            "id": 15
+        },
+        {
+            "author": "Esteban Franqueiro",
+            "body": "To cope with the existing code, shouldn't be public interface ItemId extends Serializable?",
+            "date": "2007-11-23T16:06:43.705+0000",
+            "id": 16
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "> ItemId extends Serializable\n\nYes, sorry, I forgot that. Also I didn't test the patch yet.\nMy patch can be combined with Jukkas patch of course - the advantage is the improved backward compatibility.",
+            "date": "2007-11-23T16:40:51.739+0000",
+            "id": 17
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "Both patches have their own disadvantages: \n\n- Jukka's patch is slower (more temporary objects), and copies source code. \n\n- My patch is faster and avoids copying source code, but it may not be as architecturally sound. \n\nI can live with Jukkas patch as long as there it is fully backward compatible (as long as the UUID class is still available, and as long as NodeId.getUUID() is still supported).\n\nSo I take back my '-1', and vote '0' ;-)\n\nThomas",
+            "date": "2007-11-26T10:16:14.818+0000",
+            "id": 18
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "I have now merged all UUID functionality to the NodeId class.",
+            "date": "2009-07-11T08:59:53.530+0000",
+            "id": 19
+        }
+    ],
+    "component": "jackrabbit-core",
+    "description": "The current NodeId class is mostly just a wrapper around UUID, which causes two objects to be instantiated for each node identifier that the system uses. The memory and processing overhead is quite small, but given that there are tons of NodeId instances it would be good to eliminate that overhead.\n\nThere is also lots of code that just converts UUIDs to NodeIds and vice versa. We could simplify such code if we just used NodeId everywhere.\n\nAlso, we might want to open up the possibility of using non-UUID node identifiers at some point in future, so it would make a lot of sense to remove the NodeId.getUUID method and rely directly on NodeId and it's equals(), hashCode(), and toString() methods in many places where we currently use UUIDs.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "JCR-1232",
+    "issuetypeClassified": "REFACTORING",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Minor",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "Merge UUID to NodeId",
+    "systemSpecification": true,
+    "version": ""
+}

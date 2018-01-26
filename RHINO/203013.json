@@ -1,0 +1,101 @@
+{
+    "comments": [
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 121397\nsealed == immune\n\nPatch makes sealed objects to behave as if their properties are read only.",
+            "date": "20030423T08:57:27",
+            "id": 0
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "I commited the patch.",
+            "date": "20030424T12:15:53",
+            "id": 1
+        },
+        {
+            "author": "pschwartau@meer.net",
+            "body": "Checkin verified -",
+            "date": "20030424T19:56:44",
+            "id": 2
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Any modification of sealed object should throw exception?\n\nI reopen this since it seems that the notion \n\nsealed object -> all properties read only \n\nis less useful then the following \n\nsealed object -> any attempt to modify the object should fail with exception.\n\nIn this way one would have guaranty that if a script that operates with sealed\nobjects runs without exceptions then \n\n1. the sealed objects are not modified\n2. the script would run exactly in the same way if objects are not sealed\n\nCurrently only 1 is satisfied since with read-only properties sealed objects are\nimmune to modifications indeed, but the item 2 is not addressed as changes to\nread-only properties are silently ignored. \n\nIf one has a script with\n\nObject.prototype.hasOwnProperty = myHasOwnproperty\n\nand later to save memory one decided to share sealed standard objects between\ndifferent script invocations then the fact that it is not possible to do this\nwith the above script would not be visible immediately. \n\nMoreover, read-only properties ignore changes on whole prototype chain so if\nObject.prototype is sealed with the current semantic then\n\nx = { hasOwnProperty: 1 }\n\nwould not set hasOwnProperty in x since Object.prototype.hasOwnProperty is read\nonly. In this example it makes perfect sense to have sealed shared standard\nlibrary, but the current rules prevent it.\n\nOn the other hand if sealed would mean that any modification to the object\nshould fail without affecting prototype chain semantics, in the first case one\nwould get an exception telling what is wrong and the second case would continue\nto work in the same way.\n",
+            "date": "20030515T08:29:09",
+            "id": 3
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "New title",
+            "date": "20030515T08:30:25",
+            "id": 4
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 123384\nsealed == any modification throws exception\n\nThe patch also adds -sealedlib options to Rhino shell so after \njava -jar js.jar -sealedlib \nI have:\n\nRhino 1.5 release 5 0000 00 00\njs> Math.sin = 1\njs: Cannot modify a property of a sealed object: sin.\njs>  Object.prototype.hasOwnProperty = 1\njs: Cannot modify a property of a sealed object: hasOwnProperty.\njs>  x = { hasOwnProperty: 1}\n[object Object]\njs> x.hasOwnProperty \n1",
+            "date": "20030515T08:50:47",
+            "id": 5
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "I committed the change in sealed semantics.",
+            "date": "20030516T14:26:26",
+            "id": 6
+        },
+        {
+            "author": "pschwartau@meer.net",
+            "body": "I have a question. I do see what Igor reported above:\n\n----------------  WITHOUT -sealedlib OPTION  ----------------\n[ ] java org.mozilla.javascript.tools.shell.Main\nRhino 1.5 release 5 0000 00 00\njs> Math.sin = 1;\n1\njs> Math.sin\n1\n\n------------------  WITH -sealedlib OPTION  -----------------\n[ ] java org.mozilla.javascript.tools.shell.Main -sealedlib\nRhino 1.5 release 5 0000 00 00\njs> Math.sin = 1;\njs: Cannot modify a property of a sealed object: sin.\n\n\nHowever, I am able to modify |eval|, for example:\n\njs> eval = 1;\n1\njs> eval;\n1\njs> eval('a');\njs: uncaught JavaScript exception: TypeError: 1 is not a function.\n\n\nThat isn't the expected behavior under -sealedlib, is it?\nShouldn't |eval| become ReadOnly then, just like |Math.sin|?",
+            "date": "20030516T23:01:11",
+            "id": 7
+        },
+        {
+            "author": "pschwartau@meer.net",
+            "body": "Compare the current SpiderMonkey shell:\n\n---------------------  WITHOUT SEALING  ---------------------\njs> eval = 1;\n1\njs> eval;\n1\n\n-----------------------  WITH SEALING  ----------------------\njs> seal(this);\njs> eval = 1;\n7: Error: eval is read-only",
+            "date": "20030516T23:14:08",
+            "id": 8
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "The option -sealedlib in the current form seals only the standard library\nobjects themselves, it does not affect the global scope object and its\nproperties. Otherwise no new properties can be added to the global object. So\neven with -sealedlib one can write Math = Object even if eval.length = 2 gives\nan exception.\n\nThis is confusing, but then it is for another bug report. ",
+            "date": "20030519T13:14:27",
+            "id": 9
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 123685\nseal function in Rhino shell\n\nThe patch adds seal function to Rhino shell with to match SM.",
+            "date": "20030519T13:17:42",
+            "id": 10
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "I committed the above patch to add seal so now in Rhino one can also have:\n\njs> seal(this)\njs> eval = 1\njs: \"<stdin>\", line 2: Cannot modify a property of a sealed object: eval.\n",
+            "date": "20030519T15:56:58",
+            "id": 11
+        },
+        {
+            "author": "pschwartau@meer.net",
+            "body": "Looks good:\n\njs> seal(this);\njs> eval = 1;\njs: \"<stdin>\", line 4: Cannot modify a property of a sealed object: eval.\n\n\nBut I still have some questions:\n\n1. If we have the seal() function, do we also want to have\n   the optional second parameter, as in SpiderMonkey?\n\n   seal(obj, true) ---> seals the entire object graph,\n                        including the __parent__ chain \n\n   See bug 94693 comment 10, bug 94693 comment 22, etc.\n\n\n2. The help message needs updating, to mention the -sealedlib option:\n\n   [ ] java org.mozilla.javascript.tools.shell.Main -XXX\n   Didn't understand \"-XXX\".\n   Valid arguments are:\n       -w\n       -version 100|110|120|130|140|150\n       -opt [-1|0-9]\n       -f script-filename\n       -e script-source\n\n\n3. Should |seal(this)| prevent the user from doing |this = 1| ? \n   Note: the latter is currently causing a Rhino crash, independently\n   of any sealing issues. I have filed bug 206658 -",
+            "date": "20030521T21:22:23",
+            "id": 12
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Targeting as resolved against 1.5R5",
+            "date": "20040213T11:42:12",
+            "id": 13
+        }
+    ],
+    "component": "Core",
+    "description": "Rhino supports a notion of a sealed object where properties can not be added /\ndeleted from it. It does not make the object fully immune since the existing\nproperties can be still modified. On the other hand Rhino also has an option to\ninitialize standard objects as sealed ones but then it also makes all properties\nof the standard objects read only.\n\nIn my opinion the later behavior is more natural and meets expectations that\nsealed == immune. Thus I suggest to make sealed == immune to hold always.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "203013",
+    "issuetypeClassified": "OTHER",
+    "issuetypeTracker": "RFE",
+    "priority": "-- enhancement",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "Any modification of sealed object should throw exception?",
+    "systemSpecification": false,
+    "version": "other"
+}

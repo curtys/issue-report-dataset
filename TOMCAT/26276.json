@@ -1,0 +1,35 @@
+{
+    "comments": [
+        {
+            "author": null,
+            "body": "Created attachment 10022\nzip file containing test webapp with instructions",
+            "date": "20040120T11:51:34",
+            "id": 0
+        },
+        {
+            "author": null,
+            "body": "I did some more research. This is actually what happens: If both the jsp using\nthe tag and the tagfile have been modified, the tag class is generated but with\nan outdated TagInfo, thus the source code contains the old state (e.g. attributes).\n\nThis is because the old wrapper is not removed from the wrapperCache in\nJspRuntimeContext and the associated CompilationContext containing the outdated\nTagInfo is used for generating the tag's source code. After that it's a real\nmess because the timestamp of the tag of coures has changed and therefore jasper\nthinks the generated tag is up to date.\n\nTo fix this I put the following lines in the method Compiler.isOutDated(boolean)\n\n        targetLastModified = targetFile.lastModified();\n        if (targetLastModified < jspRealLastModified) {\n+            if(ctxt.isTagFile()){\n+               ctxt.getRuntimeContext().removeWrapper(ctxt.getJspFile());\n+            }\n            if (log.isDebugEnabled())\n                log.debug(\"Compiler: outdated: \" + targetFile + \" \" +\ntargetLastModified);\n            return true;\n        }\n\nI'm new to jasper and anything but sure that this is a valid solution or if it\nhas negative side effects but as far as I can see it seems to work. I'm not sure\nwhy removeWrapper is currently only called when a tag file is found to be\nmodified as part of the dependents list of a jsp (which is why it does not work\nnow if the jsp was modified as well because isOutDated returns before it gets to\nthat check).   \n\n ",
+            "date": "20040121T13:50:21",
+            "id": 1
+        },
+        {
+            "author": null,
+            "body": "Fixed.\n\nYou proposed is not quite right, but thanks for reporting, and for taking time\nlooking for a fix.",
+            "date": "20040122T19:38:14",
+            "id": 2
+        }
+    ],
+    "component": "Jasper",
+    "description": "It seems that the generated TLD is not updated for tagfiles after certain\nmodifications (e.g. changing attribute names of the tag) and therefore the\ngenerate source code is incorrect. Can easily be reproduced by changing an\nattribute's name of a tag in a tag file (the source code is regenerated after\nthe modification but does not contain the corresponding setter). This indicated\nthat the generated TLD is not updated to reflect the modification and therfore\nthe source code is generated on old metadata. See attached webapp for a test\ncase. Instructions for reproduction are on the startpage of the webapp.",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "26276",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "P3 major",
+    "product": "Tomcat 5",
+    "project": "TOMCAT",
+    "summary": "Generated TLD inconsistent after tagfile changes",
+    "systemSpecification": true,
+    "version": "5.0.18"
+}

@@ -1,0 +1,53 @@
+{
+    "comments": [
+        {
+            "author": "G\u00fcnther Humer",
+            "body": "What about sth. like implementing the Repository as a Singleton? \nBut not in the common term of singleton, more like one instance for each Repository-Home directory. \n\nRepositoryImpl.getRepository(homeDir1) provides the same instance as. \nRepositoryImpl.getRepository(homeDir1)\n\nBut \nRepositoryImpl.getRepository(homeDir2) provides a new instance. \n\nThe repository is still shutdown, with the shutdown hook and initialized, when the user creates a Session or gets the Repository. ",
+            "date": "2005-12-06T19:16:14.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Alexandru Popescu",
+            "body": "The solution with singletons is still problematic considering the classloaders.\n\n./alex\n--\n.w( the_mindstorm )p.\n",
+            "date": "2005-12-06T19:40:13.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "The attached patch contains org.apache.jackrabbit.core.TransientRepository, a proxy repository class that automatically initializes and shuts down the underlying RepositoryImpl instance when sessions are opened or closed. I implemented this as a separate class to avoid overloading the already heavy RepositoryImpl class. The implementation is quite clean except for two things: 1) it loads the default repository descriptors directly from repository.properties, and 2) it messes with RepositoryImpl.loggedOut(SessionImpl) to avoid a nasty infinite loop in RepositoryImpl.shutdown().\n\nThe class is quite easy to use and works very well with component containers like Spring where setting up an explicit shutdown call is difficult and cumbersome. If it weren't for the repository initialization and shutdown overhead, it would also make a fine candidate for solving the deployment model 2 shutdown issues discussed lately on the mailing list. The implementation also relies on all clients properly closing all the sessions they've opened. If needed, the implementation could be modified to use a WeakHashMap to cope with lost sessions.\n\nExample code:\n\n    RepositoryConfig config = RepositoryConfig.create(\"...\", \"...\");\n    Repository repository = new TransientRepository(config);\n    Session session = repository.login();  // Repository gets initialized\n    try {\n        // Use the session\n    } finally {\n        session.logout(); // Repository gets shut down\n    }\n\nAny problems with this approach that I haven't noticed? I've been quite happy using a class like this in my Spring-based projects, so unless anyone objects I'll go ahead and commit it so others can use it too.\n",
+            "date": "2005-12-07T08:38:58.000+0000",
+            "id": 2
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "G\u00fcnther Humer asked:\n> What about sth. like implementing the Repository as a Singleton?\n\nI think that's a solution looking for a problem. It's a different issue than the one raised here, and besides I think that guarding against duplicate repository configuration is better done at the application or container level. See also http://c2.com/cgi/wiki?SingletonGlobalProblems",
+            "date": "2005-12-07T08:53:34.000+0000",
+            "id": 3
+        },
+        {
+            "author": "Stefan Guggisberg",
+            "body": "jukka's patch:\n> Any problems with this approach that I haven't noticed? I've been quite happy using a class \n> like this in my Spring-based projects, so unless anyone objects I'll go ahead and commit it \n> so others can use it too. \n\n+1 \n\ni think that TransientRepository is a very useful alternative for certain use-cases.",
+            "date": "2005-12-07T18:33:20.000+0000",
+            "id": 4
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Committed the proposed TransientRepository class in revision 355430 with the following changes:\n* Added a simple TransientRepository.RepositoryFactory interface to allow greater control over the repository initialization process\n* Added a two utility constructors\n* Added an initial test case for the TransientRepository class (more complete unit testing would require a separate test repository or setting up mock RepositoryImpl instances)\n",
+            "date": "2005-12-09T18:53:31.000+0000",
+            "id": 5
+        }
+    ],
+    "component": "jackrabbit-core",
+    "description": "Currently Jackrabbit relies on two mechanisms for safely shutting down a repository:\n\n    1) client application invoking RepositoryImpl.shutdown(), or\n    2) the shutdown hook installed by RepositoryImpl being run\n\nBoth of these mechanisms have problems:\n\n    1) The shutdown() method is not a part of the JCR API, thus making the client application depend on a Jackrabbit-specific feature\n    2) In some cases the shutdown hook is not properly run (see issues JCR-120 and JCR-233)\n\nI think the JCR spec thinks of the Repository and Session interfaces as being somewhat similar to the JDBC DataSource and Connection interfaces. The Repository instances have no real lifecycle methods while the Session instances have clearly specified login and logout steps. (DataSource.getConnection() = Repository.login(), Session.logout() = Connection.close()) However the Jackrabbit implementation defines an explicit lifecycle for the RepositoryImpl instances.\n\nThis causes problems especially for container environments (JNDI, Spring) where it is hard or even impossible to specify a shutdown mechanism for resource factories like the Repository instances. The current solution for such environments is to use a shutdown hook, but as reported this solution does not work perfectly in all cases.\n\nHow about if we bound the RepositoryImpl lifecycle to the lifecycles of the instantiated Sessions. A RepositoryImpl instance could initialize (and lock) the repository when the first session is opened and automatically shut down when the last session has logged out. As long as the sessions are properly logged out (or finalized by the garbage collector) there would be no need for an explicitly RepositoryImpl.shutdown() call. The current behaviour of pre-initializing the repository and shutting down during a shutdown hook could be enabled with a configuration option for environments (like global JNDI resources) in which the shutdown hooks work well.\n",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "JCR-245",
+    "issuetypeClassified": "RFE",
+    "issuetypeTracker": "RFE",
+    "priority": "Major",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "Automatic repository shutdown",
+    "systemSpecification": false,
+    "version": ""
+}

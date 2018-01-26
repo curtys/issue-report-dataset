@@ -1,0 +1,71 @@
+{
+    "comments": [
+        {
+            "author": null,
+            "body": "First, I'm changing this to an enhancement, as the current code is clearly\ndesigned for absolute paths so what you're reporting is not a bug.\n\nSecond, the relevant code you want to look at is in\norg.apache.catalina.startup.HostConfig, the addWatchedResourced method.  That\nmethod will loop over the declared WatchedResources for the Context and try to\ncreate a java.io.File corresponding to each WatchedResource for monitoring.  As\nyou can see from the code, it either wants an absolute path to the\nWatchedResource, or a docBase relative to which the WatchedResource can be found.\n\nI'm guessing in your case the docBase is relative, not absolute, so the method\nuses appBase as the context for docBase, and since your webapp is outside\nappBase this doesn't work.  Is my guess right?  Does it work if you make your\ndocBase absolute?",
+            "date": "20061224T17:48:52",
+            "id": 0
+        },
+        {
+            "author": null,
+            "body": "(In reply to comment #1)\n> First, I'm changing this to an enhancement, as the current code is clearly\n> designed for absolute paths so what you're reporting is not a bug.\n\nI get my infos from documentation and not from the source - and in the docs I\nhavn't found any info that you need absolute paths.\n \n> ... \n> I'm guessing in your case the docBase is relative, not absolute, so the method\n> uses appBase as the context for docBase, and since your webapp is outside\n> appBase this doesn't work.  Is my guess right?  Does it work if you make your\n> docBase absolute?\n\nMy docBase is absolute like \n  <Context docBase=\"${somedir}/appdir\">\nand ${somedir} is absolute like \"c:/webapps\".\nAnd it doesn't work with\n  <WatchedResource>WEB-INF/web.xml</WatchedResource>\nin conf/context.xml,\nand it also doesn_t work with\n <WatchedResource>c:/webapps/appdir/WEB-INF/web.xml</WatchedResource>\nin conf/context.xml.\n",
+            "date": "20061226T23:47:42",
+            "id": 1
+        },
+        {
+            "author": null,
+            "body": "In my tests using tomcat 6.0.13, JDK 1.6, when the path in the WatchedResource\nis relative path, the absolute path interpreted by the code as written for the\nrelative path will be an absolute path to relative to the JVM startup directory.\nObviously something is very quirky in there. Since the path will then most\nlikely point to an invalid resource, it will not be watched and there is no\nwarning give to the user either. In this case addWatchedResource is given a\n'null' docBase.\n\nThe code in question is in HostConfig.deployDescriptor().\n\nSuggested code improvements:\no for descriptors that explicitly specify an absolute docBase, pass it to the\naddWatchedResource method instead of 'null'\no print warning if watched resource evaluated path points to a resource that\ndoes not exist\n\nI came up with a fix but I was discouraged to not find any existing unit tests\nto verify regression. If there are any please tell me so I can verify the patch.\n",
+            "date": "20070703T08:34:09",
+            "id": 2
+        },
+        {
+            "author": null,
+            "body": "I would like to experiment with this patch. Do you think you can post it here\nfor others to review and test?",
+            "date": "20071024T15:28:42",
+            "id": 3
+        },
+        {
+            "author": null,
+            "body": "Created attachment 21090\npatch that fixes HostConfig to comply with the documentation regarding docBase and watched resources\n\nI manufactured this patch against the official\norg/apache/catalina/startup/HostConfig.java file included with Tomcat 6.0.13.\nit is small enough such that recreating it to work with 5.5.x series releases\nshould be trivial. Hope it helps.You may need to modify the patch header to\napply it.",
+            "date": "20071105T23:05:02",
+            "id": 4
+        },
+        {
+            "author": null,
+            "body": "Thanks for patch,\n\nLook at http://svn.apache.org/viewvc?rev=613558&view=rev.\n\nI hope we can at the fix to next tomcat 6/55 release\n\nPeter",
+            "date": "20080120T06:06:25",
+            "id": 5
+        },
+        {
+            "author": null,
+            "body": "Thanks for applying it.\n\nI am not sure pero wants credit for the patch. I was the one who submitted the\npatch but the changes to the changelog seem to indicate that pero provided it.\n\nChangelog reads \"Patch provided by Gernot Pfingstl (pero)\"\n\nIf the patch is applied, should the status stay 'NEW'\n",
+            "date": "20080120T18:21:43",
+            "id": 6
+        },
+        {
+            "author": null,
+            "body": "Fix added for Release 5.5.26 and 6.0.16!",
+            "date": "20080121T00:43:46",
+            "id": 7
+        },
+        {
+            "author": null,
+            "body": "I correct my mistake!\nSorry Peter\n\n",
+            "date": "20080121T03:37:08",
+            "id": 8
+        }
+    ],
+    "component": "Catalina",
+    "description": "My webapp is placed outside CATALINA_BASE/webapps.\nI put my context.xml into CATALINA_BASE/conf/Catalina/localhost.\nMy context.xml looks like:\n<Context docBase=\"/somedir/mywebapp\">\n   <WatchedResource>WEB-INF/web.xml</WatchedResource>\n   ...some other stuff...\n</Context>\n\nIf I change web.xml my webapp will not be reloaded!\nIf insert an absolute path\n<WatchedResource>/somedir/mywebapp/WEB-INF/web.xml</WatchedResource>\nit works, but to use absolute paths will become unhandy - especially when I try\nto put the WatchedResource stuff to defaultcontext.xml, because I have a lot of\nwebapps not only one.\n\nIf I put my webapp in CATALINA_BASE/webapps all works fine - but this is not a\nsolution for me.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "38131",
+    "issuetypeClassified": "RFE",
+    "issuetypeTracker": "RFE",
+    "priority": "P2 enhancement",
+    "product": "Tomcat 5",
+    "project": "TOMCAT",
+    "summary": "WatchedResource does not work if app is outside \"webapps\"",
+    "systemSpecification": true,
+    "version": "5.5.12"
+}

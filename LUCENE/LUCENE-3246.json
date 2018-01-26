@@ -1,0 +1,77 @@
+{
+    "comments": [
+        {
+            "author": "Michael McCandless",
+            "body": "Initial patch, pulled out of LUCENE-1536, plus 1) renamed IR.getNotDeletedDocs to IR.getLiveDocs, and 2) fixed IR to force subclasses to override this (removing getDeletedDocs).\n\nI think this is close, but the one thing remaining is to fix the IR impls to \"properly\" invert their del docs (now they create a NotDocs wrapper around their current bitsets).",
+            "date": "2011-06-27T16:01:12.503+0000",
+            "id": 0
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Hi Mike,\n\nsome work for you: I removed the nocommits in both contrib IndexSplitters. Now only NotBits usage in core is left over, right?",
+            "date": "2011-06-27T17:40:33.835+0000",
+            "id": 1
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Awesome, thanks Uwe!  I'll work on SR cutting over to live docs on disk...",
+            "date": "2011-06-27T17:47:24.987+0000",
+            "id": 2
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Patch.  I think it's ready!",
+            "date": "2011-06-30T17:32:52.688+0000",
+            "id": 3
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Hi Mike,\nAs we have now both variants to read/write BitVectors, would it be not a good idea to automatically use the old encoding for liveDocs, if more than 50% of all bits are unset? This would save disk space if a segments has more deletetions than live docs. Not sure if this can easily be implemented and is worth the complexity (that we already have because of both versions)?\n\nThe patch looks fine!",
+            "date": "2011-06-30T18:42:49.170+0000",
+            "id": 4
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "bq. As we have now both variants to read/write BitVectors, would it be not a good idea to automatically use the old encoding for liveDocs, if more than 50% of all bits are unset? \n\nThat seems like a good idea?  Ie, handle both sparse set and sparse unset compactly?  Though it should be unusual that you have so many deletes against a segment (esp. because TMP now targets such segs more aggressively).\n\nWe should do this under a new issue (the old code also didn't handle the \"many deletions\" case sparsely either, just the \"few deletions\" case).",
+            "date": "2011-06-30T22:24:10.385+0000",
+            "id": 5
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Next I'll work on LUCENE-1536...",
+            "date": "2011-07-06T13:54:44.124+0000",
+            "id": 6
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "This commit changed the index format (the *.del), but the change is fully back-compat even with trunk indices.",
+            "date": "2011-07-06T13:55:54.290+0000",
+            "id": 7
+        },
+        {
+            "author": "Sean Lavelle",
+            "body": "I think the javadoc comments for TermsEnum.docs are now incorrect due to this commit. It says \"@param liveDocs set bits are documents that should not be returned\", which looks backwards. (maybe other places are wrong too; I haven't checked)\n",
+            "date": "2011-10-19T20:10:45.245+0000",
+            "id": 8
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "bq. I think the javadoc comments for TermsEnum.docs are now incorrect due to this commit.\n\nYou're right!  I just committed a fix.  Thanks Sean.",
+            "date": "2011-10-20T18:22:46.376+0000",
+            "id": 9
+        }
+    ],
+    "component": "core/index",
+    "description": "Spinoff from LUCENE-1536, where we need to fix the low level filtering\nwe do for deleted docs to \"match\" Filters (ie, a set bit means the doc\nis accepted) so that filters can be pushed all the way down to the\nenums when possible/appropriate.\n\nThis change also inverts the meaning first arg to\nTermsEnum.docs/AndPositions (renames from skipDocs to liveDocs).\n",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-3246",
+    "issuetypeClassified": "REFACTORING",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Major",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "Invert IR.getDelDocs -> IR.getLiveDocs",
+    "systemSpecification": true,
+    "version": ""
+}

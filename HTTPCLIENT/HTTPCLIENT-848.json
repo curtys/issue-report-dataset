@@ -1,0 +1,77 @@
+{
+    "comments": [
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Are you sure your application _always_ invokes HttpMethod#releaseConnection() when done with the request? The best way to ensure the underlying connection gets released back to the pool is by calling this method from a finally block.\n\nOleg",
+            "date": "2009-05-11T20:19:46.991+0000",
+            "id": 0
+        },
+        {
+            "author": "praveen neppalli naga",
+            "body": "absolutely. I do HttpMethod#releaseConnection() in the finally block.\n\nI debugged through the code before i opened this issue. ",
+            "date": "2009-05-11T20:22:44.816+0000",
+            "id": 1
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Could you please attach a _complete_ context / wire log of a session exhibiting the problem? \n\nEven if this is a genuine bug in HttpClient it is unlikely to get fixed, as 3.x branch is effectively approaching end of life. Consider upgrading to HttpClient 4.0\n\nOleg",
+            "date": "2009-05-11T20:27:49.332+0000",
+            "id": 2
+        },
+        {
+            "author": "praveen neppalli naga",
+            "body": "Hi Oleg, sorry for the delayed response. I just saw you resolved the issue.\n\nI tested the scenario with 4.0 and i dont see the problem. \nBut I just want to prove that its a bug in 3.x version as I am not in a position to upgrade to 4.0 as its a beta. \nWhat information/logs do you need. I have a test case which will reproduce this behavior.\n\nThanks\nPraveen",
+            "date": "2009-05-15T20:14:39.496+0000",
+            "id": 3
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Feel free to re-open the issue and attach a wire/context log (which can be produced using thus guide [1]) and the test case.\n\nOleg\n\n[1] http://hc.apache.org/httpclient-3.x/logging.html",
+            "date": "2009-05-15T20:23:15.138+0000",
+            "id": 4
+        },
+        {
+            "author": "praveen neppalli naga",
+            "body": "Reopening,\nI am going to attach the context/wire logs and a simple test case.",
+            "date": "2009-05-15T22:10:44.382+0000",
+            "id": 5
+        },
+        {
+            "author": "praveen neppalli naga",
+            "body": "Attached the logs and the test case.\nThis is the scenario.\n\nMake https get  call using httpclient 3.1 to say \"https://www.verisin.com/\"\nHave a squid proxy and dont authorize \"https://www.verisin.com/\" in the acl list, so squid will block this call.\nAs expected httpClient makes a CONNECT with squid proxy to tunnel with the host.\nSquid responds back with 403.\nhttpClient does not release connection to the pool so any subsequent calls for the same host will not get connection.\nMaxTotalConnections = 4\nDefaultMaxConnectionsPerHost = 1\n\nThe expected behavior is that, httpClient releases the connection to the pool for this specific host when CONNECT call fails.\n\nAlso Pplease let me know if I doing something wrong.\n\nThanks\nPraveen",
+            "date": "2009-05-15T22:18:14.603+0000",
+            "id": 6
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Fixed in SVN trunk. Please re-test.\n\nOleg",
+            "date": "2009-05-16T12:29:33.662+0000",
+            "id": 7
+        },
+        {
+            "author": "praveen neppalli naga",
+            "body": "I verified the fix and it works fine.\nThanks for  your quick turn around.\n\nDo you want me to go ahead and close the issue?\n\nAlso when do you think this fix will be released?\n\nThanks\nPraveen",
+            "date": "2009-05-18T22:05:45.696+0000",
+            "id": 8
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "> Also when do you think this fix will be released?\n\nPraveen,\n\nIt is very unlikely there will ever be another official release of the 3.x branch\n\nOleg",
+            "date": "2009-05-19T08:19:31.835+0000",
+            "id": 9
+        }
+    ],
+    "component": "HttpClient (classic)",
+    "description": "Trying to use HTTPS, and SSL tunneling fails as expected because the host is not accepted by the squid proxy, so squid proxy return 403. \n\nThe problem I am seeing is that, when ever this happens the connections are not released to the pool. I traced the code and it appears that in \nHttpMethidDirector.java:  executeWithRetry()\nwhen executeConnect() return false and there is no retry, the connections are not released.\n\nIs this expected? Or am I doing something wrong.",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "HTTPCLIENT-848",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "HTTPCLIENT",
+    "project": "HTTPCLIENT",
+    "summary": "HttpClient:- Connections not released when SSL Tunneling fails.",
+    "systemSpecification": true,
+    "version": "3.1 (end of life)"
+}

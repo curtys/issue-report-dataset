@@ -1,0 +1,59 @@
+{
+    "comments": [
+        {
+            "author": "Roland Weber",
+            "body": "Hello Bisser,\n\nthe getHost() method returns the host of URLs that follow the scheme\nprotocol://host/path, which is not the case for the mailto: URL.\nI wouldn't say that you're doing something wrong, but I wouldn't call\nit a bug either. EMail addresses are usually not decomposed on the\nURI level, they are used opaque. The Javadocs of JDK 1.4's URI class\neven mention this explicitly:\n\n> An opaque URI is an absolute URI whose scheme-specific part does not\n> begin with a slash character ('/'). Opaque URIs are not subject to\n> further parsing. Some examples of opaque URIs are:\n>\n>    mailto:java-net@java.sun.com\t\n>    news:comp.lang.java\t\n>    urn:isbn:096139210x\n\nMaybe we should update the JavaDocs of our URI class accordingly to\nprevent other users from falling into the same trap.\n\ncheers,\n  Roland",
+            "date": "2005-02-08T16:36:23.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Bisser Peshev",
+            "body": "Hi Roland,\n\nThank you for the prompt reply!\n\nWhat you are saying is right. The email addresses should not be parsed. And I \ndidn't expect to get a host name from parsing it. But I was not expecting such \nan exception either. Perhaps getHost() could return a null or something, or \nthrow an URIException, not a runtime exception.\n\nThe example that I gave was deliberately constructed to cause the exception. In \nreal life, the code which extracts the host is different and is part of a \nbigger application which does some web crawling. The email address came from a \nsite that we were crawling. I wasn't deliberately trying to parse it. It was \njust there inside the page. Normally, I would've expected, say, a null. \nHowever, I will modify the application to handle these cases more gracefully.\n\nI will just wait a little more to hear your thoughts on whether the behaviour \nof getHost() should be modified or should remain the same. More specifically, \nis it okay for it to throw runtime exceptions. After that, I will close the \nbug. By the way, how should I close it? By marking it as WONTFIX?  :)\n\nThank you again, guys. You're all doing a great job. I appreciate it greatly!!!\n\nBisser",
+            "date": "2005-02-08T18:22:39.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Roland Weber",
+            "body": "Hello Bisser,\n\ngood point. A null return value would be more appropriate than the exception.\n\nDon't worry about closing the bug right now, one of the committers will\nprobably pick up on this soon and deal with the bug status as well.\n\ncheers,\n  Roland",
+            "date": "2005-02-08T18:31:09.000+0000",
+            "id": 2
+        },
+        {
+            "author": "Ortwin Gl\u00fcck",
+            "body": "Bisser,\n\nI agree with you. The exception is ugly and the case should be handled\nconsistently. Returning null will be semantically correct in that case I guess.\nI definitely consider this a bug that needs to be fixed.\n\nOrtwin Gl\u00fcck\n\nOne more thing, please leave changing the bug status up to the project team.",
+            "date": "2005-02-08T18:33:51.000+0000",
+            "id": 3
+        },
+        {
+            "author": "Bisser Peshev",
+            "body": "Hi,\n\nI just wanted to post one additional observation.\n\nI decided to try to fetch the URI (mailto:eay@cryptsoft.com) and see what will \nhappen. Here are the results:\n\njava.lang.IllegalArgumentException: Component array of chars may not be null\n\tat org.apache.commons.httpclient.URI.decode(URI.java:1722)\n\tat org.apache.commons.httpclient.URI.getHost(URI.java:2780)\n\tat org.apache.commons.httpclient.HttpHost.<init>(HttpHost.java:105)\n\tat org.apache.commons.httpclient.HttpMethodBase.setURI\n(HttpMethodBase.java:285)\n\nI know that I shouldn't be trying to fetch such URIs. This was an intentional \ntest to verify whether the HttpClient will throw the appropriate exception. And \nit didn't. The reason was the getHost() method again. Apparently, it should be \nfixed.\n\nIf you try using a hierarchical URI in the form mailto://......  (I know, I \nknow), HttpClient throws the following exception:\n\njava.lang.IllegalStateException: unsupported protocol: 'mailto'\n\tat org.apache.commons.httpclient.protocol.Protocol.lazyRegisterProtocol\n(Protocol.java:146)\n\tat org.apache.commons.httpclient.protocol.Protocol.getProtocol\n(Protocol.java:114)\n\tat org.apache.commons.httpclient.HttpHost.<init>(HttpHost.java:105)\n\tat org.apache.commons.httpclient.HttpMethodBase.setURI\n(HttpMethodBase.java:285)\n\nThis should be the normal behaviour. But it's not, if the getHost() method gets \ninvolved. \n\nCheers,\nBisser",
+            "date": "2005-02-09T03:30:46.000+0000",
+            "id": 4
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Created an attachment (id=14342)\nPatch\n\nIf no one complains loudly I'll commit the patch in a few days\n\nOleg",
+            "date": "2005-02-22T20:16:12.000+0000",
+            "id": 5
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Patch committed\n\nOleg",
+            "date": "2005-02-26T18:31:48.000+0000",
+            "id": 6
+        }
+    ],
+    "component": "HttpClient (classic)",
+    "description": "Hi guys,\n\nI don't know if I'm doing something wrong or not but the following code:\n\n   URI uri = new URI(\"mailto:eay@cryptsoft.com\", true);\n   System.out.println(uri.getHost());\n\ngenerates the following exception:\n\njava.lang.IllegalArgumentException: Component array of chars may not be null\n\tat org.apache.commons.httpclient.URI.decode(URI.java:1722)\n\tat org.apache.commons.httpclient.URI.getHost(URI.java:2780)\n\nCould you help?\n\nAlso, I'm sorry I put the report under version \"3.0 Final\" but I couldn't find \nan entry for \"3.0-RC1\" (which I'm using at the moment).\n\nThanks a lot!\n\nBisser",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "HTTPCLIENT-425",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "HTTPCLIENT",
+    "project": "HTTPCLIENT",
+    "summary": "URI.getHost() generates IllegalArgumentException",
+    "systemSpecification": true,
+    "version": "3.0 Beta 1"
+}

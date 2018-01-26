@@ -1,0 +1,47 @@
+{
+    "comments": [
+        {
+            "author": "Jukka Zitting",
+            "body": "Attached a proposed patch for fixing this and the related JCR-632.\n\nThe problem with just switching the order of the read and write lock operations is that then the underlying state that was read during the first half of the checkin() state may already have been modified when the second half persists the modifications.\n\nThe proposed resolution simply extends the write lock to guard the entire checkin() operation. This introduces a minor performance loss for concurrent reads, but avoids the deadlock.\n\nThe patch also introduces a WriteOperation helper class to simplify the following repeating code pattern:\n\n    aquireWriteLock();\n    try {\n        stateMgr.edit();\n    } catch (IllegalStateException e) {\n        releaseWriteLock();\n    }\n\n    boolean success = false;\n    try {\n        ...\n        stateMgr.save();\n        success = true;\n        ...\n    } catch (...) {\n        ...\n    } finally {\n        if (!success) {\n            stateMgr.cancel();\n        }\n        releaseWriteLock();\n    }\n\ninto this:\n\n    WriteOperation operation = startWriteOperation();\n    try {\n        ...\n        operation.save();\n        ...\n    } catch (...) {\n        ...\n    } finally {\n        operation.close();\n    }\n\nThe idea is to separate the locking and state manager handling from the general versioning logic.\n\nI also fixed spelling from \"aquire\" to \"acquire\" and guarded even some trivial locked operations with try-finally to more gracefully handle unexpected conditions like NPEs.\n",
+            "date": "2006-11-16T13:49:11.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Tobias Bocanegra",
+            "body": "thanks jukka...i will take a look at this asap.",
+            "date": "2006-11-17T20:52:15.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Did you already have time to look at this? It seems correct to me, passes all unit tests, and worked fine with an ad-hoc test run with a number of concurrent threads doing repeated checkin/checkout operations.\n\nIf you're fine with the suggested changes I'd like to have them included already in the 1.1.1 release. It's no problem to postpone the fix to 1.2 if you prefer to have more time to consider and/or test the change.",
+            "date": "2006-11-22T23:58:25.000+0000",
+            "id": 2
+        },
+        {
+            "author": "Tobias Bocanegra",
+            "body": "no i haven't closely. if it passes the tests you can check it in. i will test it after my vacation. i just wanted to make sure, it also works with concurrent transactions.",
+            "date": "2006-11-23T15:42:37.000+0000",
+            "id": 3
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Applied the proposed changes in a sequence of commits to make selective reverting easier if a problem is detected. The commits are:\n\n    revision 478634: s/aquire/acquire/\n    revision 478641: Consistently use the try-finally pattern for acquiring locks\n    revision 478644: Introduced the WriteOperation helper class to hide the handling of the StateManager and the write lock.\n    revision 478645: Guard the entire checkin() method with the write lock\n\nOnly the last change should introduce functional changes (extended use of the write lock), the other changes are pure refactorings to clarify the code structure.\n\nI'll leave these changes in the trunk for now and not include them in the 1.1.1 release since I'm not 100% certain that I haven't missed some subtle concurrency issues.",
+            "date": "2006-11-23T19:18:20.000+0000",
+            "id": 4
+        }
+    ],
+    "component": "versioning",
+    "description": "Under a load of 3 threads performing checkin and restore operations it's possible for all to become deadlocked in AbstractVersionManager.checkin(). This method attempts to upgrade a read lock to a write lock with the following code\n\n    aquireReadLock();\n    ....\n\n    try {\n        aquireWriteLock();\n        releaseReadLock();\n        ...\n\nIf 2 or more threads acquire the read lock then neither can acquire the write lock resulting in the deadlock, and after that any other thread that calls this method will block waiting for the write lock. The release of the read lock needs to be done before acquiring the write lock, this is documented Concurrent library javadoc.\n\nThere is another area where there is an attempt to upgrade a read lock to write lock, RepositoryImpl.WorkspaceInfo.disposeIfIdle() acquires a read lock and calls dispose() which then acquires a write lock, this maybe ok, as I assume there is only 1 thread that will attempt to dispose of idle workspaces.\n",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "JCR-546",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "Deadlock during checkin",
+    "systemSpecification": true,
+    "version": "0.9, 1.0, 1.0.1, 1.1, 1.1.1"
+}

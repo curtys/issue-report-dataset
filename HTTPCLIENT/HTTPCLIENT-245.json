@@ -1,0 +1,77 @@
+{
+    "comments": [
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Aaron,\n\nThis is in fact a very well known problem. \n\nThere are two aspects to it:\n\n- We are not supposed to automatically redirect POST requests if we strictly\nfollow the word of the RFC\n\n- Sadly enough, we simply can't do it at the moment due to design limitations.\nRFC requires HTTP agents to issue a GET (not a POST) against the new location in\nresponse to a POST redirect. Currently classes that implement HttpMethod\ninterface represent both a request and a response. This is a fundamental mistake\nwhich prevents us from being able to 'convert' a request of type POST to request\nof type GET.\n\nWe are planning to fix the problem in the 3.0 release\n\nOleg",
+            "date": "2003-07-15T03:56:57.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Tony Locke",
+            "body": "Oleg writes, 'We are not supposed to automatically redirect POST requests if we\nstrictly follow the word of the RFC'.\n\nHowever, as I understand it this is not true for 303 (See Other) redirects.\nAccording to the RFC, 303 redirects should be automatically redirected:\n\nhttp://www.w3.org/Protocols/rfc2616/rfc2616-sec10.html#sec10.3.4\n\n-Tony.",
+            "date": "2006-01-06T00:37:31.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "(In reply to comment #2)\n> Oleg writes, 'We are not supposed to automatically redirect POST requests if we\n> strictly follow the word of the RFC'.\n> \n> However, as I understand it this is not true for 303 (See Other) redirects.\n> According to the RFC, 303 redirects should be automatically redirected:\n> \n> http://www.w3.org/Protocols/rfc2616/rfc2616-sec10.html#sec10.3.4\n> \n> -Tony.\n\n<quote>\nThe response to the request can be found under a different URI and SHOULD be\nretrieved using a <strong>GET method</strong> on that resource\n</quote>\n\nOleg\n\n",
+            "date": "2006-01-06T00:55:23.000+0000",
+            "id": 2
+        },
+        {
+            "author": "Tony Locke",
+            "body": "(In reply to comment #3)\n\nFirst of all, thanks for responding to my comment Oleg. Much appreciated.\n\nI think there may be a misunderstanding since I think the bug is that\nHttpClient doesn't follow a 303 response to a POST. As I see it, if the\nresponse is a 303, there isn't any need for confirmation from the user and\nthe redirect can be followed automatically.  The sequence is:\n\n1. client sends post\n2. server sends back 303 with Location header\n3. client visits location with a GET\n\nIt's step 3 that has to be a GET, not step 1.\n\nSo it isn't the RFC that's preventing us from following a redirect as a\nresponse to a post, it's just the limitation in the HttpClient code.\n\nAnyway, that's how I read it. Thanks again for your help.\n\nCheers,\n\nTony.\n",
+            "date": "2006-01-06T23:08:59.000+0000",
+            "id": 3
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "(In reply to comment #4)\n> (In reply to comment #3)\n> \n> First of all, thanks for responding to my comment Oleg. Much appreciated.\n> \n\nYou are welcome\n\n...\n\n> So it isn't the RFC that's preventing us from following a redirect as a\n> response to a post, it's just the limitation in the HttpClient code.\n> \n\nThis is correct.\n\nCheers,\n\nOleg\n\n> Anyway, that's how I read it. Thanks again for your help.\n> \n> Cheers,\n> \n> Tony.\n> \n\n",
+            "date": "2006-01-06T23:27:50.000+0000",
+            "id": 4
+        },
+        {
+            "author": "jain@gmx.net",
+            "body": "Would be useful if there was an option to treat 302 responses like 303 as\nproposed above. I use HttpClient to interact with several web sites that use the\nredirect-after-post pattern, but most return 302 rather than 303 because some\nolder browsers such as Netscape 4.7 don't support 303...\n",
+            "date": "2006-01-17T18:47:00.000+0000",
+            "id": 5
+        },
+        {
+            "author": "Roland Weber",
+            "body": "Hello Eric,\n\n303 responses are currently not handled automatically, as discussed above.\nTo treat 302 responses like 303 responses, just disable redirect handling.\n\nFor 4.0, we'll probably come up with something that allows automatic\nredirect handling of both, though the default will still be to treat\n303 different from 302 responses, as required by the specification.\n\ncheers,\n  Roland",
+            "date": "2006-01-17T19:36:27.000+0000",
+            "id": 6
+        },
+        {
+            "author": "jain@gmx.net",
+            "body": "> For 4.0, we'll probably come up with something that allows automatic\n> redirect handling of both, though the default will still be to treat\n> 303 different from 302 responses, as required by the specification.\n\nGreat, something to look forward to :-)\n",
+            "date": "2006-01-17T19:43:10.000+0000",
+            "id": 7
+        },
+        {
+            "author": "Roland Weber",
+            "body": "original title was: \"POST redirects cannot be executed\"\n",
+            "date": "2007-02-05T19:59:59.178+0000",
+            "id": 8
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Fixed in SVN trunk. HttpClient will always execute HTTP GET when automatically redirecting to a new location, regardless of the original method type.\n\nLatest changes in trunk _finally_ fixed one of the long standing design limitations in HttpClient\n\nOleg",
+            "date": "2007-05-12T10:55:02.470+0000",
+            "id": 9
+        }
+    ],
+    "component": "HttpClient (classic)",
+    "description": "I tried this with both the beta2 2.0 release, and the nightly build.  The\nfollowing code snippet describes what I am trying to do:\n\nhttpClient.getHostConfiguration().setHost(sHost, 80, \"http\");\nHttpMethod method=null;\nif (sMethod.indexOf(\"POST\")!=-1) {\n     method=new PostMethod(sURLInfo);\n} else {\n     method=new GetMethod(sURLInfo);\n}\nmethod.setFollowRedirects(true);\nhttpClient.executeMethod(method);\n\nAfter this code executes, the \"getFollowRedirects\" method still returns false,\nand any redirects which are sent by the webserver are not followed.  As a\ntemporary workaround, since I want all redirects followed, I commented out the\nfollowing code in the HttpMethodBase class in the \"processRedirectResponse\" method:\n\n/*if (!getFollowRedirects()) {\n     LOG.info(\"Redirect requested but followRedirects is \"\n     + \"disabled\");\n     return false;\n}*/\n\nIf this bug has already been reported, I apologize...I searched for and found\nnothing related to this issue.",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "HTTPCLIENT-245",
+    "issuetypeClassified": "RFE",
+    "issuetypeTracker": "RFE",
+    "priority": "Major",
+    "product": "HTTPCLIENT",
+    "project": "HTTPCLIENT",
+    "summary": "customize handling of 302 redirects",
+    "systemSpecification": true,
+    "version": "2.0 Final"
+}

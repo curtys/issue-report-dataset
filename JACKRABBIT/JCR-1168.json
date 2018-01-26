@@ -1,0 +1,47 @@
+{
+    "comments": [
+        {
+            "author": "Julian Reschke",
+            "body": "Not surprisingly, test case testPath() has the same problem.\n",
+            "date": "2007-10-09T15:34:16.005+0000",
+            "id": 0
+        },
+        {
+            "author": "Julian Reschke",
+            "body": "Proposed patch for test cases and test config (known.issues).\n",
+            "date": "2007-10-15T12:38:00.500+0000",
+            "id": 1
+        },
+        {
+            "author": "Julian Reschke",
+            "body": "Updated patch.",
+            "date": "2007-10-18T10:50:10.265+0000",
+            "id": 2
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "+1, it's better to break Jackrabbit than the spec",
+            "date": "2007-10-23T11:54:32.815+0000",
+            "id": 3
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "Applied patch (without the known.issues, because JCR-1179 has been fixed already) in revision: 587479",
+            "date": "2007-10-23T12:40:58.333+0000",
+            "id": 4
+        }
+    ],
+    "component": "jackrabbit-jcr-tests",
+    "description": "Here's the test code, comments inline prefixed with \"reschke\"\n\n    /**\n     * Tests if {@link javax.jcr.observation.Event#NODE_ADDED} is created only\n     * for the specified path if <code>isDeep</code> is <code>false</code>.\n     */\n    public void testIsDeepFalseNodeAdded() throws RepositoryException {\n        EventResult listener = new EventResult(log);\n\n        // reschke: we are listening for changes at testRoot/nodeName1, with isDeep==false \n        obsMgr.addEventListener(listener, Event.NODE_ADDED, testRoot + \"/\" + nodeName1, false, null, null, false);\n\n        // reschke; node at \"testRoot/nodeName1\" being created, the associated parent node for this event is \"testRoot\"\n        Node n = testRootNode.addNode(nodeName1, testNodeType);\n\n        // reschke: node at \"testRoot/nodeName1/nodeName2\" being created, the associated parent node for this event is \"testRoot/nodeName1\"\n        n.addNode(nodeName2);\n        testRootNode.save();\n\n        Event[] events = listener.getEvents(DEFAULT_WAIT_TIMEOUT);\n        obsMgr.removeEventListener(listener);\n\n        // reschke: test case expects event with path \"testRoot/nodeName1\"\n        checkNodeAdded(events, new String[]{nodeName1});\n    }\n\nSo, in plain english:\n\n- test case listens for events where the associated parent node equals \"testRoot/nodeName1\", but\n- it expects a single event where the Event.getPath() returns \"testRoot/nodeName1\".\n\nThis is incorrect (IMHO), because the associated parent node for *that* event is \"testRoot\". \n\nSo the correct test would be to check for:\n\n        checkNodeAdded(events, new String[]{nodeName1 + \"/\" + nodeName2});\n\nMaking this change of course leads to a test failure reported against the RI.\n\nFeedback appreciated.\n",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "JCR-1168",
+    "issuetypeClassified": "OTHER",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "broken test in AddEventListener",
+    "systemSpecification": true,
+    "version": ""
+}

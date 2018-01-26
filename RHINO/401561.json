@@ -1,0 +1,29 @@
+{
+    "comments": [
+        {
+            "author": "hannesw@gmail.com",
+            "body": "That's a weird bug. Thanks for the excellent analysis!",
+            "date": "20101108T14:32:40",
+            "id": 0
+        },
+        {
+            "author": "hannesw@gmail.com",
+            "body": "Fixed at last:\n\nhttps://github.com/mozilla/rhino/commit/e37f2ff37b3a145d9ee6ee4703947cb6ed22718f",
+            "date": "20111124T10:25:16",
+            "id": 1
+        }
+    ],
+    "component": "Compiler",
+    "description": "User-Agent:       Mozilla/5.0 (Macintosh; U; PPC Mac OS X Mach-O; en; rv:1.8.1.8) Gecko/20071010 Camino/1.5.2\nBuild Identifier: 1.6r7\n\nWhen opt>0, Rhino performs a global \"direct-call\" optimization on code it generates, which changes the caller/callee contract for any functions optimized.  As a result, calling these functions indirectly or from a different Script causes the function execution to use the caller's scope(!), not the callee's (lexical) scope.\n\nReproducible: Always\n\nSteps to Reproduce:\n// This code runs correctly when opt<=0, fails when opt>0.\n// Note the *correct* behavior is to throw an exception.\n// The *incorrect* behavior is to print a number.\n\n// Can test with java -classpath js.jar org.mozilla.javascript.tools.shell.Main -opt 1 bugtest.js\n\n// bugtest.js:\n\n// This function should never work (no x in lexical scope)\nfunction getX() { return x; }\n\nglobal = this;\n(function() {\n  var x = 12345;\n  (function() {\n\n    // indirect call, not direct-call-optimized,\n    // uses this scope's parent instead of getX's parent\n    java.lang.System.out.println(global[\"getX\"]());\n    // Result: if opt <= 0, \"x not found\"\n    // if opt > 0, prints \"12345.0\" !!\n\n  })();\n})();\n\n// call site triggers direct-call optimization of getX;\n// remove this line and the bug doesn't manifest!\nfunction neverCalled() { getX(); }\n\nActual Results:  \nprints \"12345.0\"\n\nExpected Results:  \nReferenceError: \"x\" is not defined.\n\nI discovered this bug because my application uses a shared global scope with multiple \"sub-scopes\" (http://www.mozilla.org/rhino/scopes.html : \"Sharing Scopes\"), and some functions are copied from a sub-scope to the global scope.  I realized I had a Rhino bug when some really weird stuff happened when class-file optimization was turned on, *but* only in the presence of a particular never-called function declaration.  I doubted for a while that the bug could be reproduced in a js file without special scope stuff, but then I found another way to fool the direct-call optimizer.\n\nI'm guessing that direct-call optimization is triggered when a function is declared but the function object doesn't \"flow\" anywhere (and the function is called somewhere else in the script).  I honestly don't know exactly what the optimization does, but it seems to remove the call to \"getParentScope\" at the beginning of the optimized function, putting the burden of determining the scope on the caller.  If any call-site doesn't get the memo, it breaks (the function runs with an erroneous scope).  The function object corresponding to a top-level function declaration thereby becomes defective, as far as I can tell, while still being accessible as a property of the global object.",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "401561",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "-- normal",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "direct-call optimization (done when opt>0) can cause functions to execute in wrong scope",
+    "systemSpecification": false,
+    "version": "other"
+}

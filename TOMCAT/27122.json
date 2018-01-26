@@ -1,0 +1,149 @@
+{
+    "comments": [
+        {
+            "author": null,
+            "body": "How about trying with a telnet ? Either the content is sent or it is not.\nThere's nothing to investigate here, as there is nothing in Tomcat which is\nrelated to the content-type, so I urge posting on tomcat-user instead.",
+            "date": "20040220T21:14:26",
+            "id": 0
+        },
+        {
+            "author": null,
+            "body": "Of course I haven't tried telnet, it's only happening over SSL.  I'm not very\ngood at doing 128-bit encryption in my head and I doubt anyone else is either. \nIf I could find something that would do SSL and dump the actual HTTP transaction\nI would do that - I haven't yet (especially because form security is in place on\nthe webapp).\n\nHowever, considering that it *only* failed with the latest Tomcat 5 and works\njust fine in Tomcat 4 I find it hard to believe that there isn't something wrong\nwith Tomcat 5.  If it failed when back-revving the version, I might blame\nsomething else.  But this is 100% reproducable among multiple clients and only\nwhen connecting to the Tomcat 5 server using SSL.\n\nThis *only* fails when using SSL through Tomcat 5.  It works with Tomcat 4,\nusing the same JDK and the same configuration.  It also works in Tomcat 5 if I\nuse the standard HTTP connector.  I can't figure out how to begin to debug this,\nbut if anyone can offer any suggestions on utilities to debug SSL connections\nI'll take a stab at it next week.",
+            "date": "20040220T21:24:11",
+            "id": 1
+        },
+        {
+            "author": null,
+            "body": "Try 'openssl s_client'.  It's my first stop when debugging SSL problems.",
+            "date": "20040220T21:40:33",
+            "id": 2
+        },
+        {
+            "author": null,
+            "body": "Well, I understand, but the behavior you describe would be extremely strange. I\ndon't see how it can be a Jasper or container issue, and I don't see how it can\nbe a connector issue either (the connector doesn't have content-type specific at\nall either, except when HTTP compression is used). Tomcat 4.1.29 uses the same\nconnectors as 5.0.14, and similarly 4.1.30 uses the same as 5.0.18, so again I\ndon't understand a difference in behavior between the two \"branches\".",
+            "date": "20040220T23:33:08",
+            "id": 3
+        },
+        {
+            "author": null,
+            "body": "OK, I finally got a chance to use \"openssl\" to try and manually run a couple of\nHTTP transactions.  I found one header I thought may be a problem that's\nincluded in Tomcat 5 but not Tomcat 4: \"Expires: Wed, 31 Dec 1969 19:00:00 EST\".\n Unfortunately, updating it to a more realistic \"expires\" date didn't allow IE\nto work.\n\nI'm as stumped as everyone else is as to what might be causing this.  I think I\nneed to actually find a way to sniff out what IE is doing, but this definitely\nisn't working with IE 6 SP1 and Tomcat 5.0.18 on this one SVG page.  (I'm\nwondering if it has to do with the form authentication - when I created a test\nJSP with no security constraints it worked through IE 6.)\n\nAs far as I can tell, though, Tomcat is generating the headers correctly... \nAlthough I can't figure out why IE would only not work with this page and work\nfine on all the others and why back-revving to Tomcat 4 would solve the problem.\n\nAnd now it appears that Opera 7.23 is working just fine on the page, as well as\nMozilla.  This is probably an Internet Explorer issue, not a Tomcat 5 issue, but\nit still is *weird*.  Anyone who has any ideas to help debug what Internet\nExplorer is doing would be appreciated - it always indicates that the \"Action\nwas canceled\" and says that the site was unavailable.\n\nFor reference:\n\nTOMCAT 4.1.29 HEADERS:\n\nHTTP/1.1 200 OK\nContent-Type: image/svg+xml;charset=ISO-8859-1\nDate: Wed, 25 Feb 2004 21:28:16 GMT\nServer: Apache-Coyote/1.1\nConnection: close\n\nTOMCAT 5.0.18 HEADERS:\n\nHTTP/1.1 200 OK\nPragma: No-cache\nCache-Control: no-cache\nExpires: Wed, 31 Dec 1969 19:00:00 EST\nContent-Type: image/svg+xml\nDate: Wed, 25 Feb 2004 21:21:46 GMT\nServer: Apache-Coyote/1.1\nConnection: close",
+            "date": "20040225T21:50:01",
+            "id": 4
+        },
+        {
+            "author": null,
+            "body": "And we have finally found the problem.  In an attempt to try and work around \nsome broken client (I can't be bothered to go back and see which one), Tomcat5 \nstarted adding adding the \"don't cache\" headers even for SSL requests.  I'm in \na very small minority of disliking this \"feature\", so it is unlikely to change.\n\nThe work-around is to configure the Authenticator yourself:\n<Context path=\"/myapp\" docBase=\"myapp\">\n  <Valve className=\"org.apache.catalina.authenticator.FormAuthenticator\"\n          disableProxyCaching=\"false\" />\n</Context>\n\nOf course, if you're not using Form auth, then substitute the correct class in \nthe example above.",
+            "date": "20040225T22:07:26",
+            "id": 5
+        },
+        {
+            "author": null,
+            "body": "Yep - that solved it.  Thanks!\n\n(Also, I see that Tomcat 5.0.19 was released, so I tested it against that\nversion and got the same problem on Solaris.)\n\nThis is a bug with the way Internet Explorer handles plugins, then.  My guess is\nthat the file isn't cached so that when the plugin attempts to access it, it\ndoesn't receive anything causing it to silently fail.\n\nI just tried uploading the Badgers-Badgers SWF and seeing if it would fail in\nthe same way, and it does.  So this happens with any IE plugin.\n\nMind you, the way Internet Explorer fails with this is weird.  It just indicates\nthat the resource is not available, despite all other indications being that it\nis.  It also happens when you attempt to directly access the resource through\nIE, it asks you to download the file and then tells you that it isn't available.\n It might be worth re-openning this bug and removing the \"no-cache\" behavior if\n\"MSIE\" appears in the User-agent header.",
+            "date": "20040225T22:40:26",
+            "id": 6
+        },
+        {
+            "author": null,
+            "body": "*** Bug 28662 has been marked as a duplicate of this bug. ***",
+            "date": "20040428T23:21:34",
+            "id": 7
+        },
+        {
+            "author": null,
+            "body": "*** Bug 29336 has been marked as a duplicate of this bug. ***",
+            "date": "20040602T16:06:10",
+            "id": 8
+        },
+        {
+            "author": null,
+            "body": "*** Bug 29975 has been marked as a duplicate of this bug. ***",
+            "date": "20040708T19:42:44",
+            "id": 9
+        },
+        {
+            "author": null,
+            "body": "Microsoft describes the exact behaviour of their bug on this webpage:\n\nhttp://support.microsoft.com/?id=316431\n\nMicrosoft says that this bug is \"by design\" and that they will not ifx it. This \nis just SOOO arrogant!!\n\n--\n\nTomcat adds the respective caching headers to the HTTP header automatically if \nand only if a resource of a webapp is being accessed for which a user data \nconstraint of CONFIDENTIAL has been set.\n\nI PROPOSE TO HAVE A SPECIAL ATTRIBUTE WITHIN THE CONNECTOR CONFIGURATION BY \nWHICH TOMCAT CAN BE FORCED NOT TO SET CACHING HEADERS ITSELF.\n\n*** PLUS ***\n\nI DON'T LIKE THAT THIS BUG HAS BEEN MARKED AS INVALID!\nSEVERAL PEOPLE HAVE REPORTED THIS BEHAVIOUR AND a FIX IS POSSIBLE AND \nSTRAIGHTFORWARD TO APPLY.\n(Search for 'no-cache' within the connector codebase and put an if(doCaching) \nbracket around it. That's all there is to it.)\n\nI leave it to the tomcat developers to reopen this bug as I regard it as \nsomehow impolite to do this myself. However, I strongly recommend you people to \ndo so. This bug is reproducible on every InternetExplorer. A lot of people will \nget headaches and spend days on investigation unless you add the proposed \nattribute to the connector configuration or at least place a comment on the \nwebpage which informs developers of the effect in question.",
+            "date": "20040712T11:58:22",
+            "id": 10
+        },
+        {
+            "author": null,
+            "body": "*** Bug 30618 has been marked as a duplicate of this bug. ***",
+            "date": "20040812T15:13:53",
+            "id": 11
+        },
+        {
+            "author": null,
+            "body": "*** Bug 30618 has been marked as a duplicate of this bug. ***",
+            "date": "20040906T12:09:42",
+            "id": 12
+        },
+        {
+            "author": null,
+            "body": "*** Bug 36735 has been marked as a duplicate of this bug. ***",
+            "date": "20050920T19:13:29",
+            "id": 13
+        },
+        {
+            "author": null,
+            "body": "I would like to add my support for the previous request to make the caching\nheaders (Pragma and Cache-Control) configurable in Tomcat 5.0.x.  \n\nBrief history: I use Tomcat 5.0.28 for a small webapp.  It sits behind Apache,\nwhich does SSL and forwards requests to Tomcat via mod_jk.  Users access the\nwebapp stricly with SSL.  The webapp's doc area has a few static power-point\nfiles, and that's where this problem bit me: IE users could not get power-point\nfiles.\n\nTo figure out what headers Tomcat sets in responses, I turned on the\nRequestDumperValve in the server.xml file.  Then I saw that every single request\n-- whether .gif, .html, .css, .ppt, or .jsp -- gets \"Cache-Control: no-cache\"\nand \"Pragma: no cache\" in the response headers.\n\nWhile these headers are absolutely appropriate for JSP pages, they are wholly\nunnecessary for static content.  I want my users' browsers to cache static\ncontent like CSS sheets, images, etc. and thereby make fewer requests to my\nserver.  Everybody wins.\n\nThis thread helped me understand the problem:\nhttp://forum.java.sun.com/thread.jspa?threadID=233446&start=0&tstart=0 \n\nI finally used the solution from here, with one modification:\nhttp://www.jspinsider.com/content/dev/afessh/another-filter-every-site-should-have.html\nJayson Falkner explains servlet filters that set response headers; this means \nweb browsers will cache items like pictures and other static content.  Note that\nhis code does \"addHeader\" but that does NOT work; you have to do \"setHeader\" to\noverrride the cache-control that Tomcat adds.\n\nI am of the strong opinion that Tomcat needs some configuration setting so users\nlike me can tell the container what caching policy to apply by default.  Maybe\nsomething along the lines of a mime-types file would allow the caching policy to\nbe set based on file suffixes or file-name patterns. \n\nPlease consider this request seriously.  I am not a Tomcat dev and don't want to\nreopen this bug myself.  Thanks.\n",
+            "date": "20060227T15:24:45",
+            "id": 14
+        },
+        {
+            "author": null,
+            "body": "Reopening this bug - even though strictly speaking Tomcat's behaviour is not\nincorrect - because it seems to be a significant and common source of problems,\nand is not that easy for the user to diagnose. It occurs with or without SSL,\nand in a wider set of circumstances than invoking IE plugins. (My own variation\nis that download to a file in IE fails if a content-disposition header is set\nand the resource is subject to a security constraint).\n\nThe workaround given by Bill Barker is to configure each context:\n\n<Context path=\"/myapp\" docBase=\"myapp\">\n  <Valve className=\"org.apache.catalina.authenticator.FormAuthenticator\"\n          disableProxyCaching=\"false\" />\n</Context>\n\nThis works but reduces security more than is necessary, as it causes no cache\ncontrol headers to be issued at all.\n\nAn alternative workaround\n\n<Context path=\"/myapp\" docBase=\"myapp\">\n  <Valve className=\"org.apache.catalina.authenticator.FormAuthenticator\"\n          securePagesWithPragma=\"false\" />\n</Context>\n\nis better. It causes a header Cache-Control: private to be issued in place of\nthe default Cache-Control: none and Pragma: no-cache headers. This tells shared\ncaches not to cache the response, which I think is all that is necessary, while\nstill allowing downloads to work in IE.\n\nHowever, neither workaround is a good solution because it makes configuration\nmore difficult and because it duplicates knowledge of which authenticator is\nrequired between the web.xml and context.xml files.\n\nTherefore I suggest that AuthenticatorBase be changed to put out the\nCache-Control: private header by default. I think this is simply a matter of\nchanging the securePagesWithPragma field from true to false:\n\n    /**\n     * Flag to determine if we disable proxy caching with headers incompatible\n     * with IE \n     */\n    protected boolean securePagesWithPragma = true;\n    \nOther comments in this source file suggest that IE-incompatible headers are\nbeing issued because there is some unspecified problem with Mozilla when\ncache-control: private is used. However I can find no such problem at least with\ncurrent versions of Firefox. Since the choice therefore seems to be between\nworking around a known bug in all versions of IE, and working around a possible\nbug in some previous versions of Mozilla that does not affect current Firefox\nusers, I'd argue that the former is the better thing to do. \n",
+            "date": "20070512T09:51:00",
+            "id": 15
+        },
+        {
+            "author": null,
+            "body": "The current behaviour is unlikely to change. I am marking this as an enhancement\nrather than WONTFIX in case someone cares enough to come up with a proposed patch.",
+            "date": "20070601T18:09:56",
+            "id": 16
+        },
+        {
+            "author": null,
+            "body": "We just found that adding:\n\n<security-constraint>\n  <web-resource-collection>\n    <web-resource-name>Automatic SLL Forwarding</web-resource-name>\n    <url-pattern>/*</url-pattern>\n  </web-resource-collection>\n  <user-data-constraint>\n    <transport-guarantee>CONFIDENTIAL</transport-guarantee>\n  </user-data-constraint>\n</security-constraint>\n\nalso adds the headers that creates this issue.  Any ideas?  Using tomcat 5.5.25",
+            "date": "20080702T14:41:50",
+            "id": 17
+        },
+        {
+            "author": null,
+            "body": "<transport-guarantee>CONFIDENTIAL</transport-guarantee> means SSL will be used so yes, you will hit this bug in IE. Workarounds as described above.",
+            "date": "20080702T23:34:43",
+            "id": 18
+        },
+        {
+            "author": null,
+            "body": "We've added the following to context.xml as a work-around:\n\n<Valve className=\"org.apache.catalina.authenticator.NonLoginAuthenticator\" disableProxyCaching=\"true\" securePagesWithPragma=\"false\" />\n\n",
+            "date": "20080703T12:04:44",
+            "id": 19
+        },
+        {
+            "author": null,
+            "body": "For reference, the original Mozilla issue described in bug 23887. I have confirmed that this bug no longer exists in the latest version of Firefox. I suspect it was fixed some time ago although I couldn't find it when I tried searching the Mozilla bug database.",
+            "date": "20110522T22:49:32",
+            "id": 20
+        },
+        {
+            "author": null,
+            "body": "I have removed the Mozilla bug workaround in 7.0.x and changed the default of securePagesWithPragma to false. Both of these changes will be included in 7.0.15 onwards.\n\nI do not intend proposing these changes for back-port.",
+            "date": "20110522T22:55:04",
+            "id": 21
+        }
+    ],
+    "component": "Connector:HTTP",
+    "description": "SSL seems to be failing when the Content-Type header is set to \"image/svg+xml\".\n\nI've only seen this failure when SSL was running on a Solaris machine.  (uname\n-a: SunOS [hostname removed] 5.8 Generic_108528-18 sun4u sparc SUNW,Ultra-60) \nWhen attempted on Windows, we were unable to duplicate the error.  This reliably\nfails when attempted on this specific Solaris machine.  If I get a chance, I'll\ntry to create a test-case and see if I can reproduce this on other Solaris\nmachines.  Unfortunately, this was a show-stopper for a release that's being\nmade today so I'm pressed for time.\n\nBasically, what happens is that we're using a JSP page to create an SVG file. \nBecause of this, we have to set the Content-Type header to \"image/svg+xml\". \nWhen the MIME type is set to this value, the page fails to load in Internet\nExplorer 6 (SP1) with a message of \"connection failed\" or something similar. \nWhen an attempt was made in Opera, Opera responded by crashing.  Mozilla\nsuccessfully downloaded the file, though.\n\nHowever, when resetting the MIME type in the page to \"text/plain\" all three\nbrowsers can access the page without failure.  By back-revving Tomcat to version\n4.1.29, we were able to resolve this issue and access the page in all three\nbrowsers.\n\nI'll try and create a test-case later today and verify that it isn't just our\nSVG JSP that's failing but any that creates SVG but I'm currently pressed for\ntime - sorry.",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "27122",
+    "issuetypeClassified": "OTHER",
+    "issuetypeTracker": "RFE",
+    "priority": "P3 enhancement",
+    "product": "Tomcat 5",
+    "project": "TOMCAT",
+    "summary": "IE plugins cannot access components through Tomcat 5 over SSL",
+    "systemSpecification": true,
+    "version": "5.0.18"
+}

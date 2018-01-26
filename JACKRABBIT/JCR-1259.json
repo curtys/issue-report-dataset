@@ -1,0 +1,53 @@
+{
+    "comments": [
+        {
+            "author": "Jukka Zitting",
+            "body": "Looks good, though I have some design comments:\n\n1) ItemFilter vs. Predicate\n\nHow about using the Predicate interface from commons-collections instead of the custom ItemFilter interface? Using Predicate would give us things like ItemFilterList, MatchAllFilter, MatchNoneFilter, and much more for free as well as working nicely together with our existing Iterator adapters in o.a.j.commons.iterator.\n\nFor example, with Predicate filters you could do something like this to select all child nodes with the given node type:\n\n    NodeIterator iterator = new NodeIteratorAdapter(\n        new FilterIterator(node.getNodes(), new NodeTypePredicate(\"my:type\")));\n\nOf course you'd need to use instanceof and type casts, but you'd need them in any case with ItemFilter as the interface takes Items, not Nodes or Properties. Also, you wouldn't have the \"depth\" parameter, but I'm not sure it's really needed (i.e. all the use cases I can think of could be solved with Item.getDepth()).\n\n2) TreeWalkerListener vs. ItemVisitor\n\nThe JCR API already provides a nice implementation of the Visitor pattern in the ItemVisitor interface and the Item.accept(ItemVisitor) method. Instead of coming up with an alternative implementation in TreeWalker and TreeWalkerListener, I'd rather see a set of generic ItemVisitor classes like DepthFirstItemVisitor, DepthLimitedItemVisitor, BreadthFirstItemVisitor, FilterItemVisitor, etc. that could be combined together with each other and the above Predicate filters to implement functionality like in the proposed TreeWalker and in many other tree traversal cases.\n",
+            "date": "2008-01-02T18:17:10.605+0000",
+            "id": 0
+        },
+        {
+            "author": "Carsten Ziegeler",
+            "body": "Updated patch",
+            "date": "2008-01-03T10:48:23.797+0000",
+            "id": 1
+        },
+        {
+            "author": "Carsten Ziegeler",
+            "body": "Hi, I've attached a new patch containing most of your changes:\n\n1) ItemFilter vs. Predicate\nI replaced the ItemFilter with predicate\n\n2) TreeWalkerListener vs. ItemVisitor\nI removed the tree walker stuff and added a new abstract item visitor implementation (like the TraversingItemVisitor) which does the same as the former tree walker. I think we can improve this implementation over time (like adding the visitors you're suggestion).\n\nWDYT?",
+            "date": "2008-01-03T10:50:20.082+0000",
+            "id": 2
+        },
+        {
+            "author": "Carsten Ziegeler",
+            "body": "Patch against jackrabbit trunk",
+            "date": "2008-01-07T09:28:40.437+0000",
+            "id": 3
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Committed the patch as-is in revision 610137. Merged to the 1.4 branch in revision 610140.",
+            "date": "2008-01-08T20:47:59.208+0000",
+            "id": 4
+        },
+        {
+            "author": "Carsten Ziegeler",
+            "body": "Looks good - thanks!",
+            "date": "2008-01-09T09:27:17.244+0000",
+            "id": 5
+        }
+    ],
+    "component": "jackrabbit-jcr-commons",
+    "description": "The attached zip contains new utility code for filtering and packaging trees in the repository.\n\nA tree can be traversed by the provided tree walker. During the traversal configurable filters can be applied. The filters have influence on the traversal, like skipping nodes or properties.\nIncluded filters test the node name, node type etc. Custom filters are possible as well.\nA tree walker notifies a tree walker listener (interface) whenever it traverses an item.\n\nThe second utility code is able to package a whole tree (through a description) and export this in some way - the exporter is an interface and could e.g. be an exporter serializing the tree into a zip archiv etc.",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "JCR-1259",
+    "issuetypeClassified": "RFE",
+    "issuetypeTracker": "RFE",
+    "priority": "Major",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "Utility code for filtering and packaging trees",
+    "systemSpecification": true,
+    "version": ""
+}

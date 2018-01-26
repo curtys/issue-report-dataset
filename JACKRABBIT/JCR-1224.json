@@ -1,0 +1,137 @@
+{
+    "comments": [
+        {
+            "author": "Al Caponi",
+            "body": "Hi,\nI also reproduced an OutOfMemory error with a test class similar to FirstHop.java. Here are some findings.\n\nJackrabbit version: 1.3.3\n\nEnvironment:\n---------------------------\nWindows XP Pro v.2002 SP2\nAMD Athlon 64\n1GB RAM\n\nJRE: Sun JRE 1.5.0_11\n---------------------------\n\nError message: java.lang.OutOfMemoryError: Java heap space\n\nStack from Eclipse debugger:\n---------------------------\nThread [main] (Suspended (breakpoint at line 140 in IndexMerger))\t\n\tIndexMerger.indexAdded(String, int) line: 140\t\n\tMultiIndex$AddIndex.execute(MultiIndex) line: 1362\t\n\tMultiIndex.executeAndLog(MultiIndex$Action) line: 872\t\n\tMultiIndex.commitVolatileIndex() line: 926\t\n\tMultiIndex.flush() line: 810\t\n\tRecovery.run() line: 172\t\n\tRecovery.run(MultiIndex, RedoLog) line: 85\t\n\tMultiIndex.<init>(File, SearchIndex, ItemStateManager, NodeId, Set, NamespaceMappings) line: 297\t\n\tSearchIndex.doInit() line: 295\t\n\tSearchIndex(AbstractQueryHandler).init(QueryHandlerContext) line: 44\t\n\tSearchManager.initializeQueryHandler() line: 478\t\n\tSearchManager.<init>(SearchConfig, NamespaceRegistryImpl, NodeTypeRegistry, ItemStateManager, NodeId, SearchManager, NodeId) line: 231\t\n\tRepositoryImpl$WorkspaceInfo.getSearchManager() line: 1580\t\n\tRepositoryImpl.initWorkspace(RepositoryImpl$WorkspaceInfo) line: 570\t\n\tRepositoryImpl.initStartupWorkspaces() line: 379\t\n\tRepositoryImpl.<init>(RepositoryConfig) line: 286\t\n\tRepositoryImpl.create(RepositoryConfig) line: 521\t\n\tTransientRepository$2.getRepository() line: 245\t\n\tTransientRepository.startRepository() line: 265\t\n\tTransientRepository.login(Credentials, String) line: 333\t\n\tTransientRepository.login() line: 388\t\n\tJcrTest.main(String[]) line: 65\t<< My test class\n---------------------------\n\nFindings:\nDrilled down to an infinite loop in org.apache.jackrabbit.core.query.lucene.IndexMerger (line 140):\n---------------------------\nclass IndexMerger extends Thread implements IndexListener {\n...\n    void indexAdded(String name, int numDocs) {\n...\n                while (upper < maxMergeDocs) {\n                    indexBuckets.add(new IndexBucket(lower, upper, true));\n                    lower = upper + 1;\n                    upper *= mergeFactor;\n...\n                }\n..\n}\n---------------------------\n\nFrom repository.xml <SearchIndex>\n          <param name=\"minMergeDocs\" value=\"100\"/>\n          <param name=\"maxMergeDocs\" value=\"2147483647\"/>\n          <param name=\"mergeFactor\" value=\"10\"/>\nThe upper variable (init at 100) which grows by a factor of 10 constantly skips into negative territory (e.g. 1215752192 --> -727379968) and would probably never equal to 2147483647 before running out of heap space.\n\n<SearchIndex> from my repository.xml (copied from website sample and modified the persistence manager to SimpleDbPersistenceManager (for MySQL))\n---------------------------\n...\n        <SearchIndex class=\"org.apache.jackrabbit.core.query.lucene.SearchIndex\">\n            <param name=\"path\" value=\"default/index\"/>\n            <param name=\"useCompoundFile\" value=\"true\"/>\n            <param name=\"minMergeDocs\" value=\"100\"/>\n            <param name=\"volatileIdleTime\" value=\"3\"/>\n            <param name=\"maxMergeDocs\" value=\"2147483647\"/>\n            <param name=\"mergeFactor\" value=\"10\"/>\n            <param name=\"maxFieldLength\" value=\"10000\"/>\n            <param name=\"bufferSize\" value=\"10\"/>\n            <param name=\"cacheSize\" value=\"1000\"/>\n            <param name=\"forceConsistencyCheck\" value=\"false\"/>\n            <param name=\"enableConsistencyCheck\" value=\"false\"/>\n            <param name=\"autoRepair\" value=\"true\"/>\n            <param name=\"analyzer\" value=\"org.apache.lucene.analysis.standard.StandardAnalyzer\"/>\n            <param name=\"queryClass\" value=\"org.apache.jackrabbit.core.query.QueryImpl\"/>\n            <param name=\"respectDocumentOrder\" value=\"true\"/>\n            <param name=\"resultFetchSize\" value=\"2147483647\"/>\n            <param name=\"extractorPoolSize\" value=\"0\"/>\n            <param name=\"extractorTimeout\" value=\"100\"/>\n            <param name=\"extractorBackLogSize\" value=\"100\"/>\n        </SearchIndex>\n    </Workspace>\n---------------------------\n\nChanging the value of maxMergeDocs didn't help as in this particular stack trace, the value of IndexMerger.maxMergeDocs was reset to 2147483647.\n\nRegards,\nAl\n",
+            "date": "2007-12-05T04:22:24.152+0000",
+            "id": 0
+        },
+        {
+            "author": "Al Caponi",
+            "body": "I just found out that there is another configuration called workspace.xml (under the workspace folder) copied from repository.xml.\nAfter changing the maxMergeDocs values from 2147483647 to 1000000 in that file, I finally got around this OutOfMemory error.\n",
+            "date": "2007-12-05T09:20:50.080+0000",
+            "id": 1
+        },
+        {
+            "author": "Ard Schrijvers",
+            "body": "\"I just found out that there is another configuration called workspace.xml (under the workspace folder) copied from repository.xml.\nAfter changing the maxMergeDocs values from 2147483647 to 1000000 in that file, I finally got around this OutOfMemory error. \"\n\nYes, this is correct. The repository.xml is only used as a template when there is not yet a workspace.xml.\n\n\nI am afraid this bug is now the default setting since with JCR-1238, maxMergeDocs default is set to Interger.MAX_VALUE. ",
+            "date": "2007-12-05T09:26:12.760+0000",
+            "id": 2
+        },
+        {
+            "author": "Ard Schrijvers",
+            "body": "Checked with trunk. On 23 oct 2008 the 'int upper' has been changed to 'long upper'.\n\nThe bug does not occur anymore with 1.4 (not yet released) and higher.  Using 1.3 and older, you should not set maxMergeDocs to Interger.MAX_VALUE (which could lead to large timeouts in 1.3 < anyway, also solved in trunk)\n\nI will close this issue since it is outdated",
+            "date": "2007-12-05T09:40:23.199+0000",
+            "id": 3
+        },
+        {
+            "author": "Ard Schrijvers",
+            "body": "\"23 oct 2008\" must be \"23 oct 2007 \" :-)\n\nAlready fixed by changing the IndexMerger 'int upper' to 'long upper'  by Marcel on 23 oct 2007",
+            "date": "2007-12-05T09:47:12.613+0000",
+            "id": 4
+        },
+        {
+            "author": "Andreas Julius",
+            "body": "Sorry, but this effect occurs with the actual trunk. I classified this as a bug for version 1.4 and not 1.3. \n\n$ svn info\nPath: .\nURL: http://svn.apache.org/repos/asf/jackrabbit/trunk\nRepository Root: http://svn.apache.org/repos/asf\nRepository UUID: 13f79535-47bb-0310-9956-ffa450edef68\nRevision: 601305\nNode Kind: directory\nSchedule: normal\nLast Changed Author: dpfister\nLast Changed Rev: 600980\nLast Changed Date: 2007-12-04 16:41:25 +0100 (Tue, 04 Dec 2007)\n\nDo you need more infos about my environment ?\n\nThis is the output from \"mvn clean install\" from today:\n......\n05.12.2007 13:04:11 *ERROR* [main] ImportHandler: fatal error encountered at line: 1, column: 10 while parsing XML stream: org.xml.sax.SAXParseException: Attribute name \"is\" associated with an element type \"this\" must be followed by the ' = ' character. (ImportHandler.java, line 122)\n05.12.2007 13:04:14 *ERROR* [main] ImportHandler: fatal error encountered at line: -1, column: -1 while parsing XML stream: org.xml.sax.SAXParseException: Premature end of file. (ImportHandler.java, line 122)\n05.12.2007 13:04:49 *INFO * [IndexMerger] IndexMerger: merged 558 documents in 788 ms into _l. (IndexMerger.java, line 304)\n05.12.2007 13:06:02 *INFO * [IndexMerger] IndexMerger: merged 536 documents in 3512 ms into _w. (IndexMerger.java, line 304)\nException in thread \"Timer-1\" java.lang.OutOfMemoryError: Java heap space\n        at java.lang.StringCoding$CharsetSD.decode(StringCoding.java:183)\n        at java.lang.StringCoding.decode(StringCoding.java:228)\n        at java.lang.String.<init>(String.java:405)\n        at java.lang.String.<init>(String.java:433)\n        at java.io.UnixFileSystem.list(Native Method)\n        at java.io.File.list(File.java:937)\n        at java.io.File.list(File.java:968)\n        at org.apache.lucene.store.FSDirectory.list(FSDirectory.java:320)\n        at org.apache.lucene.index.IndexFileDeleter.<init>(IndexFileDeleter.java:131)\n        at org.apache.lucene.index.IndexReader.commit(IndexReader.java:784)\n        at org.apache.lucene.index.FilterIndexReader.doCommit(FilterIndexReader.java:190)\n        at org.apache.lucene.index.IndexReader.commit(IndexReader.java:825)\n        at org.apache.jackrabbit.core.query.lucene.CommittableIndexReader.commitDeleted(CommittableIndexReader.java:68)\n        at org.apache.jackrabbit.core.query.lucene.AbstractIndex.commit(AbstractIndex.java:322)\n        at org.apache.jackrabbit.core.query.lucene.AbstractIndex.commit(AbstractIndex.java:310)\n        at org.apache.jackrabbit.core.query.lucene.MultiIndex.flush(MultiIndex.java:877)\n        at org.apache.jackrabbit.core.query.lucene.MultiIndex.checkFlush(MultiIndex.java:1110)\n        at org.apache.jackrabbit.core.query.lucene.MultiIndex.access$100(MultiIndex.java:75)\n        at org.apache.jackrabbit.core.query.lucene.MultiIndex$1.run(MultiIndex.java:324)\n        at java.util.TimerThread.mainLoop(Timer.java:512)\n        at java.util.TimerThread.run(Timer.java:462)\n",
+            "date": "2007-12-05T12:13:53.920+0000",
+            "id": 5
+        },
+        {
+            "author": "Ard Schrijvers",
+            "body": "Reopened: \n\nApparently my conclusion was premature, regarding the issue. As Al Capone wrote:\n\n\"Findings:\nDrilled down to an infinite loop in org.apache.jackrabbit.core.query.lucene.IndexMerger (line 140):\n---------------------------\nclass IndexMerger extends Thread implements IndexListener {\n...\n    void indexAdded(String name, int numDocs) {\n...\n                while (upper < maxMergeDocs) {\n                    indexBuckets.add(new IndexBucket(lower, upper, true));\n                    lower = upper + 1;\n                    upper *= mergeFactor;\n...\n                }\n..\n} \"\n\nand AFAIU this is solved in 1.4. apparently, the problem still occurs in 1.4,  but AFAICS it must be a different reason",
+            "date": "2007-12-05T12:30:31.199+0000",
+            "id": 6
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "Andreas, can you please run the build again with the JVM option -XX:HeapDumpOnOutOfMemoryError\n\nIf you can make the dump available for download somewhere, that would be great.",
+            "date": "2007-12-05T12:41:00.309+0000",
+            "id": 7
+        },
+        {
+            "author": "Andreas Julius",
+            "body": "sorry Marcel, but my JVM doesn't know this option. Please tell me what jvm this supports.\n\n$ java -XX:HeapDumpOnOutOfMemoryError\nUnrecognized VM option 'HeapDumpOnOutOfMemoryError'\nCould not create the Java virtual machine.\njul@lysiosdev:~/jackrabbit\n$ java -version\njava version \"1.5.0_12\"\nJava(TM) 2 Runtime Environment, Standard Edition (build 1.5.0_12-b04)\nJava HotSpot(TM) 64-Bit Server VM (build 1.5.0_12-b04, mixed mode)\n",
+            "date": "2007-12-05T13:18:30.044+0000",
+            "id": 8
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "oops, the plus sign is missing. The option should be:\n\n-XX:+HeapDumpOnOutOfMemoryError",
+            "date": "2007-12-05T14:04:55.120+0000",
+            "id": 9
+        },
+        {
+            "author": "Andreas Julius",
+            "body": "part 1 of heap",
+            "date": "2007-12-05T15:55:08.973+0000",
+            "id": 10
+        },
+        {
+            "author": "Andreas Julius",
+            "body": "part 2 of heap\n\npls use cat & bunzip2",
+            "date": "2007-12-05T16:05:15.244+0000",
+            "id": 11
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "Changing component. The dump shows that the error occurs while building/testing the jcr2spi module.",
+            "date": "2007-12-05T19:19:44.282+0000",
+            "id": 12
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "Andreas, can you build the modules if you set the change the jackrabbit-jcr2spi/pom.xml and give the test some more memory?\n\nIndex: pom.xml\n===================================================================\n--- pom.xml\t(revision 597629)\n+++ pom.xml\t(working copy)\n@@ -76,7 +76,7 @@\n             <include>**/TestAll.java</include>\n           </includes>\n           <forkMode>once</forkMode>\n-          <argLine>-Xmx128m -enableassertions</argLine>\n+          <argLine>-Xmx256m -enableassertions</argLine>\n           <systemProperties>\n             <property>\n               <name>derby.system.durability</name>",
+            "date": "2007-12-05T19:22:25.222+0000",
+            "id": 13
+        },
+        {
+            "author": "Andreas Julius",
+            "body": "thanx Marcle. That helps!\n\nI made a \"svn up\" on the trunk and run the build  with 128m --> OutOfHeapMemory.\nThan run again with 256m --> o.k.\n\nCan you tell me witch action uses the mem?",
+            "date": "2007-12-06T09:59:23.625+0000",
+            "id": 14
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "Each JUnit test keeps references to JCR items, which are not set to null when the test is teared down. We already had a similar issue: JCR-1224. Back then we reduced the memory which is kept if the session is logged out but the session instance is still referenced. It seems this not sufficient. I think it's time to change the test cases.",
+            "date": "2007-12-07T15:16:10.038+0000",
+            "id": 15
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "Renamed this issue instead of creating a new one to adapt the test cases.",
+            "date": "2007-12-07T15:44:20.366+0000",
+            "id": 16
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "Test cases in jackrabbit-jcr-tests now set references to items and sessions to null in tearDown().\n\nsvn revision: 602129",
+            "date": "2007-12-07T15:46:51.988+0000",
+            "id": 17
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "Fixed test cases in jackrabbit-core.\n\nsvn revision: 602131",
+            "date": "2007-12-07T15:50:45.605+0000",
+            "id": 18
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "Test cases in jackrabbit-jcr2spi are now also fixed.\n\nsvn revision: 602133\n\n128 mb heap size should be more than enough now...",
+            "date": "2007-12-07T16:00:33.817+0000",
+            "id": 19
+        }
+    ],
+    "component": "jackrabbit-jcr-tests",
+    "description": "On my 64-Bit environment OS/JVM I tried a \"mvn clean install\" and got an OutOfMemory Exception.\nOn my 32-Bit environment Mac OSX 10.5 Java 1.5 the tests were all  fine and the IndexMerger was significant faster.\n\nRunning org.apache.jackrabbit.test.TestAll\n21.11.2007 10:29:51 *INFO * [IndexMerger] IndexMerger: merged 549 documents in 289 ms into _a. (IndexMerger.java, line 304)\n21.11.2007 10:29:55 *ERROR* [main] ImportHandler: fatal error encountered at line: 1, column: 10 while parsing XML stream: org.xml.sax.SAXParseException: Attribute name \"is\" associated with an element type \"this\" must be followed by the ' = ' character. (ImportHandler.java, line 116)\n21.11.2007 10:29:55 *ERROR* [main] ImportHandler: fatal error encountered at line: 1, column: 10 while parsing XML stream: org.xml.sax.SAXParseException: Attribute name \"is\" associated with an element type \"this\" must be followed by the ' = ' character. (ImportHandler.java, line 104)\n21.11.2007 10:29:59 *ERROR* [main] ImportHandler: fatal error encountered at line: -1, column: -1 while parsing XML stream: org.xml.sax.SAXParseException: Premature end of file. (ImportHandler.java, line 104)\n21.11.2007 10:29:59 *ERROR* [main] ImportHandler: fatal error encountered at line: -1, column: -1 while parsing XML stream: org.xml.sax.SAXParseException: Premature end of file. (ImportHandler.java, line 116)\n21.11.2007 10:30:45 *INFO * [IndexMerger] IndexMerger: merged 555 documents in 2015 ms into _l. (IndexMerger.java, line 304)\n21.11.2007 10:33:13 *INFO * [IndexMerger] IndexMerger: merged 412 documents in 25587 ms into _w. (IndexMerger.java, line 304)\nException in thread \"Timer-1\" java.lang.OutOfMemoryError: Java heap space\n        at org.apache.lucene.store.BufferedIndexOutput.<init>(BufferedIndexOutput.java:26)\n        at org.apache.lucene.store.FSDirectory$FSIndexOutput.<init>(FSDirectory.java:592)\n        at org.apache.lucene.store.FSDirectory.createOutput(FSDirectory.java:435)\n        at org.apache.lucene.util.BitVector.write(BitVector.java:122)\n        at org.apache.lucene.index.SegmentReader.doCommit(SegmentReader.java:236)\n        at org.apache.lucene.index.IndexReader.commit(IndexReader.java:794)\n        at org.apache.lucene.index.FilterIndexReader.doCommit(FilterIndexReader.java:190)\n        at org.apache.lucene.index.IndexReader.commit(IndexReader.java:825)\n        at org.apache.lucene.index.IndexReader.close(IndexReader.java:841)\n        at org.apache.jackrabbit.core.query.lucene.AbstractIndex.close(AbstractIndex.java:327)\n        at org.apache.jackrabbit.core.query.lucene.MultiIndex$DeleteIndex.execute(MultiIndex.java:1715)\n        at org.apache.jackrabbit.core.query.lucene.MultiIndex.executeAndLog(MultiIndex.java:936)\n        at org.apache.jackrabbit.core.query.lucene.MultiIndex.flush(MultiIndex.java:880)\n        at org.apache.jackrabbit.core.query.lucene.MultiIndex.checkFlush(MultiIndex.java:1110)\n        at org.apache.jackrabbit.core.query.lucene.MultiIndex.access$100(MultiIndex.java:75)\n        at org.apache.jackrabbit.core.query.lucene.MultiIndex$1.run(MultiIndex.java:324)\n        at java.util.TimerThread.mainLoop(Timer.java:512)\n        at java.util.TimerThread.run(Timer.java:462)\n21.11.2007 10:34:37 *ERROR* [main] DatabasePersistenceManager: failed to write node state: cfbffd6d-114d-4738-9383-48da2b5dbc1d (DatabasePersistenceManager.java, line 441)\njava.lang.OutOfMemoryError: Java heap space\n        at java.util.Properties$LineReader.<init>(Properties.java:346)\n        at java.util.Properties.load(Properties.java:284)\n",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "JCR-1224",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Minor",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "Release references to JCR items in tearDown",
+    "systemSpecification": true,
+    "version": "1.4"
+}

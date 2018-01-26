@@ -1,0 +1,125 @@
+{
+    "comments": [
+        {
+            "author": "felix.meschberger@day.com",
+            "body": "cc-ing igor.",
+            "date": "20021125T10:21:25",
+            "id": 0
+        },
+        {
+            "author": "user@apochta.com",
+            "body": "A possible fix can be rather nontrivial as it has to address the issue of\nfunctions defined by eval and new Function.\n\nFor example, int the above example should not give different results if \nfunction inner would be replaced by\n\ninner = new Function(\"level\", \"outer_d++; ...\");\n\nso setting itsUseDynamicScope should depend on if the scope during compilation\ntime is suitable for dynamic behaviour... ",
+            "date": "20021125T11:54:58",
+            "id": 1
+        },
+        {
+            "author": "pschwartau@meer.net",
+            "body": "I have a couple questions about the example:\n\n1. The parameter |arg| to the outer function plays no role\n   and can be omitted, right?\n\n2. Shouldn't there be a |return| statement here?\n\n         if (level > 0) {\n            inner( level - 1 );   <<<---- should be |return inner(level -1);|  (?)",
+            "date": "20021125T17:12:09",
+            "id": 2
+        },
+        {
+            "author": "felix.meschberger@day.com",
+            "body": "(1) yes, the argument arg to the outer function plays no role and the argument\nlevel to the inner function is only used to limit recursion depth.\n\n(2) hmpf, yes, of course the line should read\n        return inner(level-1);",
+            "date": "20021126T07:04:59",
+            "id": 3
+        },
+        {
+            "author": "pschwartau@meer.net",
+            "body": "Felix: thanks. I've added your test to the JS testsuite:\n\n      mozilla/js/tests/js1_5/Scope/regress-181834.js",
+            "date": "20021126T19:49:26",
+            "id": 4
+        },
+        {
+            "author": "user@apochta.com",
+            "body": "This is related to bug 154693 where the problem is exposed without activation of\ndynamic scope. ",
+            "date": "20021126T20:18:57",
+            "id": 5
+        },
+        {
+            "author": "user@apochta.com",
+            "body": "Created attachment 108605\nDo not use dynamic scope for nested functions and functions defined under with\n\nThe patch changes Interpreter to ignore dynamic scope flag for nested functions\nand functions defined inside with statements as in the first case a dynamic\nscope object should already present on the scope chain of a nested function and\nin the second case there is no good way to use a dynamic scope. For example,\nconsider a script compiled with dynamic scope on:\n\nvar f;\n\nwith (some_object) {\n  f = function() { ... }\n}\n\nhere f contains a function with some_object as its scope object. But if a\ndynamic scope object should be taken into account when resolving a particular\nreference during execution of the function, how should it interfere with\nsome_object? The patch takes a simple approach of ignoring dynamic scope in\nthis case as anything else would add a lot of code which nobody may use...",
+            "date": "20021207T20:13:34",
+            "id": 6
+        },
+        {
+            "author": "user@apochta.com",
+            "body": "Created attachment 108765\nPrev patch update due to unrelated changes in the Interpreter",
+            "date": "20021209T19:57:49",
+            "id": 7
+        },
+        {
+            "author": "pschwartau@meer.net",
+            "body": "Question: is there any way for me to test this in the Rhino shell?\n\nWould the testcase above, mozilla/js/tests/js1_5/Scope/regress-181834.js,\nhave to include code to turn on the 'compile functions with dynamic scope'\nfeature? Is that possible?",
+            "date": "20021209T23:19:36",
+            "id": 8
+        },
+        {
+            "author": "user@apochta.com",
+            "body": "Created attachment 109102\nPatch update due to partial commit\n\nI committed the patch part that check for dynamic scope flag at function\ninitialization, not during compilation phase. It removes difference between\nordinary functions and functions defined via Function constructor.",
+            "date": "20021212T09:10:44",
+            "id": 9
+        },
+        {
+            "author": "user@apochta.com",
+            "body": "In Rhino it is possible to check/switch to dynamic scope mode from JavaScript via:\n\nfunction setDynamicScope(flag) {\n\tif (this.Packages) {\n\t\tvar cx = this.Packages.org.mozilla.javascript.Context.getCurrentContext();\n\t\tcx.setCompileFunctionsWithDynamicScope(flag); \n\t}\n}\n\n\nfunction getDynamicScope() {\n\tif (this.Packages) {\n\t\tvar cx = this.Packages.org.mozilla.javascript.Context.getCurrentContext();\n\t\treturn cx.hasCompileFunctionsWithDynamicScope(); \n\t}\n}\n\nbut it would not affect function statements in the current script and prior that\npartial commit of the patch function expressions after switch to the dynamic\nscope mode are not affected either. Thus one has to either use Function, eval or\ncall load on another script to see the difference.",
+            "date": "20021212T09:28:24",
+            "id": 10
+        },
+        {
+            "author": "user@apochta.com",
+            "body": "Created attachment 109113\nYet another patch update\n\nWith more commits patch became ratjer small and readable but still it does not\nreduce its consiquences.",
+            "date": "20021212T12:08:17",
+            "id": 11
+        },
+        {
+            "author": "pschwartau@meer.net",
+            "body": "Igor: thanks. I have added functionality from your Comment #11 \nto the testcase above, to set and unset the 'compile functions\nwith dynamic scope' feature of Rhino. \n\nI use eval() to recompile the |outer| function each time\nI set or unset this feature.\n\nWith the latest build of Rhino, the testcase fails in both interpreted\nand compiled modes with the error that Felix reported above:\n\n         ReferenceError: \"outer_d\" is not defined",
+            "date": "20021212T23:39:20",
+            "id": 12
+        },
+        {
+            "author": "user@apochta.com",
+            "body": "Note for the test cases: in Rhino eval and new Function always use the\ninterpreted mode, so the compilation mode under dynamic scope setup can not be\ntested that way.\n\nI commited the fix so the bug can be marked as fixed.",
+            "date": "20021214T19:01:38",
+            "id": 13
+        },
+        {
+            "author": "pschwartau@meer.net",
+            "body": "Marking FIXED -",
+            "date": "20021215T01:07:11",
+            "id": 14
+        },
+        {
+            "author": "pschwartau@meer.net",
+            "body": "Marking Verified Fixed.\n\nThe above testcase now passes in Rhino. As Igor indicated in Comment #14, \nhowever, this only exercises Rhino interpreted mode. To check Rhino\ncompiled mode, I tested interactively as follows:\n\n java org.mozilla.javascript.tools.shell.Main  -f file1.js -f file2.js\n\nwhere \"file1.js\" sets the dynamic mode and \"file2.js\" contains the test.\n\n\nWe found that Rhino compiled mode passed this test both before and after\nthe patch was committed. As reported above, it was only interpreted mode\nthat was having a problem on this.\n\nBut that's fixed now -",
+            "date": "20021215T01:15:58",
+            "id": 15
+        },
+        {
+            "author": "felix.meschberger@day.com",
+            "body": "thanks very much too all.",
+            "date": "20021220T12:51:28",
+            "id": 16
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Targeting as resolved against 1.5R4",
+            "date": "20040213T12:17:27",
+            "id": 17
+        }
+    ],
+    "component": "Core",
+    "description": "User-Agent:       Mozilla/5.0 (Windows; U; Windows NT 5.0; en-US; rv:1.2b) Gecko/20021016\nBuild Identifier: Mozilla/5.0 (Windows; U; Windows NT 5.0; en-US; rv:1.2b) Gecko/20021016\n\ni fear, i found a scoping problem with rhino related to the 'compile functions\nwith dynamic scope' feature. given the code :\n\n\tfunction outer( /* String */ arg ) {\n        var outer_d = 0;\n\t  function inner( /* int */ level ) {\n          outer_d++;\n          if (level > 0) {\n            inner( level - 1 );\n          } else {\n            return outer_d;\n          }\n        }\n        return inner(5);\n      }\n      var result = outer(\"arg\");\n\nshould set the result variable to 6, but this is what happens (where o is the\noptimization level and d is the dynamic function scope flag) :\n\n\to >= 0 && d     : result == 6\n\to >= 0 && !d    : result == 6\n\to == -1 && d    : ReferenceError: \"outer_d\" is not defined.\n\to == -1 && !d   : result == 6\n\nso it seems, as long as the code is compiled to a class file, execution works\nall right. but if the code is interpreted, something goes wrong with the scopes.\n\nby inspecting the code (Interpreter.java), i found out, that inner functions are\ncompiled with the context's compileFunctionsWithDynamicScope flag. in the\ndynamic case, this of course is the scope within which the outer function is\nrunning instead of the variable object of the outer function, in which the inner\nfunction is defined and obviously should be running.\n\ni assume, inner functions should always be compiled with static scope regardless\nof whether the context is set for dynamic scope compilations of functions or not.\n\nif i am correct, then the Interpreter.generateNestedFunctions method should\nprobably be added the line\n\n\t            jsi.itsData.itsUseDynamicScope = false;\n\nafter creating the InterpreterData instance.\n\ni tried it with the above sample code and it seems to fix the problem. though i\nam not sure, whether it runs fine with more thorough regression tests.\n\nwhat do you think of it ?\n\nregards, felix\n\nReproducible: Always\n\nSteps to Reproduce:\n1. make Context interpreting (optimizationLevel = -1)\n2. make Context \"compile\" functions with dynamic scope\n3. run the above script and see the error noted using the shell tool.\n\nActual Results:  \nerror message : ReferenceError: \"outer_d\" is not defined.\n\nExpected Results:  \nthe variable should be set to 6.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "181834",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "-- normal",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "wrong scope used for inner functions when compiling functions with dynamic scopes (interpreted only)",
+    "systemSpecification": false,
+    "version": "other"
+}

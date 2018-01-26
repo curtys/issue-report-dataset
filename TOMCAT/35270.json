@@ -1,0 +1,53 @@
+{
+    "comments": [
+        {
+            "author": null,
+            "body": "I was able to reproduce this same bug on Tomcat 5.5.9 as well.  The \njavax.servlet.forward.request_uri attribute is definitely NOT being \nset correctly when forwarding with a wrapped request",
+            "date": "20050608T17:44:07",
+            "id": 0
+        },
+        {
+            "author": null,
+            "body": "I'm guessing that the root cause is the same, but it should also be noted that \nthe javax.servlet.forward.servlet_path attribute is not being set correctly \nunder these conditions either.",
+            "date": "20050608T17:54:42",
+            "id": 1
+        },
+        {
+            "author": null,
+            "body": "This is now fixed in the CVS head, and will appear in 5.5.10.\n\nIt currently seems unlikely that there will be another release on the 5.0.x \nline, so the 5.5.x line is all that there is.",
+            "date": "20050609T07:54:23",
+            "id": 2
+        },
+        {
+            "author": null,
+            "body": "It looks like there is a 5.0.30 Tomcat version in the works, will this fix be \nincluded in that version as well?",
+            "date": "20050706T00:36:01",
+            "id": 3
+        },
+        {
+            "author": null,
+            "body": "Forgive my poor English, it is not my native language.\nI found following bugs since 5.5.x, may be early.\n5.5.9, 5.5.10 have same bugs, too.\n\norg.apache.catalina.core.ApplicationDispatcher.doInclude\n  //HTTP named dispatcher include\n  //HTTP path based include\n  invoke(outerRequest, outerResponse); // bug here\n  --> invoke(wrequest, wresponse); // crect one\n\norg.apache.catalina.core.ApplicationDispatcher.processRequest\n  //HTTP named dispatcher forward\n  //HTTP path based forward\n  invoke(outerRequest, response); // bug here\n  --> invoke(wrequest, response); // crect\n\n\n1) If you have n HttpServletRequestWrapper, then\nOriginal HttpServletRequest\nDispatcher's HttpServletRequestWrapper <-- wrequest <-- suppose to invoke this one\nYour HttpServletRequestWrapper #1\nYour HttpServletRequestWrapper #2\n...\nYour HttpServletRequestWrapper #n <-- outerRequest\n\n2) If no HttpServletRequestWrapper, then\nOriginal HttpServletRequest\nDispatcher's HttpServletRequestWrapper <-- wrequest==outerRequest <-- it works\n\n\n\nTopper Lu\nemail: topper@tlk.com.tw\n",
+            "date": "20050731T20:22:40",
+            "id": 4
+        },
+        {
+            "author": null,
+            "body": "Ehhh, ok, I see the light now ;)\n\nForgive me for not being friendly, it is not my native behavior.\nPlease do not reopen the report.",
+            "date": "20050731T22:40:24",
+            "id": 5
+        }
+    ],
+    "component": "Servlet & JSP API",
+    "description": "Tomcats implementation of RequestDispatcher forward not handling a \nServletRequestWrapper correctly when updating forward request params.\nSeems to modify the value of the javax.servlet.forward.request_uri\nrequest attribute incorrectly, according to servlet spec SRV.8.4.2.\n\nHere are some specifics, at least with version 5.0.28.\n\nStepping through the Tomcat source in the debugger, it\nappears that the request's requestURI field gets stomped\non in the forward method of the RequestDispatcher\n(ApplicationDispatcher.doForward()). I'm not sure Tomcat \nis handling a ServletRequestWrapper correctly.\n\nI gather the servlet spec says that users may wrap the\nrequest/response objects with their own implementation.\n\nTomcat's ApplicationDispatcher gets the request from\nthe outer request (the ServletRequestWrapper), trying to\nkeep track of the previous wrapper and current wrapper\n(or request) as it loops through to get the real request.\nWith a single wrapper, the value of \"previous\" is the\nsame as the original outer request. Then Tomcat calls...\n\n((ServletRequestWrapper) previous).setRequest(wrapper);\n\nwhich is the same as calling setRequest(wrapper) on the\nincoming request. Tomcat does not get and save the value\nof the original request URI. It calls setRequestURI(path)\non the wrapper, effectively changing the request URI of the\noriginal incoming request to the path of the forward.\n\nThen Tomcat sets the javax.servlet.forward.request_uri\nattribute by calling getRequestURI() from the original\nrequest... but that just got modified. Implying the\njavax.servlet.forward.request_uri attribute is going to\nget the value of the path for the forward.\n\nYou can test this on Tomcat by using a couple JSP to. Use\na HttpServletRequestWrapper in one JSP for the forward.\n\nFirst create \"result.jsp\" to display the desired request attribute...\n\n<%@ page language=\"java\" contentType=\"text/html;charset=UTF-8\"%>\n<html>\n    <head>\n        <title>RequestDispatcher Test</title>\n    </head>\n    <body>\n        <h1>Forward Request URI</h1>\n        javax.servlet.forward.request_uri =\n        <%= request.getAttribute(\"javax.servlet.forward.request_uri\") %>\n    </body>\n</html>\n\nCreate a JSP to forward without using a wrapper, \"forward.jsp\"...\n\n<%\n    javax.servlet.RequestDispatcher rd =\n        request.getRequestDispatcher(\"result.jsp\");\n    rd.forward(request, response);\n%>\n\nand a second forward using HttpServletRequestWrapper, \"wrapperforward.jsp\"...\n\n<%\n    HttpServletRequestWrapper wrapper = new HttpServletRequestWrapper(request);\n    javax.servlet.RequestDispatcher rd =\n        wrapper.getRequestDispatcher(\"result.jsp\");\n    rd.forward(wrapper, response);\n%>\n\nWhen you hit forward.jsp, the result page displays \"/some-context/forward.jsp\"\nfor the javax.servlet.forward.request_uri request attribute.\nHowever, hit wrapperforward.jsp and the result page displays\n\"/some-context/result.jsp\". From looking at the spec, I'd expect this \nshould be \"/some-context/wrapperforward.jsp\".",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "35270",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "P2 normal",
+    "product": "Tomcat 5",
+    "project": "TOMCAT",
+    "summary": "RequestDispatcher forward not handling a ServletRequestWrapper correctly when updating forward request params",
+    "systemSpecification": true,
+    "version": "5.0.28"
+}

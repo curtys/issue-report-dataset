@@ -1,0 +1,119 @@
+{
+    "comments": [
+        {
+            "author": "Paul Elschot",
+            "body": "Created an attachment (id=14570)\nA priority queue specialised for use in DisjunctionSumScorer\n\nThis is in the org.apache.lucene.util package. It might\nbe better in the search package, but that is a matter of taste.\n",
+            "date": "2005-03-27T07:26:53.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Paul Elschot",
+            "body": "Created an attachment (id=14571)\nDisjunctionSumScorer.java adapted to use a new queue of scorers\n",
+            "date": "2005-03-27T07:28:50.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Paul Elschot",
+            "body": "Created an attachment (id=14572)\nTestDisjunctionPerf1.java, some measurements on disjunctions of scorers\n\nThis is probably not needed in the trunk. It was used to measure\nthe differences in CPU time spent in BooleanScorer with and without\nskipTo and in DisjunctionScorer.\nIt also contains the results of some of the measurements done, and\nsome conclusions, all as comments.",
+            "date": "2005-03-27T07:33:16.000+0000",
+            "id": 2
+        },
+        {
+            "author": "Paul Elschot",
+            "body": "The priority queue is named ScorerDocQueue.java \n \nTestDisjunctionPerf1.java depends on the BooleanScorer.java posted \nin bug 33019 for correctly (hopefully) sorting the documents \nto allow skipTo(). \n \n ",
+            "date": "2005-03-27T07:36:23.000+0000",
+            "id": 3
+        },
+        {
+            "author": "Paul Elschot",
+            "body": "The profile that started this was generously provided by http://www.it.com . \n \nRegards, \nPaul Elschot (not otherwise related to www.it.com) \n \n ",
+            "date": "2005-03-30T07:37:11.000+0000",
+            "id": 4
+        },
+        {
+            "author": "Paul Elschot",
+            "body": "Created an attachment (id=15117)\nAnother alternative to BooleanScorer using a Btree\n\nAs posted today on java-dev by Karl Wright.\n\nThe performance of the unbalanced btree could be compared\nto the specialised priority queue.\n\nThe code can also be simplified to the disjunction case,\nwhich boils down to adapting from 1.4.3 to the trunk.\n\nRegards,\nPaul Elschot\n",
+            "date": "2005-05-22T20:20:50.000+0000",
+            "id": 5
+        },
+        {
+            "author": "Yonik Seeley",
+            "body": "Nice Paul!\n\nI was just doing some performance work in the last week and noticed that DisjunctionSumScorer was taking up a fair amount of time (the queries consisted of a very large number of disjunctions).  I had planned on making a specialized heap for Scorers once I reviewed the code (until I ran across this bug).\n\nI'm personally only committing bug fixes for Lucene 2.0, but after that, I'll commit this.",
+            "date": "2006-04-06T10:26:09.000+0000",
+            "id": 6
+        },
+        {
+            "author": "Paul Elschot",
+            "body": "For the normal case with only one required subscorer this patch is ok., but for the case with\nmore required subscorers, a better implementation is possible.\n\nThis would use an array for the required number of subscorers just like ConjunctionScorer,\nand a scorer queue for the remaining ones.\nThis has the additional advantage that calling score() on the subscorers can be delayed until there\nare enough matching subscorers.\n\nAs LUCENE-413 seems to be fixed, and BooleanScorer2 can easily distinguish the cases of one or\nmore required subscorers,  (there are quite a few cases already there...) I think ScorerDocQueue\ncan go ahead whenever practical.\n",
+            "date": "2006-04-06T15:01:23.000+0000",
+            "id": 7
+        },
+        {
+            "author": "Paul Elschot",
+            "body": "For top level disjunctions, the original BooleanScorer could well be the best performing one.\nTo have this it would be necessary to implement score(HitCollector, maxDocNr) in\nDisjunctionSumScorer.\n(Yet another case for BooleanScorer2 ...)\n\n\n\n\n\n",
+            "date": "2006-04-06T15:28:48.000+0000",
+            "id": 8
+        },
+        {
+            "author": "Paul Elschot",
+            "body": "See LUCENE-333 for other available implementations of disjunction.",
+            "date": "2006-05-16T03:12:40.000+0000",
+            "id": 9
+        },
+        {
+            "author": "Yonik Seeley",
+            "body": "Paul, would it be possible to get a version with a license granted to the ASF?\nAlso, a single patch file would be preferred (I believe there have been changes, such as LUCENE-413)",
+            "date": "2006-10-17T20:25:46.000+0000",
+            "id": 10
+        },
+        {
+            "author": "Paul Elschot",
+            "body": "The ASF licence is in the sources, this is from before jira.\nI'll add a patch with the ASF licence soon.\n\n",
+            "date": "2006-10-17T20:48:54.000+0000",
+            "id": 11
+        },
+        {
+            "author": "Yonik Seeley",
+            "body": "> The ASF licence is in the sources\n\nYeah, I was just trying to be safe.\nIt seems like there might be a small distinction between granting a license to the ASF, and including an ASF license in the header.  Does anyone know if it matters?",
+            "date": "2006-10-17T21:23:28.000+0000",
+            "id": 12
+        },
+        {
+            "author": "Paul Elschot",
+            "body": "This patch obsoletes DisjunctionSumScorer and ScorerDocQueue as attached earlier.\nAll tests pass here.\n\nTestDisjunctionPerf1 and BooleanScorerBtree are for performance testing only.\nBooleanScorerBtree could be faster then this version of DisjunctionSumScorer\nfor a relatively small number of subscorers.\nI did not include these in the patch because TestDisjunctionPerf1 depends on\nolder versions of BooleanScorer with local names.\n\nRegards,\nPaul Elschot",
+            "date": "2006-10-17T22:23:05.000+0000",
+            "id": 13
+        },
+        {
+            "author": "Yonik Seeley",
+            "body": "Thanks Paul,\nThis patch seemed to revert the following:\nhttp://issues.apache.org/jira/secure/attachment/12324730/DisjunctionSumScorerPatch5.txt\n\nI assume it's unintentional so I've added back that part and committed.",
+            "date": "2006-10-18T00:56:14.000+0000",
+            "id": 14
+        },
+        {
+            "author": "Paul Elschot",
+            "body": "That was indeed not intentional, thanks for adding it back.\n\nTo my surprise the svn update applied cleanly on\nDisjunctionSumScorer.java here, and these tests still pass here:\n\nant -Dtestcase=\"TestBool*\" test\nant -Dtestcase=\"TestDis*\" test\n",
+            "date": "2006-10-18T07:30:49.000+0000",
+            "id": 15
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Closing all issues that were resolved for 2.1.",
+            "date": "2007-02-27T18:10:32.592+0000",
+            "id": 16
+        }
+    ],
+    "component": "core/search",
+    "description": "A recent profile of the new BooleanScorer2 showed that \nquite a bit of CPU time is spent in the advanceAfterCurrent method \nof DisjunctionScorer, and in the PriorityQueue of scorers that \nis used there. \n \nThis patch reduces the internal overhead of DisjunctionScorer \nto about 70% of the current one (ie. 30% saving in cpu time). \nIt also reduces the number of calls to the subscorers, but \nthat was not measured. \n \nTo get this, it was necessary to specialize the PriorityQueue \nfor a Scorer and to add move some code fragments from DisjunctionScorer \nto this specialized queue.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-365",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "[PATCH] Performance improvement to DisjunctionSumScorer",
+    "systemSpecification": true,
+    "version": ""
+}

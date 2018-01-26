@@ -1,0 +1,47 @@
+{
+    "comments": [
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 158037\nCatch refactoring that fixes the bug among other things\r\n\r\n\n\n\n\n\nThe idea behind the patch is to to keep the original exception in a temporary\nand and special RETHROW to the parsed tree of catch (e if ..) to rethrow it.\nBut that allowed to move generation of script object representing generic\nexception to the catch itself and avoid issues with exception during catch\ngeneration: now they would bypass finally block if present.\n\nAll that adds up to hefty patch but anything that simplifies exception handling\ncode in interpreter and optimizer should be welcomed I guess.",
+            "date": "20040906T19:16:27",
+            "id": 0
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 158043\nStress case for execption handling to verify the patch",
+            "date": "20040906T19:39:02",
+            "id": 1
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "With the patch I have for the initial problem:\n\njs> try {  eval('Bad JS Syntax') }\n    catch (e if false) { }\njs: \"<stdin>#1(eval)\", line 1: uncaught JavaScript runtime exception:\nSyntaxError: missing ; before statement\njs: Bad JS Syntax\njs: ......^\n\nwhich execatly what is necessary.\n\n\n",
+            "date": "20040906T19:40:49",
+            "id": 2
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "With the patch I have for the initial problem:\n\njs> try {  eval('Bad JS Syntax') }\n    catch (e if false) { }\njs: \"<stdin>#1(eval)\", line 1: uncaught JavaScript runtime exception:\nSyntaxError: missing ; before statement\njs: Bad JS Syntax\njs: ......^\n\nwhich exactly what is necessary.",
+            "date": "20040906T19:41:23",
+            "id": 3
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "I committed the patch ",
+            "date": "20040906T20:06:54",
+            "id": 4
+        }
+    ],
+    "component": "Core",
+    "description": "Currently in Rhino when the conditional catch does not accept exception it is\nrethrown as JavaScriptException, not as the original exception. For example, while \n\neval('Bad JS Syntax')\n\nwhen executed in the shell prints expected:\n\njs: \"<stdin>#1(eval)\", line 1: uncaught JavaScript runtime exception:\nSyntaxError: missing ; before statement\njs: Bad JS Syntax\njs: ......^\n\nthe following modification that is supposed to be semantically equivalent\nproduces different result:\n\njs> try {  eval('Bad JS Syntax') }\n    catch (e if false) { }\njs: \"<stdin>\", line 3: exception from uncaught JavaScript throw: [object Error]\n\nIt  indicates that the exception is first wrapped into an script exception\nobject which is then rethrown as JavaScriptException.\n\nThe bug does not allow to classify exception properly in Java application in\ncase of catch (e if condition) blocks.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "258183",
+    "issuetypeClassified": "OTHER",
+    "issuetypeTracker": "BUG",
+    "priority": "-- minor",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "catch (e if condition) does not rethrow of original exception",
+    "systemSpecification": true,
+    "version": "head"
+}

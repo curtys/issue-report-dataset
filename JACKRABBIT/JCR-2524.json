@@ -1,0 +1,65 @@
+{
+    "comments": [
+        {
+            "author": "Marcel Reutegger",
+            "body": "Some memory stats from a real life system: a fully populated DocId cache for 300'000 nodes consumes about 6MB of heap.",
+            "date": "2010-03-01T15:39:47.052+0000",
+            "id": 0
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "Proposed patch.",
+            "date": "2010-03-01T20:59:44.835+0000",
+            "id": 1
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "Forgot to mention that the proposed patch reduces the memory usage to about a third.",
+            "date": "2010-03-01T21:02:18.705+0000",
+            "id": 2
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "> Caching the most recently used DocIds and reuse them might help to reduce the memory usage\n\n+1\n\n> DocIds that could be represented with a short instead of an int\n\nAccording to my test, this will not reduce memory usage: http://h2database.com/p.html#da4c6a321d0dc84a2b7b96cdbf468a47\n\nFor the Sun JVM (JDK 1.5, 32 bit), objects with one field of type boolean, byte, short, character, integer, and long all need 16 bytes. A small BigInteger uses 56 bytes, a small  BigDecimal uses 32 bytes (probably re-uses the same BigInteger internally), and a String uses 24 bytes. Object uses 8 bytes.\n\nFor JDK 1.6, 32 bit and 64 bit, it's a bit different: 20 bytes for an object, 24 bytes for boolean - long.\n\nFor JDK 1.5, 64 bit, it's again different: 16 bytes for an object, 24 bytes for boolean - long.\n",
+            "date": "2010-03-02T09:17:54.242+0000",
+            "id": 3
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "hmm, you are right. should have looked more closely what the memory analyzer reported.\n\nhere's another idea:\n\n- use int arrays and create PlainDocIds on the fly (possibly using cached instances)\n- a special value in the int array marks the existence of a UUIDDocId, which are held in a separate map\n",
+            "date": "2010-03-05T07:39:19.400+0000",
+            "id": 4
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "Updated patch with described changes.",
+            "date": "2010-03-08T22:12:48.169+0000",
+            "id": 5
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "Committed new patch and added a test case to improve test coverage of CachingIndexReader.\n\nsvn revision: 924677",
+            "date": "2010-03-18T09:48:55.052+0000",
+            "id": 6
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "Removed System.out debug calls in test class.\n\nsvn revision: 925141",
+            "date": "2010-03-19T08:56:20.679+0000",
+            "id": 7
+        }
+    ],
+    "component": "jackrabbit-core",
+    "description": "Implementations of DocIds are used to cache parent child relations of nodes in the index. Usually there are a lot of duplicate objects because a DocId instance is used to identify the parent of a node in the index. That is, sibling nodes will all have DocIds with the same value. Currently a new DocId instance is created for each node. Caching the most recently used DocIds and reuse them might help to reduce the memory usage. Furthermore there are DocIds that could be represented with a short instead of an int when possible.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "JCR-2524",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Minor",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "Reduce memory usage of DocIds",
+    "systemSpecification": true,
+    "version": ""
+}

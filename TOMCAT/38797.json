@@ -1,0 +1,107 @@
+{
+    "comments": [
+        {
+            "author": null,
+            "body": "\n\n*** This bug has been marked as a duplicate of 37933 ***",
+            "date": "20060227T20:39:26",
+            "id": 0
+        },
+        {
+            "author": null,
+            "body": "I noticed too the change. The behaviour is in Tomcat 5.5.20, here is the\nfollowing exception :\norg.apache.jasper.JasperException: Tentative d''op\u00e9ration bean sur un objet nul.\norg.apache.jasper.runtime.JspRuntimeLibrary.handleGetProperty(JspRuntimeLibrary.java:601)\n\torg.apache.jsp.test3_005f2_jsp._jspService(test3_005f2_jsp.java:77)\n\nThis not the same bug as 37933. It is an error that is due to the bug correction\n:(. (well but the correction of the bug 37933 is not easy)\nI explain.\n\nI have a custom tag that defines a scripting variable. This variable is in a\nrequest attribute. The custom tag library defines a scripting variable with a\nTag Extra Info class. The TLD declares a tag with the tag class implementation\nand the Tag Extra Info class implementation.\nThe tag is named \"variable\".\nThe tag has 3 attributes \"id\", \"className\", \"scopeIn\".\n\nThe object \"Song\" has a property \"title\".\n\nHere is where it fails : \n<%@ taglib uri=\"http://www.scort.com/test\" prefix=\"test\" %> \n...\n<!-- The variable is set in the scope request -->\n<test:variable id=\"mysong\" className=\"tomcat.test.Song\" scopeIn=\"request\" />\n...\nTitle : <jsp:getProperty name=\"mysong\" property=\"title\" />\n\n=> mysong is said to be null\n\nBut here is a page where it works : \n<%@ taglib uri=\"http://www.scort.com/test\" prefix=\"test\" %> \n...\n<!-- The variable is set in the scope page -->\n<test:variable id=\"mysong\" className=\"tomcat.test.Song\" scopeIn=\"page\" />\n...\nTitle : <jsp:getProperty name=\"mysong\" property=\"title\" />\n\nFinally it always works with jsp:useBean :\n\n<jsp:useBean id=\"mysong\" class=\"tomcat.test.Song\" scope=\"request\" />\n...\nTitle : <jsp:getProperty name=\"mysong\" property=\"title\" />\n\n\nThe custom library i wrote defined a VariableInfo that expose a scripting\nvariable into the page. So i thought (think) it was the key to allow it into the\n jspGetProperty.\n\n--------------------------------------\n\nReference in the specification JSP 2.0 JSP5.3 :\n\n\"The value of the name attribute in jsp:setProperty andjsp:getProperty will\nrefer to an object that is obtained from the pageContext object through its\nfindAttribute method.\"\n\nHope it helps.",
+            "date": "20070309T08:52:28",
+            "id": 1
+        },
+        {
+            "author": null,
+            "body": "Created attachment 19695\nHere is a test case with differents entries.\n\nHere is a test case with differents entries.\nTest 1 and 2 are with useBean.\nTest 3 and 4 are with a custom tag library. \nAnd the Test 3 fails while the test 2 pass and the test 4 too.\nTest 1 : test1.jsp\nTest 2 : test2_1.jsp\nTest 3 : test3_1.jsp\nTest 4 : test4_1.jsp",
+            "date": "20070312T03:07:42",
+            "id": 2
+        },
+        {
+            "author": null,
+            "body": "Could you please correct this bug in Tomcat 6 ?\n\nThanks\nThomas",
+            "date": "20070920T08:53:41",
+            "id": 3
+        },
+        {
+            "author": null,
+            "body": "Thanks for the test case.\n\nI reverted the fix for 37933 and implemented an alternative that doesn't have the issue described here. It also throws an error at translation time rather than runtime.\n\nThe fix has been made in trunk and proposed for 6.0.x and 5.5.x",
+            "date": "20090705T04:38:22",
+            "id": 4
+        },
+        {
+            "author": null,
+            "body": "This has been fixed in 5.5.x and will be in 5.5.28 onwards",
+            "date": "20090709T02:13:41",
+            "id": 5
+        },
+        {
+            "author": null,
+            "body": "(In reply to comment #6)\n> This has been fixed in 5.5.x and will be in 5.5.28 onwards\n\nI believe the code introduced org.apache.jasper.compiler.Generator has missed a point and introduced another issue. If you look at the changes made to GeneratorVisitor.visit(Node.GetProperty n), code was added to check if the varInfoNames Set contains the variable name used in the getProperty. If this variable name is not found, a JasperException is thrown. However, what I believe is missing is a check of the parent hierarchy to see if it was declared at a higher level. In the case I have an issue with, the jsp:getProperty does not have any varInfoNames declarations, but the parent (which is a customTag) does contain the proper declarations. The proper declaration would have been found if the check had traversed to the parent.",
+            "date": "20090819T08:55:38",
+            "id": 6
+        },
+        {
+            "author": null,
+            "body": "Can you provide the source for a simple test case that demonstrates the issue you are seeing?",
+            "date": "20090819T09:07:24",
+            "id": 7
+        },
+        {
+            "author": null,
+            "body": "Created attachment 24155\nExample of jsp:getProperty not working correctly",
+            "date": "20090820T12:26:14",
+            "id": 8
+        },
+        {
+            "author": null,
+            "body": "Thanks for the test case.\n\nA number of the files include headers that indicate that the source files are not to be distributed without \"express written consent\". Please confirm you have the necessary rights to distribute these files asap else the test case will have to be removed from bugzilla.\n\n The test case includes a TLD file in the META-INF directory. This is not the correct location for TLDs in a WAR file and will be ignored - see JSP.7.3.1\n \n The analysis as to the cause of the regression is not quite right. It is not necessary to scan the node hierarchy. The problem is that the list of introduced variables was updates after, rather than before, the tag body was processed. This has been fixed in trunk and proposed for 5.5.x and 6.0.x",
+            "date": "20090829T06:38:46",
+            "id": 9
+        },
+        {
+            "author": null,
+            "body": "(In reply to comment #10)\n> Thanks for the test case.\n> \n> A number of the files include headers that indicate that the source files are\n> not to be distributed without \"express written consent\". Please confirm you\n> have the necessary rights to distribute these files asap else the test case\n> will have to be removed from bugzilla.\n> \n>  The test case includes a TLD file in the META-INF directory. This is not the\n> correct location for TLDs in a WAR file and will be ignored - see JSP.7.3.1\n> \n>  The analysis as to the cause of the regression is not quite right. It is not\n> necessary to scan the node hierarchy. The problem is that the list of\n> introduced variables was updates after, rather than before, the tag body was\n> processed. This has been fixed in trunk and proposed for 5.5.x and 6.0.x\n\nSorry about the header issue, I should have stripped those notices out. I do have the necessary rights to distribute these files. \n\nSo it it sounds like you already have a fix in progress for the case I am referencing. Is there some other bug id this is associated with, or is it part of 38797 ? \n\nThe TLD location is an oversight, but apparently the tags are still being found.",
+            "date": "20090909T08:22:25",
+            "id": 10
+        },
+        {
+            "author": null,
+            "body": "Thanks for confirming the test case is OK.\n\nThe fix will be tracked using this bugzilla issue.",
+            "date": "20090910T04:59:24",
+            "id": 11
+        },
+        {
+            "author": null,
+            "body": "*** Bug 47822 has been marked as a duplicate of this bug. ***",
+            "date": "20090911T05:22:34",
+            "id": 12
+        },
+        {
+            "author": null,
+            "body": "This has been fixed in 6.0.x and will be included in 6.0.21 onwards.",
+            "date": "20091102T13:30:18",
+            "id": 13
+        },
+        {
+            "author": null,
+            "body": "Fixed in trunk. Many thanks.",
+            "date": "20091130T16:32:44",
+            "id": 14
+        }
+    ],
+    "component": "Jasper",
+    "description": "Compiling this code:\n\n<jsp:getProperty name=\"person\" property=\"name\"/>\n\nresults in this with the Jasper of Tomcat 5.5.15:\n\nout.write(org.apache.jasper.runtime.JspRuntimeLibrary.toString(org.apache.jasper.runtime.JspRuntimeLibrary.handleGetProperty(_jspx_page_context.getAttribute(\"person\",\nPageContext.PAGE_SCOPE), \"name\")));\n\nAnd this with the Jasper of Tomcat 5.5.12 and before (checked 5.5.12, 5.0.28 and\nsome versions in between):\n\nout.write(org.apache.jasper.runtime.JspRuntimeLibrary.toString(org.apache.jasper.runtime.JspRuntimeLibrary.handleGetProperty(_jspx_page_context.findAttribute(\"person\"),\n\"name\")));\n\nMy property is in the session's scope, so the property is not found and an\nexception is thrown:\n\nSCHWERWIEGEND: Servlet.service() for servlet jsp threw exception\norg.apache.jasper.JasperException: Attempted a bean operation on a null object.\n\tat\norg.apache.jasper.runtime.JspRuntimeLibrary.handleGetProperty(JspRuntimeLibrary.java:601)\n\tat\norg.apache.jsp.title_jsp._jspx_meth_iku_restricted_0(org.apache.jsp.title_jsp:146)\n\tat org.apache.jsp.title_jsp._jspService(org.apache.jsp.title_jsp:104)\n\tat org.apache.jasper.runtime.HttpJspBase.service(HttpJspBase.java:97)\n\tat javax.servlet.http.HttpServlet.service(HttpServlet.java:802)\n\tat org.apache.jasper.servlet.JspServletWrapper.service(JspServletWrapper.java:332)\n\tat org.apache.jasper.servlet.JspServlet.serviceJspFile(JspServlet.java:314)\n\tat org.apache.jasper.servlet.JspServlet.service(JspServlet.java:264)\n\tat javax.servlet.http.HttpServlet.service(HttpServlet.java:802)\n\tat\norg.apache.catalina.core.ApplicationFilterChain.internalDoFilter(ApplicationFilterChain.java:252)\n\tat\norg.apache.catalina.core.ApplicationFilterChain.doFilter(ApplicationFilterChain.java:173)\n\tat\norg.apache.catalina.core.ApplicationDispatcher.invoke(ApplicationDispatcher.java:672)\n\tat\norg.apache.catalina.core.ApplicationDispatcher.doInclude(ApplicationDispatcher.java:574)\n\tat\norg.apache.catalina.core.ApplicationDispatcher.include(ApplicationDispatcher.java:499)\n\nBTW: version 5.5.15 is missing in the bugzilla, so I selected 5.5.14",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "38797",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "P2 normal",
+    "product": "Tomcat 5",
+    "project": "TOMCAT",
+    "summary": "5.5.12 and 5.5.15 emit different code on <jsp:getProperty>",
+    "systemSpecification": true,
+    "version": "5.5.14"
+}

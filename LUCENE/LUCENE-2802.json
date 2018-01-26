@@ -1,0 +1,89 @@
+{
+    "comments": [
+        {
+            "author": "Simon Willnauer",
+            "body": "here is a patch",
+            "date": "2010-12-06T13:41:18.569+0000",
+            "id": 0
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Nice catch Simon!  This is also a thread safety issue since IR should not touch the writer's segmentInfos outside of sync(IW).",
+            "date": "2010-12-06T15:15:51.245+0000",
+            "id": 1
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "bq. Nice catch Simon! This is also a thread safety issue since IR should not touch the writer's segmentInfos outside of sync(IW).\nit seem like there is more about all that in DR - we should really only use the uncloned SegmentInfos if we are not in NRT mode #getVersion uses it too which is wrong.\nI actually rely on the isOptimized in several tests and run into a NPE due to that though so we should really fix DR to use a private SegmentInfos or restrict the uncloned one for the isCurrent comparison\n\n",
+            "date": "2010-12-06T15:42:58.693+0000",
+            "id": 2
+        },
+        {
+            "author": "Earwin Burrfoot",
+            "body": "Heh, I've [mentioned|https://issues.apache.org/jira/browse/LUCENE-2355?focusedCommentId=12874857&page=com.atlassian.jira.plugin.system.issuetabpanels%3Acomment-tabpanel#action_12874857] this earlier in LUCENE-2355. :)",
+            "date": "2010-12-06T16:07:12.709+0000",
+            "id": 3
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "I changed DirectoryReader to use the cloned version of SegmentInfos instead of two of them inconsistently. The only failure I get is on TestIndexWriterReader line 105 \n{code}\n    r1.close();\n    writer.close();\n    assertTrue(r2.isCurrent());\n{code}\n\nwhere the writer is closed and afterwards it checks if the r2 reader still is the current one which failes since the writer.close() method changes the version of the SegmentInfos. In my opinion this is actually the semantics I would expect from #isCurrent(), the question is if we would want to change the semantics to return false from #isCurrent if the writer we used to obtain the reader from is closed.\n\nI think we should consider it for consistency and simplicity though. ",
+            "date": "2010-12-06T21:26:02.855+0000",
+            "id": 4
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "here is a patch that removes the mutable state from DirectoryReader in the NRT case. The actual reason IMO why this has been introduced was that the RT reader returns true from #isCurrent() if the wirter was closed which is actually wrong since closing a writer changes the index and the reader should see that change.\n\nI also added a testcase for is current to check the semantics",
+            "date": "2010-12-06T23:48:43.951+0000",
+            "id": 5
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "we need to backport to 3.x too",
+            "date": "2010-12-06T23:58:37.307+0000",
+            "id": 6
+        },
+        {
+            "author": "Earwin Burrfoot",
+            "body": "Patch looks cool.",
+            "date": "2010-12-07T00:17:00.547+0000",
+            "id": 7
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "here is a final patch - i will commit later!\n\n",
+            "date": "2010-12-07T22:29:29.636+0000",
+            "id": 8
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "Committed revision 1043277.\n\nI keep it open for backporting",
+            "date": "2010-12-08T02:02:48.822+0000",
+            "id": 9
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "Ported back to 3x in revision 1043418.\n",
+            "date": "2010-12-08T13:49:02.356+0000",
+            "id": 10
+        },
+        {
+            "author": "Grant Ingersoll",
+            "body": "Bulk close for 3.1",
+            "date": "2011-03-30T15:50:21.849+0000",
+            "id": 11
+        }
+    ],
+    "component": "core/search",
+    "description": "DirectoryReader  only takes shared (with IW) SegmentInfos into account in DirectoryReader#isOptimized(). This can return true even if the actual realtime reader sees more than one segments. \n\n{code}\npublic boolean isOptimized() {\n    ensureOpen();\n   // if segmentsInfos changes in IW this can return false positive\n    return segmentInfos.size() == 1 && !hasDeletions();\n  }\n{code}\n\nDirectoryReader should check if this reader has a non-nul segmentInfosStart and use that instead",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-2802",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "DirectoryReader ignores NRT SegmentInfos in #isOptimized()",
+    "systemSpecification": true,
+    "version": "3.1, 4.0-ALPHA"
+}

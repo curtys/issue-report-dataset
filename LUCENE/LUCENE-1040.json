@@ -1,0 +1,83 @@
+{
+    "comments": [
+        {
+            "author": "Yonik Seeley",
+            "body": "Attaching patch.  Here's the approach I took:\n- change makeStopSet return a CharArraySet\n- make CharArraySet a real Set (plus many other small changes)\n  - the Iterator returns Strings for backward compatibility with people that\n   expect a Set<String>\n- StopFilter constructor to directly use Set if instanceof CharArraySet\n\nAll tests pass.",
+            "date": "2007-10-31T21:07:15.034+0000",
+            "id": 0
+        },
+        {
+            "author": "Hoss Man",
+            "body": "If the StopFilter constructor that takes in a Set no longer needs the \"boolean ignoreCase\" we should probably: deprecate that constructor, document that ignoreCase is ignoredand the Set must only contain lowercase items, add a new Set based constructor without that param.",
+            "date": "2007-11-01T02:25:33.427+0000",
+            "id": 1
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "\nWoops, you're right, sorry about that, and thanks for fixing it Yonik!\n\nI made a few small changes to your patch (attached\nCharArraySet.take2.patch): there were some problems with rehashing, so\nI also added a new unit test (don't forget to \"svn add\" before\ncommitting!).  All tests pass.\n\nI noticed that in your patch you now assume that String.hashCode() is\nalways as described in Sun's javadocs, but that makes me a little\nnervous, eg:\n\n    http://forum.java.sun.com/thread.jspa?threadID=762602&messageID=4351604\n\nMaybe for the String case we should continue computing hashCode\nourselves?\n",
+            "date": "2007-11-01T09:41:00.230+0000",
+            "id": 2
+        },
+        {
+            "author": "Yonik Seeley",
+            "body": "> I noticed that in your patch you now assume that String.hashCode() is always as described in Sun's javadocs\n\nThe fact that it's in their javadocs seems to make it part of the interface though.\nUsing String.hash (for cached strings - hashCode already calculated) resulted in a 15% lookup improvement.\n\nSide note: looking up char[] was faster in any event... probably because the extra bounds checking code for every String.charAt()\n\nOn the other hand... not being tied to String.hashCode() means we could select a faster method if we chose to do so.",
+            "date": "2007-11-01T17:43:15.676+0000",
+            "id": 3
+        },
+        {
+            "author": "Yonik Seeley",
+            "body": "> If the StopFilter constructor that takes in a Set no longer needs the \"boolean ignoreCase\"\n\nBut it does if the Set is not a CharArraySet.\nDocs should be clearer though that ignoreCase is ignored if passing a CharArraySet (or is there a more sane way?)\n",
+            "date": "2007-11-01T17:45:23.175+0000",
+            "id": 4
+        },
+        {
+            "author": "Hoss Man",
+            "body": "> But it does if the Set is not a CharArraySet.\n> Docs should be clearer though that ignoreCase is ignored if passing a CharArraySet (or is there a more sane way?)\n\nHmmm... actually .. does making the CharArraySet capable of doing case insensitive comparisons over complicate things?  perhaps the CharArraySet should just be a set of strings that supports fast lookup lookup of strings, and StopFilter.next should be responsible for lowercasing the terms before doing the set lookup (and makeStopSet should be responsible for lowercasing hte tersm before putting them in the set).  it would probably be good to change the sigs to something like StopFilter(TokenStream s, Set stopWords, boolean lowerCaseBeforeLookup) and makeStopSet(String[] stopWords, boolean lowerCaseBeforeAdding) so it was clear what expectations StopFilter has on the set if people make one from scratch.\n\nthis is kind of an orthogonal API discussion to the CharArraySet issue though ... the same arguments could be made about the 2.2 instance of StopFilter ... i just bring it up as a potential point of confusion since people could expect these two work the same way, and they wont (unless i'm missing something)...\n\n   Set a = ...; // something with lots of mixed case words\n   Set b = new CharArraySet(a, false);\n   StopFilter aaa = new StopFilter(stream, a, true)\n   StopFilter bbb = new StopFilter(stream, b, true)\n\n\n",
+            "date": "2007-11-01T21:09:51.446+0000",
+            "id": 5
+        },
+        {
+            "author": "Yonik Seeley",
+            "body": "> and StopFilter.next should be responsible for lowercasing the terms before doing the set lookup\n\nThat would force the user (StopFilter) to make a copy since it wouldn't want to touch the original.",
+            "date": "2007-11-02T14:44:24.205+0000",
+            "id": 6
+        },
+        {
+            "author": "Hoss Man",
+            "body": "Hmmm... i was going to say \"would one String.toLowerCase() in StopFilter.next really be any worse then the Character.toLowerCase() that are currently done in CharArraySet?\" but i suppose it might be in the typical stopword cases where most words on stop words (so the character based approach can short circuit early (not that i've actually benchmarked it).\n\ni suppose it's best to leave the API as it is ... but document the hell out of when/how ignoreCase is significant .. make it clear that the value passed to the StopFilter constructor must be consistent with the value passed to makeStopSet if both are used (actually: we could assert that in the StopFilter constructor if we add a CharArraySet.getIgnoreCase() method)",
+            "date": "2007-11-02T19:23:19.585+0000",
+            "id": 7
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Yonik, I think you missed my proposed update to your original patch, here?\n\n    https://issues.apache.org/jira/browse/LUCENE-1040#action_12539319\n\nEG, there are some problems with the changes to rehash (and I added a unit-test to expose them).",
+            "date": "2007-11-20T10:37:33.510+0000",
+            "id": 8
+        },
+        {
+            "author": "Yonik Seeley",
+            "body": "Indeed... thanks for catching that!",
+            "date": "2007-11-20T14:29:03.874+0000",
+            "id": 9
+        },
+        {
+            "author": "Grant Ingersoll",
+            "body": "Appears to have been committed.",
+            "date": "2008-09-16T21:27:48.386+0000",
+            "id": 10
+        }
+    ],
+    "component": "",
+    "description": "Due to the use of CharArraySet by StopFilter, one can no longer efficiently pre-create a Set for use by future StopFilter instances.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-1040",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "Can't quickly create StopFilter",
+    "systemSpecification": true,
+    "version": ""
+}

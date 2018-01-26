@@ -1,0 +1,65 @@
+{
+    "comments": [
+        {
+            "author": "joerg.schaible@gmx.de",
+            "body": "Created attachment 107245\njs\\tests\\ecma_3\\Exceptions\\regress-181654.js\n\nRegression test for this bug.",
+            "date": "20021123T20:30:45",
+            "id": 0
+        },
+        {
+            "author": "pschwartau@meer.net",
+            "body": "J\u00f6rg's testcase added to JS testsuite:\n\n      mozilla/js/tests/ecma_3/Exceptions/regress-181654.js",
+            "date": "20021124T00:15:08",
+            "id": 1
+        },
+        {
+            "author": "pschwartau@meer.net",
+            "body": "Confirming what J\u00f6rg has reported. SpiderMonkey passes the above test,\nwhereas Rhino generates a TypeError. Here is an example:\n\n\n---------------------------  IN SPIDERMONKEY  ---------------------------\njs> function f() {}\njs> f.prototype = new Error();\nError\njs> obj = new f();\nError\njs> obj.toString();\nError\n\n\n---------------------------  IN RHINO  ---------------------------\njs> function f() {}\njs> f.prototype = new Error();\nError: undefined\njs> obj = new f();\njs: \"<stdin>\", line 25: uncaught JavaScript exception: TypeError:\nMethod \"toString\" called on incompatible object. (<stdin>; line 25)\njs> obj.toString();\njs: \"<stdin>\", line 26: uncaught JavaScript exception: TypeError:\nMethod \"toString\" called on incompatible object. (<stdin>; line 26)\n\n\nNote, no trouble in Rhino for a primary Error object:\n\njs> obj = new Error();\nError: undefined\njs> obj.toString();\nError: undefined",
+            "date": "20021124T00:21:31",
+            "id": 2
+        },
+        {
+            "author": "user@apochta.com",
+            "body": "Created attachment 107255\nMaking Error.prototype.toString generic\n\nI guess it is possible to argue that current Rhino behavior confirms Ecma 262,\nv3 as according to 15.11.4.4  Error.prototype.toString() returns an\nimplementation defined string, and throwing an exception can be very well\ndefined result ;).\n\nBut as not throwing exceptions fulfills 15.11.4.4 without guesses, here is a\npatch that effectively makes Error.prototype.toString a generic function\nprinting this.name + \": \" + this.message for any this.",
+            "date": "20021124T02:27:49",
+            "id": 3
+        },
+        {
+            "author": "user@apochta.com",
+            "body": "Can be marked as fixed as I commited the attachment",
+            "date": "20021125T16:50:40",
+            "id": 4
+        },
+        {
+            "author": "pschwartau@meer.net",
+            "body": "Marking FIXED -",
+            "date": "20021125T17:33:31",
+            "id": 5
+        },
+        {
+            "author": "pschwartau@meer.net",
+            "body": "Marking Verified FIXED.\n\nThe above testcase now passes in the Rhino shell, in both compiled\nand interpreted modes. Here is an interactive session:\n\n[ ] java org.mozilla.javascript.tools.shell.Main\nRhino 1.5 release 4 0000 00 00 (in progress)\n\njs> function f() {}\njs> f.prototype = new Error();\nError:\njs> obj = new f();\nError:\njs> obj.toString()\nError:\n\njs> f.prototype = new SyntaxError();\nSyntaxError:\njs> obj = new f();\nSyntaxError:\njs> obj.toString()\nSyntaxError:\n\njs> f.prototype = new TypeError();\nTypeError:\njs> obj = new f();\nTypeError:\njs> obj.toString()\nTypeError:",
+            "date": "20021125T17:35:54",
+            "id": 6
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Targeting as resolved against 1.5R4",
+            "date": "20040213T12:17:22",
+            "id": 7
+        }
+    ],
+    "component": "Core",
+    "description": "User-Agent:       Mozilla/4.0 (compatible; MSIE 6.0; Windows NT 5.0; Q312461)\nBuild Identifier: Rhino 1.5 release 4 0000 00 00 (in progress)\n\nCalling the toString method for an object that is derived from the Error class \nresults in a thrown TypeError (Rhino only, works perfectly in SpiderMonkey).\n\nReproducible: Always\n\nSteps to Reproduce:\nregression test case attached\nActual Results:  \nTypeError raised\n\nExpected Results:  \nsame behaviour as with SpiderMonkey: method returns String with class name and \nerror message.\n\nEnvironment is reproducable with Rhino 1.5 RC4pre from current CVS",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "181654",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "-- normal",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "Calling toString for an object derived from the Error class throws TypeError",
+    "systemSpecification": false,
+    "version": "other"
+}

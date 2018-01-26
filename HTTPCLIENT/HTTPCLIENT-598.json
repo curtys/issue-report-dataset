@@ -1,0 +1,41 @@
+{
+    "comments": [
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Proposed fix. Please review and let me know what you think\n\nOleg",
+            "date": "2006-09-13T11:17:14.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Igor Lubashev",
+            "body": "Oleg, I think this fix does not work.  The contract of available() is that it guarantees many bytes read() will return successfully and without blocking.\n\nA better fix seems to be:\n\npublic int available() throws IOException\n{\n        if (closed)\n              return 0;\n        int avail = this.wrappedStream.available();\n        if( pos + avail > contentLength )\n            avail = contentLength - pos;\n        return avail;\n}",
+            "date": "2006-09-13T13:34:52.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Yes, indeed. This does seem like the right fix. \n\nFolks,\n\nif I hear no complaints, I'll commit the patch in a few days\n\nOleg",
+            "date": "2006-09-13T14:31:35.000+0000",
+            "id": 2
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Patch checked in.\n\nMany thanks, Igor.\n\nOleg",
+            "date": "2006-09-16T10:33:45.000+0000",
+            "id": 3
+        }
+    ],
+    "component": "HttpClient (classic)",
+    "description": "ContentLengthInputStream should either extend FilterInputStream or should delegate available() to wrappedStream.\n\nOtherwise, available() on the response stream (an instance of AutoCloseInputStream, which is properly extending FilterInputStream, and, therefore, delegating to the ContentLengthInputStream) always returns 0.\n\nThis issue is important for the clients that try to improve performance by processing all data that can be read in a non-blocking way before blocking on the network.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "HTTPCLIENT-598",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "HTTPCLIENT",
+    "project": "HTTPCLIENT",
+    "summary": "ContentLengthInputStream does not implement available() properly",
+    "systemSpecification": true,
+    "version": "3.0.1, 3.1 Alpha 1"
+}

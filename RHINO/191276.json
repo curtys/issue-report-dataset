@@ -1,0 +1,77 @@
+{
+    "comments": [
+        {
+            "author": "user@apochta.com",
+            "body": "Created attachment 113087\nThe test case as a separated file",
+            "date": "20030130T10:15:03",
+            "id": 0
+        },
+        {
+            "author": "pschwartau@meer.net",
+            "body": "Testcase added to JS testsuite:\n\n      mozilla/js/tests/js1_5/Scope/regress-191276.js\n\nHowever, I must say I do not get a failure when I run the testcase,\nnor the above script. In both Rhino compiled and interpreted modes,\nI get \"true\":\n\n[ ] java org.mozilla.javascript.tools.shell.Main -f 191276.js\ntrue\n[ ] java org.mozilla.javascript.tools.shell.Main -opt -1 -f 191276.js\ntrue\n\nI am using this version of Java:\n\n[ ] java -fullversion\njava full version \"1.4.1-b21\"\n\nHowever, it looks like my Ant compiler is using Java 1.3 to compile Rhino.\nThis is my $CLASSPATH variable:\n\nD:\\JS_trunk\\mozilla\\js\\rhino\\build\\rhino1_5R4\\js.jar;\nD:\\JS_TRUNK\\mozilla\\js\\tests\\src\\jstests.jar;\nD:\\Ant\\jakarta-ant-1.3\\lib\\ant.jar;\nD:\\Ant\\jakarta-ant-1.3\\lib\\parser.jar;\nD:\\Ant\\jakarta-ant-1.3\\lib\\jaxp.jar;\nD:\\jdk1.3.0_02\\lib\\tools.jar\n\nI recently tried to change that last one to my jdk1.4.1 directory\n(D:\\jdk1.4.1\\lib\\tools.jar), but Ant did not recognize it, and I\nhad to change it back to jdk1.3.0_02 in order to compile Rhino.\n\nDo you think I'm not seeing the bug because of compiler differences\nlike that? I am on WinNT4.0, by the way -",
+            "date": "20030130T19:21:20",
+            "id": 1
+        },
+        {
+            "author": "user@apochta.com",
+            "body": "For test to fail it is necessary to use an optimization level greater then 0.\nThis what I got when the test fails when run jsDriver with the rhino9 engine:\n\n\n\n-*- executing: .../java org.mozilla.javascript.tools.shell.Main -opt 9  -f\n./js1_5/shell.js -f ./js1_5/Scope/regress-191276.js\n*-* Testcase js1_5/Scope/regress-191276.js failed:\nBug Number 191276\nSTATUS: Testing |this[name]| via Function.prototype.call(), apply()\nFailure messages were:\nFAILED!: [reported from test()] Section 1 of test -\nFAILED!: [reported from test()] Type mismatch, expected type string, actual type\nundefined\nFAILED!: [reported from test()] Expected value 'aaa', Actual value 'undefined'\nFAILED!: [reported from test()] \nFAILED!: [reported from test()] Section 2 of test -\nFAILED!: [reported from test()] Type mismatch, expected type string, actual type\nundefined\nFAILED!: [reported from test()] Expected value 'aaa', Actual value 'undefined'\nFAILED!: [reported from test()] \nFAILED!: [reported from test()] Section 3 of test -\nFAILED!: [reported from test()] Type mismatch, expected type string, actual type\nundefined\nFAILED!: [reported from test()] Expected value 'aaa', Actual value 'undefined'\nFAILED!: [reported from test()] \nFAILED!: [reported from test()] Section 4 of test -\nFAILED!: [reported from test()] Type mismatch, expected type string, actual type\nundefined\nFAILED!: [reported from test()] Expected value 'aaa', Actual value 'undefined'\nFAILED!: [reported from test()] \n",
+            "date": "20030131T09:44:49",
+            "id": 2
+        },
+        {
+            "author": "user@apochta.com",
+            "body": "The reason for the bug is that omj/optimizer/Optimizer.java when optimizing code\nfor this[name] (see GETELEM switch, line 665,\nhttp://lxr.mozilla.org/mozilla/source/js/rhino/src/org/mozilla/javascript/optimizer/Optimizer.java#665\n) assumes a number context for GETELEM index node which is wrong.",
+            "date": "20030131T10:13:45",
+            "id": 3
+        },
+        {
+            "author": "user@apochta.com",
+            "body": "Created attachment 113199\nDo not assume number context for index in x[i]\n\nWith the patch applied the test case passes and the number of the tests failing\nwith VerifyError with optimization level > 0 remains the same.",
+            "date": "20030131T13:45:40",
+            "id": 4
+        },
+        {
+            "author": "user@apochta.com",
+            "body": "CC to Roger: hopefully I did not miss something in the above patch.",
+            "date": "20030131T13:49:06",
+            "id": 5
+        },
+        {
+            "author": "user@apochta.com",
+            "body": "I commited the fix",
+            "date": "20030215T00:06:48",
+            "id": 6
+        },
+        {
+            "author": "user@apochta.com",
+            "body": "Marking fixed",
+            "date": "20030215T00:07:17",
+            "id": 7
+        },
+        {
+            "author": "pschwartau@meer.net",
+            "body": "Verified FIXED. The above testcase now passes in the Rhino shell.\nI tested with optimization levels set to -1, 0, 1, and 9.",
+            "date": "20030217T23:44:50",
+            "id": 8
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Targeting as resolved against 1.5R5",
+            "date": "20040213T12:12:02",
+            "id": 9
+        }
+    ],
+    "component": "Compiler",
+    "description": "User-Agent:       Mozilla/5.0 (X11; U; Linux i686; en-US; rv:1.0.1) Gecko/20021003\nBuild Identifier: Rhino CVS 2003-01-30\n\nThe following scripts when run in Rhino shell prints unexpected false, while the\ninterpreter mode prints correct true. Note that presence of never called\nunused_function with test(\"a\") line is essential, scripts work OK without it.\nThe bug presents at least since 1.5R3.\n\nfunction test(name) { return this[name]; }\n\nfunction unused_function() { test(\"a\"); }\n\nvar result = test.call({ a: \"aaa\" }, \"a\");\n\nvar ok = (result === \"aaa\")\n\nprint(ok)\n\n\nReproducible: Always\n\nSteps to Reproduce:\nRun the test script against Rhino shell\nActual Results:  \nfalse\n\nExpected Results:  \ntrue",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "191276",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "-- normal",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "this[name] gives unexpected undefined with optimizer",
+    "systemSpecification": true,
+    "version": "other"
+}

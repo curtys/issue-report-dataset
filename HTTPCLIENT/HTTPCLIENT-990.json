@@ -1,0 +1,59 @@
+{
+    "comments": [
+        {
+            "author": "Vianney Carel",
+            "body": "Debug logs, when issuing 2 requests with the same URL to a server returning a cache-control: public directive.\n\nThe response is a counted incremented at each request, so to check using JUnit if the response to the 2nd request was served from the cache or not.\n\n",
+            "date": "2010-09-08T12:29:23.383+0000",
+            "id": 0
+        },
+        {
+            "author": "Jonathan Moore",
+            "body": "Hi Vianney,\n\nLet me start by saying that this is known behavior that is compliant with the RFC (as you note, caching responses without freshness information is a MAY in the protocol spec, not a MUST or a SHOULD). As such, this should not be marked as a \"bug\".\n\nThe protocol spec clearly talks about ways to handle these responses; one is by heuristically estimating a freshness lifetime, usually based on a comparison of the Last-Modified header with the Date header in the response.\n\nhttp://www.w3.org/Protocols/rfc2616/rfc2616-sec13.html#sec13.2.2\nhttp://www.w3.org/Protocols/rfc2616/rfc2616-sec13.html#sec13.2.4\n\nI would suggest re-classifying this issue as an \"improvement\" titled \"allow heuristic freshness caching\" that can be turned on as an optional feature.\n\nPlease note that even with this feature, your origin server is not really providing as much information as it could be. The RFC explicitly suggests that having origin servers correctly set cache-related headers is preferable to heuristic expiration calculations. In particular, if your intent is that the response can be completely served from cache, the origin ought to set either the Expires header or the max-age parameter on Cache-Control. If your intent is just that the response body be cached but that you will allow revalidation, you need to include a validator in the response (either ETag or Last-Modified).\n",
+            "date": "2010-09-08T13:07:18.248+0000",
+            "id": 1
+        },
+        {
+            "author": "Vianney Carel",
+            "body": "Hi Jonathan,\n\nActually, the whole caching thing seems to be optional in the RFC. Only when a cache is implemented, it has to follow some rules.\n\nBut I confess I missed the point about using heuristics in the RFC, and reconsidering this \"issue\", I can't deny other users might face problems if caching results without explicit expiration time is enabled by default.\n\nI'll try to change the type and the title of this ticket.",
+            "date": "2010-09-08T15:33:56.297+0000",
+            "id": 2
+        },
+        {
+            "author": "Vianney Carel",
+            "body": "Title and issue type changed.",
+            "date": "2010-09-08T15:35:21.738+0000",
+            "id": 3
+        },
+        {
+            "author": "Vianney Carel",
+            "body": "Just a last comment: there's still a little issue at the end.\nIf the content is not to be cached, then the CachingClient shouldn't store it in the cache... should it ?",
+            "date": "2010-09-08T15:37:18.891+0000",
+            "id": 4
+        },
+        {
+            "author": "Michajlo Matijkiw",
+            "body": "This patch adds support for calculating freshness heuristically in the absence of the proper headers.  It is configurable through CacheConfig, and is disabled by default.  If heuristic freshness caching is enabled than the least restrictive of CacheValidityStrategy#isResponseFresh() and CacheValidityStrategy#isResponseHeuristicallyFresh() is used to determine suitability.\n\nThis patch is submitted with the permission of my employer.\n\nThank you,\nMichajlo",
+            "date": "2010-10-19T15:19:44.030+0000",
+            "id": 5
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Patch checked in. \n\nOleg",
+            "date": "2010-10-19T20:23:19.889+0000",
+            "id": 6
+        }
+    ],
+    "component": "HttpCache",
+    "description": "I noticed that the CachingHttpClient behaves strangely when it receives responses with only the public cache-control directive, e.g.:\n\nHTTP/1.0 200 OK\nServer: My test server\nCache-control: public\nContent-Length: 1\n\n1\n\n\nUsing a debugger, I could see that the response is cached. But when the response is queried from the cache, it is not considered as \"fresh\".\nAccording to the HTTP RFC, such responses \"may\" be cached (I understand it as a \"should\" in our case)... but there's no reason to put responses in the cache if we don't use them later one.\n\nThe \"freshness of the response is analysed after the response is queried from the cache, thanks to:\nCachedResponseSuitabilityChecker#canCachedResponseBeUsed()\n... calling CacheEntry#isResponseFresh()\n... returning true if the response date (getCurrentAgeSecs()) is lower than its use-by date (getFreshnessLifetimeSecs())\n\nThe issue is that getFreshnessLifetimeSecs() returns 0 when there is no max-age directive.\n\nThis could be fixed by replacing the code of CacheEntry#isResponseFresh() by:\n    public boolean isResponseFresh() {\n        final long freshnessLifetime = getFreshnessLifetimeSecs();\n        if (freshnessLifetime == 0) {\n            return true;\n        }\n        return (getCurrentAgeSecs() < getFreshnessLifetimeSecs());\n    }\n\nBut i'm not 100% confident about not producing some bad side-effects...",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "HTTPCLIENT-990",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Minor",
+    "product": "HTTPCLIENT",
+    "project": "HTTPCLIENT",
+    "summary": "Allow heuristic freshness caching",
+    "systemSpecification": true,
+    "version": "4.1 Alpha2"
+}

@@ -1,0 +1,47 @@
+{
+    "comments": [
+        {
+            "author": "Jukka Zitting",
+            "body": "The shutdown delay seems to be caused by the static DynamicPooledExecutor instance introduced in JCR-1222.",
+            "date": "2008-04-26T23:41:11.369+0000",
+            "id": 0
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "Thanks for the tip! Indeed the DynamicPooledExecutor seems to be the problem. from http://g.oswego.edu/dl/classes/EDU/oswego/cs/dl/util/concurrent/PooledExecutor.html\n\n\"The default keep-alive value is one minute\"\n\nIf I change that to 500 ms, the repository is shut down very quickly. I don't know however what the effect on indexing performance is, so I wait with committing until somebody with more insight can review the change. See also: https://issues.apache.org/jira/browse/JCR-1222\n\nIndex: jackrabbit-core/src/main/java/org/apache/jackrabbit/core/query/lucene/DynamicPooledExecutor.java\n===================================================================\n--- jackrabbit-core/src/main/java/org/apache/jackrabbit/core/query/lucene/DynamicPooledExecutor.java\t(revision 651569)\n+++ jackrabbit-core/src/main/java/org/apache/jackrabbit/core/query/lucene/DynamicPooledExecutor.java\t(working copy)\n@@ -49,6 +49,7 @@\n      */\n     public DynamicPooledExecutor() {\n         executor = new PooledExecutor();\n+        executor.setKeepAliveTime(500);\n         executor.waitWhenBlocked();\n         adjustPoolSize();\n     }\n",
+            "date": "2008-04-28T07:17:47.475+0000",
+            "id": 1
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "Looks OK to me. Please go ahead and commit the change.",
+            "date": "2008-05-07T09:52:50.330+0000",
+            "id": 2
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "Fixed in revision 654078",
+            "date": "2008-05-07T12:14:54.932+0000",
+            "id": 3
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Merged to the 1.4 branch in revision 654078.",
+            "date": "2008-05-30T10:25:30.313+0000",
+            "id": 4
+        }
+    ],
+    "component": "jackrabbit-core",
+    "description": "When using the TransientRepository, the repository should be closed when the last session logs out. This works, but in some cases there is a very long (60 seconds) delay between closing the last session and closing the repository.\n\nTest case:\n\n    public static void main(String[] args) throws Exception {\n        Repository repository = new TransientRepository();\n        Session session = repository.login(new SimpleCredentials(\"\", new char[0]));\n        session.getRootNode().setProperty(\"a\", \"0\");\n        session.save(); // very quick logout without this line\n        session.logout();\n        System.out.println(\"Logout...\");\n        final long time = System.currentTimeMillis();\n        Runtime.getRuntime().addShutdownHook(new Thread() {\n            public void run() {\n                System.out.println(\"End after: \" + (System.currentTimeMillis() - time));\n            }\n        });\n    }\n\n",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "JCR-1551",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "BUG",
+    "priority": "Minor",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "TransientRepository: application doesn't exit quickly",
+    "systemSpecification": true,
+    "version": "1.4, core 1.4.1, core 1.4.2, core 1.4.3, core 1.4.4"
+}

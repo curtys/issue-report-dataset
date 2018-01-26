@@ -1,0 +1,53 @@
+{
+    "comments": [
+        {
+            "author": "Doron Cohen",
+            "body": "Patch demonstrating the problem: testWickedLongTerm() modified to fail when numDocs grows although addDocument() throws an exception.",
+            "date": "2007-12-31T12:01:02.173+0000",
+            "id": 0
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Thanks Doron; I'll fold this in (though, I'll move it to the testExceptionFromTokenStream case since it looks like we're going to no longer throw an exception on hitting a wicked-long-term).",
+            "date": "2007-12-31T18:12:04.747+0000",
+            "id": 1
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Patch attached.  All tests pass.  I plan to commit in a day or two.\n\nHere are the changes:\n\n  * No longer throw an exception when massive term is hit.  Instead,\n    we now print this message to infoStream, if set:\n\n      WARNING: document contains at least one immense term (longer than the max length 16383), all of which were skipped.  Please correct the analyzer to not produce such terms.  The prefix of the first immense term is: 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx...'\n\n  * Still increment position when we hit a massive term\n\n  * An unhandled \"non-aborting\" exception immediately marks the\n    document that hit the exception as deleted.  I added comments at\n    the top of DocumentsWriter to explain aborting vs non-aborting\n    exceptions.  This change actually adds the infrastructure for\n    deleting by doc ID, which we've discussed adding to IW in the\n    past, but, I haven't exposed any public APIs for doing so.\n\n  * No longer log to infoStream how many docs were deleted on flush\n    since that deletion count is not accurate when mixing delete by\n    term and by docID.\n",
+            "date": "2008-01-01T14:14:34.739+0000",
+            "id": 2
+        },
+        {
+            "author": "Doron Cohen",
+            "body": "I skimmed at the long token part of the patch:\n* In the test, why is the position increment of 'another' 3, \n  I think it should be 2?\n* assertEquals(\"failed document should not be in the index\",2,reader.numDocs());\n  should be \"document with skipped token should be in the index\"?\n* I believe that \"positon++\" in DocumentsWriter is not required because \n  invertField() already incremented the position before calling addPosition()?\n  (my fault, I suggested to still increment the position...)\n",
+            "date": "2008-01-01T22:27:51.737+0000",
+            "id": 3
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "{quote}\n* In the test, why is the position increment of 'another' 3,\nI think it should be 2?\n{quote}\n\nIt's not \"position increment\" that's 3, it's \"position\" that's 3?  And I think it should be 3 because this field is \"abc xyz <massive-term> another term\", so another should have position 3 since we count <massive-term> as one position?\n\n{quote}\n* assertEquals(\"failed document should not be in the index\",2,reader.numDocs());\nshould be \"document with skipped token should be in the index\"?\n{quote}\n\nWoops, yes, I'll fix the string.\n\n{quote}\nI believe that \"positon++\" in DocumentsWriter is not required because\ninvertField() already incremented the position before calling addPosition()?\n(my fault, I suggested to still increment the position...)\n{quote}\nWell, invertField increments by positionIncrement minus 1, then addPosition increments by 1 (this mirrors how DocumentWriter used to work).",
+            "date": "2008-01-01T22:47:18.072+0000",
+            "id": 4
+        },
+        {
+            "author": "Doron Cohen",
+            "body": "{quote}\nIt's not \"position increment\" that's 3, it's \"position\" that's 3?\n...\nWell, invertField increments by positionIncrement minus 1, then addPosition increments by 1 (this mirrors how DocumentWriter used to work).\n{quote}\nRight, my mistake.",
+            "date": "2008-01-02T05:40:12.983+0000",
+            "id": 5
+        }
+    ],
+    "component": "core/index",
+    "description": "With LUCENE-843, it's now possible for a subset of a document's\nfields/terms to be indexed or stored when an exception is hit.  This\nwas not the case in the past (it was \"all or none\").\n\nI plan to make it \"all or none\" again by immediately marking a\ndocument as deleted if any exception is hit while indexing it.\n\nDiscussion leading up to this:\n\n  http://www.gossamer-threads.com/lists/lucene/java-dev/56103\n",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-1112",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "BUG",
+    "priority": "Minor",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "Document is partially indexed on an unhandled exception",
+    "systemSpecification": true,
+    "version": "2.3"
+}

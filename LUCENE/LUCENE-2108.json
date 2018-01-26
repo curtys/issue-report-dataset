@@ -1,0 +1,263 @@
+{
+    "comments": [
+        {
+            "author": "Eirik Bjorsnos",
+            "body": "Patch that adds a close method to SpellChecker. The method calls close on the searcher used and then nulls the reference so that a new IndexSearcher will be created by the next call to setSpellIndex",
+            "date": "2009-12-03T20:11:58.629+0000",
+            "id": 0
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Shouldn't the new close() method be public?",
+            "date": "2009-12-03T20:16:29.105+0000",
+            "id": 1
+        },
+        {
+            "author": "Eirik Bjorsnos",
+            "body": "Haha, this is why I said the patch should be \"pretty\" trivial, instead of just \"trivial\" :-)\n\nYes, it should certainly be private. No idea how that happend. Must have been sleeping at the keyboad.",
+            "date": "2009-12-03T20:22:51.597+0000",
+            "id": 2
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Note that you said \"private\" again ;)  I'm starting to wonder if you are not human!  Is this a turing test?\n\nOK, ok, I'll make it public, and port back to the 3.0 branch!",
+            "date": "2009-12-03T20:32:50.677+0000",
+            "id": 3
+        },
+        {
+            "author": "Eirik Bjorsnos",
+            "body": "\nDude, you have be to a human to make mistakes as stupid as these!\n\n(pubic void close, public void close, public void close...)",
+            "date": "2009-12-03T20:35:43.403+0000",
+            "id": 4
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "bq. Dude, you have be to a human to make mistakes as stupid as these!\n\nGood point :)\n\n",
+            "date": "2009-12-03T20:38:10.910+0000",
+            "id": 5
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Thanks Eirik!",
+            "date": "2009-12-03T20:38:35.934+0000",
+            "id": 6
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "Mike / Eirik,\n\nIf you set the searcher to null you might risk a NPE if suggestSimilar() or other methods are called afterwards. I would like to see something like ensureOpen() which throws an AlreadyClosedException  or something similar. I will upload a suggestion in a second but need to run so tread it just as a suggestion.\n\nSimon ",
+            "date": "2009-12-03T21:14:02.751+0000",
+            "id": 7
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "Something like that would be more appropriate IMO",
+            "date": "2009-12-03T21:14:42.543+0000",
+            "id": 8
+        },
+        {
+            "author": "Eirik Bjorsnos",
+            "body": "Simon,\n\nYes, that sound excactly like what I was thinking when I said \"some code\nthat reopens the searcher if the reference to it is null\".\n\nI just didn't include it in my patch because I couldn't figure out how to do it properly.\n\nI'd assume ensureOpen needs to be synchronized some way so that two threads can't open IndexSearchers concurrently?\n\n",
+            "date": "2009-12-03T21:19:48.047+0000",
+            "id": 9
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Reopening to get the AlreadyClosedException in there...",
+            "date": "2009-12-03T21:21:13.296+0000",
+            "id": 10
+        },
+        {
+            "author": "Eirik Bjorsnos",
+            "body": "Well not exactly. Simon's suggestion was just to throw an AlreadyClosedException instead of a NullPointerException which is probably ok and definitely easier.",
+            "date": "2009-12-03T21:35:14.482+0000",
+            "id": 11
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "bq. I'd assume ensureOpen needs to be synchronized some way so that two threads can't open IndexSearchers concurrently?\n\nthis class is not threadsafe anyway. If you look at this snippet:\n{code}\n // close the old searcher, if there was one\nif (searcher != null) {\n  searcher.close();\n}\nsearcher = new IndexSearcher(this.spellIndex, true);\n{code}\nthere could be a race if you concurrently reindex or set a new dictionary. IMO this should either be documented or made threadsafe. The close method should invalidate the spellchecker - it should not be possible to use a already closed Spellchecker.\nThe searcher should be somehow ref counted so that if there is a searcher still in use you can concurrently reindex / add a new dictionary to ensure that the same searcher is used throughout suggestSimilar(). \n\nI will take care of it once I get back tomorrow.",
+            "date": "2009-12-03T22:03:36.952+0000",
+            "id": 12
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "Just a reminder - we need to fix the CHANGES.TXT entry once this is done. ",
+            "date": "2009-12-03T22:08:31.816+0000",
+            "id": 13
+        },
+        {
+            "author": "Eirik Bjorsnos",
+            "body": "Mike,\n\nPlease account for my demonstrated stupidity when considering this suggestion for thread safety policy / goals:\n\n1) Concurrent invocations of  suggestSimilar() should not interfere with each other.\n2) An invocation of any of the write methods (setSpellIndex, clearIndex, indexDictionary) should not interfere with aleady invoked suggestSimilar\n3) All calls to write methods should be serialized (We could probably synchronize these methods?)\n\nIf we synchronize any writes to the searcher reference, couldn't suggestSimilar just start its work by putting searcher in a local variable and use that instead of the field?\n\nI guess concurrency is hard to get right.. ",
+            "date": "2009-12-03T22:57:03.358+0000",
+            "id": 14
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Eirik, could you open a new issue to address SpellChecker's non-thread-safety?  I actually thing simply documenting clearly that it's not thread safe is fine.",
+            "date": "2009-12-03T23:01:19.902+0000",
+            "id": 15
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "bq. Just a reminder - we need to fix the CHANGES.TXT entry once this is done.\n\nSimon how about you do this, and take this issue (to commit your improvement to throw ACE not NPE)?  Thanks ;)",
+            "date": "2009-12-03T23:02:03.876+0000",
+            "id": 16
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "bq. Eirik, could you open a new issue to address SpellChecker's non-thread-safety? I actually thing simply documenting clearly that it's not thread safe is fine.\nMike, IMO thread-safety and close() are closely related. If you close the spellchecker you don't want other threads to access the spellchecker anymore. I would keep that inside this issue and rather add close + make it threadsafe in one go.\nSince spellchecker instances are shared between threads already we should rather try to make it thread-safe than documenting it. I see this as a bug though as you really want to share the spellchecker (essentially the searcher) instance instead of opening one for each thread.",
+            "date": "2009-12-04T10:54:08.925+0000",
+            "id": 17
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "bq.  I would keep that inside this issue and rather add close + make it threadsafe in one go.\n\nOK that sounds good then!",
+            "date": "2009-12-04T11:20:34.957+0000",
+            "id": 18
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "This patch adds a close operation to SpellChecker and enables thread-safety.\nI added a testcase for concurrency as well as the close method - comments and review welcome!",
+            "date": "2009-12-04T12:29:28.331+0000",
+            "id": 19
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Some feedback on the patch:\n\n  * If you back-port this to 2.9, you can't use any of the\n    java.util.concurrent.*\n\n  * I'm not sure you need a separate SearcherHolder class -- can't you\n    re-use IndexReader's decRef/incRef?\n\n  * You don't need to do this.XXX in most places (maybe you're coming\n    from eg Python? ;) ).\n\n  * Maybe rename \"releaseNewSearcher\" -> \"swapSearcher\"?  (Because it\n    releases the old one and installs the new one).\n\n  * I think there are some thread safety issues -- eg\n    getSearcherHolder isn't sync'd, so, when you incRef\n    this.searcherHolder at the start, but then return\n    this.searcherHolder at the end, it could be two different\n    instances.\n",
+            "date": "2009-12-04T16:12:19.971+0000",
+            "id": 20
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "bq. If you back-port this to 2.9, you can't use any of the java.util.concurrent.*\nVery good point! - didn't thought about back porting at all.\n\n\nbq. I'm not sure you need a separate SearcherHolder class - can't you re-use IndexReader's decRef/incRef?\nI guess I did not see the simplicity the reader offers - blind due to  java.util.concurrent.* :)\n\nbq. I think there are some thread safety issues.. \nthis is weird - on my dev machine and in the patch it is not synchronized.. on the machine I run the tests it is. Anyway you are right.\n\n\nI changed the code to be compatible with 2.9 using indexReaders.dec/incRef.. will attache in a minute\n\n\n",
+            "date": "2009-12-04T17:33:24.455+0000",
+            "id": 21
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "updated patch - this one does not use a Holder class or any java 5 classes for backcompat with 2.9",
+            "date": "2009-12-04T17:34:17.619+0000",
+            "id": 22
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Looks good!  Nice and simple.\n\nOnly small concern... you hold the lock while opening the new searcher.  It would be better to open the new searcher without the lock, then only acquire the lock to do the swap; this way any respell requests that come in don't block while the searcher is being opened (because obtainSearcher() needs to get the lock).",
+            "date": "2009-12-04T18:11:46.044+0000",
+            "id": 23
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "bq. Only small concern... you hold the lock while opening the new searcher....\nI fixed that one - very important for performance though!\n\nI found another issue, write access is not synchronized at all so it is possible to concurrently reindex or at least call indexDictionary() concurrently. In the first place this is not a huge issue as the writer will raise an exception but if the spellIndex is reset while the indexDicitonary is still in progress we could have inconsistencies with searcher and spellindex.\nI added another lock for write operations for now, ",
+            "date": "2009-12-04T19:03:55.024+0000",
+            "id": 24
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Patch looks good Simon!",
+            "date": "2009-12-04T20:43:09.131+0000",
+            "id": 25
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "I will commit this tomorrow if nobody objects.",
+            "date": "2009-12-04T23:34:27.577+0000",
+            "id": 26
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "committed in revision 887532\n\nMike, thanks for review. We should backport this change to 2.9 - can you commit that please, I can not though.",
+            "date": "2009-12-05T12:19:24.256+0000",
+            "id": 27
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "bq. We should backport this change to 2.9 - can you commit that please, I can not though.\n\nAnd, to 3.0.  OK will do...",
+            "date": "2009-12-05T13:35:07.607+0000",
+            "id": 28
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "Mike, I just realized that we need to change the test as it uses java5\nclasses. I will provide you a patch compatible w. 1.4 later.\n\nOn Dec 5, 2009 2:35 PM, \"Michael McCandless (JIRA)\" <jira@apache.org> wrote:\n\n\n   [\nhttps://issues.apache.org/jira/browse/LUCENE-2108?page=com.atlassian.jira.plugin.system.issuetabpanels:comment-tabpanel&focusedCommentId=12786406#action_12786406]\n\nMichael McCandless commented on LUCENE-2108:\n--------------------------------------------\n\nbq. We should backport this change to 2.9 - can you commit that please, I\ncan not though.\n\nAnd, to 3.0.  OK will do...\n\nby SpellChecker internally\n-----------------------------------------------------------------------------------------------------\nLUCENE-2108.patch, LUCENE-2108.patch, LUCENE-2108.patch, LUCENE-2108.patch\n\n--\nThis message is automatically generated by JIRA.\n-\nYou can reply to this email to add a comment to the issue online.\n",
+            "date": "2009-12-05T14:20:20.905+0000",
+            "id": 29
+        },
+        {
+            "author": "Shalin Shekhar Mangar",
+            "body": "I ran into index corruption during stress testing in SOLR-785. After upgrading contrib-spellcheck to lucene trunk, those issues are no longer reproducible. You guys have saved me a lot of time :)\n\nThanks for fixing this!",
+            "date": "2009-12-05T20:53:41.170+0000",
+            "id": 30
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "bq. Thanks for fixing this!\nYW! very good feedback - I will port it to 2.9 soon.\n\nsimon",
+            "date": "2009-12-05T21:14:17.127+0000",
+            "id": 31
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "Mike, I changed the testcase to be 1.4 compatible this might help you to merge the spellchecker into 2.9.1 since I can not commit into branches.\nIt does not make sense to create a patch against the branch as you really want the mergeinfo and don't do it by patching things in branches. \n\nsimon",
+            "date": "2009-12-05T22:30:38.984+0000",
+            "id": 32
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Backported to 3.0... 2.9 next.",
+            "date": "2009-12-06T10:18:03.973+0000",
+            "id": 33
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "SImon, any chance you could work out the patch for SpellChecker.java on 2.9.x as well?  I got a zillion conflicts on \"svn merge\" :)  Thanks!",
+            "date": "2009-12-06T10:40:40.010+0000",
+            "id": 34
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "Mike, I merged the branch with our current trunk and fixed all 1.5 code to compile and run with 1.4\nHope that helps :)",
+            "date": "2009-12-06T14:46:04.475+0000",
+            "id": 35
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "OK committed on 2.9 as well -- thanks Simon!",
+            "date": "2009-12-06T15:25:57.695+0000",
+            "id": 36
+        },
+        {
+            "author": "Achim Heiland",
+            "body": "It would be nice if the SpellChecker implements the java.io.Closeable interface (Java 1.5) :-)",
+            "date": "2010-01-07T17:18:15.084+0000",
+            "id": 37
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "+1, because everything else that has close() in Lucene now implements this.",
+            "date": "2010-01-07T17:22:46.901+0000",
+            "id": 38
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "Created sep. issue for that purpose LUCENE-2196",
+            "date": "2010-01-07T17:31:08.680+0000",
+            "id": 39
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Committed, thanks!",
+            "date": "2010-01-07T17:33:55.118+0000",
+            "id": 40
+        }
+    ],
+    "component": "modules/spellchecker",
+    "description": "I can't find any way to close the IndexSearcher (and IndexReader) that\nis being used by SpellChecker internally.\n\nI've worked around this issue by keeping a single SpellChecker open\nfor each index, but I'd really like to be able to close it and\nreopen it on demand without leaking file descriptors.\n\nCould we add a close() method to SpellChecker that will close the\nIndexSearcher and null the reference to it? And perhaps add some code\nthat reopens the searcher if the reference to it is null? Or would\nthat break thread safety of SpellChecker?\n\nThe attached patch adds a close method but leaves it to the user to\ncall setSpellIndex to reopen the searcher if desired.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-2108",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "SpellChecker file descriptor leak - no way to close the IndexSearcher used by SpellChecker internally",
+    "systemSpecification": true,
+    "version": "3.0"
+}

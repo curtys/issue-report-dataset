@@ -1,0 +1,47 @@
+{
+    "comments": [
+        {
+            "author": "angela",
+            "body": "test",
+            "date": "2008-02-05T10:26:45.732+0000",
+            "id": 0
+        },
+        {
+            "author": "Stefan Guggisberg",
+            "body": "> I'm not totally sure, if according to the quote above the built-in cnd-definitions are valid at all. \n> since it states, that the nt:base is assumed if no other super type is defined. In the case of the \n> node types above, mix:referenceable is defined to be the only super type, which is not totally \n> true... the non-mixin types are always sub types of nt:base.\n\ni agree that according to 7.2.2.4 the built-in cnd-definitions would be invalid.\n\nhowever, the definitions in the jsr 283 spec are 'illegal' as well, e.g. \n\n4.7.24.10 nt:resource \n[nt:resource] > mix:referenceable, \n                mix:mimeTyped, \n                mix:lastModified \n  - jcr:data (binary) primary mandatory \n \n\ni'd therefore suggest to change the spec wording to something like\n\n\"[...] If the node type is not a mixin and either this element is not present or it doesn't include nt:base then a supertype of nt:base is assumed.\" \n\n> In either case: From my understanding the node types resulting from parsing\n> the xml and the cnd file should be equal.\n\nnot necessarily. it depends on how lenient the node type registration handles \nmissing/redundant nt:base supertypes declarations. the resulting node types\nhowever should IMO be equal.\n\n> If the definitions are valid, we may need to adjust the CompactNodeTypeDefReader. \n\nhmm, intelligently applying 'nt:base\" super type defaults would a parser require to resolve\nand evaluate external node type references.\n\ne.g. given the following node type/mixin definitions:\n\n[mix:foo] mixin\n\n[nt:bar]\n\n=> in the following case, nt:base super type should be assumed:\n\nnt:foo > mix:foo\n\n\n=> here nt:base super type doesn''t need to be assumed:\n\nnt:foo > nt:bar\n\n\nresolving external node type references is IMO out of the scope \nof a CND parser.\n\n\ntherefore i'd suggest to just change the spec wording and leave \nthe implementation as is.\n\n\n",
+            "date": "2008-02-06T16:06:35.898+0000",
+            "id": 1
+        },
+        {
+            "author": "angela",
+            "body": "> i'd therefore suggest to change the spec wording\n\nfine. i will open an jsr 283 issue for that.\n\n> therefore i'd suggest to just change the spec wording and \n> leave  the implementation as is. \n\nmeans: from your point of view the test should not compare the NodeTypeDefinitions\nbut rather compare the resulting Nodetypes, right?\n\nhm. to me it seems we are having multiple levels of defaulting and lazy assumptions.\nlet me check again, what makes me feel uneasy with that :).... more to come ;)\n\nangela",
+            "date": "2008-02-06T16:26:00.512+0000",
+            "id": 2
+        },
+        {
+            "author": "angela",
+            "body": "> fine. i will open an jsr 283 issue for that. \n\nDone... #421\n\n> ... what makes me feel uneasy ...\n\nOk. I tried some more things...\n\nFrom what i've seen and if i'm not totally mistaken:\n\nRegistering a nodetype definition similar to those that were unequal in my original test (i.e. those not specifying nt:base as supertype but defining some other (mixin) supertype) would fail with the following exception:\n\norg.apache.jackrabbit.core.nodetype.InvalidNodeTypeDefException: \nall primary node types except nt:base itself must be (directly or indirectly) derived from nt:base.\n\nSo, it seems to me, that we have an issue here... or at least contradictions.\nAm I missing something?\n\nangela\n\n",
+            "date": "2008-02-07T12:48:15.431+0000",
+            "id": 3
+        },
+        {
+            "author": "angela",
+            "body": "i think this issue has been fixed in the meantime.\nthe corresponding jsr 283 issue has been resolved a long time ago and as far as i could see the limitation in\nthe xml-nt-parsing for nt:base has been removed (if i'm not mistaken)",
+            "date": "2010-05-18T16:02:22.383+0000",
+            "id": 4
+        }
+    ],
+    "component": "jackrabbit-core",
+    "description": "i created a test in order to make sure builtin-nodetypes.xml and builtin-nodetypes.cnd provide the same definitions (actually i only wanted to test my own changes).\n\nit reveals that the existing built-in NodeTypeDefinitions are not equal due to the following reason:\n\n- in the xml-format nt:base is always specified if no other super type extends from nt:base\n- in the cnd notation the nt:base is omitted (see below for quote from appendix of jsr 283) even if other super type(s) are\n  defined and none of them extends from nt:base.\n\nthis affects the following nodetypes (all extending from mix:referenceable only):\n\nnt:versionHistory\nnt:version\nnt:frozenNode\nnt:resource\n\n\nquote from public-review of jsr 283:\n\n\"7.2.2.4 Supertypes [...]\nAfter the node type name comes the optional list of supertypes. If this element is not present and the node type is not a mixin (see 7.2.2.5 Options), then a supertype of nt:base is assumed.\"\n\n\nI'm not totally sure, if according to the quote above the built-in cnd-definitions are valid at all. since it states, that the nt:base is assumed if no other super type is defined. In the case of the node types above, mix:referenceable is defined to be the only super type, which is not totally true... the non-mixin types are always sub types of nt:base.\n\nIn either case: From my understanding the node types resulting from parsing the xml and the cnd file should be equal.\nIf the definitions are valid, we may need to adjust the CompactNodeTypeDefReader.\n\n\n\n\n",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "JCR-1360",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Trivial",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "Parsing built-in CND and XML nodetypes does not result in equal nt-definitions",
+    "systemSpecification": true,
+    "version": ""
+}

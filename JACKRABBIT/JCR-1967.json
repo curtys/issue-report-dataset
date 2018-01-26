@@ -1,0 +1,77 @@
+{
+    "comments": [
+        {
+            "author": "Marcel Reutegger",
+            "body": "I think it should rather be:\n\nIndex: src/main/java/org/apache/jackrabbit/jcr2spi/nodetype/NodeTypeImpl.java\n===================================================================\n--- src/main/java/org/apache/jackrabbit/jcr2spi/nodetype/NodeTypeImpl.java\t(revision 741110)\n+++ src/main/java/org/apache/jackrabbit/jcr2spi/nodetype/NodeTypeImpl.java\t(working copy)\n@@ -132,7 +132,7 @@\n      * from the specified node type, otherwise false.\n      */\n     public boolean isNodeType(Name nodeTypeName) {\n-        return getName().equals(nodeTypeName) ||  ent.includesNodeType(nodeTypeName);\n+        return nodeTypeName.equals(ntd.getName()) ||  ent.includesNodeType(nodeTypeName);\n     }\n \n     /**\n\nnote, that I reversed the equals because ntd.getName() may return null.",
+            "date": "2009-02-05T15:16:40.567+0000",
+            "id": 0
+        },
+        {
+            "author": "angela",
+            "body": "the problem was never appearing because of the ||... therefore i would say that we should get rid of the initial equality comparison altogether:\n\n     public boolean isNodeType(Name nodeTypeName) {\n- return getName().equals(nodeTypeName) || ent.includesNodeType(nodeTypeName);\n+ return ent.includesNodeType(nodeTypeName);\n     } ",
+            "date": "2009-02-06T09:08:35.557+0000",
+            "id": 1
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "I think you are right. The first check doesn't buy us too much, I guess. And it simplifies the code.",
+            "date": "2009-02-06T09:26:09.150+0000",
+            "id": 2
+        },
+        {
+            "author": "Stefan Guggisberg",
+            "body": "FWIW: \n\ni guess the code in question is based on the node type implementation in core.\n\ni remember that i added the redundant call to name.equalsI() as an optimization.\nsome extensive profiling sessions (a long time ago) showed that \nEffectiveNodeType#includesNodeType() is somewhat expensive as it creates a \nnumber of objetcs, thus keeping the gc busy.  ",
+            "date": "2009-02-09T14:37:03.809+0000",
+            "id": 3
+        },
+        {
+            "author": "angela",
+            "body": "both in core and in jcr2spi EffectiveNodeType#includesNodeType() just does a lookup in a set. i don't see any object creation there.",
+            "date": "2009-02-10T08:47:57.490+0000",
+            "id": 4
+        },
+        {
+            "author": "Stefan Guggisberg",
+            "body": "> both in core and in jcr2spi EffectiveNodeType#includesNodeType() just does a lookup in a set. i don't see any object creation there.\n\nyou're right. so the optimization is obsolete anyway.\n\ni believe it used to check EffectiveNodeTypeCache at some point,  creating WeightedKey objects. ",
+            "date": "2009-02-10T12:38:37.584+0000",
+            "id": 5
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Classifying this as an improvement, since even though the code wasn't correct, AFAUI it didn't cause anything to break.",
+            "date": "2009-02-11T13:58:33.266+0000",
+            "id": 6
+        },
+        {
+            "author": "angela",
+            "body": "> Classifying this as an improvement\n\nagreed... i was already tempted to make that change :)",
+            "date": "2009-02-12T13:49:01.628+0000",
+            "id": 7
+        },
+        {
+            "author": "Michael D\u00fcrig",
+            "body": "Reopening for 1.5.0",
+            "date": "2009-04-20T16:38:02.706+0000",
+            "id": 8
+        },
+        {
+            "author": "Michael D\u00fcrig",
+            "body": "Fixed at revision 766747  ",
+            "date": "2009-04-20T16:42:27.329+0000",
+            "id": 9
+        }
+    ],
+    "component": "jackrabbit-jcr2spi",
+    "description": "org.apache.jackrabbit.jcr2spi.nodetype.NodeTypeImpl does\n\n    public boolean isNodeType(Name nodeTypeName) {\n        return getName().equals(nodeTypeName) ||  ent.includesNodeType(nodeTypeName);\n    }\n\n\nas getName() is a string and nodeTypeName is a Name this will always be false. Perhaps you meant\n\n    public boolean isNodeType(Name nodeTypeName) {\n        return getName().equals(nodeTypeName.getLocalName()) ||  ent.includesNodeType(nodeTypeName);\n    }\n\n",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "JCR-1967",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Trivial",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "Impossible comparison in NodeTypeImpl",
+    "systemSpecification": true,
+    "version": "1.5"
+}

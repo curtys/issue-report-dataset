@@ -1,0 +1,47 @@
+{
+    "comments": [
+        {
+            "author": "Steven Parkes",
+            "body": "Sigh. My typo rate's been too high lately. The depends-on link is to LUCENE-847, not LUCENE-848. Perhaps someone with JIRA \"manage links\" permissions can delete the wrong one.",
+            "date": "2007-04-27T19:25:56.022+0000",
+            "id": 0
+        },
+        {
+            "author": "Steven Parkes",
+            "body": "Copy Ning's concurrency patch over here, since LUCENE-847 is supposed to the non-concurrent changes.",
+            "date": "2007-08-06T20:18:15.433+0000",
+            "id": 1
+        },
+        {
+            "author": "Steven Parkes",
+            "body": "Mike expressed interest in pursuing this with an alternative strargey, so I thought I'd give a \"work in progress\" snapshot of the way I'd be going.\n\nThis code doesn't work, but it has some ideas, so it's only of interest to people who really want to make suggestions on how to do the parallelization.\n\nOverall, the idea of generating new threads for non-conflicting primitive merges seems okay. Need to make sure you don't overload the i/o system and that throttling code isn't in there.\n \nA couple of things things off the top that I haven't worked through yet:\n\nMy current thinking is that when you are not going to do a merge serially, you need to copy the segmentInfo objects that you will be using. It may be possible to do this with a lock, but that gets harry. Ther'es also state in the SegmentInfo objescts themselves, like docStoreIsCompoundFile that can get changed on the fly.\n\nflushDocStore is challenging to parallelize. It's synchronized now, but you probably would rather it not be? It's complicated by the fact that doc stores are shared by multiple segments and so non-conflicting merges may stll share doc stores.",
+            "date": "2007-08-20T20:13:23.347+0000",
+            "id": 2
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Attaching patch that provides ConcurrentMergePolicyWrapper using the\n\"stateless API\" approach for MergePolicy.  This must be used with the\npatch I just attached to LUCENE-847.\n\nThis wrapper can wrap any MergePolicy instance and schedule the\nrequested merges using background threads, which frees IndexWriter\nthreads to continue adding/deleting docs.\n\nCMPW accepts a \"max thread count\" limit: if the number of concurrent\nmerges needed exceeds this then it just returns the overflow back to\nIndexWriter which causes those merges to run in the foreground.\n\nAlso in the patch I added 2 test cases to the existing\nTestStressIndexing test to use ConcurrentMergePolicyWrapper.\n\nI ran a quick test using this alg:\n\n  analyzer=org.apache.lucene.analysis.SimpleAnalyzer\n  doc.maker=org.apache.lucene.benchmark.byTask.feeds.LineDocMaker\n  docs.file=/lucene/wikifull.txt\n  directory=FSDirectory\n  ram.flush.mb = 16\n  max.field.length = 2147483647\n  doc.add.log.step = 5000\n  doc.maker.forever=false\n\n  ResetSystemErase\n  CreateIndex\n  {AddDoc >: *\n  CloseIndex\n\n  RepSumByName\n\nFor baseline I used \"LogByteSizeMergePolicy\". Then, I compared with\nthe same merge policy, but wrapped using ConcurrentMergePolicyWrapper.\n\nBaseline took 1544 sec to index all of wikipedia; using\nConcurrentMergePolicyWrapper it took 1155 sec (25% speedup), which is\nquite sizable.  This is a powerful way to make use of concurrency\nwithout the complexity of having to add threads to your indexing\nprocess.  (This is with JDK 1.5, on a quad core MacPro with 4 drives\nin a RAID 0 array).\n",
+            "date": "2007-08-24T16:39:24.355+0000",
+            "id": 3
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "New rev of this patch to match newest patch added on LUCENE-847.",
+            "date": "2007-08-27T21:06:23.229+0000",
+            "id": 4
+        }
+    ],
+    "component": "core/index",
+    "description": "Provide the ability to handle merges in one or more concurrent threads, i.e., concurrent with other IndexWriter operations.\n\nI'm factoring the code from LUCENE-847 for this.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-870",
+    "issuetypeClassified": "RFE",
+    "issuetypeTracker": "RFE",
+    "priority": "Major",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "add concurrent merge policy",
+    "systemSpecification": true,
+    "version": ""
+}

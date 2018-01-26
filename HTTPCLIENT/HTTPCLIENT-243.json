@@ -1,0 +1,179 @@
+{
+    "comments": [
+        {
+            "author": "Eric Johnson",
+            "body": "A good catch, but I don't think the suggested patch is quite right, as it\ndoesn't compute the content length if the transferEncodingHeader is specified as\nidentity.\n\nI think rearranging the two cases, something like this:\n\nif (transferEncoding == null ||\n  \"identity\".equalsIgnoreCase(transferEncoding.getValue() )) {\n\n ... do what is currently the second case\n}\nelse if (\"chunked\".equalsIgnoreCase(transferEncodingHeader.getValue() ) {\n  ... do what is currently in the first case\n}\nelse {\n  LOG.warn(\"Unexpected transfer encoding\");\n}\n\nmight work better.  Since I don't have the indicated servers handy, perhaps the\nsubmitter can try the suggested rearrangement?\n\n",
+            "date": "2003-07-08T02:30:37.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Eric, please correct me if I am wrong, but it seems there's a certain\nterminology confusion. 'Identity' is a content encoding, not a transfer\nencoding. RFC 2616 defines only one valid transfer encoding: chunked.\n\nI think the fix suggested by Brent is indeed the right one. Transfer-encoding &\nContent-Length headers are mutually exclusive. We just have to print a\nBIIIIIIIIG FAT waring message in case transfer encoding is anything but chunked\nand return the input stream as is\n\nAm I missing something?\n\nOleg",
+            "date": "2003-07-08T02:53:14.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Created an attachment (id=7128)\nPatch (take 1)\n",
+            "date": "2003-07-08T03:03:17.000+0000",
+            "id": 2
+        },
+        {
+            "author": "Brent Beardsley",
+            "body": "Hi Oleg,\n\nI just looked at the patch and was wondering if you should only warn if you're \nin Strict mode?\n\nBrent",
+            "date": "2003-07-08T03:15:06.000+0000",
+            "id": 3
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Brent,\nThat surely can be done. (I still think it is a pretty serious compliance\nproblem on the part of Privoxy, and they should rather be warned, but I can live\nwith a warning in strict mode only)\n\nOleg",
+            "date": "2003-07-08T03:22:54.000+0000",
+            "id": 4
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Created an attachment (id=7133)\nPatch (take 2)\n",
+            "date": "2003-07-08T03:25:42.000+0000",
+            "id": 5
+        },
+        {
+            "author": "Eric Johnson",
+            "body": "Brent,\n\nI don't suppose you could provide a wire log?  It might help clarify.\n\nOleg,\n\nI have no idea whether my analysis is correct or not.  I only noticed this issue\ndue to my almost pathological interest in making sure streams are properly wrapped.\n\nThe RFC apparently got it wrong on this point.  From section 3.6:\n\"The Internet Assigned Numbers Authority (IANA) acts as a registry for\ntransfer-coding value tokens. Initially, the registry contains the following\ntokens: \"chunked\" (section 3.6.1), \"identity\" (section 3.6.2), \"gzip\" (section\n3.5), \"compress\" (section 3.5), and \"deflate\" (section 3.5).\"\n\nExcept that there is no section 3.6.2.\n\nI found these two links:\nhttp://lists.w3.org/Archives/Public/ietf-http-wg-old/2001SepDec/0018.html\nhttp://ftp.ics.uci.edu/pub/ietf/http/hypermail/1998q3/0135.html\n\nWhich seem to suggest that leaving \"identity\" in was a mistake.  Maybe you knew\nall this, I certainly didn't.  In any case, your assertion that only \"chunked\"\nis valid appears to be wrong, in that \"gzip\", \"compress\", and \"deflate\" are\npossible values too.\n\nAnyway, I think it is still necessary to be able to determine the\ncontent-length, so I think my original suggestion might be appropriate, if we\nsupport the \"identity\" transfer encoding at all.\n\nI've not had a chance to look at the patches you've supplied, just mining for\ninformation so far.\n\n-Eric.",
+            "date": "2003-07-08T03:45:42.000+0000",
+            "id": 6
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Eric,\nI do not know it for sure either. I am just trying to make some (more or less)\ninformed guesses. One thing for sure the RFC is terribly contradictory on this\nissue. \n--------------------------------------------------------------------\n3.6 Transfer Codings\n...\n   Whenever a transfer-coding is applied to a message-body, the set of\n   transfer-codings MUST include \"chunked\", unless the message is\n   terminated by closing the connection. When the \"chunked\" transfer-\n   coding is used, it MUST be the last transfer-coding applied to the\n   message-body. The \"chunked\" transfer-coding MUST NOT be applied more\n   than once to a message-body. These rules allow the recipient to\n   determine the transfer-length of the message (section 4.4).\n...\n--------------------------------------------------------------------\n\nso, what I can gather from the above paragraph is that chunk encoding must be\nused anyway to ensure that the content length could be determined, no matter\nwhat additional encodings are appled. \n\nThere's one thing I am pretty sure about that content length & transfer encoding\ndirectives are mutually exclusive.\n\n--------------------------------------------------------------------\n4.4 Message Length\n\n...\n\n   3.If a Content-Length header field (section 14.13) is present, its\n     decimal value in OCTETs represents both the entity-length and the\n     transfer-length. The Content-Length header field MUST NOT be sent\n     if these two lengths are different (i.e., if a Transfer-Encoding\n     header field is present). If a message is received with both a\n     Transfer-Encoding header field and a Content-Length header field,\n     the latter MUST be ignored.\n...\n--------------------------------------------------------------------\n\nAnyways, what that all means to me that \n\n if (\"chunked\".equalsIgnoreCase(transferEncodingHeader.getValue()))\n\nis really not good enough. The code needs to be made more robust when dealing\nwith composite transfer encodings\n\nOleg",
+            "date": "2003-07-08T04:29:43.000+0000",
+            "id": 7
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Created an attachment (id=7143)\nPatch (try 3)\n",
+            "date": "2003-07-08T07:45:02.000+0000",
+            "id": 8
+        },
+        {
+            "author": "Michael Becke",
+            "body": "I think this patch should take care of composite \"Transfer Encoding\" headers.\n\nMike",
+            "date": "2003-07-08T07:46:47.000+0000",
+            "id": 9
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Created an attachment (id=7153)\nPatch (take 4)\n",
+            "date": "2003-07-08T15:09:34.000+0000",
+            "id": 10
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Mike, your patch looks good to me. I just added a warning message in case\ntransfer encoding is no recognized. If you think it is ok, go ahead and commit\nthe patch to both branches.\n\nOleg",
+            "date": "2003-07-08T15:12:01.000+0000",
+            "id": 11
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Patch committed to 2.0 and HEAD.\n\nMike",
+            "date": "2003-07-08T18:54:31.000+0000",
+            "id": 12
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Created an attachment (id=7158)\nFollow-up patch (take 1)\n",
+            "date": "2003-07-08T19:03:10.000+0000",
+            "id": 13
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Mike,\nI had a sudden change of heart. I think we should have a facility to forcefully\nclose connection, in case something is wrong (like missing chunk encoding). It\nis not good enough to hope that the server would drop the connection on its own\naccord. There are other cases where this feature may come in handy.\n\nOleg  ",
+            "date": "2003-07-08T19:06:19.000+0000",
+            "id": 14
+        },
+        {
+            "author": "Michael Becke",
+            "body": "We should probably set forceCloseConnection when there is no content length or\ntransfer encoding, but there is a response.  The following case from\nreadResponseBody():\n\n  if (expectedLength == -1) {\n      if (canResponseHaveBody(statusLine.getStatusCode())) {\n          result = is;            \n      }\n  }\n\nWe can then remove the test for no transfer encoding and missing content length\nin shouldCloseConnection().\n\nMike",
+            "date": "2003-07-08T20:19:15.000+0000",
+            "id": 15
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Makes sense to me. I suggest, though, this patch goes into CVS HEAD only.\n\nOleg",
+            "date": "2003-07-08T20:34:20.000+0000",
+            "id": 16
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Created an attachment (id=7161)\nFollow-up patch (take 2)\n",
+            "date": "2003-07-08T20:42:30.000+0000",
+            "id": 17
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Created an attachment (id=7162)\nFollow-up patch (take 3)\n",
+            "date": "2003-07-08T21:31:28.000+0000",
+            "id": 18
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Oleg,\n\nThis last patch modifies the javadocs a little and renames the\nforceConnectionClose variable so that it is suitable for an is*() method.  Just\ncosmetic changes:)\n\nMike",
+            "date": "2003-07-08T21:34:25.000+0000",
+            "id": 19
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Fair enough. I think the patch is good to be committed.\n\nOleg",
+            "date": "2003-07-08T21:49:16.000+0000",
+            "id": 20
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Patch applied to 2.0 branch & HEAD\n\nOleg",
+            "date": "2003-07-09T05:13:26.000+0000",
+            "id": 21
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Created an attachment (id=7205)\nFollow-up patch (take 1)\n",
+            "date": "2003-07-10T15:55:29.000+0000",
+            "id": 22
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Created an attachment (id=7228)\nFollow-up patch (take 2)\n",
+            "date": "2003-07-11T01:59:02.000+0000",
+            "id": 23
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Another revision of the transfer-encoding patch. I hope it is going to be the\nfinal one\n\nOleg",
+            "date": "2003-07-11T02:01:46.000+0000",
+            "id": 24
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Looks good to me.  Applied.",
+            "date": "2003-07-11T08:10:13.000+0000",
+            "id": 25
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Applied to 2.0 branch.",
+            "date": "2003-07-12T03:27:02.000+0000",
+            "id": 26
+        }
+    ],
+    "component": "HttpClient (classic)",
+    "description": "In HttpMethodBase.readResponseBody only chunked transfer encoding is \nsupported.  Some proxy servers like Privoxy, etc send a Transfer-Encoding: \nidentity header and HttpClient fails quietly and returns a null result input \nstream.  At line 2037 in HttpMethodBase.java revision 1.160 I inserted the \nfollowing two lines and it appeared to work fine:\n\n} else if (\"identity\".equalsIgnoreCase(transferEncodingHeader.getValue())) {\n   result = is;\n\nI think it should at least throw an exception or do something when it \nencounters an unsupported Transfer-Encoding instead of returning a null input \nstream.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "HTTPCLIENT-243",
+    "issuetypeClassified": "RFE",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "HTTPCLIENT",
+    "project": "HTTPCLIENT",
+    "summary": "Transfer-Encoding: identity not supported + possible patch",
+    "systemSpecification": false,
+    "version": "2.0 Beta 2"
+}

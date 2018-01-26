@@ -1,0 +1,77 @@
+{
+    "comments": [
+        {
+            "author": "bugzilla-mozilla-20000923@james-ross.co.uk",
+            "body": "What does this have to do with JSD or Venkman?",
+            "date": "20060714T11:34:37",
+            "id": 0
+        },
+        {
+            "author": "ispiked@gmail.com",
+            "body": "Hrm... maybe this bug /is/ about Rhino.",
+            "date": "20060715T04:20:31",
+            "id": 1
+        },
+        {
+            "author": "gil.tayar@webcollage.com",
+            "body": "(In reply to comment #2)\n> Hrm... maybe this bug /is/ about Rhino.\n> \n\nIt is.",
+            "date": "20060716T02:46:02",
+            "id": 2
+        },
+        {
+            "author": "gil.tayar@webcollage.com",
+            "body": "I found the problem, although fixing it is above my means:\n\nthe problem is in functions which are called via tail calls (Icode_TAIL_CALL in the code).\n\nIn the code that executes the Icode_TAIL_CALL (\"Interpreter.interpret\"), it says this:\n\n                if (op == Icode_TAIL_CALL) {\n                    // Release the parent\n                    exitFrame(cx, frame, null);\n\nSince you do tail call elimination, the debugger also exits the frame, and thus does not \"know\" about the entry into the function.\n\nI worked around this by eliminating tail call optimization (by commenting out the assigment in the code below, in the function Interpreter visitExpression):\n\n                    if (type == Token.CALL) {\n                        if ((contextFlags & ECF_TAIL) != 0) {\n                            //type = Icode_TAIL_CALL;\n                        }\n                    }\n",
+            "date": "20060727T11:59:10",
+            "id": 3
+        },
+        {
+            "author": "gil.tayar@webcollage.com",
+            "body": "Just to make sure I am understood about the nature of the bug. If you change function zoo in the example code in the first comment to:\n\nfunction zoo(page)\n  {\n    var z = 1;\n    z++;\n    z++;\n    foo(page);\n    z++\n  }\n\nthen the debugger will gladly step into the foo function. No problem.\n\nThe change is that now the call to foo is not a tail call, and thus no problem.",
+            "date": "20060727T12:03:08",
+            "id": 4
+        },
+        {
+            "author": "ispiked@gmail.com",
+            "body": "I'm going to mark this as invalid since it wasn't a bug in our code. ->INVALID",
+            "date": "20060727T17:27:51",
+            "id": 5
+        },
+        {
+            "author": "gil.tayar@webcollage.com",
+            "body": "(In reply to comment #6)\n> I'm going to mark this as invalid since it wasn't a bug in our code. ->INVALID\n> \n\nCould you explain why this is invalid and why it isn't a bug in the code? My last comment showed where in the code _exactly_ the problem is. It may be that I wasn't clear enough, in which case I would gladly try again.",
+            "date": "20060730T04:25:52",
+            "id": 6
+        },
+        {
+            "author": "hannesw@gmail.com",
+            "body": "Created attachment 245455\nFixes this bug without disabling tail call optimization by calling exitFrame() before initFrame()\n\nI looked into this a bit. It is true that disabling tail call optimization solves the problem. However, the problem is not with tail call optimization itself, but a tiny bug in how it is done. The problem is that the new stack frame is created before the old one is popped, so the debugger first sees the onEnter() for the new frame, and immediately afterwards the onExit() for the old one, which results in the new frame being popped and the old one being kept as current.\n\nThis simple patch for Interpreter.java fixes the problem without disabling tail call optimization by calling exitFrame() before initFrame(). \n\nHowever, this still results in a \"hole\" in the stack frame context combobox, which may be confusing. Maybe the right thing to do is to disable tail call optimization when the debugger is on, but I don't know if this information is always easily available at compile time.",
+            "date": "20061113T15:20:55",
+            "id": 7
+        },
+        {
+            "author": "szegedia@freemail.hu",
+            "body": "Comitted Hannes' patch to CVS HEAD.",
+            "date": "20061227T19:01:06",
+            "id": 8
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "Adding target milestone of 1.6R6 based on the date this bug was resolved FIXED.",
+            "date": "20070518T15:10:39",
+            "id": 9
+        }
+    ],
+    "component": "Core",
+    "description": "User-Agent:       Mozilla/5.0 (Windows; U; Windows NT 5.1; en-US; rv:1.8.0.4) Gecko/20060508 Firefox/1.5.0.4\nBuild Identifier: 1.6R2\n\nWhen running a js program using the debugger, and putting a breakpoint or trying to step into a function which is called by another function, the source line in which the debugger _thinks_ it is in is stuck in the call to the nested function.\n\nI have downloaded 1.6R2 and 1.6R1 and it happens on both of them. It\ndoes _not_ happen on 1.5R5. \n\nReproducible: Always\n\nSteps to Reproduce:\nGiven this simple program (in foo.js):\nfunction foo (page)\n{\n  var x = 1;\n  ++x;\n  ++x;\n  ++x;\n  return true;\n\n}\n\n  function zoo(page)\n  {\n    var z = 1;\n    z++;\n    z++;\n    return foo(page);\n  }\n\n  zoo('ssss');\n\nI run the Rhino debugger using:\n\njava -cp js.jar org.mozilla.javascript.tools.debugger.Main foo.js\n\nNow I click on step into repeatedly. The first one enters zoo, which is\ngood. Once I get to the\n\nreturn foo(page);\n\nline and continue clicking on step into, then the debugger does the\nstep, but the current line stays on the \"return foo...\" line. The same thing happens if I try and put a breakpoint in the function foo and click \"Go\" - it gets stuck on the \"return foo...\" line.\n\nActual Results:  \nThe debugger does the\nstep, but the current line stays on the \"return foo...\" line. The same thing happens if I try and put a breakpoint in the function foo and click \"Go\" - it gets stuck on the \"return foo...\" line.\n\nExpected Results:  \nThe debugger should step into the function, or if a breakpoint is set, should stand on that line.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "344501",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "-- major",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "Can't step into/put breakpoint in functions that are tail called in the debugger",
+    "systemSpecification": false,
+    "version": "other"
+}

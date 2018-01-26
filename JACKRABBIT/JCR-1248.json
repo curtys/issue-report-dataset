@@ -1,0 +1,71 @@
+{
+    "comments": [
+        {
+            "author": "Ard Schrijvers",
+            "body": "Repeated from user-list: \n\nIt seems that in LuceneQueryBuilder at\n\nObject visit(TextsearchQueryNode node, Object data) {\n\nit breaks at\n\nQuery context = parser.parse(query.toString()); \n\nwhere the parser is o.a.j.core.query.lucene.fulltext.QueryParser. It seems to break on string ending with a \"!\". Unfortunately, I do not have insight in how the QueryParser works. Perhaps somebody else knows where to look in the QueryParser .",
+            "date": "2007-11-30T09:26:10.804+0000",
+            "id": 0
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "In addition to the already specified set of special character in JSR 170, Jackrabbit uses more of those characters for extended functionality.\n\nThis set of characters should be limited to the ones really required (e.g. ! is equivalent to -) and clearly documented. It would be nice to also have a utility class that automatically escapes the special characters used in Jackrabbit.",
+            "date": "2007-11-30T14:30:03.821+0000",
+            "id": 1
+        },
+        {
+            "author": "Claus K\u00f6ll",
+            "body": "I added a helper Method in org.apache.jackrabbit.util.Text to escape illegal XPathChars. \nIt checks illegal chars at the end of a XPatch search term.\n",
+            "date": "2008-10-20T09:14:16.350+0000",
+            "id": 2
+        },
+        {
+            "author": "Claus K\u00f6ll",
+            "body": "Committed in Rev: 706242",
+            "date": "2008-10-20T11:38:32.219+0000",
+            "id": 3
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "This turned out to be implemented as a new feature in jcr-commons, changing issue metadata accordingly.\n\nI guess the original problem (ParseException) is the expected (though undocumented) behavior, so there's no need to fix this for clients that don't use the new helper method.",
+            "date": "2008-10-20T22:03:00.331+0000",
+            "id": 4
+        },
+        {
+            "author": "Paco Avila",
+            "body": "A query like this will fail:\n\n//element(*, nt:base)[jcr:contains(., 'test \\ done')]\n\nSpecification JSR-170 at point 6.6.5.2 says that literal instances like single quote ( ' ), double quote ( \" ) and hyphen ( - ) must be escaped with a backslash ( \\ ), and backslash itself should be escaped as a double backslash ( \\\\ ). Also, I have noted that some chars like [ and ] need to be escaped also.",
+            "date": "2010-03-01T19:36:18.203+0000",
+            "id": 5
+        },
+        {
+            "author": "Alexander Klimetschek",
+            "body": "> A query like this will fail: \n> //element(*, nt:base)[jcr:contains(., 'test \\ done')] \n\nDid you use org.apache.jackrabbit.util.Text.escapeIllegalXpathSearchChars() ? In case that one has a bug, please file a new issue.\n\nSee also http://wiki.apache.org/jackrabbit/EncodingAndEscaping",
+            "date": "2010-03-01T21:36:44.142+0000",
+            "id": 6
+        },
+        {
+            "author": "Paco Avila",
+            "body": "By the way, this sample code at http://wiki.apache.org/jackrabbit/EncodingAndEscaping is recursive:\n\nString q =\n  \"/jcr:root/foo/element(*, foo)\" +\n  \"[jcr:contains(@title, '\" + Text.escapeIllegalXpathSearchChars(q).replaceAll(\"'\", \"''\") + \"')]\" +\n  \"[@itemID = '\" + itemID.replaceAll(\"'\", \"''\") + \"']\";",
+            "date": "2010-03-02T09:02:46.868+0000",
+            "id": 7
+        },
+        {
+            "author": "Paco Avila",
+            "body": "I'm not sure if is a bug or a \"feature\". The query\n\nString term = \"pe[]pe\";\nString scapedTerm = Text.escapeIllegalXpathSearchChars(term).replaceAll(\"'\", \"''\")\nString query = \"/jcr:root//*[jcr:contains(okm:content,'\"+escapedTerm+\"')]\"\n\nshould fail or the term \"pe[]pe\" should be escaped as \"pe\\[\\]pe\"?",
+            "date": "2010-03-02T09:12:17.496+0000",
+            "id": 8
+        }
+    ],
+    "component": "jackrabbit-jcr-commons",
+    "description": "If you try to perform a search like this\n\n//element(*, nt:base)[jcr:contains(., 'test!')]\n\nyou get this exception\n\njavax.jcr.RepositoryException: Exception building query: org.apache.jackrabbit.core.query.lucene.fulltext.ParseException: Encountered \"<EOF>\" at line 1, column 6.\n",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "JCR-1248",
+    "issuetypeClassified": "RFE",
+    "issuetypeTracker": "RFE",
+    "priority": "Minor",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "Helper Method to escape illegal XPath Search Term",
+    "systemSpecification": true,
+    "version": ""
+}

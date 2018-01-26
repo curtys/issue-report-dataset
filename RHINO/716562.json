@@ -1,0 +1,41 @@
+{
+    "comments": [
+        {
+            "author": "hannesw@gmail.com",
+            "body": "I can't reproduce this with rhino 1.7R3 or git master. Running a script containing the unterminated array declaration above gives me this:\n\njs: \"err.js\", line 1: missing ] after element list\njs: a = [ 1, 2\njs: .........^",
+            "date": "20120109T18:07:42",
+            "id": 0
+        },
+        {
+            "author": "hannesw@gmail.com",
+            "body": "I think I know what's going on: Parser.reportError(...) will only throw an exception if CompilerEnvirons.recoverFromErrors() returns false.\n\nSince that is the default, I think there might be more bugs like this lingering. Fixing this case, please report if you find more.",
+            "date": "20120110T09:33:33",
+            "id": 1
+        },
+        {
+            "author": "hannesw@gmail.com",
+            "body": "I pushed your fix to git master: \nhttps://github.com/mozilla/rhino/commit/31236c9f05e231577f0eca8217b4965592636618",
+            "date": "20120110T09:38:01",
+            "id": 2
+        },
+        {
+            "author": "gcamp@cisco.com",
+            "body": "Ah brilliant thanks, you are correct I was missing the crucial information that I am using the IDE environs.  Just for completeness (and my records) here is some sample code that reproduces the issue:\n\n\n\nimport org.mozilla.javascript.CompilerEnvirons;\nimport org.mozilla.javascript.Parser;\nimport org.mozilla.javascript.ast.AstRoot;\n\n\npublic class RhinoTest {\n\tpublic static void main(String []args) {\n\t\tParser parser = new Parser(CompilerEnvirons.ideEnvirons());\n\t\tAstRoot astRoot = parser.parse(\"a = [\", \"Script\", 1);\n\t}\n}",
+            "date": "20120110T12:09:39",
+            "id": 3
+        }
+    ],
+    "component": "Core",
+    "description": "Seen in version 1.7R3 (and in the head source code version).\nThe rhino AST parser goes into an infinite loop when parsing a javascript expression that has an unfinished (unterminated) array declaration e.g. \na = [ 1, 2\n\nThis is caused by the method : org.mozilla.javascript.Parser.arrayLiteral()\nIf this method hits an EOF then it reports an error and continues infinitely.\n\nThe fix for this is to change :\n            } else if (tt == Token.EOF) {\n                reportError(\"msg.no.bracket.arg\");\n            } else\nto:\n            } else if (tt == Token.EOF) {\n                reportError(\"msg.no.bracket.arg\");\n                break;\n            } else",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "716562",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "-- normal",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "Rhino AST infinite loop when parsing incomplete array declarations",
+    "systemSpecification": true,
+    "version": "head"
+}

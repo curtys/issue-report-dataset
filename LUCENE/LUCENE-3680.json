@@ -1,0 +1,59 @@
+{
+    "comments": [
+        {
+            "author": "Uwe Schindler",
+            "body": "+1 Thanks for taking care!",
+            "date": "2012-01-07T17:46:49.692+0000",
+            "id": 0
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "+1",
+            "date": "2012-01-07T17:55:21.730+0000",
+            "id": 1
+        },
+        {
+            "author": "Robert Muir",
+            "body": "I committed the patch (backporting), but i found a few more problems relating to\ninconsistent use of exceptions when accessing a closed resource.\n\nhere are some from 3.x's compoundfiledirectory:\n{noformat}\n  public synchronized void close() throws IOException {\n    if (stream == null)\n      throw new IOException(\"Already closed\");\n  ...\n  public synchronized IndexInput openInput(String id, int readBufferSize) throws IOException {\n    if (stream == null)\n      throw new IOException(\"Stream closed\");\n{noformat}\n\nI think the close() one is wrong since it impls closeable, but in the other case we should use AlreadyClosedException (like other directories).\nIll look around for more of these and create another patch.",
+            "date": "2012-01-07T21:07:01.955+0000",
+            "id": 2
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "I agree, Closeable.close() is allowed to be closed multiple times, while additional calls must have no effect. So the first throws is wrong, should be simple return.",
+            "date": "2012-01-07T21:22:12.030+0000",
+            "id": 3
+        },
+        {
+            "author": "Robert Muir",
+            "body": "patch with more consistency fixes.\n\nI put TODO's in the lockfactory exceptions where a directory is a regular file (not sure if we should be using NoSuchDirectoryException here?)",
+            "date": "2012-01-07T21:26:46.318+0000",
+            "id": 4
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Cool +1\n\nWe should better check all Closeables...",
+            "date": "2012-01-07T21:54:11.174+0000",
+            "id": 5
+        },
+        {
+            "author": "Robert Muir",
+            "body": "I think this patch is safe, I'll bring it up to speed and commit it tomorrow.",
+            "date": "2012-03-06T02:40:14.052+0000",
+            "id": 6
+        }
+    ],
+    "component": "",
+    "description": "just some minor improvements:\n* always use EOFException when its eof\n* always include the inputstream too so we know filename etc\n* use FileNotFoundException consistently in CFS when a sub-file is not found\n",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-3680",
+    "issuetypeClassified": "OTHER",
+    "issuetypeTracker": "OTHER",
+    "priority": "Trivial",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "exception consistency in o.a.l.store",
+    "systemSpecification": true,
+    "version": ""
+}

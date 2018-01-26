@@ -1,0 +1,59 @@
+{
+    "comments": [
+        {
+            "author": "angela",
+            "body": "the problem is caused by the following behaviour of jcr2spi:\n\n- whenever a ChildNodeEntries object is built, it loads the child-infos from the spi layer\n\nthis is obviously not optimal and we discussed it at least once in the past.\nin order to fix that we would need to\n\n- keep a flag with ChildNodeEntries implementation indicating whether the complete list has been\n  read or not.\n- by default don't load the child info entries upon entries construction\n- populate the ChildNodeEntries lazily\n- load all infos only upon calls to Node.getNodes or Node.getNodes(String)\n- add a method to ChildNodeEntries that allows to retrieve an interator over all entries\n- adjust NodeEntryImpl avoiding that ChildNodeEntries are always built with the 'retrieveAll' flag.\n\n",
+            "date": "2008-06-05T07:56:58.315+0000",
+            "id": 0
+        },
+        {
+            "author": "angela",
+            "body": "adjust components. it's a jcr2spi issue only.",
+            "date": "2008-06-05T07:57:44.629+0000",
+            "id": 1
+        },
+        {
+            "author": "Michael D\u00fcrig",
+            "body": "Another solution might be, to check the Items returned by getItemInfos first whenever a child item is needed. If the item is found there, build the item state from it. If not, keep the current behavior hand load the item.",
+            "date": "2008-06-05T08:04:44.533+0000",
+            "id": 2
+        },
+        {
+            "author": "angela",
+            "body": "> Another solution might be,\n\nright... that would after all be a much cheaper fix for the problem.\nsince we will have to address the childnodeentries loading sooner or later, i wanted to state it here.\n\ndo you have a patch for the straight forward fix at hand? that would be cool :)\nangela\n\n\n",
+            "date": "2008-06-05T08:10:59.368+0000",
+            "id": 3
+        },
+        {
+            "author": "Michael D\u00fcrig",
+            "body": "Proof of concept patch which considers the ItemInfos in the batch when building the ChildNodeInfos. With my test case repository round trips went down from 16 to 4 (5.1 seconds vs. 1.7 seconds) when comparing not patched vs. patched.\n\nThe patch is a hack and needs to be revisited. It can however serve as a starting point.",
+            "date": "2008-08-14T14:12:43.857+0000",
+            "id": 4
+        },
+        {
+            "author": "Michael D\u00fcrig",
+            "body": "Attempted clean up of previous patch. This results in the following test failures:\n\ntestNode(org.apache.jackrabbit.test.api.SetValueVersionExceptionTest)\ntestGetVersionLabelsForInvalidVersion(org.apache.jackrabbit.test.api.version.VersionLabelTest)\ntestRestoreWithInvalidVersion(org.apache.jackrabbit.test.api.version.RestoreTest)\ntestRestoreOrder(org.apache.jackrabbit.test.api.version.RestoreTest)\ntestWorkspaceRestoreWithParent(org.apache.jackrabbit.test.api.version.WorkspaceRestoreTest)\ntestNotLockedAfterLogout(org.apache.jackrabbit.jcr2spi.lock.SessionScopedLockTest)\ntestLogoutHasNoEffect(org.apache.jackrabbit.jcr2spi.lock.OpenScopedLockTest)\n\nThis seems to indicate that some of the client of NodeEntry.getNodeEntry(Name, int,  boolean) rely on the (IMHO wrong) interpretation of the last argument.\n",
+            "date": "2008-08-14T14:27:50.143+0000",
+            "id": 5
+        },
+        {
+            "author": "angela",
+            "body": "applied patch for WorkspaceItemStateFactory provided by michi.\nin addition changed NodeEntryImpl to create empty child node entries upon creation. the ChildNodeEntriesImpl contains a flag to indicate whether the complete list of entries has been loaded or not.",
+            "date": "2008-10-03T14:20:48.841+0000",
+            "id": 6
+        }
+    ],
+    "component": "jackrabbit-jcr2spi",
+    "description": "In some cases jcr2spi issues calls to RepositoryService.getChildInfos for items which haven been returned by the last call to RepositoryService.getItemInfos. \n\nThis happens because WorkspaceItemStateFactory.createDeepPropertyState is asked to create the node states for all items returned by RepositoryService.getChildInfos in the order they are returned by the Iterator. When trying to create an item state for an item which is deeper down the hierarchy than another item which comes later in the iterator, a call to RepositoryService.getChildInfos is issued for the latter. ",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "JCR-1638",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "Redundant calls to RepositoryService.getChildInfos",
+    "systemSpecification": true,
+    "version": ""
+}

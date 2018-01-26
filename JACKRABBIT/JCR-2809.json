@@ -1,0 +1,59 @@
+{
+    "comments": [
+        {
+            "author": "Tobias Bocanegra",
+            "body": "or swapping the expressions for better understanding:\n\n    public boolean isExpired() { \n        return timeoutTime != Long.MAX_VALUE \n            && System.currentTimeMillis() > timeoutTime * 1000;\n    } \n\n",
+            "date": "2010-11-10T23:45:03.618+0000",
+            "id": 0
+        },
+        {
+            "author": "Felix Meschberger",
+            "body": "And why not keep the timeout as ms internally to prevent the repeated multiplication by 1000 ? ",
+            "date": "2010-11-11T08:12:58.583+0000",
+            "id": 1
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "I agree with Felix, repeated multiplication by 1000 could be avoided.\n\nThere are more bugs it seems: \n\n- there is a space missing in the toString() representation\n\n- the lock timeout is ignored when using XA - is this on purpose?",
+            "date": "2010-11-11T10:06:48.540+0000",
+            "id": 2
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "There is one more bug when using XA: the timeout time (when will it expire since 1970) is used as the timeout hint (number of seconds until it expires). But anyway the timeout was ignored when using XA.",
+            "date": "2010-11-11T10:43:24.585+0000",
+            "id": 3
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "The existing ConcurrentLocking* tests are not included in TestAll. I don't know the reason, it looks like a bug (why having tests if they are not used). I will add them unless somebody objects.",
+            "date": "2010-11-11T10:46:16.423+0000",
+            "id": 4
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "Proposed patch",
+            "date": "2010-11-11T10:56:34.152+0000",
+            "id": 5
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "Fixed in the trunk",
+            "date": "2010-11-11T15:23:39.104+0000",
+            "id": 6
+        }
+    ],
+    "component": "locks",
+    "description": "When a timeoutHint other than Long.MAX_VALUE is given to the javax.jcr.lock.LockManager API:\n\n   lock(String absPath, boolean isDeep, boolean isSessionScoped, long timeoutHint, String ownerInfo)\n\na timeoutTime in seconds will be computed as follows (o.a.j.core.lock.LockInfo#updateTimeoutTime):\n\n   long now = (System.currentTimeMillis() + 999) / 1000; // round up\n   this.timeoutTime = now + timeoutHint;\n\nthe TimeoutHandler in o.a.j.core.lock.LockManagerImpl running every second will then check whether the timeout has expired (o.a.j.core.lock.LockInfo#isExpired):\n\n    public boolean isExpired() {\n        return timeoutTime != Long.MAX_VALUE\n            && timeoutTime * 1000 > System.currentTimeMillis();\n    }\n\nObviously, the latter condition is true from the very beginning. Replacing '>' with '<' or '<=' should do the trick.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "JCR-2809",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "Lock expires almost immediately",
+    "systemSpecification": true,
+    "version": "2.1.2"
+}

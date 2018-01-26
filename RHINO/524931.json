@@ -1,0 +1,119 @@
+{
+    "comments": [
+        {
+            "author": "albersato@gmail.com",
+            "body": "This happens in other parts of the code.\n\nThis errors could be solved by catching the exceptions in \n\norg.mozilla.javascript.xmlimpl.XMLObjectImpl.ecmaPut:\n\n  /**\n     * Implementation of ECMAScript [[Put]]\n     */\n    @Override\n    public final void ecmaPut(Context cx, Object id, Object value) {\n        try {\n            if (cx == null) cx = Context.getCurrentContext();\n            XMLName xmlName = lib.toXMLNameOrIndex(cx, id);\n            if (xmlName == null) {\n                long index = ScriptRuntime.lastUint32Result(cx);\n                // XXX Fix this cast\n                put((int)index, this, value);\n                return;\n            }\n            putXMLProperty(xmlName, value);\n        } catch (Exception e) {\n        \te.printStackTrace();\n            throw ScriptRuntime.constructError(\"TypeError\", \"Can't assign \" + value + \" to \" + id + \": \" + e.getMessage());\n        }\n    }",
+            "date": "20091219T16:26:00",
+            "id": 0
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "Fixed: \n\nChecking in xmlimplsrc/org/mozilla/javascript/xmlimpl/XMLList.java;\n/cvsroot/mozilla/js/rhino/xmlimplsrc/org/mozilla/javascript/xmlimpl/XMLList.java,v  <--  XMLList.java\nnew revision: 1.32; previous revision: 1.31\ndone\n\nTurns out this case isn't treated as an error by SpiderMonkey. I've emulated the behavior where the script\n\nvar x = <x><foo>bar</foo></x>;\nx.foo[0] = \"baz\";\nx.foo[1] = \"barf\";\nprint(x);\n\nproduces the output\n\n<x>\n  <foo>baz</foo>\n  <foo>barf</foo>\n</x>",
+            "date": "20091222T19:25:00",
+            "id": 1
+        },
+        {
+            "author": "albersato@gmail.com",
+            "body": "This change solves some issues, but not all related to this issue.\n\nAnother test case:\n\n1) CASE 1\n\nThis code:\n\nvar tmp=new XML('<message xmlns=\"http://something\"><data></data></message>');\ndefault xml namespace = \"http://something\";\nvar otherData = new XML(<otherData></otherData>); \notherData['@anAtt'] = \"anATTValue\"; \ntmp.data.otherData=otherData;\n\nworks fine in SpiderMonkey, but launch a DOMException (NAMEPSACE_ERR) in Rhino.\n\nCuriously, changing the \"otherData['@anAtt'] = \"anATTValue\"; \" line to \n\notherData.@anAtt = \"anATTValue\"; \n\nit works fine.\n\n\n2) CASE 2\n\nThe next code:\n\ndefault xml namespace = \"http://something\";\nvar tmp = new XML(<data></data>); \nvar otherData=new XML(<otherData></otherData>); \notherData['@anAtt2'] = \"anATTValue2\";\ntmp.appendChild(otherData);\n\nWorks fine in SpiderMonkey, but launch a non-catched DomException NAMESPACE_ERR.\n\nSimilar as the previous case, changing \n\notherData['@anAtt2'] = \"anATTValue2\";\n\nto \n\notherData.@anAtt2 = \"anATTValue2\";\n\nIt works.\n\n\nI don't know if it's the right solution, but all this cases works by appling the patch related in 535964, what is changing create method at  :\nXmlNode.Namespace class \n\nThis is my suggested code:\n\nstatic Namespace create(String uri) {\n            Namespace rv = new Namespace();\n            rv.uri = uri;\n            //Avoid null prefix for \"\" namespaces\n            if (uri==\"\") rv.prefix=\"\";\n            return rv;\n        }",
+            "date": "20091223T00:39:51",
+            "id": 2
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "Thanks, I've committed your patch:\n\nChecking in testsrc/jstests/524931.jstest;\n/cvsroot/mozilla/js/rhino/testsrc/jstests/524931.jstest,v  <--  524931.jstest\ninitial revision: 1.1\ndone\nChecking in xmlimplsrc/org/mozilla/javascript/xmlimpl/XmlNode.java;\n/cvsroot/mozilla/js/rhino/xmlimplsrc/org/mozilla/javascript/xmlimpl/XmlNode.java,v  <--  XmlNode.java\nnew revision: 1.13; previous revision: 1.12\ndone",
+            "date": "20091223T14:09:33",
+            "id": 3
+        },
+        {
+            "author": "albersato@gmail.com",
+            "body": "Unfortunately, We've found another problems.\n\nCASE 3:\n\nThe next code works in spiderMonkey, but not in Rhino:\n\nvar xmlTester=<message><data></data></message>;\nxmlTester['data']['test'][0] = \"test0\";\nxmlTester['data']['test'][1] = \"test1\";\nalert(xmlTester);\n\n\nCASE 4:\n\nThe next code works in spiderMonkey, but not in Rhino:\nvar xmlTester=<message><data></data></message>;\nxmlTester['data']['test'][0] = <subTest>subtest1</subTest>;\nxmlTester['data']['test'][1] = \"test1\";\nalert(xmlTester);\n\n\nI've tested the next solution:\n\nIn XMLList, at  put(int index, Scriptable start, Object value) method, it's necessary to change:\n\nif (xmlValue == null) {\n    xmlValue=item(0).copy(); \n}\n\nTo:\n\nif (xmlValue == null) {\n    xmlValue=(item(0)==null)? newTextElementXML(null,targetProperty,null):item(0).copy(); \n}\n\nAnd\n\nif (index < length()) {\n   parent = item(index).parent();\n}else {\n   // Appending\n   parent = parent();\n}\n\nTo:\n\n\nif (index < length()) {\n   parent = item(index).parent();\n}else if (length()==0){\n    parent= targetObject.getXML();\n}else {\n   // Appending\n   parent = parent();\n}\n\n\nWith this changes applied, it seems to work in a similar way to SpiderMonkey",
+            "date": "20100106T02:12:50",
+            "id": 4
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "Created attachment 420660\nProposed fix from earlier comments\n\nI tried this patch and it worked for the test case but failed some regression tests. I'll need to investigate.",
+            "date": "20100108T02:06:11",
+            "id": 5
+        },
+        {
+            "author": "jacobb@mirthcorp.com",
+            "body": "Any update to this issue?  The patch Alberto supplied seemed to work for me, but what regression tests did it fail for?  Looking for a good solution to this bug in the latest versions.",
+            "date": "20100112T19:30:52",
+            "id": 6
+        },
+        {
+            "author": "albersato@gmail.com",
+            "body": "I've run all the Mozilla Suite tests, and I've found the problem.\n\nInstead of\n\n  parent= targetObject.getXML();\n\n..It should be:\n\n  parent= (targetObject!=null)? targetObject.getXML():parent();\n\nThe test case is:\n\nvar e = <employees><employee id=\"0\"><name>John</name><age>20</age></employee><employee id=\"1\"><name>Sue</name><age>30</age></employee></employees>;\n\nvar i = 0;\nvar twoEmployees = new XMLList();\nfor each (var p in e..employee)\n{\n    if (p.@id == 0 || p.@id == 1)\n    {\n        twoEmployees[i++] = p;\n    }\n}",
+            "date": "20100114T00:28:53",
+            "id": 7
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "Great, thanks. I hadn't yet had time to track down the problem. Thanks for doing so. \n\nI'll run regression tests tonight and submit if everything looks good.",
+            "date": "20100114T02:15:03",
+            "id": 8
+        },
+        {
+            "author": "jacobb@mirthcorp.com",
+            "body": "Will there be another 1.7R3pre release including this fix?  I'm currently using 1.7R3pre and just patched XMLList with this fix.  1.7R3pre was snagged from ftp://ftp.mozilla.org/pub/mozilla.org/js/",
+            "date": "20100114T04:03:50",
+            "id": 9
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "Committed patch with update from comment 8:\n\nChecking in testsrc/doctests/524931.doctest;\n/cvsroot/mozilla/js/rhino/testsrc/doctests/524931.doctest,v  <--  524931.doctest\nnew revision: 1.2; previous revision: 1.1\ndone\nChecking in xmlimplsrc/org/mozilla/javascript/xmlimpl/XMLList.java;\n/cvsroot/mozilla/js/rhino/xmlimplsrc/org/mozilla/javascript/xmlimpl/XMLList.java,v  <--  XMLList.java\nnew revision: 1.33; previous revision: 1.32\n\nThanks for the contribution!",
+            "date": "20100114T12:17:52",
+            "id": 10
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "(In reply to comment #10)\n> Will there be another 1.7R3pre release including this fix?  I'm currently using\n> 1.7R3pre and just patched XMLList with this fix.  1.7R3pre was snagged from\n> ftp://ftp.mozilla.org/pub/mozilla.org/js/\n\nI just pushed another rhino1_7R3pre.zip to staging that includes this fix. It should appear shortly.",
+            "date": "20100114T12:21:46",
+            "id": 11
+        },
+        {
+            "author": "hannesw@gmail.com",
+            "body": "Fabulous - this must have been the most reported E4X bug in Rhino - see bug 380173 and all its duplicates. A quick run through all bugs' test cases suggests they're all running as excpected now. Thanks!",
+            "date": "20100114T12:46:32",
+            "id": 12
+        },
+        {
+            "author": "hannesw@gmail.com",
+            "body": "*** Bug 538461 has been marked as a duplicate of this bug. ***",
+            "date": "20100114T13:11:05",
+            "id": 13
+        },
+        {
+            "author": "hannesw@gmail.com",
+            "body": "*** Bug 380173 has been marked as a duplicate of this bug. ***",
+            "date": "20100114T13:12:11",
+            "id": 14
+        },
+        {
+            "author": "albersato@gmail.com",
+            "body": "Humb \n\nI'm afraid but The \n\"parent= (targetObject!=null)? targetObject.getXML():parent();\" \n\nsolution is at the CVS, but not in 7R3pre release (at least not in the src of the release)",
+            "date": "20100520T22:59:38",
+            "id": 15
+        },
+        {
+            "author": "albersato@gmail.com",
+            "body": "Sorry for the previous post. I've confirmed line is in the 7R3pre release.",
+            "date": "20100611T23:26:40",
+            "id": 16
+        }
+    ],
+    "component": "E4X",
+    "description": "User-Agent:       Mozilla/5.0 (Macintosh; U; Intel Mac OS X 10.6; en-US; rv:1.9.2b1) Gecko/20091014 Firefox/3.6b1\nBuild Identifier: Rhino 1.7 release 2 2009 03 22\n\nAttempting to set the value of an uninitialized child of an E4X object by using `top.child[0] = \"value\"` causes Rhino to crash with a Null Pointer Exception.\n\nHowever, if top.child[0] already exists, the value is changed successfully.\n\nReproducible: Always\n\nSteps to Reproduce:\nvar x = <x></x>;\nx.foo[0] = \"bar\";\nActual Results:  \njs> var x = <x><foo>bar</foo></x>;\njs> x.foo[0];\nbar\njs> x.foo[0] = \"baz\";\nbaz\njs> x.foo[1];\njs>\njs> x.foo[1] = \"barf\";\nException in thread \"main\" java.lang.NullPointerException\n\tat org.mozilla.javascript.xmlimpl.XMLList.put(XMLList.java:242)\n\tat org.mozilla.javascript.xmlimpl.XMLObjectImpl.ecmaPut(XMLObjectImpl.java:312)\n\tat org.mozilla.javascript.ScriptRuntime.setObjectIndex(ScriptRuntime.java:1588)\n\tat org.mozilla.javascript.ScriptRuntime.setObjectIndex(ScriptRuntime.java:1576)\n\tat org.mozilla.javascript.Interpreter.interpretLoop(Interpreter.java:3081)\n\tat org.mozilla.javascript.Interpreter.interpret(Interpreter.java:2487)\n\tat org.mozilla.javascript.InterpretedFunction.call(InterpretedFunction.java:164)\n\tat org.mozilla.javascript.ContextFactory.doTopCall(ContextFactory.java:398)\n\tat org.mozilla.javascript.ScriptRuntime.doTopCall(ScriptRuntime.java:3065)\n\tat org.mozilla.javascript.InterpretedFunction.exec(InterpretedFunction.java:175)\n\tat org.mozilla.javascript.tools.shell.Main.evaluateScript(Main.java:564)\n\tat org.mozilla.javascript.tools.shell.Main.processSource(Main.java:424)\n\tat org.mozilla.javascript.tools.shell.Main.processFiles(Main.java:196)\n\tat org.mozilla.javascript.tools.shell.Main$IProxy.run(Main.java:117)\n\tat org.mozilla.javascript.Context.call(Context.java:515)\n\tat org.mozilla.javascript.ContextFactory.call(ContextFactory.java:507)\n\tat org.mozilla.javascript.tools.shell.Main.exec(Main.java:179)\n\tat org.mozilla.javascript.tools.shell.Main.main(Main.java:157)\n\nExpected Results:  \n<x>\n <foo>baz</foo>\n <foo>barf</foo>\n</x>",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "524931",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "-- normal",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "Setting the value of an uninitialized child of an E4X object by using square bracket syntax causes Null Pointer Exception",
+    "systemSpecification": true,
+    "version": "other"
+}

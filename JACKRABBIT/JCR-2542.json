@@ -1,0 +1,119 @@
+{
+    "comments": [
+        {
+            "author": "Julian Reschke",
+            "body": "Q: is it even *possible* to get the noLocal filter working over remoting? Doesn't every HTTP request, including the POLL request, obtain a new server session?",
+            "date": "2011-11-08T15:59:33.558+0000",
+            "id": 0
+        },
+        {
+            "author": "Julian Reschke",
+            "body": "OK, the main issue here seems to be that our event serialization doesn't carry the information from Event.getPrimaryNodeTypeName() and Event.getMixinTypeNames(). Fixing this first...",
+            "date": "2011-11-10T14:53:44.142+0000",
+            "id": 1
+        },
+        {
+            "author": "Julian Reschke",
+            "body": "> OK, the main issue here seems to be that our event serialization doesn't carry the information from Event.getPrimaryNodeTypeName() and Event.getMixinTypeNames(). Fixing this first... \n\nBut then, there are on SPI's Event, not JCR's Event.",
+            "date": "2011-11-10T14:59:06.501+0000",
+            "id": 2
+        },
+        {
+            "author": "Julian Reschke",
+            "body": "Summary, after reading lots of code, scratching my head, and conferencing with\nAngela:\n\nJCR2SPI tries to minimize the amount of concurrent subscriptions on the SPI\nlevel (which translate to HTTP SUBSCRIBE/POLL/UNSUBSCRIBE operations over\nSPI2DAV).\n\nIt does this by creating a single subscription, and potentially changing the\nsubscription information when needed. The incoming events are then distributed\namong the local event listeners according to their filters.\n\nThis does work for filters that depend on UUIDs or paths, because this is\ninformation that is part of the JCR events being generated, and consequently\ncan be filtered when received.\n\nIt does not work for things missing from the JCR event API, such as nodetype\ninformation or the isLocal flag.\n\nOr rephrasing this in terms of interfaces: the SPI Event interface provides\nmore information than we can trivially extract from a (serialized) JCR\nevent.\n\nApproaches to fix this:\n\n1) Do not rely on this SPI feature in JCR2SPI. Downside: observation gets\nmore expensive than needed for SPI implementations that do support the\nfeature.\n\n1b) Make the fact that the SPI Events do not have the required functionality\ndiscoverable and have two different code paths then.\n\n2) Fix the SPI implementation, here: SPI2DAV and the Jackrabbit server. If we\ncould generate the required information on the server, extending SPI2DAV would\nbe trivial. However, this is hard because over in JCR land, the information we\nneed is not associated with the event, but the listener.\n\nThought experiment: we could have two listeners on the server, one for noLocal\n= true, one for noLocal = false. Inspecting the events reported to both\nlisteners in theory would allow us to decide the type of the event (although\nit will be tricky to match events from both listeners as we don't have a unique\nevent id).\n\nThe same could be done for listening for specific node types, but of course\nit would even be harder.\n\n2b) Alternatively, on the server, we could try to extract more information from\nevents when we know the specific implementation class (or actually define\nan extension interface that provides us with what we want).\n\n \n\n\n\n",
+            "date": "2011-11-10T17:06:34.752+0000",
+            "id": 3
+        },
+        {
+            "author": "Julian Reschke",
+            "body": "Update:\n\nI tried to implement the isLocal flag as extension in the events returned by the POLL method by comparing the session ID with the session associated with the event (as e\u00b4found in the EventImpl's EvenState).\n\nThis doesn't help, as we're comparing server sessions, which have a different lifetime from those on the client. This could be made working by implementing complete session affinity (one to one mapping between SPI session and server session), or by pickybacking SPI session information to the JCR sessions so that it can be rediscovered in the event state.\n\nThe former sounds like a really bad idea just to make filtering on onLocal work.\n\nThe latter could be done in a similar way to JCR user data (extra request header, with the data attached to the session object maybe as attribute), or even by piggybacking the information to the user data.\n",
+            "date": "2011-11-11T15:28:21.340+0000",
+            "id": 4
+        },
+        {
+            "author": "Julian Reschke",
+            "body": "Update:\n\nadded getPrimaryNodeTypeName to JackrabbitEvent, added it to the POLL result, added support in spi2dav; node type based filters seem to be happy now. \n\nTODO: add mixin types; error handling, decide where to put the extension interface (Angela: jcr-server currently *does* have a dependency on -core)",
+            "date": "2011-11-11T17:52:59.148+0000",
+            "id": 5
+        },
+        {
+            "author": "Julian Reschke",
+            "body": "Rough patch for discussion (this fixes the node type filtering)",
+            "date": "2011-11-11T18:18:49.440+0000",
+            "id": 6
+        },
+        {
+            "author": "Julian Reschke",
+            "body": "See also: http://java.net/jira/browse/JSR_333-43",
+            "date": "2011-11-14T11:29:22.464+0000",
+            "id": 7
+        },
+        {
+            "author": "Julian Reschke",
+            "body": "Updated draft patch (pom fixed, license and javadoc added)",
+            "date": "2011-11-14T12:38:28.027+0000",
+            "id": 8
+        },
+        {
+            "author": "Julian Reschke",
+            "body": "The proposed patch fixes the problem for filtering by node type.\n\nIssues:\n\n- are we ok with using an extension interface?\n- if the server does not support the extension we really should fail early (yet another extension interface)\n\nUnsolved:\n\n. filtering by \"noLocal\", which probably requires a different type of solution",
+            "date": "2011-11-14T12:41:59.469+0000",
+            "id": 9
+        },
+        {
+            "author": "Julian Reschke",
+            "body": "Variant that uses getInfo() as discussed with Marcel.\n\nNow the bad news: this fails JCR API tests that insist on getInfo not returning additional information (rightfully, I believe).",
+            "date": "2011-11-14T17:46:39.289+0000",
+            "id": 10
+        },
+        {
+            "author": "Julian Reschke",
+            "body": "r1202201: Added the previously discussed extension interface (in spi-commons) and use it to get the node types over the wire.",
+            "date": "2011-11-15T14:18:37.411+0000",
+            "id": 11
+        },
+        {
+            "author": "Julian Reschke",
+            "body": "Update on remaining issues:\n\n(1) When creating the subscription, it would be good if we could check that the remote server supports the extension added in r1202201. Custom repository descriptor?\n\n(2) Filtering by noNocal\n\nThis is hard, as there's no one-to-one mapping between SPI Session(Info) and the JCR Sessions.\n\nProposal (I):\n\na) Extend the JCR Event with a method that answers the question: \"is this an event for Session x\"? Technically this is simple as the EventState carries that information, we just need to discuss the best way to expose this.\n\nb) Let every SessionInfo create a unique identifier and send that one along with each request; if we don't want to mint extension headers or re-use extension headers that we have we could use the Link header again (as done for UserData)\n\nc) Let the JCR server collect a mapping from SPI session identifiers to JCR sessions, so that it can the calculate and return a isLocal flag in the POLL response\n\nWhat's ugly is that this prevents us from re-using the same JCR session for different SPI sessions (is this a problem?), and that it's not clear how long the mapping described in c) needs to be maintained.\n\nAn alternate proposal (II)  would be to piggyback the information to the UserData, which of course is ugly in that information will show up as user data which is not. A variant of this (III) would be to extend ObservationManager and Events with a mechanism similar to UserData, but not interfering with it.\n\nFeedback appreciated...",
+            "date": "2011-11-15T15:48:35.861+0000",
+            "id": 12
+        },
+        {
+            "author": "Julian Reschke",
+            "body": "Proposed patch for feature discovery through repository descriptor.",
+            "date": "2011-11-15T16:42:42.548+0000",
+            "id": 13
+        },
+        {
+            "author": "Julian Reschke",
+            "body": "Chatted with Jukka. Summary:\n\n- new interfaces, not extending but adding to JCR, for these kinds of extensions ok\n- implement noLocal by attaching the client session identifier (a unique string) to the JCR session on the server (Session attributes, needs extension to set)\n- try to do feature discovery for remoting in the SUBSCRIBE response\n",
+            "date": "2011-11-16T10:05:39.563+0000",
+            "id": 14
+        },
+        {
+            "author": "Julian Reschke",
+            "body": "Patch including:\n\n- spi.commons extension interface for Session extension\n- noLocal flag support\n- client sends session identifier so that POLL can compute the flag\n- SUBSCRIBE returns flags indicating extension features\n\nThe one thing I'm unhappy with is the JCR-server-side discovery of event extensions; this needs to happen before events are observed, for now I'm using  a custom repository descriptor",
+            "date": "2011-11-16T18:51:17.952+0000",
+            "id": 15
+        },
+        {
+            "author": "Julian Reschke",
+            "body": "Latest patch applied with r1203175; leavibg bug open for final tuning.",
+            "date": "2011-11-17T12:50:42.716+0000",
+            "id": 16
+        }
+    ],
+    "component": "jackrabbit-spi2dav, JCR 2.0, observation",
+    "description": "i have the impression that the event filter passed to the event subscription in spi2dav is not (or not properly) respected.\n\nmarcel, is there a specific reason that you always pass the static SubscriptionInfo constant (no node type filter, noLocal false) to the SubscribeMethod\nin spi2dav/RepositoryServiceImpl#createSubscription ?\n\ni guess this is the reason for the failure of\n  testNodeType(org.apache.jackrabbit.test.api.observation.AddEventListenerTest)\n  testNoLocalTrue(org.apache.jackrabbit.test.api.observation.AddEventListenerTest)\n",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "JCR-2542",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "spi2dav: EventFilters not respected",
+    "systemSpecification": true,
+    "version": ""
+}

@@ -1,0 +1,143 @@
+{
+    "comments": [
+        {
+            "author": "Thomas Mueller",
+            "body": "CacheManager",
+            "date": "2006-11-03T11:05:40.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "Hi,\n\nI just made some more (long running) tests, and found some problems in the patch I submitted. The mechanism is working, but it shrinks the caches too quickly, and it prints too much log output (log.info instead of log.debug). I will fix those problems and submit a new patch. Sorry.\n\nThomas",
+            "date": "2006-11-03T12:23:40.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "New version (log.debug instead of log.info, slower cache shrinking).",
+            "date": "2006-11-03T14:23:19.000+0000",
+            "id": 2
+        },
+        {
+            "author": "Tobias Bocanegra",
+            "body": "Committed revision 471800.\n",
+            "date": "2006-11-06T17:44:10.000+0000",
+            "id": 3
+        },
+        {
+            "author": "Stefan Guggisberg",
+            "body": "the patch caused a serious performance degradation.\n\nsee http://www.nabble.com/Performance-degradation-in-current--trunk-t2608647.html\n\ni therefore temporarily reverted the changes from svn r471800.\n\n",
+            "date": "2006-11-13T11:08:47.000+0000",
+            "id": 4
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "Hi,\n\nThis is the latest version of the CacheManager. \n\nAs the CacheManager is not a singleton any more, the problem JCR-625 (Memory is not freed up when redeployed) should not appear with this patch. \n\nAlso, the performance degradation found with the earlier versions of the CacheManager should be solved (now the caches are removed from the CacheManager when the session is closed). This has been tested with the unit tests so far on two machines.\n\nThomas",
+            "date": "2006-11-13T14:50:32.000+0000",
+            "id": 5
+        },
+        {
+            "author": "Stefan Guggisberg",
+            "body": "patch (cacheManager5.txt) committed, thanks for this contribution!",
+            "date": "2006-11-15T13:16:45.000+0000",
+            "id": 6
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "A Java level deadlock could occur with the current CacheManager, if:\n\nThread 1: CacheManager.resizeAll(holding a lock on the CacheManager) calls Cache.setMaxMemorySize (which tries to lock MLRUItemStateCache.cache)\n\nThread 2: From the same object, MLRUItemStateCache.dispose (holding a lock on MLRUItemStateCache.cache) calls CacheManager.disposeCache (which tries to lock CacheManager)\n\nI made a patch, where CacheManager.disposeCache is not synchronized on the CacheManager. Instead, it synchronizes on the caches HashMap, where it removes the object (so that modifications to the caches map are synchronized, as this is needed). CacheManager.add now also synchronizes on the caches map.\n\nThis should solve the problem.",
+            "date": "2006-11-16T09:10:50.000+0000",
+            "id": 7
+        },
+        {
+            "author": "Stefan Guggisberg",
+            "body": "reopening since the current implementation may lead to Java level deadlocks, as thomas pointed out. \n\nsuch dead locks occasionally occur when running the maven tests.",
+            "date": "2006-11-16T13:45:20.000+0000",
+            "id": 8
+        },
+        {
+            "author": "Stefan Guggisberg",
+            "body": "applied patch cacheManager6.txt (svn r475735)",
+            "date": "2006-11-16T13:49:40.000+0000",
+            "id": 9
+        },
+        {
+            "author": "Xiaohua Lu",
+            "body": "I have been running a concurrent test on Nov. 28th code base. A deadlock has been encouterred. The setup of the test is :\n1. 6000 file nodes flat under root node\n2. 900 category nodes, three level deep under root node\n3. 50 concurrent thread, each one perform one of the four queries : \n  3.1 select all file nodes\n  3.2 select all category nodes \n  3.3 select file nodes by file property\n  3.4 select category nodes by category property\n\nThe tests only involved query, no add/delete/update are included. From the jstack.txt attached, you can see a few threads are blocking each other, it looks similar to what Tom reported a few weeks ago.  ",
+            "date": "2006-11-29T16:10:20.000+0000",
+            "id": 10
+        },
+        {
+            "author": "Stefan Guggisberg",
+            "body": "reopening based on xiaohua's feed back (potential dead lock)",
+            "date": "2006-11-29T16:21:30.000+0000",
+            "id": 11
+        },
+        {
+            "author": "Xiaohua Lu",
+            "body": "I managed to reproduce the deadlock with 2 concurrent query. both query are select all category nodes.  \n\nthe test data is the same as before. The definition of data as as following :\n\n<nt = 'http://www.jcp.org/jcr/nt/1.0'>\n<mix = 'http://www.jcp.org/jcr/mix/1.0'>\n<mvn = 'http://maven.net/jcr/mock'>\n<mvnnt = 'http://maven.net/jcr/nt/mock'>\n\n[mvnnt:categoryHierarchyNode] > nt:base\n\n[mvnnt:category] > mvnnt:categoryHierarchyNode, mix:referenceable\n- mvn:description (string)\n- mvn:content (reference) multiple\n+ * (mvnnt:categoryHierarchyNode)\n\n--- note : the content field will point to file node and it is not used in this test. \n\nthe query both threads are trying to perform is \n\n//element (*, mvnnt:category)\n\n-- note : The query returned very quickly and the deadlock happened when both threads tried to iterate through the NoteIterator to make sure the returned result are of type mvnnt:category.\n\nThe jstack output is as followings :\n\nThread t@3847: (state = BLOCKED)\n - org.apache.jackrabbit.core.state.CacheManager.cacheAccessed() @bci=18, line=77 (Interpreted frame)\n - org.apache.jackrabbit.core.state.MLRUItemStateCache.touch() @bci=34, line=222 (Compiled frame)\n - org.apache.jackrabbit.core.state.MLRUItemStateCache.retrieve(org.apache.jackrabbit.core.ItemId) @bci=8, line=97 (Compiled frame)\n - org.apache.jackrabbit.core.state.ItemStateReferenceCache.retrieve(org.apache.jackrabbit.core.ItemId) @bci=5, line=99 (Compiled frame)\n - org.apache.jackrabbit.core.state.XAItemStateManager.getItemState(org.apache.jackrabbit.core.ItemId) @bci=54, line=233 (Compiled frame)\n - org.apache.jackrabbit.core.state.SessionItemStateManager.getItemState(org.apache.jackrabbit.core.ItemId) @bci=56, line=165 (Compiled frame)\n - org.apache.jackrabbit.core.ItemManager.createItemInstance(org.apache.jackrabbit.core.ItemId) @bci=5, line=462 (Compiled frame)\n - org.apache.jackrabbit.core.ItemManager.getItem(org.apache.jackrabbit.core.ItemId) @bci=63, line=320 (Compiled frame)\n - org.apache.jackrabbit.core.query.lucene.NodeIteratorImpl.fetchNext() @bci=46, line=194 (Compiled frame)\n - org.apache.jackrabbit.core.query.lucene.NodeIteratorImpl.nextNodeImpl() @bci=21, line=103 (Compiled frame)\n - net.maven.cr.test.PerformanceQueryTest$ListCategoriesQueryTestContext.verify(javax.jcr.NodeIterator) @bci=25 (Interpreted frame)\n - net.maven.cr.test.PerformanceQueryTest.timingQuery(net.maven.cr.test.PerformanceQueryTest$QueryTestContext) @bci=34 (Interpreted frame)\n - net.maven.cr.test.PerformanceQueryTest.access$100(net.maven.cr.test.PerformanceQueryTest, net.maven.cr.test.PerformanceQueryTest$QueryTestContext) @bci=2 (Interpreted frame)\n - net.maven.cr.test.PerformanceQueryTest$TimedQueryTest.run() @bci=32 (Interpreted frame)\n\n\nThread t@4099: (state = BLOCKED)\n - org.apache.jackrabbit.core.state.MLRUItemStateCache.getMemoryUsed() @bci=6, line=245 (Compiled frame; information may be imprecise)\n - org.apache.jackrabbit.core.state.CacheManager$CacheInfo.<init>(org.apache.jackrabbit.core.state.Cache) @bci=21, line=212 (Interpreted frame)\n - org.apache.jackrabbit.core.state.CacheManager.resizeAll() @bci=136, line=107 (Compiled frame)\n - org.apache.jackrabbit.core.state.CacheManager.cacheAccessed() @bci=40, line=81 (Interpreted frame)\n - org.apache.jackrabbit.core.state.MLRUItemStateCache.touch() @bci=34, line=222 (Compiled frame)\n - org.apache.jackrabbit.core.state.MLRUItemStateCache.cache(org.apache.jackrabbit.core.state.ItemState) @bci=8, line=129 (Compiled frame)\n - org.apache.jackrabbit.core.state.ItemStateReferenceCache.cache(org.apache.jackrabbit.core.state.ItemState) @bci=48, line=114 (Compiled frame)\n - org.apache.jackrabbit.core.state.LocalItemStateManager.getNodeState(org.apache.jackrabbit.core.NodeId) @bci=31, line=99 (Compiled frame)\n - org.apache.jackrabbit.core.state.LocalItemStateManager.getItemState(org.apache.jackrabbit.core.ItemId) @bci=47, line=150 (Compiled frame)\n - org.apache.jackrabbit.core.state.XAItemStateManager.getItemState(org.apache.jackrabbit.core.ItemId) @bci=54, line=233 (Compiled frame)\n - org.apache.jackrabbit.core.state.SessionItemStateManager.getItemState(org.apache.jackrabbit.core.ItemId) @bci=56, line=165 (Compiled frame)\n - org.apache.jackrabbit.core.ItemManager.createItemInstance(org.apache.jackrabbit.core.ItemId) @bci=5, line=462 (Compiled frame)\n - org.apache.jackrabbit.core.ItemManager.getItem(org.apache.jackrabbit.core.ItemId) @bci=63, line=320 (Compiled frame)\n - org.apache.jackrabbit.core.query.lucene.NodeIteratorImpl.fetchNext() @bci=46, line=194 (Compiled frame)\n - org.apache.jackrabbit.core.query.lucene.NodeIteratorImpl.nextNodeImpl() @bci=21, line=103 (Compiled frame)\n - net.maven.cr.test.PerformanceQueryTest$ListCategoriesQueryTestContext.verify(javax.jcr.NodeIterator) @bci=25 (Interpreted frame)\n - net.maven.cr.test.PerformanceQueryTest.timingQuery(net.maven.cr.test.PerformanceQueryTest$QueryTestContext) @bci=34 (Interpreted frame)\n - net.maven.cr.test.PerformanceQueryTest.access$100(net.maven.cr.test.PerformanceQueryTest, net.maven.cr.test.PerformanceQueryTest$QueryTestContext) @bci=2 (Interpreted frame)\n - net.maven.cr.test.PerformanceQueryTest$TimedQueryTest.run() @bci=32 (Interpreted frame)\n",
+            "date": "2006-11-29T18:17:39.000+0000",
+            "id": 12
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "I have a patch for the Java level deadlock problem. Now the method touch() is no longer synchronized on the cache. However, inside touch() the cache could shrink, and this is still synchronized. Also fixed is a problem in shrinkIfRequired: this method called touch() which could theoretically cause another shrinkIfRequired call.",
+            "date": "2006-11-30T17:14:18.000+0000",
+            "id": 13
+        },
+        {
+            "author": "Stefan Guggisberg",
+            "body": "applied patch cacheManager7.txt (svn r481196).\n\nxiaohua confirmed that it solved the latest deadlock issue.",
+            "date": "2006-12-04T13:04:29.000+0000",
+            "id": 14
+        },
+        {
+            "author": "Jaka Jaksic",
+            "body": "> private static final long MAX_MEMORY = 16 * 1024 * 1024;\n\nIf I understand the CacheManager source correctly, the maximum size for all caches is hardcoded to 16 megabytes and there's no way to change that other than by changing the source. Now, while this is still a lot better than having no upper limit at all and risk running out of memory if you have many workspaces, it would be nice if this as well as other CacheManager parameters were configurable. It's just a waste running Jackrabbit on a server with gigabytes of memory and only using 16 megs for cache...",
+            "date": "2007-01-17T17:27:34.133+0000",
+            "id": 15
+        },
+        {
+            "author": "Jaka Jaksic",
+            "body": "I have created a really simple and straightforward patch (jackrabbit-cachemanager-config.patch) which enables reaching the CacheManager instance through RepositoryImpl object and setting all three of its memory parameters. The memory parameters are no longer static constants, but instance fields getting initial values from constants (so the default behavior doesn't change).\n\nCould this patch or something alike be included in a future release?\n\n(It would also be nice to be able to set these parameters via configuration files, but that should probably be implemented by someone close to the project.)",
+            "date": "2007-01-21T16:41:50.201+0000",
+            "id": 16
+        },
+        {
+            "author": "Samba Siva Rao Kolusu",
+            "body": "Is there a way to use Apache Java Caching System or some other caching library like ehCache or JBoss cache with Jackrabit?  If not, Can we expect this possibility in the near future ?\n\nRather an abstraction over the JCache(JSR-107)  allowing to plug in any cache manager that implements the specification would be very good step  ahead.\n\n",
+            "date": "2008-05-03T08:49:01.819+0000",
+            "id": 17
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "> use Apache Java Caching System or some other caching library like ehCache or JBoss cache \nWhy do you like to have this feature?",
+            "date": "2008-05-05T07:11:49.561+0000",
+            "id": 18
+        },
+        {
+            "author": "Samba Siva Rao Kolusu",
+            "body": "I would like to use  the distributed Caching capabilities of the above mentioned Caching softwares which are proven and can handle hundreds of GB of in-memory or disk cache distributed over the network across dozens of computers. \nActually I want to use the Content repository in a distributed environment with some master servers (load balanced to cater the  failover scenario) mapping the content workspace locations across the network depending on some  rules defined during the repository configuration. The The mapping information is replicated across the master servers and the content is spread across several clients(content on each client node is further replicated to siblings  to address failover).\n\n                In such a complex scenario, I would prefer to use a well known and proven Caching software to handle the job. And if the Jackrabbit cache is aimed at doing that my question is would it not be a duplicate effort when there are some very efficient caching libraries available and are standards compliant? Or Is it not possible to have a pluggable Cache implementations for use with Jackrabbit?\n\n Or may be I might have misunderstood  some thing ---- Is it possible to use the Caching softwares on top of Jackrabbit, with out bothering about the jackrabbit's internal cache implementation?\n\nI just found out that a similar work is going on in Jackrabbit  and a discussion may be related to JCR-872",
+            "date": "2008-05-06T08:56:38.439+0000",
+            "id": 19
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "Hi,\n\n> Is it possible to use the Caching softwares on top of Jackrabbit \n\nYes, sure. Maybe you want to cache on the application side.\n\n",
+            "date": "2008-05-09T07:23:29.970+0000",
+            "id": 20
+        }
+    ],
+    "component": "jackrabbit-core",
+    "description": "Jackrabbit can run out of memory because the the combined size of the various caches is not managed. The biggest problem (for me) is the combined size of the o.a.j.core.state.MLRUItemStateCache caches. Each session seems to create a few (?) of those caches, and each one is limited to 4 MB by default.\n\nI have implemented a dynamic (cache-) memory management service that distributes a fixed amount of memory dynamically to all those caches.\n\nHere is the patch",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "JCR-619",
+    "issuetypeClassified": "RFE",
+    "issuetypeTracker": "RFE",
+    "priority": "Major",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "CacheManager (Memory Management in Jackrabbit)",
+    "systemSpecification": true,
+    "version": ""
+}

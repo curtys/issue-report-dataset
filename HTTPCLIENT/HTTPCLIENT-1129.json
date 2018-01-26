@@ -1,0 +1,131 @@
+{
+    "comments": [
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Could you please attach a complete wire / context log of the session [1]?\n\nOleg\n\n[1]  http://hc.apache.org/httpcomponents-client-ga/logging.html",
+            "date": "2011-09-26T15:20:30.334+0000",
+            "id": 0
+        },
+        {
+            "author": "Harald Kirsch",
+            "body": "The file logFrom401Example.txt contains the logs you requested. The same session can be found logged with wireshark in wiresharkFrom401.txt.\n\nFurther the examples.txt contains the relevant code snippets we use. One triggers the 401. In the meantime we found one more workaround. Both workarounds are shown in exmples.txt. One uses NoReuseStrategy and the other explicitly sets the port 80 and protocol http.\n\nHarald.",
+            "date": "2011-09-27T15:58:53.095+0000",
+            "id": 1
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Harald\nWould it be a big deal for you attach wire / context logs generated with 'this works' and 'this also works' examples?\n\nOleg",
+            "date": "2011-09-27T18:32:46.125+0000",
+            "id": 2
+        },
+        {
+            "author": "Harald Kirsch",
+            "body": "Hello Oleg,\n\nno big deal, except I have to relay this to my colleagues tomorrow. But we will get you the logs.\n\nHarald.\n",
+            "date": "2011-09-27T19:16:05.094+0000",
+            "id": 3
+        },
+        {
+            "author": "Harald Kirsch",
+            "body": "Here come the logs pertaining to the \"this works\" and \"this also works\" code snippets in the examples.txt attachments.\n\nHarald.",
+            "date": "2011-09-30T15:06:59.321+0000",
+            "id": 4
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Harald,\n\nMany thanks for the logs. It _may_ take a while before I get around to looking at them, though. I am in the process of rewriting the auth framework in HttpClient for the 4.2 release [1]. I _will_ eventually look at your case and will try to make sure that the Kerberos authentication gets re-tried correctly on redirects. Please just bear with me. \n\nOleg\n\n[1] https://issues.apache.org/jira/browse/HTTPCLIENT-1107",
+            "date": "2011-09-30T15:32:41.011+0000",
+            "id": 5
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Harald\nOne thing I do not understand. Why does HttpClient need to re-authenticate on redirect in the first place? This makes no sense as the connection has been already authenticated and HttpClient re-uses the same connection for redirected request. Am I missing something?\n\nOleg",
+            "date": "2011-10-06T14:47:25.799+0000",
+            "id": 6
+        },
+        {
+            "author": "Harald Kirsch",
+            "body": "Well, I am not the expert on kerberos and HTTP and all that, but from the groud up, HTTP is stateless. Consequently the client must, in every request, send authenticating information of some kind, or will get a 401. \n\nWhen the client succeeds with authentication, it gets a redirect.\n\nThen it sends a new GET to the redirect address, but as we see from the logs, it does not send any authorization information. The header\n\n  Authorization: Negotiate YIIK7gYGK...\n\nis *not* send, but I would expect this to be the case. Whether the same authentication string is allowed for the now different URL is beyond my knowledge. \n\nHarald.\n",
+            "date": "2011-10-06T15:20:38.478+0000",
+            "id": 7
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Well, there are authentication schemes in existence that authenticate connections, not requests, for instance, NTLM. Truth to be told, I know next to nothing about kerberos, but I always assumed kerberos was used to authenticate connections like NTLM, not individual requests.\n\nCan you try the following bit of code and let me know if that makes any difference?\n\n---\nDefaultHttpClient httpclient = new DefaultHttpClient();\n\nAuthSchemeFactory asf = new AuthSchemeFactory() {\n\n    public AuthScheme newInstance(HttpParams params) {\n        return new NegotiateScheme() {\n\n            @Override\n            public boolean isConnectionBased() {\n                return false;\n            }\n\n        };\n    }\n\n};\nhttpclient.getAuthSchemes().register(AuthPolicy.SPNEGO, asf);\n---\n\nOleg",
+            "date": "2011-10-06T16:15:16.811+0000",
+            "id": 8
+        },
+        {
+            "author": "Harald Kirsch",
+            "body": "Hi Oleg,\n\nwe tried the code below and it threw an exception as shown in the attachment.\n\nHarald.\n\n\n\n    DefaultHttpClient client = new DefaultHttpClient();\n    \n    UsernamePasswordCredentials creds = new UsernamePasswordCredentials(\"username\", \"password\");\n    client.getCredentialsProvider().setCredentials(new AuthScope(AuthScope.ANY_HOST, AuthScope.ANY_PORT, AuthScope.ANY_REALM, AuthPolicy.SPNEGO), creds);\n    \n    AuthSchemeFactory asf = new AuthSchemeFactory() {\n\n      public AuthScheme newInstance(HttpParams params) {\n          return new NegotiateScheme() {\n\n              @Override\n              public boolean isConnectionBased() {\n                  return false;\n              }\n\n          };\n      }\n\n  };\n  client.getAuthSchemes().register(AuthPolicy.SPNEGO, asf); \n  \n  HttpGet httphead = new HttpGet(\"http://moss-test/\");\n    \n  HttpResponse response = client.execute(httphead); //throws an IllegalStateException (see logs)\n\n",
+            "date": "2011-10-07T13:28:59.049+0000",
+            "id": 9
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Harald,\nCould you please apply this patch [HTTPCLIENT-1129-fix-take1.patch] to a snapshot of either SVN trunk or 4.1.2 tag and try one more time?\n\nOleg",
+            "date": "2011-10-07T14:55:17.221+0000",
+            "id": 10
+        },
+        {
+            "author": "Harald Kirsch",
+            "body": "Hi Oleg,\n\nwe tried the same example code as last time. Something changes, as you can see from log-with-fix-take1.txt, but still is not working.\n\nFrom the logs I see that now the authentication is send  alongside the redirected URL, but we still get Unauthorized. As mentioned, I am not the kerberos expert and don't know whether a new URL would require fresh/different authentication information.\n\nI wonder if not reusing the connection is possibly the only correct way to do this.\n\nHarald.\n",
+            "date": "2011-10-10T14:27:30.687+0000",
+            "id": 11
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "All right. No luck. Please bear with me, though. I am working on a different take to solve the problem.\n\nOleg",
+            "date": "2011-10-10T15:19:37.169+0000",
+            "id": 12
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Harald,\n\nCould you please pull the latest snapshot (r1181082) off SVN trunk and give it a try?\n\nOleg",
+            "date": "2011-10-10T17:29:19.985+0000",
+            "id": 13
+        },
+        {
+            "author": "Harald Kirsch",
+            "body": "Hello Oleg,\n\nthis is straight from my bash history:\nsvn export -r 1181082 https://svn.apache.org/repos/asf/httpcomponents/httpclient/trunk httpclient-1181082\ncd httpclient-1181082/\nmvn package\n\nThis fails in a test:\n\nFailed tests:   testAuthSchemeAlreadySet(org.apache.http.client.protocol.TestRequestAuthCache): expected not same\n\nI will try and see how I get around the tests and straight to a jar, but I don't know maven at all, so if you could tell me, this might speed up things.\n\nHarald.\n\n",
+            "date": "2011-10-11T13:29:55.459+0000",
+            "id": 14
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Just get HEAD of the trunk.\n\nOleg ",
+            "date": "2011-10-11T13:38:44.358+0000",
+            "id": 15
+        },
+        {
+            "author": "Harald Kirsch",
+            "body": "Hi Oleg,\n\nI checked out and got svn version 1178262, built client and core and we ran the test. Attachment log-r1178262.txt contains the output. Still not working.\n",
+            "date": "2011-10-11T15:03:40.779+0000",
+            "id": 16
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Harald\n\nI found a bug that caused incorrect handling of the auth state on redirects and also added more debug logs. Could you please get the latest SVN snapshot and try one more time?\n\nOleg ",
+            "date": "2011-10-11T17:25:46.555+0000",
+            "id": 17
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "I cannot do much without additional feedback and have to assume the issue has been resolved.\n\nOleg",
+            "date": "2011-10-23T10:35:55.417+0000",
+            "id": 18
+        }
+    ],
+    "component": "HttpClient (classic)",
+    "description": "We are using the HttpClient to connect to a Website that uses Kerberos-Authentication.\n\nBeware this trigger word: Kerberos! I think this is *not* the problem, but please read on.\n\nHere is the sequence of events:\n\nClient: GET /\nServer: Unauthorized.\nClient: GET / and includes authentication.\nServer: 302 to /something on the same host (this shows that in principle authentication works)\nClient: GET /something,  does not include authentication\nServer: Unauthorized\n\nClient quits with 401-Unauthorized.\n\nI would have expected one of the following instead:\n\n1) Client immediately sends authorization information with the redirected GET /something\n2) Client re-requests the /something with authorization after 401-Unauthorized.\n\nWe could get around the problem by setting the ConnectionReuseStrategy to a constant false.\n\nIt would be great if someone could tell me if HttpClient works as expected or whether there is a bug or misconfiguration lurking.\n\nThanks,\nHarald.\n",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "HTTPCLIENT-1129",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "",
+    "priority": "Major",
+    "product": "HTTPCLIENT",
+    "project": "HTTPCLIENT",
+    "summary": "Redirect and Kerberos authentication in conflict",
+    "systemSpecification": true,
+    "version": "4.1.2"
+}

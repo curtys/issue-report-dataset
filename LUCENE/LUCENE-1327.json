@@ -1,0 +1,59 @@
+{
+    "comments": [
+        {
+            "author": "Mark Miller",
+            "body": "I swear I saw this discussion in another issue...this a dupe?\n\nIn any case, if you use the isPayloadAvailable method before trying to get the payload, that should help. ",
+            "date": "2008-08-12T12:06:45.285+0000",
+            "id": 0
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "This is indeed a bug in that the implementation does not match the javadocs.  Mark or Grant, what should we do here?",
+            "date": "2008-08-27T10:05:05.881+0000",
+            "id": 1
+        },
+        {
+            "author": "Mark Miller",
+            "body": "I found the issue this one dupes. It looks to me like relaxing the spec is the most likely fix. I don't know if that solves this guys problem though - is calling isPayloadAvailable good enough, or is his logic screwed up as a result...",
+            "date": "2008-08-27T12:39:32.218+0000",
+            "id": 2
+        },
+        {
+            "author": "Mark Miller",
+            "body": "Not an exact dupe by the way (spans vs scorer), but same issue, and from Dougs comment, should probably be handled in a similar manner (whatever is decided).",
+            "date": "2008-08-27T13:16:24.186+0000",
+            "id": 3
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "We're still iterating on the approach to resolve this, and LUCENE-914, so I'm taking this out of 2.4.",
+            "date": "2008-09-08T14:00:08.264+0000",
+            "id": 4
+        },
+        {
+            "author": "Michael Busch",
+            "body": "I think the right fix here is to simply remove these lines:\n{code}\n// are we already at the correct position?\nif (doc >= target) { return true; }\n{code}\n\nThen TermSpans#skipTo() basically returns what the TermPositions#skipTo() call returns.\nTermPositions#skipTo() has the same semantics as described in the javadocs of Spans#skipTo().\n\nThe patch I'm attaching contains a junit that fails before applying the fix, and passes after applying. All other tests pass too.\n\nAny objections here? Otherwise I'll commit in a day or two.",
+            "date": "2009-03-19T16:15:29.372+0000",
+            "id": 5
+        },
+        {
+            "author": "Michael Busch",
+            "body": "Committed revision 756669.",
+            "date": "2009-03-20T17:32:53.281+0000",
+            "id": 6
+        }
+    ],
+    "component": "core/query/scoring, core/search",
+    "description": "In TermSpans (or the anonymous Spans class returned by SpansTermQuery, depending on the version), the skipTo() method is improperly implemented if the target doc is less than or equal to the current doc:\n\n  public boolean skipTo(int target) throws IOException {\n          // are we already at the correct position?\n          if (doc >= target) {\n            return true;\n          }\n\n          ...\n\n\nThis violates the correct behavior (as described in the Spans interface documentation), that skipTo() should always move forwards, in other words the correct implementation would be:\n\nif (doc >= target) {\n  return next();\n}\n\nThis bug causes particular problems if one wants to use the payloads feature - this is because if one loads a payload, then performs a skipTo() to the same document, then tries to load the \"next\" payload, the spans hasn't changed position and it attempts to load the same payload again (which is an error).",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-1327",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Minor",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "TermSpans skipTo() doesn't always move forwards",
+    "systemSpecification": true,
+    "version": "1.9, 2.0.0, 2.1, 2.2, 2.3, 2.3.1, 2.3.2, 2.4"
+}

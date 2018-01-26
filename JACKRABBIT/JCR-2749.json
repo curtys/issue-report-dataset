@@ -1,0 +1,125 @@
+{
+    "comments": [
+        {
+            "author": "Jukka Zitting",
+            "body": "A duplicate close() call is always a sign of an error somewhere, so I'd rather not just silently ignore that situation.\n\nIf the warning log is troublesome, we can downgrade it to a debug message.",
+            "date": "2010-09-15T08:58:31.323+0000",
+            "id": 0
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "The warning (with stack trace) is even logged if the session is only closed once, as in:\n\nTransientRepository rep = new TransientRepository();\nSession s = rep.login(new SimpleCredentials(\"\", new char[0]));\ns.logout();",
+            "date": "2010-09-15T09:04:55.082+0000",
+            "id": 1
+        },
+        {
+            "author": "Michael D\u00fcrig",
+            "body": "I double Jukka's point here. However I agree that the message is not helpful in the logs (to the end user that is). The message is merely some developer's aid. \n\nI'd make it a debug message in the field. For unit tests and integration test's however I'd make it a failure (i.e throw an AssertionError).\n\n",
+            "date": "2010-09-15T09:07:42.713+0000",
+            "id": 2
+        },
+        {
+            "author": "Michael D\u00fcrig",
+            "body": "For TransientRepository this seems to be a separate issue to. AFAIK TransientRepository keeps track of its sessions and closes them automatically. So in your example the session is really closed twice which is indeed wrong. ",
+            "date": "2010-09-15T09:10:38.455+0000",
+            "id": 3
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "If we do really want a warning in the log (which I think is not necessary, I think debug is enough) then we need both places where the session was closed. Just one stack trace is not enough.\n\nI think throwing an AssertionError while testing is OK, but how? Do we have a mechanism (maybe a system property) to distinguish between test and runtime?",
+            "date": "2010-09-15T09:19:53.081+0000",
+            "id": 4
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "Proposed patch",
+            "date": "2010-09-15T09:26:18.200+0000",
+            "id": 5
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "I don't think the problem only occurs with TransientRepository. It occurred with a repository implementation that extends RepositoryImpl.",
+            "date": "2010-09-15T09:30:10.496+0000",
+            "id": 6
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "If the warnings are caused by the automatic shutdown procedures of TransientRepository or other repository implementations, then we should fix those errors instead of hiding the issue by lowering the log level.\n\nI'm OK to also including the stack trace of the second close in the log, even though Logback already gives us that as a configuration option.",
+            "date": "2010-09-15T09:45:21.313+0000",
+            "id": 7
+        },
+        {
+            "author": "Michael D\u00fcrig",
+            "body": "I'm generally fine with lowering to debug level. However I fear this will also hide potential problems during development instead on forcing us to fix them. This is why I proposed to throw an AssertionError in dev mode. I think we have a system property for integration testing already which could be used here. Jukka?",
+            "date": "2010-09-15T09:50:47.896+0000",
+            "id": 8
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "The main problem is fixed in revision 997244 - if you want to further improve things please go ahead.",
+            "date": "2010-09-15T09:55:07.754+0000",
+            "id": 9
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "I looked deeper into this and it looks like the warning from \"new TransientRepository().login().logout()\" does not come from this logout() call, but actually from the fact that the repository is attempting to repeatedly close the system session! This is because of the hacks used in access control and data store garbage collection code where the system session of a workspace is marked as a normal active session to prevent the workspace janitor from disposing a workspace. During shutdown this makes the repository treat the system session as an unclosed user session, which then gets automatically closed before the repository later on correctly attempts to close the system session. The system session should only ever get closed in the WorkspaceInfo.doDispose() method.\n\nAssuming we fix the above problem, is there still a need to keep the log level at debug? As shown by this case the warnings do help us spot real problems.",
+            "date": "2010-09-15T10:27:34.696+0000",
+            "id": 10
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "Thanks a lot Jukka, great that you found the root cause!\n\n> Assuming we fix the above problem, is there still a need to keep the log level at debug?\n\nFor me personally, it's not that important. \n\nMy fear is the log file will be less relevant if it contains stack traces of things that are viewed as unproblematic by many (most?) developers (such as closing a resource twice). So I vote to keep it at debug level. \n\nBut I agree with Michael: while running unit tests, it should throw an AssertionError. Therefore, it would have broke the build.",
+            "date": "2010-09-15T11:51:22.895+0000",
+            "id": 11
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "I'd like to keep it on warn, because that's exactly what it is. nothing's broken, it still works but something is wrong anyway. if you are not interested in these kind of messages you can simply ignore warnings and only look at error messages.\n\nenabling assertions is done with a jvm option (-ea) and is usually done when running tests.",
+            "date": "2010-09-15T14:06:01.275+0000",
+            "id": 12
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "In revision 997496 I fixed the problem with duplicate closing of the system session.\n\nIn revision 997518 I turned the log level back to warnings as I believe the above fix addresses the most prominent case of duplicate closing. The log messages now also come with additional instructions on what to look for in order to fix the problems.\n\nI agree about the concern over the relevancy of log messages, but I'd only lower the log level if there remain other prominent cases where a more proper fix is too expensive.\n\nRe: assertions; IMO assertions are best used as logic guards for code that you control entirely - loop and class invariants, etc. In this case we're mostly guarding against bad behavior by client code, and thus I think that logging warnings or in more extreme cases throwing exceptions are more appropriate solutions than assertions.\n",
+            "date": "2010-09-15T22:22:14.293+0000",
+            "id": 13
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "Thanks for fixing the root cause of the problem!\n\na) Is it illegal (according to the spec) to call close() multiple times? I think it isn't, but I might be wrong.\n\nb) The AssertionError was supposed to be thrown calling close() multiple times while running Jackrabbit test cases only (this is detected using a system property). Personally, I actually didn't think about using the \"assert\" keyword, because of a). Instead, I would use \"if (runningJackrabbitTestCases) throw new AssertionError(...)\". That means a client would never get this exception, but the exception would be thrown when running Jackrabbit test cases, no matter if -ea is used or not.\n",
+            "date": "2010-09-16T03:45:51.298+0000",
+            "id": 14
+        },
+        {
+            "author": "Michael D\u00fcrig",
+            "body": "Regarding b): this is exactly what I had in mind originally. Now that log levels are back to warn, I think I can live with the current solution also.",
+            "date": "2010-09-16T08:18:32.431+0000",
+            "id": 15
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "a) It's not illegal, but doing so is practically always a sign of some resource management error. Thus I think a warning is in place, just like when we log a warning when a client forgets to close a session (see JCR-1216).\n\nb) Since a duplicate logout() is not strictly speaking illegal (see a), an assertion is IMHO the wrong thing to use. Generally speaking nothing that a JCR client can produce by invoking standard JCR methods should ever be able to trigger an assertion. StackOverflow summarizes this nicely: \"Use assertions for internal logic checks within your code, and normal exceptions for error conditions outside your immediate code's control.\" (http://stackoverflow.com/questions/1276308/exception-vs-assertion)\n\nAlso, I'd rather avoid extra behaviour that's only activated during test runs (I know we have some of them in the codebase), since such code erodes the purpose of testing by making the test system behave differently than a production system. If we want a way for the test suite to check against these situations, we should either make it scan the log file for logged warnings or add a more generic mechanism by which a client application can specify custom handling of problems like this.",
+            "date": "2010-09-16T08:38:01.360+0000",
+            "id": 16
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Resolving as fixed, since the \"new TransientRepository().login().logout()\" sequence no longer logs a warning.",
+            "date": "2010-09-23T11:54:29.831+0000",
+            "id": 17
+        }
+    ],
+    "component": "jackrabbit-core",
+    "description": "When closing a session twice the following warning is written to the log file as of JCR-2741:\n\n\"This session has already been closed. See the chained exception for a trace of where the session was closed.\"\n\nI think the second \"close()\" should simply be ignored, without warning.\n",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "JCR-2749",
+    "issuetypeClassified": "OTHER",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Minor",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "Closing a session twice shouldn't write a warning in the log",
+    "systemSpecification": true,
+    "version": "2.2"
+}

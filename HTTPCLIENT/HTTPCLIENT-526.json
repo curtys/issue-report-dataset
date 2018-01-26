@@ -1,0 +1,101 @@
+{
+    "comments": [
+        {
+            "author": "Ortwin Gl\u00fcck",
+            "body": "Nicolas,\n\nMay I ask which cookie policy you are using?\n\nOrtwin Gl\u00fcck",
+            "date": "2005-11-17T00:18:12.000+0000",
+            "id": 0
+        },
+        {
+            "author": "nicolas de loof",
+            "body": "I didn't know what \"cookie policy\" was and just read\n[http://jakarta.apache.org/commons/httpclient/cookies.html].\n\nI'm using commons-httpclient from an Axis client. So it may use default\nconfiguration (RFC2109 ?)\n\nPlease notice this issue is for httpclient not warning about invalid set-cookie\nheader, not on my HTTP message that is invalid due to external system errors.",
+            "date": "2005-11-17T00:34:09.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Ortwin Gl\u00fcck",
+            "body": "But I guess the cookie is dropped?",
+            "date": "2005-11-17T00:44:26.000+0000",
+            "id": 2
+        },
+        {
+            "author": "nicolas de loof",
+            "body": "I get this error on my second request (first request gets the invalid HTTP\nset-cookie in response)\n\nMaybe this is an Axis issue ?\n\n\n faultCode: {http://schemas.xmlsoap.org/soap/envelope/}Server.userException\n faultSubcode: \n faultString: java.lang.IllegalArgumentException: Cookie name may not be blank\n faultActor: \n faultNode: \n faultDetail: \n\t{http://xml.apache.org/axis/}stackTrace:java.lang.IllegalArgumentException:\nCookie name may not be blank\n\tat org.apache.commons.httpclient.Cookie.&lt;init&gt;(Cookie.java:113)\n\tat\norg.apache.axis.transport.http.CommonsHTTPSender.addCookie(CommonsHTTPSender.java:368)\n\tat\norg.apache.axis.transport.http.CommonsHTTPSender.fillHeaders(CommonsHTTPSender.java:356)\n\tat\norg.apache.axis.transport.http.CommonsHTTPSender.invoke(CommonsHTTPSender.java:183)",
+            "date": "2005-11-17T01:08:06.000+0000",
+            "id": 3
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "(In reply to comment #4)\n> I get this error on my second request (first request gets the invalid HTTP\n> set-cookie in response)\n> \n> Maybe this is an Axis issue ?\n> \n\nNo. This is most likely a bug in HttpClient. I'll be working on a fix\n\nOleg",
+            "date": "2005-11-17T01:46:23.000+0000",
+            "id": 4
+        },
+        {
+            "author": "Roland Weber",
+            "body": "> java.lang.IllegalArgumentException:\n> Cookie name may not be blank\n>\tat org.apache.commons.httpclient.Cookie.&lt;init&gt;(Cookie.java:113)\n>\tat\norg.apache.axis.transport.http.CommonsHTTPSender.addCookie(CommonsHTTPSender.java:368)\n> \tat\norg.apache.axis.transport.http.CommonsHTTPSender.fillHeaders(CommonsHTTPSender.java:356)\n> \tat\norg.apache.axis.transport.http.CommonsHTTPSender.invoke(CommonsHTTPSender.java:183)\n\nTo me, this looks as if Axis is trying to do cookie management by itself.\nThe Cookie class refuses to be initialized with an empty name, which is\ncorrect. If Axis was using HttpClient's HttpState, there shouldn't be a\nneed to create a Cookie object!?\n\ncheers,\n  Roland",
+            "date": "2005-11-17T21:00:52.000+0000",
+            "id": 5
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Created an attachment (id=16987)\nPatch (take 1)\n\nThe cause of the problem turned out to be a bug in ParameterParser. \n\nFolks, please review and comment\n\nNicolas, could you please get the latest SVN snapshot, apply the patch and test\nit against your application?\n\nOleg",
+            "date": "2005-11-18T00:45:10.000+0000",
+            "id": 6
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Created an attachment (id=16988)\nPatch (take 2)\n\nMinor code tweak",
+            "date": "2005-11-18T00:51:43.000+0000",
+            "id": 7
+        },
+        {
+            "author": "Ortwin Gl\u00fcck",
+            "body": "Can paramName never be null then?",
+            "date": "2005-11-18T03:36:13.000+0000",
+            "id": 8
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "(In reply to comment #9)\n> Can paramName never be null then?\n\nIn practical terms no, because this condition always evaluates to true\nhttp://jakarta.apache.org/commons/httpclient/xref/org/apache/commons/httpclient/util/ParameterParser.html#99\n\nI can make code more defensive, though\n\nOleg",
+            "date": "2005-11-18T04:43:24.000+0000",
+            "id": 9
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Created an attachment (id=16990)\nPatch (take 3)\n\nAdded null check suggested by Odi",
+            "date": "2005-11-18T04:53:08.000+0000",
+            "id": 10
+        },
+        {
+            "author": "Ortwin Gl\u00fcck",
+            "body": "I feel more confident now :-)",
+            "date": "2005-11-18T06:18:19.000+0000",
+            "id": 11
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Looks fine.\n\nMike",
+            "date": "2005-11-18T07:17:13.000+0000",
+            "id": 12
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Patch committed to Commons HttpClient trunk and HttpComponents trunk\n\nOleg",
+            "date": "2005-11-20T21:58:03.000+0000",
+            "id": 13
+        }
+    ],
+    "component": "HttpClient (classic)",
+    "description": "I had a problem on a WS server that comes from some proxy misconfiguration...\nresulting in this reponse beeing received by HTTPclient :\n17:26:36,489 DEBUG [header] << \"HTTP/1.1 200 OK[\\r][\\n]\"\n17:26:36,489 DEBUG [header] << \"Set-Cookie: =f448bb59feedbaaabaee; path=/[\\r][\\n]\"\n17:26:36,489 DEBUG [header] << \"Date: Tue, 15 Nov 2005 16:26:36 GMT[\\r][\\n]\"\n17:26:36,489 DEBUG [header] << \"Server: Apache[\\r][\\n]\"\n17:26:36,489 DEBUG [header] << \"Connection: close[\\r][\\n]\"\n17:26:36,489 DEBUG [header] << \"Transfer-Encoding: chunked[\\r][\\n]\"\n17:26:36,489 DEBUG [header] << \"Content-Type: text/xml;charset=utf-8[\\r][\\n]\"\n\nThe set-cookie header is malformed, as cookie has no name, so the HTTP head may\nbe considered invalid.\n\nThis results in an error when building the NEXT request. I'd expect httpclient\nto WARN on malformed header and drop it.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "HTTPCLIENT-526",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "HTTPCLIENT",
+    "project": "HTTPCLIENT",
+    "summary": "warn on invalid set-cookie header",
+    "systemSpecification": true,
+    "version": "3.0 RC3"
+}

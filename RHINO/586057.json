@@ -1,0 +1,131 @@
+{
+    "comments": [
+        {
+            "author": "dan.y.tang@gmail.com",
+            "body": "Created attachment 464535\nstack map implementation\n\npatch -p1 < stackmap.patch",
+            "date": "20100810T20:16:25",
+            "id": 0
+        },
+        {
+            "author": "dan.y.tang@gmail.com",
+            "body": "I forgot to mention: This patch assumes that removing jsr bytecode is forthcoming (and it is). Any test that uses jsr will fail with this patch, but it will work when jsr removal is reviewed/committed.\n\n(In reply to comment #1)\n> Created attachment 464535 [details]\n> stack map implementation\n> \n> patch -p1 < stackmap.patch",
+            "date": "20100810T20:19:15",
+            "id": 1
+        },
+        {
+            "author": "hannesw@gmail.com",
+            "body": "Thanks for the patch! Can you provide some links to explain the relevant Java 6 bytecode changes such as the stack map attribute? A quick google search didn't turn up anything for me.",
+            "date": "20100811T10:01:21",
+            "id": 2
+        },
+        {
+            "author": "dan.y.tang@gmail.com",
+            "body": "Sure, they are documented in JSR 202. Try this link:\n\nhttp://jcp.org/aboutJava/communityprocess/final/jsr202/index.html\n\nIt should have a comparison PDF which highlights the changes, but the stack map is the only complicated part. I found this to be valuable for implementing this:\n\nhttp://asm.ow2.org/doc/developer-guide.html#controlflow\n\nThe JSR is more or less just documentation of data structures and what they mean. They give very little to no information on how to implement stack maps in a way that passes the Sun split verifier. By the way, you can test for correctness on OpenJDK by \"java -XX:-FailOverToOldVerifier\" and making sure that no VerifyErrors are thrown. The flag disables the old, type checking verifier.",
+            "date": "20100811T16:53:14",
+            "id": 3
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "Hannes,\n\nI looked at this code a bit. I'm in favor of accepting the patches. Here's the email exchange with Daniel:\n\nme:\nThe code itself looks well-written and tight. Thanks for all your work\non it. Did you ever investigate generating the necessary information\nto generate the stack maps in the code generator rather than\nrediscovering it in the ClassFileWriter? Seems like that could be less\ncode and more efficient. Also, how frequently does Rhino generate dead\ncode? Seems like that might also be fixable in the code generator\nwhich would be better for the size of the generated code.\n\nDaniel:\nI never investigated trying to generate the stack maps in Codegen, though I thought about it for awhile after my initial implementation. I didn't give it too much more thought, since my somewhat trivial benchmarks didn't show all too much overhead when generating benchmarks. I imagine the initial stack maps would be easy to generate from the code generation phase, but you still need to dive down into the bytecode to iterate over the stack maps until equilibrium is reached.\n\nI think the dead code generation is fairly frequent. If I recall correctly, there is a lot of indirection using goto with exceptions and try/finally code that sometimes leaves dead code if a subroutine doesn't ret, for example. The only solutions I could think of were to somehow rewrite the bytecode at the end to eliminate nops, which would be painful, or implement some sort of CFA, which may be less painful. Given the narrow scope of my internship (and duration), I decided not to pursue dead code elimination, though it could be interesting. It might be a nice side project to do once I'm back in school, if I'm not extremely busy.",
+            "date": "20100811T17:03:04",
+            "id": 4
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "Patch submitted. Thanks, Daniel!",
+            "date": "20100816T13:45:34",
+            "id": 5
+        },
+        {
+            "author": "hannesw@gmail.com",
+            "body": "Thanks for the context, Daniel and Norris! It's great to have Rhino generate modern bytecode. \n\nI found a minor problem with this patch: when Rhino is on the bootclasspath, the class version detection in org.mozilla.classfile.ClassFileWriter line #4186 throws a NullPointerException because Class.getClassLoader() returns null in that case. \n\nUnfortunately, prepending Rhino to the bootclasspath was/is a common workaround for an OpenJDK bug where OpenJDK shipped with an old version of Rhino on the bootclasspath and thus disallowed people to use their own version of Rhino by normal means.",
+            "date": "20100816T15:01:39",
+            "id": 6
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "Reopening based on Hannes comment. Daniel, can you provide a fix?",
+            "date": "20100816T15:49:46",
+            "id": 7
+        },
+        {
+            "author": "hannesw@gmail.com",
+            "body": "Currently the \"jar\" ant task generates JDK 1.5 class files (major version 49) while the \"retrojar\" task creates JDK 1.4 classes (major version 48). I guess the safe route would be to fall back to 48 if class lookup fails. If that's fine with everybody I'll commit that change later today.",
+            "date": "20100824T12:32:06",
+            "id": 8
+        },
+        {
+            "author": "dan.y.tang@gmail.com",
+            "body": "Sorry for the inactivity; I was busy wrapping up my internship last week and am moving/resuming school. Is there a better solution that would allow checking for class file version at runtime? I would think that if ant jar fails on the boot classpath, retrojar will fail too. Perhaps I don't understand what you're getting at with your solution.\n\nI forgot to mention one minor, but important detail: in order to test stack map behavior, you should compile Rhino with \"ant jar -Dtarget-jvm=1.6\". I didn't bother mucking with the ant file, so this was my workaround.",
+            "date": "20100824T15:26:49",
+            "id": 9
+        },
+        {
+            "author": "hannesw@gmail.com",
+            "body": "(In reply to comment #10)\n> Is there a better solution that would allow checking\n> for class file version at runtime? \n\nI just discovered java.lang.ClassLoader.getSystemClassLoader and .getSystemResourceAsStream(), and it seems to work. I'll try to come up with a working patch.\n\n> I would think that if ant jar fails on the\n> boot classpath, retrojar will fail too. Perhaps I don't understand what you're\n> getting at with your solution.\n\nSorry if I wasn't clear. I just mentioned the ant tasks to see what class files they produced to decide what version to use as fallback. The bootclasspath issue was a long-standing problem with OpenJDK that caused many projects and products using Rhino to prepend their version of it to the bootclasspath, so we should handle this situation gracefully.",
+            "date": "20100824T16:45:14",
+            "id": 10
+        },
+        {
+            "author": "hannesw@gmail.com",
+            "body": "Created attachment 468710\nfixes for possible NullPointerException in class file detection",
+            "date": "20100824T16:53:59",
+            "id": 11
+        },
+        {
+            "author": "dan.y.tang@gmail.com",
+            "body": "The logic makes sense to me. I haven't actually tried it, but I assume you have. I'm recreating my setup and can test it later tonight.",
+            "date": "20100824T23:30:39",
+            "id": 12
+        },
+        {
+            "author": "dan.y.tang@gmail.com",
+            "body": "Okay, I tried it and it looks good to me. Thanks for pointing out the problem.",
+            "date": "20100825T03:34:27",
+            "id": 13
+        },
+        {
+            "author": "hannesw@gmail.com",
+            "body": "Thanks, I committed the second patch, closing again.",
+            "date": "20100825T09:59:12",
+            "id": 14
+        },
+        {
+            "author": "hannesw@gmail.com",
+            "body": "Created attachment 469043\ncatch exceptions in classfile version detection and go with default version\n\nUnfortunately the code from the previous patch still throws a NullPointerException when running on Google App Engine (not related to bootclasspath but to security settings, I presume). This patch catches all exceptions in classfile version detection and uses 48/0 (Java 1.4) if classfile access fails.",
+            "date": "20100825T14:06:47",
+            "id": 15
+        },
+        {
+            "author": "dan.y.tang@gmail.com",
+            "body": "Interesting. I would have expected a security-related exception rather than another NPE. I don't know much about GAE though. Looks good to me, though I can't test on GAE.",
+            "date": "20100825T15:30:04",
+            "id": 16
+        },
+        {
+            "author": "hannesw@gmail.com",
+            "body": "I committed the second patch, no more exception on GAE.",
+            "date": "20100830T21:02:52",
+            "id": 17
+        },
+        {
+            "author": "dan.y.tang@gmail.com",
+            "body": "Great. If you and Norris could look at bug 586062 next, that would be excellent. I think it's less straightforward, but I added as much documentation as I could. The patch there is needed to bring the test suite back into a working state.",
+            "date": "20100831T02:38:25",
+            "id": 18
+        }
+    ],
+    "component": "Compiler",
+    "description": "User-Agent:       Mozilla/5.0 (X11; U; Linux x86_64; en-US) AppleWebKit/533.4 (KHTML, like Gecko) Chrome/5.0.375.125 Safari/533.4\nBuild Identifier: cvs\n\nJava 6 bytecode introduced a new code attribute which embeds type information at the beginning of every super block (where a super block is defined as a block of code with a single entry point but multiple exit points). The typical case for this is to allow the Java compiler to take some of the JVM load time away, but this is only applies for precompiled programs. In any case, future JVM versions may fail to load bytecode with recent versions without stack maps.\n\nThis is part one of updating Rhino to be able to output modern bytecode. The other will be to remove the use of the jsr instruction.\n\nReproducible: Always",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "586057",
+    "issuetypeClassified": "RFE",
+    "issuetypeTracker": "RFE",
+    "priority": "-- enhancement",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "support stack map generation for Java 6 bytecode",
+    "systemSpecification": false,
+    "version": "other"
+}

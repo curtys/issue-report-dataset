@@ -1,0 +1,65 @@
+{
+    "comments": [
+        {
+            "author": null,
+            "body": "Thanks for the alternative suggestion. I'll do some testign and if all looks OK, change the way we disable the handshake.",
+            "date": "20091119T05:44:36",
+            "id": 0
+        },
+        {
+            "author": null,
+            "body": "*** Bug 48158 has been marked as a duplicate of this bug. ***",
+            "date": "20091119T13:38:59",
+            "id": 1
+        },
+        {
+            "author": null,
+            "body": "Testing has been positive. I ended up keeping the listener from the original patch to log the handshake attempts. I'm not so concerned about the logging being in a separate thread and it was the easiest (only?) way to hook into the client triggered handshakes.\n\nPatch to trunk will follow shortly.",
+            "date": "20091119T13:41:24",
+            "id": 2
+        },
+        {
+            "author": null,
+            "body": "Are there any junit or rather httpclient/httpunit tests for this?\nOr at least a detailed test script (e.g. documented in a wiki)?\n\nLooking forward to the new patch.",
+            "date": "20091119T22:00:46",
+            "id": 3
+        },
+        {
+            "author": null,
+            "body": "Nothing formal, and the nature of the tests is such it might take a little longer than usual to set up something with the Tomcat JUnit tests.\n\nMy testing uses a simple webapp that uses CLIENT-CERT and has one JSP that is protected by a security constraint.\n\nTo test client renegotiation, I use openssl s_client and the R command\nTo test server renegotiation, I use Firefox or IE and browse between the Tomcat homepage and the protected page.",
+            "date": "20091120T01:48:50",
+            "id": 4
+        },
+        {
+            "author": null,
+            "body": "There is also org.apache.catalina.startup.TestTomcatSSL although a couple of tests are failing at the moment and I need to figure out why. I suspect it is because of some recent refactoring.",
+            "date": "20091122T15:26:22",
+            "id": 5
+        },
+        {
+            "author": null,
+            "body": "The alternative patch has been applied to 6.0.x and will be included in  6.0.21 onwards.",
+            "date": "20100111T09:49:32",
+            "id": 6
+        },
+        {
+            "author": null,
+            "body": "The new patch has been applied to 5.5.x and will be included in 5.5.29 onwards.",
+            "date": "20100130T11:18:54",
+            "id": 7
+        }
+    ],
+    "component": "Connector:Coyote",
+    "description": "Since Revision 881774 of org/apache/tomcat/util/net/jsse/JSSESocketFactory.java\nSSL renegotiation can be disabled.\n\nThat is achieved by a HandshakeCompletedListener. The drawback is, that in the\nJSSE from SUN any HandshakeCompletedListener will be invoked by with an own \nthread. (See com.sun.net.ssl.internal.ssl.SSLSocketImpl or the fragment below)\n\nAnother way of disabling a SSL renegotiation is to set an empty cipher\nlist after the initial handshake:\n\norg.apache.tomcat.util.net.jsse.JSSESocketFactory\n...\n...\npublic void handshake(Socket sock) throws IOException {\n \n       ((SSLSocket)sock).startHandshake();\n         \n        if(!allowUnsafeLegacyRenegotiation) {\n            // disable all ciphers, avoiding any subsequent handshake \n            ((SSLSocket)sock).setEnabledCipherSuites(new String[0]);\n        }\n}\n\n\n\nRegards \nHartmut\n\n\n\ncom.sun.net.ssl.internal.ssl.SSLSocketImpl code fragment:\n\nif (handshaker.isDone()) {\n                        sess = handshaker.getSession();\n                        handshaker = null;\n                        connectionState = cs_DATA;\n\n                        //\n                        // Tell folk about handshake completion, but do\n                        // it in a separate thread.\n                        //\n                        if (handshakeListeners != null) {\n                            HandshakeCompletedEvent event =\n                                new HandshakeCompletedEvent(this, sess);\n\n                            Thread t = new NotifyHandshakeThread(\n                                handshakeListeners.entrySet(), event);\n                            t.start();\n                        }\n                    }",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "48236",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "BUG",
+    "priority": "P2 major",
+    "product": "Tomcat 5",
+    "project": "TOMCAT",
+    "summary": "another  workaround for CVE-2009-3555 for the BIO connector",
+    "systemSpecification": false,
+    "version": "5.5.28"
+}

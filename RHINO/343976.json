@@ -1,0 +1,53 @@
+{
+    "comments": [
+        {
+            "author": "marcello@cellosoft.com",
+            "body": "Created attachment 228553\nJava class demonstrating problem",
+            "date": "20060708T21:18:11",
+            "id": 0
+        },
+        {
+            "author": "marcello@cellosoft.com",
+            "body": "Created attachment 228556\nPotential fix?\n\nI had made a mistake in my earlier post, if there is a get function and no set function, it did function correctly (I simply had written my get function in Foo.java incorrectly!).\n\nHowever, the original problem (a set method but no get method) still applies.  This patch fixes the problem for me.",
+            "date": "20060708T21:57:42",
+            "id": 1
+        },
+        {
+            "author": "szegedia@freemail.hu",
+            "body": "Reviewed and committed the fix - will be in 1.6R3",
+            "date": "20060718T17:05:58",
+            "id": 2
+        },
+        {
+            "author": "uboness@gmail.com",
+            "body": "(In reply to comment #3)\n> Reviewed and committed the fix - will be in 1.6R3\n> \n\nNow I'm experiencing a similar problem on 1.6R3! Now, when you have both the setter and the getter, the property is not added to the members. Stepping through the reflect() method, it seems that when the iteration encounters a getter, it registers the property with the \"toAdd\" map, but then, when it encounters the setter, it overrides it with a BeanProperty that holds a null getter.\n",
+            "date": "20060804T15:07:55",
+            "id": 3
+        },
+        {
+            "author": "cam@mcc.id.au",
+            "body": "Created attachment 233039\nPatch to fix the bean property regression\n\nThis patch should fix the problem in JavaMembers that results in some bean properties not being exposed properly in NativeJavaObjects.",
+            "date": "20060810T06:14:57",
+            "id": 4
+        },
+        {
+            "author": "szegedia@freemail.hu",
+            "body": "Ok, I commited your fix to CVS HEAD - actually refactored it a bit, as there was some code duplication in there (for looking up both getXxx and isXxx), other than that I didn't change it. Thank you again, and give it a try sometime.\n",
+            "date": "20060817T12:36:15",
+            "id": 5
+        }
+    ],
+    "component": "Core",
+    "description": "User-Agent:       Mozilla/5.0 (Windows; U; Windows NT 6.0; en-US; rv:1.8.1a3) Gecko/20060526 BonEcho/2.0a3\nBuild Identifier: Rhino CVS\n\nIt seems as if classes with either setFoo or getFoo but not both will not create beans.  I ran into this problem when working with HttpServletResponse:\nhttp://tomcat.apache.org/tomcat-5.0-doc/servletapi/javax/servlet/http/HttpServletResponse.html\n\nIt has a setStatus() method but no getStatus() method, so I cannot write response.status = response.SC_OK without getting an exception:\norg.mozilla.javascript.EvaluatorException: Java class \"javax.servlet.http.HttpServletResponse\" has no public instance field or method named \"status\".\n\nIf I write response.setStatus(response.SC_OK) it works fine.  \n\nFurther testing revealed that this seems to be a bug in the JavaMembers.reflect() if either a get or set method is missing for a particular property.\n\nI propose that if only a get method is visible, the property is defined as readonly and if only a set method is visible, the property should at least have a setter method.\n\nReproducible: Always\n\nSteps to Reproduce:\n1. Add the following Java class to your java classpath:\npublic class Foo {\n\n    public Foo() {\n    }\n    \n    public void setA(Object o) {\n        System.out.println(\"setA \"+o);\n    }\n    public Object getA() {\n        System.out.println(\"getA \");\n        return null;\n    }\n    public void setB(Object o) {\n        System.out.println(\"setB \"+o);\n    }\n    public Object getC(Object o) {\n        System.out.println(\"getC \");\n        return null;\n    }\n\n}\n\n2. Write a javascript that tests this:\nvar foo = new Packages.Foo();\nvar Rhino = { log: function (msg) {\n  print(\"Rhino.log : \"+msg+\"\\n\");\n}};\ntry {\n\tfoo.a = 1;\n} catch (ex) { Rhino.log(ex) }\ntry {\n\tfoo.b = 2;\n} catch (ex) { Rhino.log(ex) }\ntry {\n\tfoo.c = 3;\n} catch (ex) { Rhino.log(ex) }\ntry {\n\tRhino.log('a: '+foo.a);\n} catch (ex) { Rhino.log(ex) }\ntry {\n\tRhino.log('b: '+foo.b);\n} catch (ex) { Rhino.log(ex) }\ntry {\n\tRhino.log('c: '+foo.c);\n} catch (ex) { Rhino.log(ex) }\n\n3. Run it\nActual Results:  \nsetA 1.0\nRhino.log: InternalError: Java class \"Foo\" has no public instance field or method named \"b\".\nRhino.log: InternalError: Java class \"Foo\" has no public instance field or method named \"c\".\ngetA \nRhino.log: a: null\nRhino.log: b: undefined\nRhino.log: c: undefined\n\nExpected Results:  \nthe foo.b = 2 line should not get an error, and the Rhino.log('c:' +foo.c) line should print null instead of undefined.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "343976",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "-- normal",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "Java classes do not construct bean properties if no matching set and get/is",
+    "systemSpecification": true,
+    "version": "other"
+}

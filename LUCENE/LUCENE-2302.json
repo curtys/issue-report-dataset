@@ -1,0 +1,149 @@
+{
+    "comments": [
+        {
+            "author": "Uwe Schindler",
+            "body": "A CollationFilter will not be needed anymore after that change, as any Tokenizer-Chain that wants to use collation can simply supply a special AttributeFactory to the ctor, that creates a special TermAttributeImpl class with modified getBytesRef().",
+            "date": "2010-03-07T23:01:46.502+0000",
+            "id": 0
+        },
+        {
+            "author": "Michael Busch",
+            "body": "Hmm maybe this is too much magic? Wouldn't it be simpler to have two completely separate attributes? E.g. CharTermAttribute and ByteTermAttribute. Plus an API in the indexer that specifies which one to use? ",
+            "date": "2010-03-07T23:13:50.353+0000",
+            "id": 1
+        },
+        {
+            "author": "Steve Rowe",
+            "body": "bq. A CollationFilter will not be needed anymore after that change, as any Tokenizer-Chain that wants to use collation can simply supply a special AttributeFactory to the ctor, that creates a special TermAttributeImpl class with modified getBytesRef(). \n\nMike M. noted on [LUCENE-1435|http://issues.apache.org/jira/browse/LUCENE-1435?focusedCommentId=12646667&page=com.atlassian.jira.plugin.system.issuetabpanels%3Acomment-tabpanel#action_12646667] that the way to do \"internal-to-indexing\" collation is to store the original string in the term dictionary, sorted via user-specifiable collation.",
+            "date": "2010-03-07T23:31:46.074+0000",
+            "id": 2
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "I like that this change would mean indexer has a single getBytes interface for getting the terms data.\n\nIt'd mean the UTF16->UTF8 encoding it now does would move into CharTermAttr, hidden to the indexer.\n\nSo the indexer only ever works with opaque byte[] data for terms.\n\nAnd it'd mean others can make their own term attrs -- maybe my terms are shorts and I send 2 bytes to indexer per term.",
+            "date": "2010-03-08T00:10:48.688+0000",
+            "id": 3
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "{quote}\nbq. A CollationFilter will not be needed anymore after that change, as any Tokenizer-Chain that wants to use collation can simply supply a special AttributeFactory to the ctor, that creates a special TermAttributeImpl class with modified getBytesRef().\n\nMike M. noted on LUCENE-1435 that the way to do \"internal-to-indexing\" collation is to store the original string in the term dictionary, sorted via user-specifiable collation.\n{quote}\n\nThis works in flex now -- every field can specify its own Comparator (via the Codec).\n\nBut collation during indexing also works... but'd work better w/ these changes (not have to use indexable binary strings).",
+            "date": "2010-03-08T01:36:56.505+0000",
+            "id": 4
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Here a first patch.\n\nTo discuss:\n- Names of classes/interfaces\n- API finalization\n\nThe following applies to the patch:\n- All tests pass\n- You can use old and new TermAttribute in the same TokenStream!\n- If somebody implemented an own TermAttributeImpl (old style), the TermsHashPerField wraps the old attribute using a helper class (per thread). -- Test still missing, but worked by commenting out some code that used the new api.\n\nCurrently backwards tests fail because of some checks that are not valid anymore (toString() output of TermAttribute and TestAttributeSource instanceof checks).",
+            "date": "2010-03-08T15:08:00.008+0000",
+            "id": 5
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "New patch, updated for trunk:\n- CharTermAttributeImpl.subSequence uses now new String, instead CharBuffer.wrap, as it must be a  \"new sequence\", no wrapped\n- Optimized append() to use CharBuffer's array, else just iterates over sequence.",
+            "date": "2010-03-08T16:35:20.544+0000",
+            "id": 6
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Again an update, removed the whole lazy init stuff; so initTermBuffer() and additonal checks removed.",
+            "date": "2010-03-08T16:49:47.067+0000",
+            "id": 7
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Removed usage of deprecated API in Token, also javadocs updated.",
+            "date": "2010-03-08T17:20:16.300+0000",
+            "id": 8
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Patch looks great Uwe!  Great simplification that indexer only deals\nin byte[] now for a term.  It's agnostic as to whether those bytes are\nutf8 or something else.  And it means analyzer chains can now do\ndirect binary terms (eg NumericTokenStream).\n\nSome day... we should also try to have indexer not be responsible for\ncreating the TokenStream.  Ie it should simply receive, always, an\nAttrSource for a field that needs to be indexed.  This puts nice\ndistance b/w indexer core and analysis -- indexer is then fully\nagnostic to how that AttrSource came to be.\n\nI see \"noncommit\" -- can you rename to \"nocommit\" -- let's try to be\nconsistent ;)\n\nMaybe rewword \"The given AttributeSource has no term attribute\" -->\n\"Could not find a term attribute (that implements\nTermToBytesAttribute) in the AttributeSource\"?\n\nI think we should rename TermsHashPerField's utf8 var (and in the per\nthread) -- it's now just bytes, not necessarily utf8.  Maybe termBytes?\n\nWhen you temporarily override the length of a too-long term, maybe\nrestore it in a try/finally?\n",
+            "date": "2010-03-08T17:50:33.825+0000",
+            "id": 9
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Updated patch for current flex HEAD. Still backwards needs to be fixed.\n\nHow do we want to preceed?:\n- Name of new Attrubute?\n- Is new CharSeq/Appendable API fine\n- setEmpty()?\n\nThanks for reviewing!",
+            "date": "2010-03-18T11:20:22.837+0000",
+            "id": 10
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "I like the name CharTermAttribute.\n\nHow about instead of TermToBytesRefAttribute we name it TermBytesAttribute?  (Ie, drop the \"To\" and \"Ref\").",
+            "date": "2010-03-18T12:34:44.804+0000",
+            "id": 11
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "bq. How about instead of TermToBytesRefAttribute we name it TermBytesAttribute? (Ie, drop the \"To\" and \"Ref\").\n\nThis attribute is special, it only has this getter for the bytesref.\n\nIf we need a real \"BytesTermAttribute\" it should be explicitely defined. Now open is NumericTokenStream and so on",
+            "date": "2010-03-18T14:35:29.896+0000",
+            "id": 12
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Was accidently committed with merge. Sorry.\n\nRevision: 924791",
+            "date": "2010-03-18T14:36:16.398+0000",
+            "id": 13
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Add note to backwards compatibility section:\n- TermAttribute now changed toString() behaviour\n- Token now implemnts CharSequence but violates its contract",
+            "date": "2010-03-18T15:15:09.773+0000",
+            "id": 14
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Uwe is this issue done?",
+            "date": "2010-03-30T10:51:16.984+0000",
+            "id": 15
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Will add the javadocs and think about the CharSequence problems again. It's tricky :(\n\nI have less time at the moment, will do hopefully until the weekend. The same for LUCENE-2354, which needs some test rewriting.",
+            "date": "2010-03-30T21:14:31.738+0000",
+            "id": 16
+        },
+        {
+            "author": "Robert Muir",
+            "body": "bq. Token now implemnts CharSequence but violates its contract\n\nI don't think this is correct. I don't care at all about Token's .toString method, but i care that the analysis api isn't broken.\nif we do this, then the analysis API is completely wrong when using a Token Attribute Factory.\nIn my opinion we should do one of the following two things in the backwards compatibility section, but not break the analysis API:\n\n# Token and TokenAttributeFactory was completely removed due to its backwards compatibility problems.\n# Token's toString method was changed to match the CharSequence interface.\n",
+            "date": "2010-04-06T12:28:22.048+0000",
+            "id": 17
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "I will create a patch with option #2 and lots of documentation and changed backwards tests.",
+            "date": "2010-04-06T21:42:11.199+0000",
+            "id": 18
+        },
+        {
+            "author": "Robert Muir",
+            "body": "bq. I will create a patch with option #2 and lots of documentation and changed backwards tests.\n\n+1. what do we think of deprecating it too? \n\nI complained about supporting an old \"token-like\" api easily a while ago, but you added AttributeSource.copyTo,\nwhich works well (see Solr SynonymsFilter) and does not have Token's limitations.\n",
+            "date": "2010-04-06T21:48:03.125+0000",
+            "id": 19
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Patch that fixes the toString() problems in Token and adds missing CHANGES.txt, fixes backwards tests and updates javadocs to document the \"backwards\" break.\n\nDeprecating Token should be done in another issue.\n\nI will commit this soon, to be able to go forward with tokenstream conversion!",
+            "date": "2010-04-09T11:39:06.631+0000",
+            "id": 20
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Committed revision: 932369",
+            "date": "2010-04-09T11:50:39.248+0000",
+            "id": 21
+        }
+    ],
+    "component": "modules/analysis",
+    "description": "For flexible indexing terms can be simple byte[] arrays, while the current TermAttribute only supports char[]. This is fine for plain text, but e.g NumericTokenStream should directly work on the byte[] array.\nAlso TermAttribute lacks of some interfaces that would make it simplier for users to work with them: Appendable and CharSequence\n\nI propose to create a new interface \"CharTermAttribute\" with a clean new API that concentrates on CharSequence and Appendable.\nThe implementation class will simply support the old and new interface working on the same term buffer. DEFAULT_ATTRIBUTE_FACTORY will take care of this. So if somebody adds a TermAttribute, he will get an implementation class that can be also used as CharTermAttribute. As both attributes create the same impl instance both calls to addAttribute are equal. So a TokenFilter that adds CharTermAttribute to the source will work with the same instance as the Tokenizer that requested the (deprecated) TermAttribute.\n\nTo also support byte[] only terms like Collation or NumericField needs, a separate getter-only interface will be added, that returns a reusable BytesRef, e.g. BytesRefGetterAttribute. The default implementation class will also support this interface. For backwards compatibility with old self-made-TermAttribute implementations, the indexer will check with hasAttribute(), if the BytesRef getter interface is there and if not will wrap a old-style TermAttribute (a deprecated wrapper class will be provided): new BytesRefGetterAttributeWrapper(TermAttribute), that is used by the indexer then.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-2302",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Major",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "Replacement for TermAttribute+Impl with extended capabilities (byte[] support, CharSequence, Appendable)",
+    "systemSpecification": true,
+    "version": "4.0-ALPHA"
+}

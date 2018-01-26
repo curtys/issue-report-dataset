@@ -1,0 +1,29 @@
+{
+    "comments": [
+        {
+            "author": "Mark Miller",
+            "body": "It makes sense to fix this, but I don't know that we can meet your original fuzzy test. The query needs to rely on the analyzer used, but Lucene analyzers do not generally implement hashcode equals. Perhaps they could, but even then it would be no guarantee. Heres a patch that should work, but the analyzer will have to be the same instance for the fuzzy equals, hashcode.",
+            "date": "2008-11-10T22:13:51.999+0000",
+            "id": 0
+        },
+        {
+            "author": "Mark Miller",
+            "body": "Thanks Antony!",
+            "date": "2009-04-10T02:21:24.143+0000",
+            "id": 1
+        }
+    ],
+    "component": "core/search",
+    "description": "Query implementations should override equals() so that Query instances can be cached and that Filters can know if a Query has been used before.  See the discussion in this thread.\n\nhttp://www.mail-archive.com/java-user@lucene.apache.org/msg13061.html\n\nFollowing 3 contrib Query implementations do no override equals()\n\norg.apache.lucene.search.BoostingQuery;\norg.apache.lucene.search.FuzzyLikeThisQuery;\norg.apache.lucene.search.similar.MoreLikeThisQuery;\n\nTest cases below show the problem.\n\npackage com.teamware.office.lucene.search;\n\nimport static org.junit.Assert.*;\n\nimport org.apache.lucene.analysis.standard.StandardAnalyzer;\nimport org.apache.lucene.index.Term;\nimport org.apache.lucene.search.BoostingQuery;\nimport org.apache.lucene.search.FuzzyLikeThisQuery;\nimport org.apache.lucene.search.TermQuery;\nimport org.apache.lucene.search.similar.MoreLikeThisQuery;\nimport org.junit.After;\nimport org.junit.Before;\nimport org.junit.Test;\npublic class ContribQueriesEqualsTest\n{\n    /**\n     * @throws java.lang.Exception\n     */\n    @Before\n    public void setUp() throws Exception\n    {\n    }\n\n    /**\n     * @throws java.lang.Exception\n     */\n    @After\n    public void tearDown() throws Exception\n    {\n    }\n    \n    /**\n     *  Show that the BoostingQuery in the queries contrib package \n     *  does not implement equals() correctly.\n     */\n    @Test\n    public void testBoostingQueryEquals()\n    {\n        TermQuery q1 = new TermQuery(new Term(\"subject:\", \"java\"));\n        TermQuery q2 = new TermQuery(new Term(\"subject:\", \"java\"));\n        assertEquals(\"Two TermQueries with same attributes should be equal\", q1, q2);\n        BoostingQuery bq1 = new BoostingQuery(q1, q2, 0.1f);\n        BoostingQuery bq2 = new BoostingQuery(q1, q2, 0.1f);\n        assertEquals(\"BoostingQuery with same attributes is not equal\", bq1, bq2);\n    }\n\n    /**\n     *  Show that the MoreLikeThisQuery in the queries contrib package \n     *  does not implement equals() correctly.\n     */\n    @Test\n    public void testMoreLikeThisQueryEquals()\n    {\n        String moreLikeFields[] = new String[] {\"subject\", \"body\"};\n        \n        MoreLikeThisQuery mltq1 = new MoreLikeThisQuery(\"java\", moreLikeFields, new StandardAnalyzer());\n        MoreLikeThisQuery mltq2 = new MoreLikeThisQuery(\"java\", moreLikeFields, new StandardAnalyzer());\n        assertEquals(\"MoreLikeThisQuery with same attributes is not equal\", mltq1, mltq2);\n    }\n    /**\n     *  Show that the FuzzyLikeThisQuery in the queries contrib package \n     *  does not implement equals() correctly.\n     */\n    @Test\n    public void testFuzzyLikeThisQueryEquals()\n    {\n        FuzzyLikeThisQuery fltq1 = new FuzzyLikeThisQuery(10, new StandardAnalyzer());\n        fltq1.addTerms(\"javi\", \"subject\", 0.5f, 2);\n        FuzzyLikeThisQuery fltq2 = new FuzzyLikeThisQuery(10, new StandardAnalyzer());\n        fltq2.addTerms(\"javi\", \"subject\", 0.5f, 2);\n        assertEquals(\"FuzzyLikeThisQuery with same attributes is not equal\", fltq1, fltq2);\n    }\n}\n",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-861",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Minor",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "Contrib queries package Query implementations do not override equals()",
+    "systemSpecification": false,
+    "version": "2.1"
+}

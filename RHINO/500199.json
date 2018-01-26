@@ -1,0 +1,41 @@
+{
+    "comments": [
+        {
+            "author": "hannesw@gmail.com",
+            "body": "I should note that one interesting pattern this patch enables is to provide privileged actions in javascript, provided you have multiple script repositories with different policies:\n\n    importClass(java.security.AccessController);\n    importClass(java.security.PrivilegedAction);\n\n    AccessController.doPrivileged(new PrivilegedAction({\n       run: function() {\n           ...\n       }\n    }));",
+            "date": "20090624T15:45:28",
+            "id": 0
+        },
+        {
+            "author": "hannesw@gmail.com",
+            "body": "Note: the patch is bogus, at least the part for PolicySecurityController.getDynamicSecurityDomain(). Of course, the Java Policy framework needs the least priviledged domain on the stack, not the last one. \n\nStill, the parts in SecurityUtils and RhinoSecurityManager would be useful to make JavaAdapters securable by creating them with the code source of the calling script code. InterfaceAdapters, on the other hand, use the java.lang.reflect.Proxy class which is always created using the trusted system code source (see the java.lang.reflect.Proxy API documentation), so it seems to be non-securable.",
+            "date": "20090929T21:31:42",
+            "id": 1
+        },
+        {
+            "author": "hannesw@gmail.com",
+            "body": "Created attachment 433931\nRevised patch\n\nSimilar to the first patch, but the script protection domain is only used by JavaAdapter.loadAdapterClass(). Also, the getScriptProtectionDomain() method in RhinoSecurityManager is changed to getCurrentScriptClass() to make it more generic and flexible.",
+            "date": "20100322T15:13:22",
+            "id": 2
+        },
+        {
+            "author": "hannesw@gmail.com",
+            "body": "Committed last patch.\n\nChecking in src/org/mozilla/javascript/JavaAdapter.java;\n/cvsroot/mozilla/js/rhino/src/org/mozilla/javascript/JavaAdapter.java,v  <--  JavaAdapter.java\nnew revision: 1.118; previous revision: 1.117\ndone\nRCS file: /cvsroot/mozilla/js/rhino/src/org/mozilla/javascript/RhinoSecurityManager.java,v\ndone\nChecking in src/org/mozilla/javascript/RhinoSecurityManager.java;\n/cvsroot/mozilla/js/rhino/src/org/mozilla/javascript/RhinoSecurityManager.java,v  <--  RhinoSecurityManager.java\ninitial revision: 1.1\ndone\nChecking in src/org/mozilla/javascript/SecurityUtilities.java;\n/cvsroot/mozilla/js/rhino/src/org/mozilla/javascript/SecurityUtilities.java,v  <--  SecurityUtilities.java\nnew revision: 1.7; previous revision: 1.6\ndone",
+            "date": "20100322T17:59:02",
+            "id": 3
+        }
+    ],
+    "component": "Core",
+    "description": "Created attachment 384870\nPatch adding RhinoSecurityManager class\n\nCurrently, JavaAdapter classes are created with the same java.security.ProtectionDomain as the org.mozilla.javascript.JavaAdapter class (i.e. that of the Rhino js.jar file). I think they should use the domain of the script that creates them. \n\nThe patch adds a org.mozilla.javascript.RhinoSecurityManager class that provides a method to retrieve the protection domain of the top-most stack element representing a user script, and uses that as the dynamic security domain returned by PolicySecurityController.getDynamicSecurityDomain() if available.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "500199",
+    "issuetypeClassified": "RFE",
+    "issuetypeTracker": "BUG",
+    "priority": "-- minor",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "JavaAdapters have same ProtectionDomain as rhino jar file",
+    "systemSpecification": true,
+    "version": "head"
+}

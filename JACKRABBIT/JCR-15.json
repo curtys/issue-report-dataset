@@ -1,0 +1,59 @@
+{
+    "comments": [
+        {
+            "author": "Felix Meschberger",
+            "body": "Just for checking I added \"if (status == STATUS_EXISTING) return;\" at the beginning of the PersistentNodeState.store() and performance increased depending on the number of history entries from 2x times way up to 10x and more !\n\nBTW: I just noticed, that PersistentPropertyState has the same issue  of storing without checking for the need to store.",
+            "date": "2004-10-29T07:45:25.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Tobias Bocanegra",
+            "body": "The concept here is, that the PersistentNodeState should not be to intelligent, it is rather managed from outside. so store() will store and does not repsect the status.\nthe performance bottleneck in versioning is caused by the PersistenNode, which is a helper class for easily modifying persistent node states and in the PersistentVersionManager. the status of the underlaying node state should be respected there.",
+            "date": "2004-10-29T08:18:00.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Felix Meschberger",
+            "body": "> so store() will store and does not repsect the status.\n\nOk, but why does it use the status to decide on which event to send ?? As it may be the case that the instance is not modified, an updated message does not make sense to me. On the other hand, there is not enough JavaDoc for me to know it :-)",
+            "date": "2004-10-29T09:03:31.000+0000",
+            "id": 2
+        },
+        {
+            "author": "Tobias Bocanegra",
+            "body": "added check to org.apache.jackrabbit.core.version.PersistentNode. (rev 56421)",
+            "date": "2004-11-02T21:36:24.000+0000",
+            "id": 3
+        },
+        {
+            "author": "Felix Meschberger",
+            "body": "Now those additions provide a real performance boost. Unfortunately, the version history is lost when the repository is shutdown...\n\nThe problem is, that ItemState and its descendents (NodeState, PersistentNodeState) do not properly handle the status field. For example the NodeState.addChildNodeEntry does not set the status to modified. Consequently, the NodeState is not transient when it is time to store and therefore, it is never stored.\n\nWhat happens is :\n   - create a mix:versionable node\n     - internally creates the version history (call it XX) below\n           jcr:persistentVersionStorage\n     - creates nodes and properties below XX and stores them\n     - but as XX itself is not transient, XX is not stored.\n\nThe net effect is that the version history nodes and properties exist, but the jcr:persistentVersionStorage node has no link to the version history node just created.\n\nThe next time the repository is started, a NullPointerException is thrown if the version history of the node initially created is accessed.\n\nSteps to reproduce:\n   - Start empty repository\n   - Create a mix:versionabl node \"/root\"\n   - Save \"/\"\n   - Shutdown the repository\n   - Start the repository\n   - Access the version history of \"/root\"\n\nAt that point you get a NullPointerException on line 103 of the InternalVersionHistory class. (SVN Version 56602 of the class)",
+            "date": "2004-11-04T16:05:18.000+0000",
+            "id": 4
+        },
+        {
+            "author": "Tobias Bocanegra",
+            "body": "PersistentNode now sets proper status to underlaying PersistentNodeStates when beeing altered.",
+            "date": "2004-11-05T14:20:32.000+0000",
+            "id": 5
+        },
+        {
+            "author": "Stefan Guggisberg",
+            "body": "closing resolved issue",
+            "date": "2005-11-11T01:37:18.000+0000",
+            "id": 6
+        }
+    ],
+    "component": "",
+    "description": "While looking for a performance bottle neck I came across this issue: When a PersistentNodeState is asked to store itself in the PersistentNodeState.store() method, it calls its PersistenceManager to store it.\n\nThis is not a problem in itself. The problem is, that if the PersistentNodeState has not been modified, the object does not need to be stored. Doiing it anyway just consumes cycles ! In the case of a deep, unmodified hierarchy, this just results in nodes being written to persistence for nothing.\n\nComes to it, that this method sends an event, which in the case of an unmodified node state will be notifyStateUpdated(), which is complete nonsense, because nothing has actually been updated.\n\nI suggest to modify the PersistentNodeState.store() method to only do work if modified.\n\nNote: I encountered this issue, whily tracking down performance problems when creating versionable nodes, which turned out to be located somewhere within the PersistentVersionManager.createVersionHistory(NodeImpl) method. And there, predominantly the store() methods consume time.",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "JCR-15",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "PersistentNode.store() ignores status when storing",
+    "systemSpecification": true,
+    "version": ""
+}

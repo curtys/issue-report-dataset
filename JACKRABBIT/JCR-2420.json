@@ -1,0 +1,23 @@
+{
+    "comments": [
+        {
+            "author": "angela",
+            "body": "fixed with rev. 921394\nthanks for reporting this issue.",
+            "date": "2010-03-10T15:20:09.507+0000",
+            "id": 0
+        }
+    ],
+    "component": "jackrabbit-core, security",
+    "description": "I have a hierarchy of nodes which are all access controllable. The following hierarchy illustrates the setup for my problem.\nroot  -  read permissions to everyone\n  | - subFolder  -  all permissions to user A\n        | - subsubFolder  -  all permissions to user A\n\nThe user A has all rights from the node \"subFolder\" downwards.\n\nI tried to remove the node \"subsubFolder\" with the user A. Clearly A has enough permissions to remove the node. But as soon as I call Session.save() an AccessDeniedException is thrown.\n\nI did a lot of debugging and found a possible cause for this fault. It led me to the function ACLProvider.AclPermissions.buildResult(). All line references are based on the source code in the subversion repository found here: http://svn.apache.org/viewvc/jackrabbit/tags/1.6.0/jackrabbit-core/src/main/java/org/apache/jackrabbit/core/security/authorization/acl/ACLProvider.java?view=markup.\nOn line 458 Jackrabbit collects all access control entries of the node, that I want to remove, and all its parents and puts it in the variable \"entries\". In my example this variable contains three entries:\n1. all permissions to user A\n2. all permissions to user A\n3. read permissions to everyone\nOn lines 460 - 466 it collects all access control entries of the node, that I want to remove, and puts it in \"localACEs\". This variable contains one entry: all permissions to user A.\nIf I want to be able to remove \"subsubFolder\", user A needs the permission from the parent node. The permissions of the parent nodes of \"subsubFolder\" are: all permissions to user A and read permissions to everyone. But that's where the access check fails. In line 488 Jackrabbit checks if a permission from \"entries\" is local or not by looking it up in \"localACEs\". If it is in there, the permission is local, else not. Unfortunately it recognizes the permission of the node \"subFolder\" as local. Thus the permissions of the parent nodes of \"subsubFolder\" are: read permissions to everyone. So I cannot remove the node.\nThe source of the error is the equals check of the access control entries. The permissions of node \"subFolder\" are considered equal to the one of \"subsubFolder\". If I explicitly assign the permission \"remove node permission to user A\" to the node \"subFolder\", it works fine, because it is recognized as parent permission.",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "JCR-2420",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Blocker",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "Node removal fails with AccessDeniedException",
+    "systemSpecification": true,
+    "version": "1.6"
+}

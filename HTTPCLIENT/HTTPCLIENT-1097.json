@@ -1,0 +1,35 @@
+{
+    "comments": [
+        {
+            "author": "Sebb",
+            "body": "RFC2818 says this about wildcards:\n\n                                                 Names may contain the wildcard\n   character * which is considered to match any single domain name\n   component or component fragment. E.g., *.a.com matches foo.a.com but\n   not bar.foo.a.com. f*.com matches foo.com but not bar.com.\n\nThis implies that the StrictHostnameVerifier ought to allow wildcards for component fragments.\n\nThe RFC does not say if *oo.com or f*o.com is allowed - are such certs ever created?\nIt does appear to disallow multiple wildcards - \"... _the_ wildcard character ...\".\n\nI assume that the example f*.com is bad, and is not actually allowed!\n\nIn which case, wildcards are allowed if:\n- there are at least 2 dots, i.e. 3 components\n- there is only one *  and this must be at the end of the first component\n- if there are 3 components and the last one has two characters then check against bad 2LDs\n\nWhat about server*.example.com - do curl and Firefox allow this to match server.abc.example.com?\n\nThe matching could probably be simplified if this is not allowed.\n",
+            "date": "2011-05-28T11:10:17.555+0000",
+            "id": 0
+        },
+        {
+            "author": "Sebb",
+            "body": "Affects AbstractVerifier which is the base for BrowserCompatHostnameVerifier",
+            "date": "2011-06-02T13:05:12.465+0000",
+            "id": 1
+        },
+        {
+            "author": "Sebb",
+            "body": "Better: also affects StrictHostnameVerifier",
+            "date": "2011-06-02T13:06:59.269+0000",
+            "id": 2
+        }
+    ],
+    "component": "HttpClient (classic)",
+    "description": "I ran into a problem with SSL wildcard certificates in the class BrowserCompatHostnameVerifier. It handles \"*.example.org\" fine but \"server*.example.org\" fails to work correctly. The javadoc claims that it should behave the same way as curl and FireFox. In Firefox an SSL certificate for \"server*.example.org\" works fine for the host \"server.example.org\", using HttpClient it throws an exception.\n\nHere is an example test (JUnit4):\n\npackage org.example.hb;\n\nimport javax.net.ssl.SSLException;\n\nimport org.apache.http.conn.ssl.BrowserCompatHostnameVerifier;\nimport org.junit.Test;\n\npublic class BrowserCompatHostnameVerifierTest {\n\n\t/**\n\t * Should not throw an exeption in the verify method.\n\t * @throws SSLException\n\t */\n\t@Test\n\tpublic void testVerifyStringStringArrayStringArray() throws SSLException\n\t{\n\t\tBrowserCompatHostnameVerifier hv = new BrowserCompatHostnameVerifier();\n\t\tString host = \"www.example.org\";\n\t\tString[] cns = {\"www*.example.org\"};\n\t\t\n\t\thv.verify(host, cns, cns);\n\t}\n\n}",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "HTTPCLIENT-1097",
+    "issuetypeClassified": "OTHER",
+    "issuetypeTracker": "BUG",
+    "priority": "Minor",
+    "product": "HTTPCLIENT",
+    "project": "HTTPCLIENT",
+    "summary": "BrowserCompatHostnameVerifier and StrictHostnameVerifier should handle wildcards in SSL certificates better",
+    "systemSpecification": true,
+    "version": "4.1.1"
+}

@@ -1,0 +1,41 @@
+{
+    "comments": [
+        {
+            "author": "Doug Sale",
+            "body": "JUnit test.\n\nmethod/testcase that recreates deadlock: testAddIndexesByIndexReader()",
+            "date": "2009-02-19T19:23:53.345+0000",
+            "id": 0
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Patch attached.\n\nI changed the up-front acquireWrite inside addIndexes(IndexReader[])\nto an acquireRead followed by upgradeReadToWrite.\n\nOnce we remove autoCommit=true case we can greatly simplify IW -- I'm\nlooking forward to it!!\n\nI plan to commit in a day or so, and back port to 2.4.1.\n",
+            "date": "2009-02-19T23:40:36.529+0000",
+            "id": 1
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Committed revision 746661 on trunk.",
+            "date": "2009-02-22T12:21:09.533+0000",
+            "id": 2
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Committed revision 746662 on 2.4 branch.\n\nThanks Doug!",
+            "date": "2009-02-22T12:27:47.982+0000",
+            "id": 3
+        }
+    ],
+    "component": "core/index",
+    "description": "A deadlock issue occurs under the following circumstances\n- IndexWriter.autoCommit == true\n- IndexWriter.directory contains multiple segments\n- IndexWriter.AddIndex(IndexReader[]) is invoked\n\nI put together a JUnit test that recreates the deadlock, which I've attached.  It is the first test method, 'testAddIndexByIndexReader()'.\n\nIn a nutshell, here is what happens:\n\n        // 1) AddIndexes(IndexReader[]) acquires the write lock,\n        // then begins optimization of destination index (this is\n        // prior to adding any external segments).\n        //\n        // 2) Main thread starts a ConcurrentMergeScheduler.MergeThread\n        // to merge the 2 segments.\n        //\n        // 3) Merging thread tries to acquire the read lock at\n        // IndexWriter.blockAddIndexes(boolean) in\n        // IndexWriter.StartCommit(), but cannot as...\n        //\n        // 4) Main thread still holds the write lock, and is\n        // waiting for the IndexWriter.runningMerges data structure\n        // to be devoid of merges with their optimize flag\n        // set (IndexWriter.optimizeMergesPending()).\n",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-1544",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "Deadlock: IndexWriter.addIndexes(IndexReader[])",
+    "systemSpecification": true,
+    "version": "2.4"
+}

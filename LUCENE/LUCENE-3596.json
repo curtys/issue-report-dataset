@@ -1,0 +1,65 @@
+{
+    "comments": [
+        {
+            "author": "Shai Erera",
+            "body": "We should be careful about this though. DirTW requires LogMergePolicy and won't work well with TieredMP, or any other out-of-order-merges MP. We should clearly note that in the javadocs of both openIndexWriter, and getIWC (if you intend to add it).\n\nOther than that, I wonder why was infoStream moved to IWC and made final in IW. But I will discuss that on the dev@ list.",
+            "date": "2011-11-26T04:45:38.701+0000",
+            "id": 0
+        },
+        {
+            "author": "Doron Cohen",
+            "body": "bq. and getIWC (if you intend to add it).\nYes that's what I would like to add.\nThese docs are missing then anyhow, with or without getIWC(). \nThis added extendability is useful although behavior regarding info-stream differs between trunk and 3x - i.e. that in 3x one can set that stream also with current extension point.",
+            "date": "2011-11-26T20:54:30.988+0000",
+            "id": 1
+        },
+        {
+            "author": "Doron Cohen",
+            "body": "patch adds the method createIndexWriterConfig(OpenMode openMode) and javadocs for in-order segments merging.",
+            "date": "2011-11-26T21:11:32.972+0000",
+            "id": 2
+        },
+        {
+            "author": "Doron Cohen",
+            "body": "Also, there seems to be a bug in current taxonomy writer test - TestIndexClose - where the IndexWriterConfig's merge policy might allow to merge segments out-of-order. That test calls LTC.newIndexWriterConfig() and it is just by luck that this test have not failed so far.\n\nThis is a bad type of failure for an application (is there ever a good type?;)), because by the time the bug is exposed it would show as a wrong facet returned in faceted search, and go figure that late that this is because at an earlier time an index writer was created which allowed out-of-order merging...\n\nTherefore, it would have been useful if, in addition to the javadocs about requiring type of merge policy, we would also throw an exception (IllegalArgument or IO) if the IWC's merge policy allows merging out-of-order. This should be checked in two locations: \n- createIWC() returns\n- openIndex() returns, by examining the IWC of the index\n\nThe second check is more involved as it is done after the index was already opened, so it must be closed prior to throwing that exception.\n\nHowever, merge-policy does not have in its \"contract\" anything like Collector.acceptsDocsOutOfOrder(), so it is not possible to verify this at all.\n\nAdding such a method to MergePolicy seems to me an over-kill, for this particular case, unless there is additional interest in such a declaration?\n\nOtherwise, it is possible to require that the merge policy must be a descendant of LogMergePolicy. This on the other hand would not allow to test this class with other order-preserving policies, such as NoMerge.\n\nSo I am not sure what is the best  way to proceed in this regard.\n\nI think there are two options actually:\n# just javadoc that fact, and fix the test to always create an order preserving MP.\n# add that declaration to MP.\n\nUnless there are opinions favoring the second option I'll go with the first one.\n\nIn addition, (this is true for both options) I will move the call to createIWC into the constructor and modify openIndex signature to accept an IWC instead of the open mode, as it seems wrong - API wise - that one extension point (createIWC) is invoked by another extension point (openIndex) - better have them both be invoked from the constructor, making it harder for someone to, by mistake, totally ignore in createIndex() the value returned by createIWC().",
+            "date": "2011-11-27T09:54:03.881+0000",
+            "id": 3
+        },
+        {
+            "author": "Shai Erera",
+            "body": "bq. I will move the call to createIWC into the constructor and modify openIndex signature to accept an IWC instead of the open mode\n\n+1. This makes sense.\n\nbq. just javadoc that fact, and fix the test to always create an order preserving MP.\n\nI agree. The options are not very appealing and we might work too hard to prevent something that will never happen. The root cause of this issue was the inability to turn on IW's infoStream (which IMO should be changed to a proper logging framework). Besides our tests, I don't think many will override createIWC / openIndexWriter for changing other attributes.",
+            "date": "2011-11-27T10:11:22.722+0000",
+            "id": 4
+        },
+        {
+            "author": "Doron Cohen",
+            "body": "Patch taking approach (1) above, and moving createIWC() to constructor. \n\nIn addition fixed some javadoc comments, and added an assert to the constructor, which, only when assertions are enabled, will verify that the IWC in effect is not an instance of TieredMergePolicy. Imperfect as this is, it at least exposed the problem in current test (fixed to use newLogMP()).\n\nI think this is ready to commit.",
+            "date": "2011-11-27T13:04:31.509+0000",
+            "id": 5
+        },
+        {
+            "author": "Shai Erera",
+            "body": "Patch looks good. +1 to commit.",
+            "date": "2011-11-28T04:33:59.747+0000",
+            "id": 6
+        },
+        {
+            "author": "Doron Cohen",
+            "body": "Thanks for reviewing Shai.\n\nCommitted:\n- r1206996 - trunk\n- r1207008 - 3x\n\nCHANGES.txt entry is only in 3x because in trunk facet is under modules. I don't like this difference, but there it is.",
+            "date": "2011-11-28T08:11:11.469+0000",
+            "id": 7
+        }
+    ],
+    "component": "modules/facet",
+    "description": "Current protected openIndexWriter(Directory directory, OpenMode openMode) does not provide access to the IWC it creates.\nSo extensions must reimplement this method completely in order to set e.f. info stream for the internal index writer.\nThis came up in [user question: Taxonomy indexer debug |http://lucene.472066.n3.nabble.com/Taxonomy-indexer-debug-td3533341.html]",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-3596",
+    "issuetypeClassified": "RFE",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Minor",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "DirectoryTaxonomyWriter extensions should be able to set internal index writer config attributes such as info stream",
+    "systemSpecification": true,
+    "version": ""
+}

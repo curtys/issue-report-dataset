@@ -1,0 +1,59 @@
+{
+    "comments": [
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "I just cannot make everyone happy, can I? Ironically enough, such behavior was demanded by a mob of angry users on a number of occasions in the past, based on a claim that this was what 'all common browsers do'. I'll happily revert to the stricter behavior since one can always provide a custom implementation of RedirectHandler.\n\nPlease review / test the patch.\n\nOleg\n",
+            "date": "2009-07-10T15:05:34.627+0000",
+            "id": 0
+        },
+        {
+            "author": "Ben Perkins",
+            "body": "Oleg,\n\nI'd hate to get you lynched by a mob of angry users. :)  First off, I think your patch does bring the client's behavior closer in line with a literal reading of the spec.  And I agree with you that it's easy to supply a custom RedirectHandler so I'm not terribly concerned with the \"strict\" behavior of the patched DefaultRedirectHandler.\n\nBut if I'm reading your patch correctly, it does still present me with one major problem.  Even if I replace the RedirectHandler with one that allows redirects of PUT/POST (effectively giving \"confirmation\" as required by the spec), the DefaultRequestDirector will still ignore the specification and convert the PUT/POST method to a GET when it performs the redirect.  \n\nCan we please get DefaultRequestDirector changed to honor the original request method (presuming the RedirectHandler allows the redirect at all), except in the case of status code 303 which explicitly mandates conversion to a GET?\n\nThanks!\n- Ben\n\n",
+            "date": "2009-07-10T15:50:46.007+0000",
+            "id": 1
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Ben,\n\nThe trouble is that if we want to be consistent in our interpretation of the specification, we ought not automatically redirect PUT/POST without _user_ intervention. I am not sure a custom RedirectHandler counts as such. \n\nI wish we could change the contract of  RequestDirector to return a complete HttpRequest object in response to a redirect request, but this is not an option for 4.0.\n\nThe proposed patch will cause HttpClient to not automatically redirect to a new location if the original method is PUT or POST and the response status code is other than 303, so one always has an option to retry a request with a different request URI.\n\nOleg",
+            "date": "2009-07-10T16:35:23.183+0000",
+            "id": 2
+        },
+        {
+            "author": "Ben Perkins",
+            "body": "Oleg,\n\nI agree that the meaning of having something \"confirmed by the user\" is somewhat ambiguous in the context of a programmatic client.  I believe in this context, the programmer is as close to a \"user\" as you are going to get.  With your patch to DefaultRedirectHandler you're honoring the spec by not redirecting PUT/POST without some explicit signal that it's desired.  To me either an HttpParam requesting it or the replacement of the RedirectHandler should qualify as confirmation, though it seems you don't agree.\n\nBut even if you do not agree, the existing capacity of replacing a RedirectHandler can cause redirects to be done for PUT/POST requests.  And if they are enabled in that manner, the behavior for DefaultRequestDirector (mapping the PUT/POST to GET) is explicitly against the spec for all status codes except for 303.  From my RFC excerpt above:\n\nNote: RFC 1945 and RFC 2068 specify that the client is not allowed\n      to change the method on the redirected request.\n\nSo, while your patch makes the default behavior of the client more RFC compliant, it leaves it non-compliant if the user specifies a custom-redirect handler to enable extended redirect functionality.  What is the advantage of not preserving the PUT/POST method in those situations when it takes you farther from the spec?\n\nI guess all I'm really asking for on top of what you've already done is to change the behavior of your new HttpRedirect class to preserved the original request's method for all cases except for 303's.\n\nI appreciate your patience with all these questions and hope we can arrive at something mutually satisfactory.\n\nThanks again.\nBen\n\n\n\n",
+            "date": "2009-07-10T17:13:41.582+0000",
+            "id": 3
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Ben,\n\nI am afraid we will have to agree to disagree here. Anything short of a UI dialog popping up would not constitute a 'user confirmation' in my opinion.\n\n> the existing capacity of replacing a RedirectHandler can cause redirects to be done for PUT/POST requests. And if they are enabled \n> in that manner, the behavior for DefaultRequestDirector (mapping the PUT/POST to GET) is explicitly against the spec for all status \n> codes except for 303\n\nBut then one can argue that allowing redirects of PUT/POST without user confirmation would be equally wrong. \n\nThere are enough extension points in HttpClient that can be (ab)used to implement non-standard behaviours in direct violation of the spec, so RedirectHandler is in no way different.\n\nI'll commit the patch as is. You are welcome to open a feature request for a more flexible redirect handling API, which we can address in the course of 4.1 development.\n\nOleg \n",
+            "date": "2009-07-11T14:46:45.494+0000",
+            "id": 4
+        },
+        {
+            "author": "Ben Perkins",
+            "body": "Extensibility is one of the things that drew me to this client.  It's unfortunate that the redirect mechanism isn't quite extensible enough right now to accomplish what I need.  I'll open an enhancement request for 4.1.\n\nThanks,\nBen",
+            "date": "2009-07-14T02:49:47.190+0000",
+            "id": 5
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "As I said I cannot make everyone happy. It is just not possible to make any API changes at this point. I wish more people reviewed the API while HttpClient 4.0 was still in ALPHA.\n\nPatch checked in.\n\nOleg",
+            "date": "2009-07-14T20:15:58.104+0000",
+            "id": 6
+        }
+    ],
+    "component": "HttpClient (classic)",
+    "description": "The DefaultRequestDirector treats redirect requests created by all redirect status codes (HttpStatus.SC_MOVED_TEMPORARILY: , HttpStatus.SC_MOVED_PERMANENTLY, HttpStatus.SC_SEE_OTHER, HttpStatus.SC_TEMPORARY_REDIRECT) the same, converting PUT/POST methods to GET.  The HttpClient Tutorial even documents this as being in accordance with the specification, but I don't believe that's true.\n\nPer the RFC (http://www.w3.org/Protocols/rfc2616/rfc2616-sec10.html), conversion of PUT/POST to GET is appropriate only for 303 (See Other).  The others do not suggest this behavior.  In fact, the following notes attached to them call it out as incorrect.\n\n301 (Moved Permanently) has this note:\n\n      Note: When automatically redirecting a POST request after\n      receiving a 301 status code, some existing HTTP/1.0 user agents\n      will erroneously change it into a GET request.\n\nAnd 302 (Found) say this:\n\n      Note: RFC 1945 and RFC 2068 specify that the client is not allowed\n      to change the method on the redirected request.  However, most\n      existing user agent implementations treat 302 as if it were a 303\n      response, performing a GET on the Location field-value regardless\n      of the original request method. The status codes 303 and 307 have\n      been added for servers that wish to make unambiguously clear which\n      kind of reaction is expected of the client.\n\nThe currently implemented behavior is causing problems with interacting with Central Authentication Service protected resources, among other things.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "HTTPCLIENT-860",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "HTTPCLIENT",
+    "project": "HTTPCLIENT",
+    "summary": "DefaultRequestDirector converts redirects of PUT/POST to GET for status codes 301, 302, 307",
+    "systemSpecification": true,
+    "version": "4.0 Beta 2"
+}

@@ -1,0 +1,23 @@
+{
+    "comments": [
+        {
+            "author": "angela",
+            "body": "fixed as proposed.\n\nhowever, i didn't run the litmus test... will do that some time after easter.\nnor did i check spi2dav. the server side is prepared to handle DavResource#addMember with an index (and i remember that added this to circumvent the DAV limitation on MKCOL that collides with the JCR same-name siblings. but i don't remember if i consistently used this on the spi2dav client side.... spi2davex isn't affected anyway).",
+            "date": "2010-03-31T14:02:10.621+0000",
+            "id": 0
+        }
+    ],
+    "component": "jackrabbit-webdav",
+    "description": "when performing a MKCOL on a resource that already exists, following is thrown.\n\n31.03.2010 16:14:10.760 *ERROR* [127.0.0.1 [1270012450463] MKCOL /org.apache.sling.launchpad.testing-6-SNAPSHOT/apps HTTP/1.1] org.apache.sling.engine.impl.SlingMainServlet service: Uncaught Throwable java.lang.IllegalStateException: Response has already been committed\n       at org.apache.sling.engine.impl.SlingHttpServletResponseImpl.checkCommitted(SlingHttpServletResponseImpl.java:398)\n       at org.apache.sling.engine.impl.SlingHttpServletResponseImpl.setStatus(SlingHttpServletResponseImpl.java:265)\n       at org.apache.jackrabbit.webdav.WebdavResponseImpl.setStatus(WebdavResponseImpl.java:276)\n       at org.apache.jackrabbit.webdav.server.AbstractWebdavServlet.doMkCol(AbstractWebdavServlet.java:548)\n       at org.apache.jackrabbit.webdav.server.AbstractWebdavServlet.execute(AbstractWebdavServlet.java:256)\n       at org.apache.jackrabbit.webdav.server.AbstractWebdavServlet.service(AbstractWebdavServlet.java:196)\n       at javax.servlet.http.HttpServlet.service(HttpServlet.java:820)\n       at org.apache.sling.engine.impl.request.RequestData.service(RequestData.java:523)\n....\n\n\nI think a return after the sendError is required ?\nin AbstractWebdavServlet.doMkCol(...) \n\n\n   protected void doMkCol(WebdavRequest request, WebdavResponse response,\n                          DavResource resource) throws IOException, DavException {\n\n       DavResource parentResource = resource.getCollection();\n       if (parentResource == null || !parentResource.exists() || !parentResource.isCollection()) {\n           // parent does not exist or is not a collection\n           response.sendError(DavServletResponse.SC_CONFLICT);\n           return;\n       }\n       // shortcut: mkcol is only allowed on deleted/non-existing resources\n       if (resource.exists()) {\n           response.sendError(DavServletResponse.SC_METHOD_NOT_ALLOWED);\n+          return;\n       }\n\n       if (request.getContentLength() > 0 || request.getHeader(\"Transfer-Encoding\") != null) {\n           parentResource.addMember(resource, getInputContext(request, request.getInputStream()));\n       } else {\n           parentResource.addMember(resource, getInputContext(request, null));\n       }\n       response.setStatus(DavServletResponse.SC_CREATED);\n   }\n\n\n\n",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "JCR-2589",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "WebDav MKCOL on a directory that already exists generates a IllegalStateException",
+    "systemSpecification": true,
+    "version": "2.0"
+}

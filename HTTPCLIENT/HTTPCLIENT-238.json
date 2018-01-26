@@ -1,0 +1,89 @@
+{
+    "comments": [
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Luca,\nOf course, I would prefer to see the problem fixed in LocalDirector in the first\nplace. This said, I do not see it as a big deal to augment the set of tokens\nthat HeaderElement#parse should accept as valid ones. On the other hand, there's\na pretty good chance of HeaderElement#parse method being replaced with something\nsaner in post-2.0 development. There are other problems related to this very\npiece of code (HTTPCLIENT-92) and REALLY would like to see it go. If you can live\nwith a patched version of 2.0 release, we would definitely provide a fix for the\nproblem in 2.1 release.\n\nOleg",
+            "date": "2003-07-01T15:24:21.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Luca Masini",
+            "body": "Thank you Oleg, of course I will use my patched release of the library, but I \nhope to see it in the main release from v2.1\nWe tried to patch the LocalDirectory, but that is a piece of hardware, and the \ncookie setting are REALLY hard-coded.\nAnyway, patching it is really simple as putting this lines in parse:\n\n                if (tokenizer.hasMoreTokens()) {\n                    String s = nextToken.toLowerCase();\n                    if (s.endsWith(\"tues\")) {\n                    \tnextToken = s.substring(0,s.length()-1) + \ntokenizer.nextToken();\n                    }\n                    else if (nextToken.endsWith(\"thurs\")) {\n                    \tnextToken = s.substring(0,s.length()-2) + \ntokenizer.nextToken();\n                    }\n                    else if (s.endsWith(\"mon\") \n                        // Standard from here\n\nBye.\nL.",
+            "date": "2003-07-01T17:01:09.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Luca,\nI believe the way HeaderElement#parse(String) method is currently implemented is\nsub-optimal. The idea is to completely do away with that ugly check for comma in\nthe expiry date and let the DateParser decide whether the expiry date is\nmalformed or not. But we can't make such a radical change in 2.0 release. It\nwill have to wait until 2.1\n\nOleg",
+            "date": "2003-07-01T19:05:20.000+0000",
+            "id": 2
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Created an attachment (id=7268)\nPatch (take 1)\n",
+            "date": "2003-07-12T21:43:04.000+0000",
+            "id": 3
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Folks,\n\nThis patch is intended to improve one of the uglies and most convoluted spots in\nHttpClient: HttpElement#parse. The parser will no longer try to compare header\nelements with week days or anything of the sort. Two weeks of my spare time have\ngone into optimization of the parsing routines. So, I have a fair degree of\nconfidence that the parsing routine will have decent performance. Besides, I did\nmy very best to reuse common parsing patterns whenever possible.\n\nFeel free to start throwing bad tomatoes at me. Comments, critique, corrections\nare, as always, welcome.\n\nOleg",
+            "date": "2003-07-12T21:53:43.000+0000",
+            "id": 4
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Hi Oleg,\n\nI have just a few minor comments.\n\n- There are a few places where methods that return arrays or a list return null.  I think they should \ninstead return an empty array or list.  e.g. HeaderElement.parseElements(), \nParameterParser.parse().\n- Header.getValues()  is using the newly deprecated HeaderElement.parse().\n- There are a number of style violations.  Mostly minor stuff like spacing and missing or incorrect \njavadocs.  It's nitpicking but we want to keep that code pretty:)\n\nOverall I think this looks good.  Nice work as usual.\n\nMike",
+            "date": "2003-07-13T00:32:17.000+0000",
+            "id": 5
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "> There are a few places where methods that return arrays or a list \n> return null. I think they should instead return an empty array or list.  e.g. \n> HeaderElement.parseElements(), \n> ParameterParser.parse().\n\nI think the above mentioned parsing routines return null only when receive null\nas input. They always return an array or list when input is not a null (empty\nstring, for instance). If you think it is still inconsistent, I'll happily\nchange these methods\n\n> Header.getValues()  is using the newly deprecated HeaderElement.parse().\n\nGood catch. Corrected.\n\n> There are a number of style violations.  Mostly minor stuff like spacing\n> and missing or incorrect javadocs.  It's nitpicking but we want to keep\n> that code pretty:)\n\nIt turned out that all javadoc warnings had been caused by removal of deprecated\nmethods. Corrected. \n\nOleg\n\n",
+            "date": "2003-07-13T02:53:22.000+0000",
+            "id": 6
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Created an attachment (id=7269)\nPatch (take 2)\n",
+            "date": "2003-07-13T02:54:04.000+0000",
+            "id": 7
+        },
+        {
+            "author": "Michael Becke",
+            "body": "I'm of the belief that methods returning Collections or arrays should never return null.  This is \nmostly to avoid NPEs when iterating over values returned from such methods.  The only \nexception I would make is if the Javadocs explicitly say that null will be returned for some \nparticular reason.\n\nMike",
+            "date": "2003-07-13T03:07:54.000+0000",
+            "id": 8
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Agreed. I have changed the code accordingly. I can't create a patch right now,\nthough, as cvs.apache.org appears to be having some problems. I'll post it later. \n\nOleg",
+            "date": "2003-07-13T03:43:22.000+0000",
+            "id": 9
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Created an attachment (id=7272)\nPatch (take 3)\n",
+            "date": "2003-07-13T04:02:08.000+0000",
+            "id": 10
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Patch comitted to CVS HEAD\n\nOleg",
+            "date": "2003-07-13T21:02:29.000+0000",
+            "id": 11
+        }
+    ],
+    "component": "HttpClient (classic)",
+    "description": "The cookie setted by the LocalDirector 416 Version 4.2.3 has a bug.\nIt sets for Tuesday and Thursday \"Tues\" and \"Thur\" instead of the \ncanonical \"Tue\" and \"Thu\". This break the parsing stage and stop HttpClient to \nwork for 2 days a week. Of course I modified the parse method in HeaderElement \nclass, but everytime I download a new version, I have to remake the jar....\nIt's possible to include this into the CVS files ?",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "HTTPCLIENT-238",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "HTTPCLIENT",
+    "project": "HTTPCLIENT",
+    "summary": "HeaderElement#parse(String) implementation is not optimal",
+    "systemSpecification": true,
+    "version": "2.0 Beta 1"
+}

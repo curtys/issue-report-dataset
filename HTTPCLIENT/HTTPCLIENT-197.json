@@ -1,0 +1,215 @@
+{
+    "comments": [
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Paul,\nI have heard about this problem before but so far have been unable to reproduce\nit. I'll look into it one more time. \n\nOleg",
+            "date": "2003-04-25T14:32:13.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Paul Philion",
+            "body": "Oleg -\n\nI think it can be reproduced using Resin 2.1.9 as the JSP container. If you\nwould like I'll try to get a JSP together.",
+            "date": "2003-04-25T17:49:58.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Paul,\n\nI am a bit reluctant to install Resin unless the bug can't be reproduced using \nother tools at my disposal. The test JSP will be highly appreciated\n\nCheers\n\nOleg",
+            "date": "2003-04-25T18:36:27.000+0000",
+            "id": 2
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Created an attachment (id=6192)\nPatch (take 1)\n",
+            "date": "2003-05-05T03:47:13.000+0000",
+            "id": 3
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "I guess that should fix the problem. \n\nOleg",
+            "date": "2003-05-05T03:51:39.000+0000",
+            "id": 4
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Oleg,\n\nI do not think this will fix the problem. I have no way of testing this so I may be completely wrong \nthough:)  It does not seem that the response (invalid though it may be) is ever being read.  I would \nsuggest adding the following instead of responseBodyConsumed():\n\n        if (getResponseBodyAsStream() != null) {\n            getResponseBodyAsStream().close();\n        }\n\nMike",
+            "date": "2003-05-05T05:05:16.000+0000",
+            "id": 5
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Mike,\nYou are right. The patch does not fix the problem. On top of that, the solution \nyou proposed seems to be causing some side-effects as well. It looks like the \nfix will require a bit more work than I initially thought. I am going to target \nthe resolution of this bug for beta-2, as this bug is no show-stopper for the \npending beta-1 release.\n\nOleg",
+            "date": "2003-05-05T16:50:55.000+0000",
+            "id": 6
+        },
+        {
+            "author": "Eric Johnson",
+            "body": "Part of the difficulty with the HEAD response is that it is _supposed_ to\nindicate a content length if available, but not return any content.  If\nHttpClient attempts to treat the HEAD method like any other, that would mean, of\ncourse, that HttpClient would attempt to consume the indicated length of\ncontent, even though in most cases it will never be there.  Badness ensues.\n\nIf you want to recover from an HTTP server that erroneously returns content on a\nHEAD request, it might be better to improve the code that scans for the HTTP\nresponse line - for example by looking for \"HTTP/1.0\" or \"HTTP/1.1\" in the input\nstream, rather than CR+LF+\"HTTP\", which presupposes that a response with extra\ndata would be so kind as to terminate with a CR/LF.",
+            "date": "2003-05-05T19:31:47.000+0000",
+            "id": 7
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Absolutely correct. \n\nHowever, I believe there's another approach possible. Since we already have a \nPushbackInputStream wrapper around our socket input stream, anyway, I am \nthinking about implementing a read ahead method which would allow me to peek \ninto the data that is about to come without really \"reading\" it (sort of).\n\nOleg",
+            "date": "2003-05-05T19:46:58.000+0000",
+            "id": 8
+        },
+        {
+            "author": "Ortwin Gl\u00fcck",
+            "body": "Do we actually want HttpClient to look for \"HTTP/1.x\" strings in the response?\nCan we not just use the information given by the Headers to read/skip as many\nbytes as necessary? (didn't look at the code recently...)",
+            "date": "2003-05-05T19:56:49.000+0000",
+            "id": 9
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Odi, I am afraid chunk-encoded content unfortunately spoils this kind of \nscheme. \n\nOleg",
+            "date": "2003-05-05T19:59:44.000+0000",
+            "id": 10
+        },
+        {
+            "author": "Ortwin Gl\u00fcck",
+            "body": "Oleg, why? With chunked-TransferEncoding the end of the body is also\nwell-defined. The only difference to Content-Length is that you have to parse\nthe chunks and can not just skip a known number of bytes.",
+            "date": "2003-05-05T20:44:58.000+0000",
+            "id": 11
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Odi, \nWhat I meant was that we couldn't just blindly skip the number of bytes given \nin the Content-Length header. I do agree that we should leverage the content \ninformation given in the headers. Oleg",
+            "date": "2003-05-05T21:14:00.000+0000",
+            "id": 12
+        },
+        {
+            "author": "Ortwin Gl\u00fcck",
+            "body": "Ah I guess I understand the problem now. So forget about my comments.\n\nWell, actually it's a little hard to try and fix this server problem on the\nclient side... I mean, if the server sends a body even though it is supposed not\nto, then who on earth tells us *that* it sent this body. The real problem is, we\ndo not *when* this body will arrive.\n\nThe body could (in theory) arrive a long time (HTTP/1.1 keep-alive connections)\nafter the headers were sent. We can not just wait for an indefinite time after\neach HEAD request just because some response body might arrive unexpectedly, can we?\n\nAs I see it, we *can not* recover from such a protocol violation on the same\nconnection - we just can not detect this situation well enough. We can only\ndetect that there is not HTTP/1.x response in the body and correctly assume taht\nsomething went wrong. We can then only close the connection and retry with a\nfresh one. ",
+            "date": "2003-05-05T21:30:47.000+0000",
+            "id": 13
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Odi, it'll never work 100%. However, we still wait a little while to see if \nthere's anything coming our way to make sure that we can gracefuly recover in \nmost of the cases.\n\nOleg",
+            "date": "2003-05-05T21:39:23.000+0000",
+            "id": 14
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Created an attachment (id=6212)\nPatch (take 2)\n",
+            "date": "2003-05-05T22:47:21.000+0000",
+            "id": 15
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Another attempt at fixing the problem. Minor ChunkedInputStream class clean-ups \nthat are related to the fix. Feedback welcome.\n\nOleg",
+            "date": "2003-05-05T22:54:41.000+0000",
+            "id": 16
+        },
+        {
+            "author": "Ortwin Gl\u00fcck",
+            "body": "Maybe we should check for strict mode here and throw an exception in strict mode.",
+            "date": "2003-05-05T23:44:25.000+0000",
+            "id": 17
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "That, of course, can be done.\n\nOleg",
+            "date": "2003-05-06T00:13:10.000+0000",
+            "id": 18
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Created an attachment (id=6226)\nPatch (take 3)\n",
+            "date": "2003-05-06T14:49:52.000+0000",
+            "id": 19
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Odi's suggestion has been implemented. Any additional comments, objections?\n\nOleg",
+            "date": "2003-05-06T14:51:04.000+0000",
+            "id": 20
+        },
+        {
+            "author": "Eric Johnson",
+            "body": "I still think we're chasing the wrong problem, here, and the patch makes me\nuncomfortable on several fronts.\n\nI don't think that a GET or POST response with too much data should be treated\nany differently than a HEAD response with too much data.  The scan for HTTP/1.1\nexists for precisely that reason.  I have not personally tried the scenario that\nthe original poster indicated, but it seems no different in principle than a\nserver that tacks an extra CRLF pair at the end of a GET response - when we read\nthe next response we have to scan for the HTTP/1.1 line start.  The current code\nmight be a problem, though, if the previous response has extra data, but doesn't\nend with a CRLF.  I think THAT is the problem we should be solving.\n\nI looked through the patch, and as best I can tell, it changes the default\nbehavior of the HeadMethod to wait for 100ms for invalid content.  That seems\nlike a bad default, at a minimum.  My application uses HEAD in a number of\nplaces, and having to revisit all my code where HEAD is invoked just to solve a\nproblem I never encounter seems weird to me.  And if I miss a case, I get an\ninexplicably performance penalty.  Ugh.  Maybe I read the code wrong though.\n\ntestNoncompliantHeadStrickMode - \"strict\" is misspelled.\n\nI like the test cases you provided!  It is certainly a clever way to reproduce\nthe problem.",
+            "date": "2003-05-06T20:23:01.000+0000",
+            "id": 21
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Eric,\nI see your point. However, this is where we differ quite radically: it is one \nstory to skip a few blank lines mistakenly appended to the response body, and \nit is an entirely different story to scan an arbitrary sequence of characters \nfor a rather common pattern such as ^HTTP. I personally find it fairly \npointless due to the high probability of erroneous results. Even if we attempt \nto be a bit more creating about pattern matching mistakes are still quite \nlikely. It's just not worth the trouble (imho) since we can't make it work 100%\n\nOn the other hand, my intention was to address only a very specific problem \nwhere we can have significantly more certainty about being able to gracefully \nrecover from most of non-compliant responses. \n\nI do admit that the price in terms of performance degradation is high. \nTherefore, I provided an option to disable the check. Maybe the check should be \noff by default, as the overwhelming majority of HTTP servers are spec compliant \nin this particular regard?\n\nI apologize for spelling mistakes\n\nOleg",
+            "date": "2003-05-06T21:04:13.000+0000",
+            "id": 22
+        },
+        {
+            "author": "Eric Johnson",
+            "body": "Well, I definitely think the wait should be avoided by default, otherwise you've\ndefeated most of the client value of the HEAD method as a less \"expensive\"\nalternative to GET.\n\nSince the original poster knows that he is going against a non-compliant server,\nis it more appropriate to simply work around it there?  Perhaps not, or they\nwouldn't have posted the bug.\n\nI'm torn about the pattern matching problem.  The only time looking for byte\nlevel HTTP/1.1 would generate problems is if server is genuinely misbehaving. \nThe code we have now consumes the entire response even if the caller doesn't\nread it all, solving many of the potential response alignment issues.  Thus in\nmost cases (except this one), my experience suggests we only have to worry about\nthe occassional stray CRLF pair. These wouldn't cause a problem with my\nalternative.  Of course the problem with this particular case is that you could\neasily imagine the server returning:\n<html><body><h1>HTTP/1.1 301 Moved permanently</h1><p>Ask server admin for\ndetails.</p>\n</body></html>\n\nWhich would cause the problem that I'm guessing the original poster saw if there\nwas no CRLF after the </html> tag.  Yet if you did a byte level search for\nHTTP/1.1 as I suggest, it would still fail, as my approach would \"find\" the\nfirst occurrance and try to read the header prematurely.  In the absence of a\nwire log, and thinking about the potentially diabolically misbehaved servers, I\nconcede that your approach might be better.\n\nYour change to HttpMethodBase puzzled me for a while, as I was worried that it\nmight change the performance.  Now that I look at it again, it makes more sense,\nand it might prevent an exception for badly behaved servers.  Might this be a\nbehavior change that should be aware of \"strict\" mode, though?  Except wait - I\njust did a search for \"isStrictMode()\" uses and I didn't find any, except in\nyour new patch.  Did this sneak in while I wasn't watching?\n\nSorry about the rambling, but I've been puzzling through this one, and you seem\nto be quite a bit ahead of my thinking.\n",
+            "date": "2003-05-06T22:49:29.000+0000",
+            "id": 23
+        },
+        {
+            "author": "Ortwin Gl\u00fcck",
+            "body": "Eric,\n\nThe status line does not have to be preceded by a CRLF at all. The only thing\nthat defines the end of the response body is the Content-Length Header or the\nending chunk if Chunked Transfer Ecoding is used. The HTTP response body is to\nbe treated as a binary entity and should not be parsed (for CRLF) by HTTP\nservers nor clients.",
+            "date": "2003-05-06T23:31:56.000+0000",
+            "id": 24
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Eric,\nBoth approaches in question have their advantages and disadvantages. None of \nthem is a panacea and is guaranteed to be able to recover gracefully in all \npossible scenarios. \n\nThis, of course, is subjective but I just do not like the idea of scanning \nthrough the response body that may contain any arbitrary sequence of bytes. The \nuse of header information is by no means a more effective method that the one \nyou suggest, but it does appear a more proper, more compliant approach (at \nleast to me). If a particular server sends just an arbitrary stream of garbage \nthat has no correlation with information in the header, I do not think we \nshould go at extraordinary lengths to recover from this kind of HTTP spec \nabuse. \n\nAs to those modifications I made to HttpMethodBase they are (intended to be) \nmere clean-ups. They should have no performance impact of what so ever (or so \nI'd like to hope) I just moved the check for improperly terminated empty chunk-\nencoded body from the ChunkedInputStream class to HttpMethodBase where we have \nmore information about the execution environment and therefore are in a better \nposition to take appropriate corrective measures. \n\nI agree this check may be inappropriate when executing in the strict mode. \nUnfortunately the RFC is a bit vague on whether an empty chunk-encoded response \nbody must have a closing chunk or may be omitted altogether. There are \nconflicting opinions. For instance, the company that produces the IIS web \nserver seems to subscribe to the latter point of view. \n\nOleg\n",
+            "date": "2003-05-07T00:28:21.000+0000",
+            "id": 25
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Created an attachment (id=6237)\nPatch (take 4)\n",
+            "date": "2003-05-07T00:29:12.000+0000",
+            "id": 26
+        },
+        {
+            "author": "Ortwin Gl\u00fcck",
+            "body": "Let me recall the two main user groups of HttpClient:\n\n1. People who want to transfer data: They just want it to work flawlessly with\nthe most common servers (Apache httpd, Tomcat, IIS, Squid, most popular app\nservers and proxies). They will most reasonably run HttpClient in non-strict mode.\n\n2. People who want to test servers for standards compliance. They will most\nreasonably run HttpClient in strict mode.\n\nWe are *not* supposed to make a client that works with everything out there that\ncalls itself a Http server. \nFor group 1 it's enough if it works for (the big) servers that are usually\nregarded as standards compliant. \nFor group 2 it's enough if HttpClient notifies them (exceptions, logs,\nmisbehaviour) that their implementation is not good. Note that for group 2 we do\nnot have to be very explicit or verbose about what went wrong. It's sufficient\nthat they can actually notice an error.\n\nSo in my humble opinion we should refrain from building ugly work-arounds for\ngross violations of the Http standard.",
+            "date": "2003-05-07T14:10:53.000+0000",
+            "id": 27
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Created an attachment (id=6256)\nPatch (take 5)\n",
+            "date": "2003-05-07T18:05:05.000+0000",
+            "id": 28
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Some minor tweaks regarding HTTP spec compliance in the strict mode. \n\nSummary of changes:\n\n- Minor ChunkedInputStream class clean-ups.\n- HttpExcption is thrown in the strict mode when chunk-encoded body has been \ndeclared with 'Transfer-Encoding' header but not sent. \n- Per default HttpClient does not check for presence of HTTP HEAD response \nbody. Such check can be optionally activated on an individual HEAD method when \nnecessary. In the strict mode presence of a content body in response to HTTP \nHEAD request will cause an HttpException to be thrown.\n\nOleg",
+            "date": "2003-05-07T18:20:09.000+0000",
+            "id": 29
+        },
+        {
+            "author": "Michael Becke",
+            "body": "In general it looks good to me.  Just a few comments.\n\n - I haven't tried this, but I wonder if the isResponseAvailable() calls will\ncause problems with HTTPS in pre 1.4 JVMs ala the isStale() problem.\n - There seems to be tab characters in HeadMethod.  I am guessing the\nbodyCheckTimeout accessor methods were autogenerated with tabs by Eclipse.\n\nMike",
+            "date": "2003-05-07T19:44:22.000+0000",
+            "id": 30
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Mike,\nI was also concerned about possible side effects on HTTPS connections. I have \nrun a few really nasty tests in order to simulate the potential problem. \nEverything seems quite all right at least in my usual development environment. \nI have tweaked RequestBodyServlet to pause for 5 seconds prior to sending out \nthe response body to the client. I hit the server over SSL with two consecutive \nrequest: a GET followed by a POST. The connection was declared stale after the \nGET and re-opened. POST method did pause for approximately 5 seconds before the \nchunk-encoded body started arriving. At least as far I can tell things look ok \nto me\n\nOleg",
+            "date": "2003-05-07T21:14:31.000+0000",
+            "id": 31
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Patch committed.\n\nOleg",
+            "date": "2003-05-09T00:36:43.000+0000",
+            "id": 32
+        }
+    ],
+    "component": "HttpClient (classic)",
+    "description": "I've been testing/using HttpClient 2.0a3 with Resin 2.1.9. I've found that when\nusing a HEAD request on a JSP, Resin returns the body content along with the\nheaders.\n\nIn this case, something in the HttpClient breaks. Looking at the httpclient\nlogs, it looks like:\n\n1) HttpClient does a HEAD against the original URL\n2) Resin returns valid status line and headers\n3) HttpClient parses the headers and recognizes the redirect header\n4) HttpClient does a HEAD against the new URL (from the Location header)\n5) HttpMethodBase calls readStatusLine, which (eventually) calles readRawLine in\nHttpConnection (which reads from the internal inputStream)\n6) readRawLine returns the first line in the body from the original HEAD request\nin (1).\n\nIt looks like the original body content (in response to the first HEAD) is being\nbuffered somewhere, but I can't figure out where.\n\nI know that this is invalid behavior on the server's part, but I would like to\nbe able to recover from it.\n\n\n\n---- redir_test.jsp ----\n<?xml version=\"1.0\"?>\n<% \n  response.setStatus(response.SC_MOVED_TEMPORARILY);\n  response.setHeader(\"Location\", \"redirect_pass.xml\");\n%>\n<some>\n  <dummy>\n    <data attr=\"yea, well\"/>\n  </dummy>\n</some>",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "HTTPCLIENT-197",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "HTTPCLIENT",
+    "project": "HTTPCLIENT",
+    "summary": "Problem with redirect on HEAD when (bad, naughty) server returns body content",
+    "systemSpecification": true,
+    "version": "2.0 Alpha 3"
+}

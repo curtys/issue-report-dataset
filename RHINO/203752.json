@@ -1,0 +1,107 @@
+{
+    "comments": [
+        {
+            "author": "igor@mir2.org",
+            "body": "CC self",
+            "date": "20030429T11:37:41",
+            "id": 0
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 122002\nFix: making NativeGlobal serializable\n\nIn the patch beyond making NativeGlobal to implement Serilalizable I removed\nunused import statements as well.",
+            "date": "20030429T11:44:38",
+            "id": 1
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Bojan, but how did you managed to pass NativeGlobal instance to\nJavaScriptException? It is not visible from scripts and it is public class only\nfor implementation reasons.",
+            "date": "20030429T11:49:26",
+            "id": 2
+        },
+        {
+            "author": "bc1-bugzilla@parsek.net",
+            "body": "I have not passed it to the exception; it got passed by itself :-)\n\nActually, what happened is that the (java)script was executing and an exception\nhappened in a Java class that this script was calling. Now, when this exception\ngot propagated to the client (in this case, from jBoss to Resin and to the\nHTML), I got a NotSerializableException.",
+            "date": "20030429T12:12:11",
+            "id": 3
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Reply to the last comment:\n\nThat makes sense since the exception contains the scope object which holds\nindirectly NativeGlobal instance. It also means that serialization does not use\norg.mozilla.javascript.serialize.ScriptableOutputStream and hence quite\ninefficient, but that is a different issue.",
+            "date": "20030429T12:27:13",
+            "id": 4
+        },
+        {
+            "author": "bc1-bugzilla@parsek.net",
+            "body": "While you are messing arround with JavaScriptException, is it possible to add\n\nif(value instanceof Throwable) {\n\tinitCause((Throwable) value);\n}\n\nI know it's a Java 1.4 feature and not directly connected to this bug and don't\nknow what's the Rhino's policy of supported Java versions, but it in the end it\ncould be done with method.invoke() or something similar.\n\nThis would help debugging a lot.\n",
+            "date": "20030429T12:37:37",
+            "id": 5
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Patches to invoke initCause via reflection are welcome.\n",
+            "date": "20030429T12:45:57",
+            "id": 6
+        },
+        {
+            "author": "bc1-bugzilla@parsek.net",
+            "body": "Created attachment 122008\nJavaScriptException invoking initCause() using reflection\n\nAdded invoking od initCause() by reflection.\n\nHaven't tested it thorougly yet, but it should work.",
+            "date": "20030429T13:04:04",
+            "id": 7
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "For the above chnages since they has nothing to do with this bug report, please\nfile a separated bugzilla report and mark it as enhancement or for simple\nimprovment like this you can either mail to me or Norris Boyd directly. And\nplease add diffs in unified output format (diff -u) not the sources so it would\nbe easier to see changes. And one more tip: please expand all tabs.\n",
+            "date": "20030429T13:27:26",
+            "id": 8
+        },
+        {
+            "author": "bc1-bugzilla@parsek.net",
+            "body": "k",
+            "date": "20030429T13:40:06",
+            "id": 9
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "I committed the change to make NG serializable",
+            "date": "20030430T09:57:13",
+            "id": 10
+        },
+        {
+            "author": "pschwartau@meer.net",
+            "body": "Provisionally marking Verified. Bojan, could you confirm that this\nhas fixed the problem for you? If not, please reopen this bug; thanks -",
+            "date": "20030430T21:24:13",
+            "id": 11
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "Created attachment 122327\nThe initCause change in better patch form\n\nHere's the initCause change in better patch form",
+            "date": "20030502T21:04:45",
+            "id": 12
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 122599\nMaking prev patch smaller\n\nMy take on the previous patch to address to use single \"catch (Exception ex)\"\nand simply ignore exceptions if they happen for the following reasons:\n\n1. Many JVM outside Sun/IBM implementations can throw RuntimeExceptions when\nreflection fails which does not fit the official signature. \n\n2. Using single \"catch (Exception ex)\" saves a lot of byte code and makes class\nloading faster.\n\n3. If exception that is not suppose to happen still generated\nSystem.err/System.out may not work as well. In general it is rather bad idea to\nuse System.err/System.out for logging on embedded JVMs and if one needs such\nlogging, it is better to provide a separated API for that since not everybody\nworks with JDK 1.4.",
+            "date": "20030506T19:20:37",
+            "id": 13
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Targeting as resolved against 1.5R5",
+            "date": "20040213T11:42:02",
+            "id": 14
+        }
+    ],
+    "component": "Core",
+    "description": "User-Agent:       Mozilla/4.0 (compatible; MSIE 6.0; Windows NT 5.0; .NET CLR 1.0.3705)\nBuild Identifier: Rhino 1.5r5pre\n\nPosting this error since a quick search through Bugzilla using 'NativeGlobal' \ndid not show up anything.\n\nWhen using client/server (RMI) with Rhino JavaScript, exceptions do not get \npropagated.\n\nJavaScriptException has a constructor that takes as a parameter any Object and \nin case it is a org.mozilla.javascript.NativeGlobal exception cannot be \nserialized (JVM tries to serialize the exception and, consiquentialy, it's \nfield 'value', which is not serializable).\n\nI have quickhacked JavaScriptException to work correctly:\n\tpublic JavaScriptException(Object value) {\n\t\tsuper(ScriptRuntime.toString(value));\n\t\t// bugfix to allow serialization of NativeGlobal\n\t\tif (value instanceof Wrapper) {\n\t\t\tvalue = ((Wrapper) value).unwrap();\n\t\t}\n\t\tif (value instanceof NativeGlobal) {\n\t\t\tthis.value = value.toString();\n\t\t} else {\n\t\t\tif(value instanceof Throwable) {\n\t\t\t\tinitCause((Throwable) value);\n\t\t\t}\n\t\t\tthis.value = value;\n\t\t}\n\t}\n\nBut this hack is quick and dirty and the right way to go would probably be to \nmake NativeGlobal serializable.\n\n\n\nReproducible: Always\n\nSteps to Reproduce:\n1. Fire up your favorite application server.\n2. Make a *bean, call in it JavaScript that throws a (wrapped) exception.\n3. Call the *bean from your client.\n\nActual Results:  \njava.io.NotSerializableException: org.mozilla.javascript.NativeGlobal\n\tat java.io.ObjectOutputStream.writeObject0(ObjectOutputStream.java:1054)\n\tat java.io.ObjectOutputStream.defaultWriteFields\n(ObjectOutputStream.java:1330)\n\tat java.io.ObjectOutputStream.writeSerialData\n(ObjectOutputStream.java:1302)\n\tat java.io.ObjectOutputStream.writeOrdinaryObject\n(ObjectOutputStream.java:1245)\n\tat java.io.ObjectOutputStream.writeObject0(ObjectOutputStream.java:1052)\n\tat java.io.ObjectOutputStream.defaultWriteFields\n(ObjectOutputStream.java:1330)\n\tat java.io.ObjectOutputStream.writeSerialData\n(ObjectOutputStream.java:1302)\n\tat java.io.ObjectOutputStream.writeOrdinaryObject\n(ObjectOutputStream.java:1245)\n\tat java.io.ObjectOutputStream.writeObject0(ObjectOutputStream.java:1052)\n\tat java.io.ObjectOutputStream.writeObject(ObjectOutputStream.java:278)\n\tat org.mozilla.javascript.ScriptableObject.writeObject\n(ScriptableObject.java:1833)\n\tat sun.reflect.NativeMethodAccessorImpl.invoke0(Native Method)\n\tat sun.reflect.NativeMethodAccessorImpl.invoke\n(NativeMethodAccessorImpl.java:39)\n\tat sun.reflect.DelegatingMethodAccessorImpl.invoke\n(DelegatingMethodAccessorImpl.java:25)\n\tat java.lang.reflect.Method.invoke(Method.java:324)\n\tat java.io.ObjectStreamClass.invokeWriteObject\n(ObjectStreamClass.java:795)\n\tat java.io.ObjectOutputStream.writeSerialData\n(ObjectOutputStream.java:1294)\n\tat java.io.ObjectOutputStream.writeOrdinaryObject\n(ObjectOutputStream.java:1245)\n\tat java.io.ObjectOutputStream.writeObject0(ObjectOutputStream.java:1052)\n\tat java.io.ObjectOutputStream.writeObject(ObjectOutputStream.java:278)\n\tat org.mozilla.javascript.NativeJavaObject.writeExternal\n(NativeJavaObject.java:880)\n\tat java.io.ObjectOutputStream.writeExternalData\n(ObjectOutputStream.java:1265)\n\tat java.io.ObjectOutputStream.writeOrdinaryObject\n(ObjectOutputStream.java:1243)\n\tat java.io.ObjectOutputStream.writeObject0(ObjectOutputStream.java:1052)\n\tat java.io.ObjectOutputStream.defaultWriteFields\n(ObjectOutputStream.java:1330)\n\tat java.io.ObjectOutputStream.writeSerialData\n(ObjectOutputStream.java:1302)\n\tat java.io.ObjectOutputStream.writeOrdinaryObject\n(ObjectOutputStream.java:1245)\n\tat java.io.ObjectOutputStream.writeObject0(ObjectOutputStream.java:1052)\n\tat java.io.ObjectOutputStream.defaultWriteFields\n(ObjectOutputStream.java:1330)\n\tat java.io.ObjectOutputStream.defaultWriteObject\n(ObjectOutputStream.java:367)\n\tat java.lang.Throwable.writeObject(Throwable.java:648)\n\tat sun.reflect.NativeMethodAccessorImpl.invoke0(Native Method)\n\tat sun.reflect.NativeMethodAccessorImpl.invoke\n(NativeMethodAccessorImpl.java:39)\n\tat sun.reflect.DelegatingMethodAccessorImpl.invoke\n(DelegatingMethodAccessorImpl.java:25)\n\tat java.lang.reflect.Method.invoke(Method.java:324)\n\tat java.io.ObjectStreamClass.invokeWriteObject\n(ObjectStreamClass.java:795)\n\tat java.io.ObjectOutputStream.writeSerialData\n(ObjectOutputStream.java:1294)\n\tat java.io.ObjectOutputStream.writeOrdinaryObject\n(ObjectOutputStream.java:1245)\n\tat java.io.ObjectOutputStream.writeObject0(ObjectOutputStream.java:1052)\n\tat java.io.ObjectOutputStream.defaultWriteFields\n(ObjectOutputStream.java:1330)\n\tat java.io.ObjectOutputStream.defaultWriteObject\n(ObjectOutputStream.java:367)\n\tat java.lang.Throwable.writeObject(Throwable.java:648)\n\tat sun.reflect.NativeMethodAccessorImpl.invoke0(Native Method)\n\tat sun.reflect.NativeMethodAccessorImpl.invoke\n(NativeMethodAccessorImpl.java:39)\n\tat sun.reflect.DelegatingMethodAccessorImpl.invoke\n(DelegatingMethodAccessorImpl.java:25)\n\tat java.lang.reflect.Method.invoke(Method.java:324)\n\tat java.io.ObjectStreamClass.invokeWriteObject\n(ObjectStreamClass.java:795)\n\tat java.io.ObjectOutputStream.writeSerialData\n(ObjectOutputStream.java:1294)\n\tat java.io.ObjectOutputStream.writeOrdinaryObject\n(ObjectOutputStream.java:1245)\n\tat java.io.ObjectOutputStream.writeObject0(ObjectOutputStream.java:1052)\n\tat java.io.ObjectOutputStream.defaultWriteFields\n(ObjectOutputStream.java:1330)\n\tat java.io.ObjectOutputStream.defaultWriteObject\n(ObjectOutputStream.java:367)\n\tat java.lang.Throwable.writeObject(Throwable.java:648)\n\tat sun.reflect.NativeMethodAccessorImpl.invoke0(Native Method)\n\tat sun.reflect.NativeMethodAccessorImpl.invoke\n(NativeMethodAccessorImpl.java:39)\n\tat sun.reflect.DelegatingMethodAccessorImpl.invoke\n(DelegatingMethodAccessorImpl.java:25)\n\tat java.lang.reflect.Method.invoke(Method.java:324)\n\tat java.io.ObjectStreamClass.invokeWriteObject\n(ObjectStreamClass.java:795)\n\tat java.io.ObjectOutputStream.writeSerialData\n(ObjectOutputStream.java:1294)\n\tat java.io.ObjectOutputStream.writeOrdinaryObject\n(ObjectOutputStream.java:1245)\n\tat java.io.ObjectOutputStream.writeObject0(ObjectOutputStream.java:1052)\n\tat java.io.ObjectOutputStream.defaultWriteFields\n(ObjectOutputStream.java:1330)\n\tat java.io.ObjectOutputStream.writeSerialData\n(ObjectOutputStream.java:1302)\n\tat java.io.ObjectOutputStream.writeOrdinaryObject\n(ObjectOutputStream.java:1245)\n\tat java.io.ObjectOutputStream.writeObject0(ObjectOutputStream.java:1052)\n\tat java.io.ObjectOutputStream.writeObject(ObjectOutputStream.java:278)\n\tat java.util.LinkedList.writeObject(LinkedList.java:681)\n\tat sun.reflect.GeneratedMethodAccessor66.invoke(Unknown Source)\n\tat sun.reflect.DelegatingMethodAccessorImpl.invoke\n(DelegatingMethodAccessorImpl.java:25)\n\tat java.lang.reflect.Method.invoke(Method.java:324)\n\tat java.io.ObjectStreamClass.invokeWriteObject\n(ObjectStreamClass.java:795)\n\tat java.io.ObjectOutputStream.writeSerialData\n(ObjectOutputStream.java:1294)\n\tat java.io.ObjectOutputStream.writeOrdinaryObject\n(ObjectOutputStream.java:1245)\n\tat java.io.ObjectOutputStream.writeObject0(ObjectOutputStream.java:1052)\n\tat java.io.ObjectOutputStream.writeObject(ObjectOutputStream.java:278)\n\tat java.rmi.MarshalledObject.<init>(MarshalledObject.java:92)\n\tat org.jboss.invocation.jrmp.server.JRMPInvoker.invoke\n(JRMPInvoker.java:387)\n\tat sun.reflect.GeneratedMethodAccessor71.invoke(Unknown Source)\n\tat sun.reflect.DelegatingMethodAccessorImpl.invoke\n(DelegatingMethodAccessorImpl.java:25)\n\tat java.lang.reflect.Method.invoke(Method.java:324)\n\tat sun.rmi.server.UnicastServerRef.dispatch(UnicastServerRef.java:261)\n\tat sun.rmi.transport.Transport$1.run(Transport.java:148)\n\tat java.security.AccessController.doPrivileged(Native Method)\n\tat sun.rmi.transport.Transport.serviceCall(Transport.java:144)\n\tat sun.rmi.transport.tcp.TCPTransport.handleMessages\n(TCPTransport.java:460)\n\tat sun.rmi.transport.tcp.TCPTransport$ConnectionHandler.run\n(TCPTransport.java:701)\n\tat java.lang.Thread.run(Thread.java:536)\n\tat sun.rmi.transport.StreamRemoteCall.exceptionReceivedFromServer\n(StreamRemoteCall.java:247)\n\tat sun.rmi.transport.StreamRemoteCall.executeCall\n(StreamRemoteCall.java:223)\n\tat sun.rmi.server.UnicastRef.invoke(UnicastRef.java:133)\n\tat org.jboss.invocation.jrmp.server.JRMPInvoker_Stub.invoke(Unknown \nSource)\n\tat org.jboss.invocation.jrmp.interfaces.JRMPInvokerProxy.invoke\n(JRMPInvokerProxy.java:275)\n\tat org.jboss.invocation.InvokerInterceptor.invoke\n(InvokerInterceptor.java:108)\n\tat org.jboss.proxy.TransactionInterceptor.invoke\n(TransactionInterceptor.java:77)\n\tat org.jboss.proxy.SecurityInterceptor.invoke\n(SecurityInterceptor.java:80)\n\tat org.jboss.proxy.ejb.StatefulSessionInterceptor.invoke\n(StatefulSessionInterceptor.java:117)\n\tat org.jboss.proxy.ClientContainer.invoke(ClientContainer.java:76)\n\tat $Proxy43.readBuffer(Unknown Source)\n\tat com.parsek.shell.ShellObjectReader._readObject\n(ShellObjectReader.java:83)\n\tat com.parsek.shell.ShellObjectReader.readObject\n(ShellObjectReader.java:98)\n\tat com.parsek.FormTest.getForm(FormTest.java:43)\n\tat _cp2__jsp._jspService(/forms/cp2.jsp:54)\n\tat com.caucho.jsp.JavaPage.service(JavaPage.java:75)\n\tat com.caucho.jsp.Page.subservice(Page.java:506)\n\tat com.caucho.server.http.FilterChainPage.doFilter\n(FilterChainPage.java:182)\n\tat com.caucho.server.http.Invocation.service(Invocation.java:315)\n\tat com.caucho.server.http.CacheInvocation.service\n(CacheInvocation.java:135)\n\tat com.caucho.server.http.RunnerRequest.handleRequest\n(RunnerRequest.java:344)\n\tat com.caucho.server.http.RunnerRequest.handleConnection\n(RunnerRequest.java:274)\n\tat com.caucho.server.TcpConnection.run(TcpConnection.java:139)\n\tat java.lang.Thread.run(Thread.java:534)\n\n\nExpected Results:  \nException while executing com.parsek.io.ApplicationIOException\n\tat com.parsek.io.BufferImpl.setThrowable(BufferImpl.java:286)\n\tat com.parsek.shell.impl.Process.closeJob(Process.java:190)\n\tat com.parsek.shell.impl.Process.run(Process.java:249)\n\tat com.parsek.cpii.services.PoolRunner$1.run(PoolRunner.java:58)\nCaused by: com.parsek.forms.WizardProcessingException: \norg.mozilla.javascript.JavaScriptException: \ncom.parsek.forms.NotAValidTypeException: Type 'Kak\u0161en e-amil naslov ima\u0161?' is \nnot recognized as a valid type by this wizard.\n\tat com.parsek.forms.impl.WizardImpl.<init>(WizardImpl.java:223)\n\tat com.parsek.cp2.iskernel.InsurletImpl.<init>(InsurletImpl.java:32)\n\tat com.parsek.cp2.iskernel.ISEngine.openSession(ISEngine.java:157)\n\tat com.parsek.shell.commands.wizard.WizardExe.process\n(WizardExe.java:319)\n\tat com.parsek.shell.AbstractExecutable.execute\n(AbstractExecutable.java:615)\n\tat com.parsek.shell.impl.Process.run(Process.java:220)\n\t... 1 more\nCaused by: org.mozilla.javascript.JavaScriptException: \ncom.parsek.forms.NotAValidTypeException: Type 'Kak\u0161en e-amil naslov ima\u0161?' is \nnot recognized as a valid type by this wizard.\n\tat org.mozilla.javascript.JavaScriptException.wrapException\n(JavaScriptException.java:77)\n\tat org.mozilla.javascript.NativeJavaMethod.call\n(NativeJavaMethod.java:265)\n\tat org.mozilla.javascript.ScriptRuntime.call(ScriptRuntime.java:1200)\n\tat org.mozilla.javascript.gen.c1.call(183:28)\n\tat com.parsek.forms.impl.WizardImpl.<init>(WizardImpl.java:220)\n\t... 6 more",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "203752",
+    "issuetypeClassified": "OTHER",
+    "issuetypeTracker": "BUG",
+    "priority": "-- normal",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "NativeGlobal is not serializable when propagating exceptions",
+    "systemSpecification": false,
+    "version": "other"
+}

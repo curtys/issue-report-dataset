@@ -1,0 +1,29 @@
+{
+    "comments": [
+        {
+            "author": "Michael McCandless",
+            "body": "Attached patch.  I plan to commit in a day or so.",
+            "date": "2009-02-22T12:18:03.278+0000",
+            "id": 0
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Fixed on 2.9 & 2.4.1.",
+            "date": "2009-02-24T10:41:23.869+0000",
+            "id": 1
+        }
+    ],
+    "component": "core/index",
+    "description": "The nightly build 2 nights ago hit this:\n\n{code}\n NOTE: random seed of testcase 'testAtomicUpdates' was: -5065675995121791051\n    [junit] ------------- ---------------- ---------------\n    [junit] Testcase: testAtomicUpdates(org.apache.lucene.index.TestAtomicUpdate):\tFAILED\n    [junit] expected:<100> but was:<91>\n    [junit] junit.framework.AssertionFailedError: expected:<100> but was:<91>\n    [junit] \tat org.apache.lucene.index.TestAtomicUpdate.runTest(TestAtomicUpdate.java:142)\n    [junit] \tat org.apache.lucene.index.TestAtomicUpdate.testAtomicUpdates(TestAtomicUpdate.java:194)\n    [junit] \tat org.apache.lucene.util.LuceneTestCase.runTest(LuceneTestCase.java:88)\n{code}\n\nIt's an intermittant failure that only happens when multiple threads\nare calling commit() at once.  With autoComit=true and\nConcurrentMergeScheduler, this can happen more often because each\nmerge thread calls commit after it's done.\n\nThe problem happens when one thread has already begun the commit\nprocess, but another two or more threads then come along wanting to\nalso commit after further changes have happened.  Those two or more\nthreads would wait until the currently committing thread finished, and\nthen they'd wake up and do their commit.  The problem was, after\nwaking up they would fail to check whether they had been superseded,\nie whether another thread had already committed more up-to-date\nchanges.\n\nThe fix is simple -- after waking up, check again if your commit has\nbeen superseded, and skip your commit if so.\n",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-1547",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Minor",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "Rare thread hazard in IndexWriter.commit()",
+    "systemSpecification": true,
+    "version": "2.4"
+}

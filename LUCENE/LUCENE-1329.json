@@ -1,0 +1,95 @@
+{
+    "comments": [
+        {
+            "author": "Jason Rutherglen",
+            "body": "lucene-1329.patch\n",
+            "date": "2008-07-07T13:13:52.207+0000",
+            "id": 0
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Jason, have you run any scale tests (w/ many threads) to confirm whether volatile is faster than using synchronized, for this case?  I'm especially curious on what happens with JRE 1.4, since with this patch it is now synchronized and volatile.\n\nI think we should, at least in addition but perhaps instead, create a way to open a read-only IndexReader.  This way no synchronization nor volatile would be necessary when accessing deletedDocs.",
+            "date": "2008-07-08T10:30:20.618+0000",
+            "id": 1
+        },
+        {
+            "author": "Sanne Grinovero",
+            "body": "Adding a readonly IndexReader would be really great, I'm contributing some code to Hibernate Search (integration of Lucene and Hibernate) and that\nproject could really benefit from that.",
+            "date": "2008-07-08T13:20:08.208+0000",
+            "id": 2
+        },
+        {
+            "author": "Yonik Seeley",
+            "body": "bq. I think we should, at least in addition but perhaps instead, create a way to open a read-only IndexReader. \n\nRight... a volatile is still \"half\" a synchronized in many ways, and gets more expensive as you add more cores.  IAFAIK It's also something you won't see with a profiler because it involves cache flushes, not explicit high level blocking.\n",
+            "date": "2008-07-08T14:20:01.765+0000",
+            "id": 3
+        },
+        {
+            "author": "Yonik Seeley",
+            "body": "Once we have a read-only IndexReader, if we still want the deleting-reader then we could  also weaken the semantics of deleteDocument such that applications would need to synchronize themselves to guarantee visibility to another thread.\n\nWe could safely do this for a deleting-reader by pre-allocating the BitVector objects, thus eliminating the possibility of a thread seeing a partially constructed object.",
+            "date": "2008-07-08T14:30:01.696+0000",
+            "id": 4
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "I took a first cut at creating an explicit read only IndexReader\n(attached), which is an alternative to the first patch here.\n\nI added \"boolean readOnly\" to 3 of the IndexReader open methods, and\ncreated ReadOnlySegmentReader and ReadOnlyMultiSegmentReader.  The\nclasses are trivial -- they subclass the parent and just override\nacquireWriteLock (to throw an exception) and isDeleted.\n\nreopen() also preserves readOnly-ness, and I fixed merging to open readOnly\nIndexReaders.\n\nbq. We could safely do this for a deleting-reader by pre-allocating the BitVector objects, thus eliminating the possibility of a thread seeing a partially constructed object.\n\nI didn't do this one yet ... it makes me a bit nervous because it\nmeans that people who just do IndexReader.open on an index with no\ndeletions pay the RAM cost upfront of allocating the BitVector.\n\nReally, I think we want to default IndexReader.open to be\nreadOnly=true (which we can't do until 3.0) at which point doing the\nabove seems safer since you'd have to go out of your way to open a\nnon-readOnly IndexReader.\n",
+            "date": "2008-08-08T19:27:09.587+0000",
+            "id": 5
+        },
+        {
+            "author": "Yonik Seeley",
+            "body": "bq. I didn't do this one yet ... it makes me a bit nervous because it means that people who just do IndexReader.open on an index with no deletions pay the RAM cost upfront of allocating the BitVector.\n\nRight, which is why I said it was for a \"deleting-reader\" (which presumes the existence of read-only-readers).\n",
+            "date": "2008-08-08T19:37:16.655+0000",
+            "id": 6
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "I'd like to get this (read-only IndexReader) into 2.4.",
+            "date": "2008-08-19T10:14:50.830+0000",
+            "id": 7
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Attached new rev of this patch.  I think it's ready to commit.  I'll wait a few days.\n\nChanges:\n\n  * Updated javadocs.\n\n  * Stated clearly that in 3.0 the default for readOnly will switch from false to true.\n\n  * Factored out IndexReader.READ_ONLY_DEFAULT so we have one clear place to change from false to true, in 3.0.",
+            "date": "2008-08-19T13:06:03.505+0000",
+            "id": 8
+        },
+        {
+            "author": "Eks Dev",
+            "body": "Mike, did someone measure what this brings? \n\nThis practically reduces need to have many IndexReader-s in MT setup when Index is used in read only case.\n\n\n\n\n",
+            "date": "2008-08-22T09:31:21.169+0000",
+            "id": 9
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "bq. Mike, did someone measure what this brings? \n\nI don't think so -- I haven't yet tested how much of a bottleneck this was / how much it helps that isDeleted is no longer synchronized.\n\nbq. This practically reduces need to have many IndexReader-s in MT setup when Index is used in read only case.\n\nI *really* want to get Lucene to this point, but I fear LUCENE-753 may still stand in the way since many threads can pile up when accessing the same file.  Sadly, an optimized index exacerbates the situation (the polar opposite of what you'd expect when optimizing an index).  On every platform except Windows, this patch combined with NIOFSDirectory ought to solve all known search-time bottlenecks.",
+            "date": "2008-08-22T09:55:32.418+0000",
+            "id": 10
+        },
+        {
+            "author": "Eks Dev",
+            "body": "ok, I see, thanks. \nAt least, It resolves an issue completely for RAM based indexes.\n\nWe have seen performance drop for RAM based index when we switched to MT setup with shared IndexReader, I am not yet sure what is the reason for it,  problems in our code or this is indeed related to lucene. I am talking about 25-30% drop on 3 Threads on 4-Core CPU.  Must measure it properly...\n\n",
+            "date": "2008-08-22T11:40:43.778+0000",
+            "id": 11
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "I just committed this.  Thanks Jason!",
+            "date": "2008-08-23T13:47:41.814+0000",
+            "id": 12
+        }
+    ],
+    "component": "core/index",
+    "description": "Removes SegmentReader.isDeleted synchronization by using a volatile deletedDocs variable on Java 1.5 platforms.  On Java 1.4 platforms synchronization is limited to obtaining the deletedDocs reference.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-1329",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Trivial",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "Remove synchronization in SegmentReader.isDeleted",
+    "systemSpecification": true,
+    "version": "2.3.1"
+}

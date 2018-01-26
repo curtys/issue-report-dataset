@@ -1,0 +1,71 @@
+{
+    "comments": [
+        {
+            "author": null,
+            "body": "So where did you get the useful error text from?",
+            "date": "20060615T19:26:11",
+            "id": 0
+        },
+        {
+            "author": null,
+            "body": "I rebuilt a version of Tomcat and added a printStackTrace() to at least see the buried message.",
+            "date": "20060615T19:39:00",
+            "id": 1
+        },
+        {
+            "author": null,
+            "body": "Where did you add that printStackTrace call?",
+            "date": "20060615T19:52:19",
+            "id": 2
+        },
+        {
+            "author": null,
+            "body": "I don't remember, to be honest - this was three months ago.  I'd guess DefaultErrorHandler.jspError(), but \nthat's just a guess.",
+            "date": "20060615T20:25:05",
+            "id": 3
+        },
+        {
+            "author": null,
+            "body": "I think this bug may be fixed in tomcat 6.\n\nI get helpful messages like:\norg.apache.jasper.JasperException: File \"/META-INF/tags/mm/u/option.tagx\" not found",
+            "date": "20070803T04:38:50",
+            "id": 4
+        },
+        {
+            "author": null,
+            "body": "I had a very similar problem in Tomcat 6.0.13 that was caused by a missing tld \nfile in my deployment. The stacktrace was the same as in the first comment and \ndid not indicate which tag library caused the problem. I used the following \npatch to track down the problem and log the cause of the exception:\n\nIndex: java/org/apache/jasper/compiler/JspDocumentParser.java\n===================================================================\n--- java/org/apache/jasper/compiler/JspDocumentParser.java      (revision \n563257)\n+++ java/org/apache/jasper/compiler/JspDocumentParser.java      (working copy)\n@@ -214,7 +214,8 @@\n             jspDocParser.err.jspError\n                 (new Mark(jspDocParser.ctxt, path, e.getLineNumber(),\n                           e.getColumnNumber()),\n-                 e.getMessage());\n+                 e.getMessage(),\n+                 e);\n         } catch (Exception e) {\n             jspDocParser.err.jspError(e);\n         }\nIndex: java/org/apache/jasper/compiler/ErrorDispatcher.java\n===================================================================\n--- java/org/apache/jasper/compiler/ErrorDispatcher.java        (revision \n563257)\n+++ java/org/apache/jasper/compiler/ErrorDispatcher.java        (working copy)\n@@ -225,6 +225,22 @@\n      * resource bundle for localized error messages, it is used as the error\n      * message.\n      *\n+     * @param where Error location\n+     * @param errCode Error code\n+     * @param exception Exception\n+     */\n+\n+    public void jspError(Mark where, String errCode, Exception exception)\n+                throws JasperException {\n+        dispatch(where, errCode, null, exception);\n+    }\n+    /*\n+     * Dispatches the given JSP parse error to the configured error handler.\n+     *\n+     * The given error code is localized. If it is not found in the\n+     * resource bundle for localized error messages, it is used as the error\n+     * message.\n+     *\n      * @param n Node that caused the error\n      * @param errCode Error code\n      * @param arg1 First argument for parametric replacement",
+            "date": "20070806T15:14:17",
+            "id": 5
+        },
+        {
+            "author": null,
+            "body": "Testing with the latest 5.5.x:\n\nMissing <tlib-version> gets:\nMandatory TLD element missing or empty: tlib-version\n\nMissing TLD files gives:\nThe absolute uri: XXXXX cannot be resolved in either web.xml or the jar files deployed with this application\n\nThis is much better than it was when this bug was first raised but the first message could tell you which TLD has the problem. I've patched trunk and proposed the fix for 5.5.x and 6.0.x",
+            "date": "20090705T06:44:29",
+            "id": 6
+        },
+        {
+            "author": null,
+            "body": "Fixed in trunk and will be in 6.0.21 onwards.",
+            "date": "20090707T06:44:13",
+            "id": 7
+        },
+        {
+            "author": null,
+            "body": "This has been fixed in trunk and will be included in 5.5.28 onwards.",
+            "date": "20090707T07:04:25",
+            "id": 8
+        }
+    ],
+    "component": "Jasper",
+    "description": "Install a JSP 1.2 TLD that is missing the <tlib-version>.  Invalid, yes.\nHowever, all you get is the following stack trace:\n\norg.apache.jasper.JasperException: /components/panelGroup.jspx(6,70) Could not\nadd one or more tag libraries.\n\torg.apache.jasper.compiler.DefaultErrorHandler.jspError(DefaultErrorHandler.java:39)\n\torg.apache.jasper.compiler.ErrorDispatcher.dispatch(ErrorDispatcher.java:405)\n\torg.apache.jasper.compiler.ErrorDispatcher.jspError(ErrorDispatcher.java:86)\n\torg.apache.jasper.compiler.JspDocumentParser.parse(JspDocumentParser.java:211)\n\torg.apache.jasper.compiler.ParserController.doParse(ParserController.java:196)\n\torg.apache.jasper.compiler.ParserController.parse(ParserController.java:100)\n\torg.apache.jasper.compiler.Compiler.generateJava(Compiler.java:155)\n\torg.apache.jasper.compiler.Compiler.compile(Compiler.java:295)\n\torg.apache.jasper.compiler.Compiler.compile(Compiler.java:276)\n\torg.apache.jasper.compiler.Compiler.compile(Compiler.java:264)\n\torg.apache.jasper.JspCompilationContext.compile(JspCompilationContext.java:563)\n\torg.apache.jasper.servlet.JspServletWrapper.service(JspServletWrapper.java:303)\n\torg.apache.jasper.servlet.JspServlet.serviceJspFile(JspServlet.java:314)\n\torg.apache.jasper.servlet.JspServlet.service(JspServlet.java:264)\n\tjavax.servlet.http.HttpServlet.service(HttpServlet.java:802)\n\tcom.sun.faces.context.ExternalContextImpl.dispatch(ExternalContextImpl.java:322)\n\tcom.sun.faces.application.ViewHandlerImpl.renderView(ViewHandlerImpl.java:130)\n(etc...)\n\n\nThe actual and completely helpful error is swallowed and does not appear in the\nlog or on the console;  its stack trace, from adding  (omitting duplicates):\n\norg.apache.jasper.JasperException: Unable to read TLD \"META-INF/afu.tld\" from\nJAR file\n\"file:/Users/adamwiner/Work/cvs/tomcat5/build/build/webapps/ard/WEB-INF/lib/adf-unified-impl-11-m3-SNAPSHOT.jar\":\norg.apache.jasper.JasperException: Mandatory TLD element missing or empty:\ntlib-version\n        at\norg.apache.jasper.compiler.DefaultErrorHandler.jspError(DefaultErrorHandler.java:50)\n        at\norg.apache.jasper.compiler.ErrorDispatcher.dispatch(ErrorDispatcher.java:407)\n        at\norg.apache.jasper.compiler.ErrorDispatcher.jspError(ErrorDispatcher.java:179)\n        at\norg.apache.jasper.compiler.TagLibraryInfoImpl.<init>(TagLibraryInfoImpl.java:181)\n        at\norg.apache.jasper.compiler.JspDocumentParser.getTaglibInfo(JspDocumentParser.java:1260)\n        at\norg.apache.jasper.compiler.JspDocumentParser.startPrefixMapping(JspDocumentParser.java:767)\n        at\norg.apache.xerces.parsers.AbstractSAXParser.startNamespaceMapping(Unknown Source)\n        at org.apache.xerces.parsers.AbstractSAXParser.startElement(Unknown Source)\n        at\norg.apache.xerces.impl.XMLNSDocumentScannerImpl.scanStartElement(Unknown Source)\n        at\norg.apache.xerces.impl.XMLNSDocumentScannerImpl$NSContentDispatcher.scanRootElementHook(Unknown\nSource)\n        at\norg.apache.xerces.impl.XMLDocumentFragmentScannerImpl$FragmentContentDispatcher.dispatch(Unknown\nSource)\n        at\norg.apache.xerces.impl.XMLDocumentFragmentScannerImpl.scanDocument(Unknown Source)\n        at org.apache.xerces.parsers.XML11Configuration.parse(Unknown Source)\n        at org.apache.xerces.parsers.XML11Configuration.parse(Unknown Source)\n        at org.apache.xerces.parsers.XMLParser.parse(Unknown Source)\n        at org.apache.xerces.parsers.AbstractSAXParser.parse(Unknown Source)\n        at javax.xml.parsers.SAXParser.parse(SAXParser.java:375)\n        at\norg.apache.jasper.compiler.JspDocumentParser.parse(JspDocumentParser.java:176)",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "38897",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "BUG",
+    "priority": "P3 normal",
+    "product": "Tomcat 5",
+    "project": "TOMCAT",
+    "summary": "Invalid TLDs receive cryptic error",
+    "systemSpecification": true,
+    "version": "Nightly Build"
+}

@@ -1,0 +1,77 @@
+{
+    "comments": [
+        {
+            "author": "Paco Avila",
+            "body": "But you can exclude jcr:system from the search query, isn't it? In my application my queries start from my \"root node\" not from the repository root.",
+            "date": "2007-06-11T09:24:40.669+0000",
+            "id": 0
+        },
+        {
+            "author": "Christoph Kiehl",
+            "body": "Even if you do exclude jcr:system in your query jackrabbit currently searches the lucene index for jcr:system as well although the resultset for that index will be empty.",
+            "date": "2007-06-11T09:36:17.883+0000",
+            "id": 1
+        },
+        {
+            "author": "Paco Avila",
+            "body": "Ups, I didn't notice it. So, this would be a huge performance improvement on searchs...",
+            "date": "2007-06-11T10:07:25.731+0000",
+            "id": 2
+        },
+        {
+            "author": "Christoph Kiehl",
+            "body": "This is an initial patch which checks the first location step for \"jcr:system\". This might not be enough since \"jcr:system\" might be reachable through the parent operator \"..\". Not sure about this though.\nI didn't implement the check deref nodes. Right any deref node should lead to an inclusion of the system tree index. I'm not sure if it's worth the hassle because for large result sets it might lead to performance degradation because every uuid has to be checked if its item is located under jcr:system.\nI chose to implement this check through QueryNode because I think this would be less error prone than implement the whole check in QueryImpl because then QueryImpl has to know about every implementation of QueryNode. As it is now every QueryNode implementation is responsible for itself if it needs the system tree index to be included in the search.",
+            "date": "2007-06-14T16:09:14.367+0000",
+            "id": 3
+        },
+        {
+            "author": "Christoph Kiehl",
+            "body": "Attached revised patch which corrects behaviour for PathQueryNode",
+            "date": "2007-06-15T08:10:28.136+0000",
+            "id": 4
+        },
+        {
+            "author": "Christoph Kiehl",
+            "body": "Revised patch with unit test and some bugs fixed",
+            "date": "2007-06-15T10:33:44.796+0000",
+            "id": 5
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "Looks good to me. Just one minor comment. I suggest we provide a default implementation QueryNode.needsSystemTree(), which returns false. Only the sub classes that differ from this would have to overwrite the method.",
+            "date": "2007-06-20T13:39:40.640+0000",
+            "id": 6
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "Oops, just found an issue with the patch.\n\nqueryRootNode = XPathQueryBuilder.createQuery(\"//test/*\", JCR_RESOLVER);\nassertTrue(queryRootNode.needsSystemTree());\n\nwill fail.",
+            "date": "2007-06-20T13:43:35.854+0000",
+            "id": 7
+        },
+        {
+            "author": "Christoph Kiehl",
+            "body": "This patch works with \"//test/*\" as well. I extended the test case.\n\nI didn't provide a default implementation of needsSystemTree() on purpose because I wanted to force everyone extending QueryNode to think about if his implementation needs the system tree or not. If we provide a default implementation that returns false this might lead to unexpected behaviour if one expects the system tree to be included. We could provide a default implemenation that returns true but then we would have to override the methods anyway in almost all QueryNode implemenations to return false.",
+            "date": "2007-06-22T14:04:33.722+0000",
+            "id": 8
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "> I didn't provide a default implementation of needsSystemTree() on purpose because I wanted\n> to force everyone extending QueryNode to think about if his implementation needs the system\n> tree or not.\n\nOk, fair enough.\n\nBased on your ASF license grant on the patch I added a license header to PathQueryNodeTest, which was missing. I also added JavaDoc to the new method SearchIndex.getIndexReader(boolean) and opened up the visibility to protected.\n\nThanks a lot for your work!\n\nCommitted the patch in revision: 550419",
+            "date": "2007-06-25T08:58:33.448+0000",
+            "id": 9
+        }
+    ],
+    "component": "jackrabbit-core, query",
+    "description": "Right now every time a query is executed the index of the current workspace as well as the index of the \"jcr:system\" tree is searched. A lot of queries are not searching in the \"jcr:system\" tree at all therefore it should be checked if the query contains paths that include \"jcr:system\". There are two relevant nodes in the query tree to find that out:\n\n- what's the first location step and does it include the jcr:system tree? I think that's an easy one.\n- does the query contain a jcr:deref node? If there is an intermediate result of a query may dereference into the jcr:system tree. \n\nThis should notably speed up query execution if you are working extensively with versioning.",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "JCR-967",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Major",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "Only search the index for the \"jcr:system\" tree if needed",
+    "systemSpecification": true,
+    "version": ""
+}

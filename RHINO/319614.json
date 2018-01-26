@@ -1,0 +1,101 @@
+{
+    "comments": [
+        {
+            "author": "lipp@danet.de",
+            "body": "It's rhino 1.6r2.",
+            "date": "20051208T22:04:14",
+            "id": 0
+        },
+        {
+            "author": "ahpublicaddress@yahoo.com.au",
+            "body": "I came across this issue when playing with serialization and sealed scopes in Rhino 1.6 release 2 2005 09 19.\n\nAttempting to serialize objects when you have a sealded scope also fails because RegExp wasnt loaded and it therefore tries to load it at serialization time. (btw: Serialization in 1.6R2 will also fail because of a different problem with XML objects as documented in bug 323054 - interestingly you get a different exception in relation that bug when the top scope is sealed.)\n\nBased on what I read in the post:\nhttp://groups.google.com/group/netscape.public.mozilla.jseng/browse_thread/thread/2a21bd205a960a6e/d4e48e157697f9d2?q=scopes&rnum=3#d4e48e157697f9d2\nI discovered that if you 'mention' the object before sealing the top scope it will force it to be loaded for example evaluating something like\nvar forceLoad=java;\nbefore sealing the scope is a workaround.",
+            "date": "20060112T09:03:38",
+            "id": 1
+        },
+        {
+            "author": "ahpublicaddress@yahoo.com.au",
+            "body": "Created attachment 208255\nZip that contains code to demonstrate issue\n\nThis zip contains code that demonstrates the issue & workaround with 3 scenarios. In each scenario an attempt is made to use 'java' object, and then code in java tries to serialise a function from a scope below the sealed one.\n\nIn scenario 1 the workaround I mentioned is employed so no errors are shown.\n\nThe second shows the error when there is no workaround for accesing java and RegExp.\n\n(The third shows what happens when we dont create dummy XML objects to get around bug 323054. Could that bug be related to this in some way?)\n\nThe output I got from running the example code (on java 1.4.2_06 on Windows) is also included in a txt file.",
+            "date": "20060112T09:10:58",
+            "id": 2
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Reassigning to please_see_bug_288433@eml.cc pending resolution of bug 288433",
+            "date": "20060401T12:27:39",
+            "id": 3
+        },
+        {
+            "author": "szegedia@freemail.hu",
+            "body": "I'm suffering from this as well, but there's no easy way to get around it. We could define a separate mutation operation that replaces an object with a semantically identical another one, but again, it'd open tricky backdoors and defeat the purpose of sealing as the software couldn't really figure out that the replacement object is semantically identical to the replaced one.\n\nFor now, I'm working around it by serializing the topmost (shared, therefore instantiated only once) scope into a ByteArrayOutputStream (a \"/dev/null\" type OutputStream would suffice too :-) ), thus triggering loading of all lazy objects. \n\nAs I said, I'm affected by this as well, but still I'm inclined to mark this a \"Won't fix\" - sealing is a feature that if you live with, has such side effects, and you should be prepared for them.",
+            "date": "20060528T17:32:53",
+            "id": 4
+        },
+        {
+            "author": "lipp@danet.de",
+            "body": "Serializing the scope to cause loading is a nice idea, but it is a hack. If this is the only way to achieve the desired effect without opening security holes, sealObject() should do it automatically.\n\nI don't think that a user should have to live with the problem. Lazy loading is a purely internal optimization of the interpreter, it should not change observable behaviour.",
+            "date": "20060612T09:21:19",
+            "id": 5
+        },
+        {
+            "author": "ahpublicaddress@yahoo.com.au",
+            "body": "+1\n\n\"Wont fix - because its difficult and high risk but low priority and theres a workaround\" is one thing and justifiable, but \"wont fix - cos 'stuff happens' so live with it\" is just poor form mate.\n\nI mean while we are at it why not just mark ALL the bugs \"Won't fix\" - after all Rhino is a scripting implementation that if you live with, has lots of bugs, and you should be prepared for them.\n\nAnd if you are going to leave it unfixed, then the distributions documentation should indicate the issue clearly as well as the workaround and the reasons for not fixing it. People shouldnt have to spend hours wondering what they did wrong before they finally stumble across this bug report here in Bugzilla.\n\nbtw: Is there a way to disable lazy loading altogether?",
+            "date": "20060612T18:11:37",
+            "id": 6
+        },
+        {
+            "author": "szegedia@freemail.hu",
+            "body": "(In reply to comment #7)\n> +1\n> \n> \"Wont fix - because its difficult and high risk but low priority and theres a\n> workaround\" is one thing and justifiable, but \"wont fix - cos 'stuff happens'\n> so live with it\" is just poor form mate.\n\nIt's not \"stuff happens\", but rather \"conflicting requirements\" leading to a code implementation that produces likewise \"conflicting behavior\". Note that I'm not defending the status quo, merely explaining it.\n\n> I mean while we are at it why not just mark ALL the bugs \"Won't fix\" - after\n> all Rhino is a scripting implementation that if you live with, has lots of\n> bugs, and you should be prepared for them.\n\nOkay, you made your point. Anyway, when I said that I'm inclined towards not fixing it, I didn't say I'd refuse any fixes. I don't have time to fix this at the moment, but I'll gladly review any patch that you submit and commit it if it is good. I'm not trigger-happy to mark fixable issues that people really need as \"won't fix\", so expect it to remain open for a good while.\n\nMichael's proposal for triggering construction of any lazily-loaded objects from sealObject() would be a working idea. Making the lazy loading optional is an even better idea.\n\n> \n> And if you are going to leave it unfixed, then the distributions documentation\n> should indicate the issue clearly as well as the workaround and the reasons for\n> not fixing it. People shouldnt have to spend hours wondering what they did\n> wrong before they finally stumble across this bug report here in Bugzilla.\n> \n> btw: Is there a way to disable lazy loading altogether?\n> \n\nNot that I know of.",
+            "date": "20060612T20:43:54",
+            "id": 7
+        },
+        {
+            "author": "levy@csl.sri.com",
+            "body": "Just ran into this too, in the case of E4X.\n\nI noticed that if I sealed a scope, then did\n  context.evaluateString(scope, \"<foo/>\", \"<cmd>\", 1, null)\nI'd get the\n  \"Cannot modify a property of a sealed object: XML.\"\nexception.\n\nBut more problematically, if you do than make the same call\nagain,\n   context.evaluateString(scope, \"<foo/>\", \"<cmd>\", 1, null)\nRhino hangs in an infinite recursion involving\nLazilyLoadedCtor.getProperty().\n\n(This is with today's CVS build.)\n\nAs it sounds this won't be fixed soon, might I suggest\na note about this issue on the \"sealed scopes\" section of\nthe docs?\n  http://www.mozilla.org/rhino/scopes.html\nIt took me a while to figure out what was wrong; this\nmight save others some time...\n\n",
+            "date": "20070108T01:55:13",
+            "id": 8
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "Changing priority to P5 based on recent bug triage.",
+            "date": "20070525T01:31:04",
+            "id": 9
+        },
+        {
+            "author": "hannesw@gmail.com",
+            "body": "Created attachment 345581\ninitialize ctors before sealing\n\nLooping through property slots and initializing all LazilyLoadedCtors to fix this problem.",
+            "date": "20081030T22:09:03",
+            "id": 10
+        },
+        {
+            "author": "hannesw@gmail.com",
+            "body": "*** Bug 370231 has been marked as a duplicate of this bug. ***",
+            "date": "20081030T22:41:46",
+            "id": 11
+        },
+        {
+            "author": "hannesw@gmail.com",
+            "body": "Attila: I was trying to understand why you hesitated to solve this bug one way or other. IMO losing the benefit of lazy constructor loading is an acceptable compromise when object sealing is used so I committed my patch. Please let me know if you disagree. \n\nChecking in src/org/mozilla/javascript/ScriptableObject.java;\n/cvsroot/mozilla/js/rhino/src/org/mozilla/javascript/ScriptableObject.java,v  <--  ScriptableObject.java\nnew revision: 1.138; previous revision: 1.137\ndone",
+            "date": "20081031T09:47:41",
+            "id": 12
+        },
+        {
+            "author": "szegedia@freemail.hu",
+            "body": "(In reply to comment #13)\n> Attila: I was trying to understand why you hesitated to solve this bug one way\n> or other.\n\nI just didn't have time to do it. I said that I'd welcome a solution, specifically \"Michael's proposal for triggering construction of any lazily-loaded objects\nfrom sealObject() would be a working idea.\" in comment #8.\n\nI'm actually fairly relieved that this is fixed finally - a big thank you :-) (for all the other hard work in Bugzilla over the past few days, too.)",
+            "date": "20081031T16:40:15",
+            "id": 13
+        }
+    ],
+    "component": "Core",
+    "description": "User-Agent:       Mozilla/5.0 (X11; U; Linux i686 (x86_64); en-US; rv:1.7.12) Gecko/20050922 Fedora/1.0.7-1.1.fc4 Firefox/1.0.7\nBuild Identifier: Mozilla/5.0 (X11; U; Linux i686 (x86_64); en-US; rv:1.7.12) Gecko/20050922 Fedora/1.0.7-1.1.fc4 Firefox/1.0.7\n\nAs described in the tutorial, I have created my ScriptableObject standardsObject. Then I have created a new ScriptableObject, set the standardsObject as prototype and the parent as null. Now I seal.\n\nWhen my script tries to access java (java.lang.System.out.println...) I get an exception because Rhino tries to (lazily) create the \"java\" property (although conceptually it is predefined, i.e. already there) in a sealed context.\n\nI might work around this by creating the \"java\" property before sealing. Does anybody know how I can do this?\n\n\nReproducible: Always",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "319614",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "BUG",
+    "priority": "P5 normal",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "Sealing breaks lazy loading",
+    "systemSpecification": true,
+    "version": "other"
+}

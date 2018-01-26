@@ -1,0 +1,23 @@
+{
+    "comments": [
+        {
+            "author": "Jukka Zitting",
+            "body": "Added the SerializableXid class and related XAResource changes in revision 628289.\n\nI just hope there are no resource managers that expect to be able to cast the Xid objects to some implementation-specific classes...",
+            "date": "2008-02-16T13:20:42.046+0000",
+            "id": 0
+        }
+    ],
+    "component": "jackrabbit-jcr-rmi",
+    "description": "Websphere provides a non-serializable javax.transaction.xa.Xid implementation, causing ClientXAResource to fail with NotSerializableException when passing Xid over RMI.\nI have worked around this by converting the supplied Xid to a local serializable Xid implementation that takes the supplied Xid parameters, and implements hashCode() and equals() correctly:\n\n    private static class SerializableXID implements javax.transaction.xa.Xid, Serializable {\n    \t/**\n\t\t * Serial version ID\n\t\t */\n\t\tprivate static final long serialVersionUID = -1390620315181450507L;\n\t\t\n\t\tprivate final byte[] branchQualifier;\n    \tprivate final byte[] globalTransactionId;\n    \tprivate final int formatId;\n    \tprivate final int hashCode;\n   \t\n    \tpublic SerializableXID(Xid xid) {\n    \t\tbranchQualifier = xid.getBranchQualifier();\n    \t\tglobalTransactionId = xid.getGlobalTransactionId();\n    \t\tformatId = xid.getFormatId();\n    \t\thashCode = xid.hashCode();\n    \t}\n\n\t\tpublic byte[] getBranchQualifier() {\n\t\t\treturn branchQualifier;\n\t\t}\n\n\t\tpublic int getFormatId() {\n\t\t\treturn formatId;\n\t\t}\n\n\t\tpublic byte[] getGlobalTransactionId() {\n\t\t\treturn globalTransactionId;\n\t\t}\n\n        public final int hashCode() {\n        \treturn hashCode;\n        }\n        \n        public final boolean equals(Object obj) {\n\t        if(obj == this) {\n\t            return true;\n\t        }\n\t        \n        \tif(!(obj instanceof Xid)) {\n        \t\treturn false;        \t\t\n        \t}\n        \t\n        \tXid xidimpl = (Xid)obj;\n        \tif(formatId != xidimpl.getFormatId()) {\n        \t\treturn false;\n        \t}\n\t        else {\n\t            return Arrays.equals(branchQualifier, xidimpl.getBranchQualifier())\n\t            \t&& Arrays.equals(globalTransactionId, xidimpl.getGlobalTransactionId());\n\t        }\n    \t}\n    }\n",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "JCR-1333",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "jackrabbit-jcr-rmi: Supplied javax.transaction.xa.Xid is assumed serializable, but is not on some environments.",
+    "systemSpecification": true,
+    "version": "1.4"
+}

@@ -1,0 +1,41 @@
+{
+    "comments": [
+        {
+            "author": "Michael McCandless",
+            "body": "I've attached a patch that fixes this.\n\nThe fix is to close the IndexInput after we've cached the norms in the\nin-memory byte array.  Once we've cached the norms, we never use that\nIndexInput again (as far as I can tell?).  This is also nice because\nit frees up file handles once norms are cached.\n\nChanges:\n\n  * Fixed TestMultiSearcher: it was closing a searcher and then\n    continuing to use it.\n\n  * Added unit test case showing this bug before the patch.\n\n  * Improved MockRAMDirectory to \"act like Windows\" by refusing to\n    delete or overwrite an open file.  I removed \"final\" from 2\n    methods (deleteFile, openInput) of RAMDirectory for this.\n\n  * Changed SegmentReader.getNorms to close the Norms after caching.\n",
+            "date": "2007-03-03T14:43:38.435+0000",
+            "id": 0
+        },
+        {
+            "author": "Yonik Seeley",
+            "body": "> This is also nice because it frees up file handles once norms are cached.\n\nOuch... the file handles should not have been open in the first place :-)\nLUCENE-821 fixes that.\n",
+            "date": "2007-03-03T18:48:01.937+0000",
+            "id": 1
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "> Ouch... the file handles should not have been open in the first\n> place :-) LUCENE-821 fixes that.\n\nExcellent!\n\nHow about you commit LUCENE-821, then I'll update & merge, and commit\nmy unit test & improvements to MockRamDirectory to mimic Windows?\n",
+            "date": "2007-03-03T23:34:49.725+0000",
+            "id": 2
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "This root cause of this bug was already fixed by LUCENE-821 (thanks Yonik!).\n\nI committed a test case that shows this bug (and now passes), plus improvements to MockRAMDirectory to make it behave like Windows (\"can't delete open files\").",
+            "date": "2007-03-04T08:28:53.215+0000",
+            "id": 3
+        }
+    ],
+    "component": "core/index",
+    "description": "\nWhile working through LUCENE-710 I hit this bug: on Windows\nonly, when SegmentReader.setNorm is called, but separate norms\n(_X_N.sY) had already been previously saved, then, on closing the\nreader, we will write the next gen separate norm file correctly\n(_X_N+1.sY) but fail to delete the current one.\n\nIt's quite minor because the next writer to touch the index will\nremove the stale file.\n\nThis is because the Norm class still holds the IndexInput open when\nthe reader commits.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-820",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Minor",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "SegmentReader.setNorm can fail to remove separate norms file, on Windows",
+    "systemSpecification": true,
+    "version": "2.1"
+}

@@ -1,0 +1,119 @@
+{
+    "comments": [
+        {
+            "author": null,
+            "body": "Good point, and I can see several fixes, not sure which one I'd like best.  This\npoint also applies to FastCommonAccessLogValve.  Suggestions?",
+            "date": "20060413T20:45:27",
+            "id": 0
+        },
+        {
+            "author": null,
+            "body": "The dumb fix is to create a new simpledateformat every method call (a bit memory\ntrashing for high volume servers)\n\nI smarter is to use threadlocal caching: the valve creates a threadlocal to put\na simpledate format. 25 thread would imply 25 simpledateformat. Only costs are\nthe threadlocal map lookup and a bit larger heap (more long lived objects\nimplies a bit longer full GC, but less young gc).\n",
+            "date": "20060414T02:20:20",
+            "id": 1
+        },
+        {
+            "author": null,
+            "body": "Good idea!\n\nCan please send patch for the three Logger, AccessLoggerValve, FastCommonAccessLogValve and \nExtendedAccessLogValve?\n\n",
+            "date": "20060414T06:21:44",
+            "id": 2
+        },
+        {
+            "author": null,
+            "body": "No, I cannot provide a patch.\nSimple code example: (not the real format)\n\n\tstatic final ThreadLocal DF_TL = new ThreadLocal() {\n\t\tprotected Object initialValue() {\n\t\t\treturn new SimpleDateFormat(\"yyyy-MM-dd HH:mm:ss.SSS\");\n\t\t}\n\t};\n\t\n\tstatic String df(long t) {\n\t\tSimpleDateFormat DF = (SimpleDateFormat)DF_TL.get();\n\t\treturn t<=0 ? \"-\" : DF.format(new Date(t));\n\t}\n",
+            "date": "20060419T19:13:28",
+            "id": 3
+        },
+        {
+            "author": null,
+            "body": "Peter, still interested in this?",
+            "date": "20061224T18:09:01",
+            "id": 4
+        },
+        {
+            "author": null,
+            "body": "*** Bug 44748 has been marked as a duplicate of this bug. ***",
+            "date": "20080403T09:33:22",
+            "id": 5
+        },
+        {
+            "author": null,
+            "body": "Is this bug going to be fixed and what additional comments you may need? As we know it's very hard to reproduce this errors.\n\nThanks",
+            "date": "20080404T01:35:47",
+            "id": 6
+        },
+        {
+            "author": null,
+            "body": "Yes it will be fixed.\n\nTo answer the obvious next question: \"When?\" - when someone gets to it. There are current ~170 open bugs against TC5 and TC6. A patch will speed the process up but one that uses syncs is likely to get rejected.",
+            "date": "20080404T02:03:22",
+            "id": 7
+        },
+        {
+            "author": null,
+            "body": "The question is also: How we can fix it:\nCritical section at AccessLogValve is (LL 581 (current tomcat 5.5 trunk): \n            result.append(\"[\");\n            result.append(dayFormatter.format(date));           // Day\n            result.append('/');\n            result.append(lookup(monthFormatter.format(date))); // Month\n            result.append('/');\n            result.append(yearFormatter.format(date));          // Year\n            result.append(':');\n            result.append(timeFormatter.format(date));          // Time\n            result.append(space);\n            result.append(getTimeZone(date));                   // Time Zone\n            result.append(\"] \\\"\");\n\nNot only the timeFormatter is the problem :-(\n\nOption to fix:\na) synchronize the complete formatter access\n easy to implement, but can be a performance problem\nb) use a cache with some threadLocals\n can be a memory leak at shrinking request thread pools\nc) use some formatter object pools\n little implementation overhead and we must also use a sync datastructure!\n\nPeter\n\n",
+            "date": "20080404T05:26:40",
+            "id": 8
+        },
+        {
+            "author": null,
+            "body": "Since we are collecting ideas:\n\n- FastDateFormat from commons.lang\n- Joda Time (also seems to be ASL licensed)\n\nBoth would add another foreign dependency but are thread safe in their formatters. I didn't look at their performance though. A concurrent microbenchmark could be adequate here.\n\nPeter: why do you expect a leak, if we put the SimpleDateFormat into a ThreadLocal? Do we have any indication, that when shrinking the pool, any references to the removed Threads remain?\n",
+            "date": "20080404T05:34:35",
+            "id": 9
+        },
+        {
+            "author": null,
+            "body": "In this case - syncs aren't really that evil. All the syncing is occuring during the logging phase. Which occurs after the request has been served to the client.\n\nSo yes - there is a performance penalty for syncing but its not critical path which will slow the server down. With the exception that you had run out of workers - in which case you have bigger issues to deal with.\n",
+            "date": "20080404T05:52:05",
+            "id": 10
+        },
+        {
+            "author": null,
+            "body": "I don't see that theres a problem any more - the block that uses most (i.e. all except fileDateFormatter) of the SimpleDateFormats is now in a synchronized block:\n\n    synchronized (this) {\n        if (currentDate != date) {\n            StringBuffer current = new StringBuffer(32);\n            current.append('[');\n            current.append(dayFormatter.format(date)); // Day\n            current.append('/');\n            current.append(lookup(monthFormatter.format(date))); // Month\n            current.append('/');\n            current.append(yearFormatter.format(date)); // Year\n            current.append(':');\n            current.append(timeFormatter.format(date)); // Time\n            current.append(' ');\n            current.append(getTimeZone(date)); // Timezone\n            current.append(']');\n            currentDateString = current.toString();\n            currentDate = date;\n        }\n    }\n\n...and fileDateFormatter is used in the rotate() method which is also synchronized\n\nLooks to me like this was resolved in the following revision:\nhttp://svn.apache.org/viewvc?view=rev&revision=494191\n\nBut perhaps I'm looking at the wrong version - as code I see differs from what Peter quotes (StringBuffer is called current rather than result)",
+            "date": "20080404T07:47:02",
+            "id": 11
+        },
+        {
+            "author": null,
+            "body": "I would agree with the comment about using a thread safe data formatter.\nAfter all, there is no need for anything more than threadstack variables to format a date. FastDateFormat is right on.\n\nNote: since date formatters can't use StringBuilder, it is a good idea to get away from SimpleDateFormat and use whatever lib that can work on StringBuilder. You should probably file a RFE for FastDateFormat using StringBuilder too.\n",
+            "date": "20080405T05:31:41",
+            "id": 12
+        },
+        {
+            "author": null,
+            "body": "After reading all comments I agree with Tim that a simple sync fix the problem.\nThe use of ThreadLocal or thread safe API add complexity and new dependencies.\n\nVote +1 to add simple sync statements a 5.5 AccessLog valve code base\n",
+            "date": "20080406T08:08:57",
+            "id": 13
+        },
+        {
+            "author": null,
+            "body": "The fix was applied to trunk and 6.0.x but not 5.5.x. I have proposed a patch for 5.5.x",
+            "date": "20090204T02:39:20",
+            "id": 14
+        },
+        {
+            "author": null,
+            "body": "I think synchronize on \"this\" is not a good idea, since all synchronized method and those blocks which is synchronized on \"this\" in this class will wait for the lock. Separate those locks for different formatter will be much better. Or we can use some threadLocal field for those formatter. I think both of the options could fix this.",
+            "date": "20090617T09:57:32",
+            "id": 15
+        },
+        {
+            "author": null,
+            "body": "This has been fixed in 5.5.x (along with a handful of related issues) and will be included in 5.5.28 onwards.",
+            "date": "20090712T08:42:31",
+            "id": 16
+        }
+    ],
+    "component": "Catalina",
+    "description": "simpledateformat is known to be not tread-safe.\n\nYet the valve.invoke() will result in concurrent access to the 4\nsimpledateformat.format() which is not thread safe (internally shares a Calendar\ninstance).",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "38483",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "P2 normal",
+    "product": "Tomcat 5",
+    "project": "TOMCAT",
+    "summary": "access log valve uses simpledateformat in tread-unsafe way",
+    "systemSpecification": true,
+    "version": "5.0.30"
+}

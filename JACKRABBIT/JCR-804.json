@@ -1,0 +1,47 @@
+{
+    "comments": [
+        {
+            "author": "Marcel Reutegger",
+            "body": "Fixed in revision: 520841",
+            "date": "2007-03-21T11:22:26.765+0000",
+            "id": 0
+        },
+        {
+            "author": "Ate Douma",
+            "body": "Marcel,\n\nYour solution breaks JDK 1.4 compatibility, jackrabbit-core now requires JDK 5.0 to compile:\n\nNo enclosing instance of type RangeQuery is accessible. Must qualify the allocation with an enclosing instance of type RangeQuery (e.g. x.new A() where x is an instance of RangeQuery).\tjackrabbit-core/src/main/java/org/apache/jackrabbit/core/query/lucene/RangeQuery.java\tline 189\nNo enclosing instance of type WildcardQuery is accessible. Must qualify the allocation with an enclosing instance of type WildcardQuery (e.g. x.new A() where x is an instance of WildcardQuery).\tjackrabbit-core/src/main/java/org/apache/jackrabbit/core/query/lucene/WildcardQuery.java, line 163\n\n ",
+            "date": "2007-04-04T14:30:25.234+0000",
+            "id": 1
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "Hi Ate,\n\nWhat kind of java compiler are you using? My Sun javac (1.4.2_12) does not show this error.\n\nI think the relevant section in the JLS is the following:\n\nhttp://java.sun.com/docs/books/jls/second_edition/html/expressions.doc.html#253028\n\nIn our case C is an inner member class. Furthermore we are using an unqualified class instance creation expression and then it's the second sub case:\n\n\"Otherwise, if C is a member of an enclosing class then let O be the innermost lexically enclosing class of which C is a member, and let n be an integer such that O is the nth lexically enclosing class of the class in which the class instance creation expression appears. The immediately enclosing instance of i is the nth lexically enclosing instance of this.\"\n\nIf C is the RangeQueryScorer class then O is the RangeQuery class. The enclosing classes of the class in which the class instance creating expression appears are:\n0th: anonymous ScorerFactory class\n1st: RangeQueryWeight\n2nd: RangeQuery\n\nTherefore n is 2 (because O is the RangeQuery class) and the immediately enclosing instance of i (i is the instance being created) is RangeQuery.this.\n\nAccording to the JLS a qualified class instance creation expression is not necessary here. Thus, both should work:\n\nreturn new RangeQueryScorer(searcher.getSimilarity(), reader);\n\nas well as:\n\nreturn RangeQuery.this.new RangeQueryScorer(searcher.getSimilarity(), reader);",
+            "date": "2007-04-09T09:35:17.956+0000",
+            "id": 2
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "The problem appears when the Eclipse compiler (at least in Eclipse 3.2) is set to Java 1.4 compliance mode. It seems to interpret the JLS more strictly than the Sun javac; the relevant section being 8.8.5.1 (Explicit Constructor Invocations) which says:\n\n    If an anonymous class instance creation expression appears within an explicit\n    constructor invocation statement, then the anonymous class may not refer to any\n    of the enclosing instances of the class whose constructor is being invoked.\n\nI already worked around this issue in JCR-835 by replacing the ScorerFactory interface with an abstract createScorer() factory method.",
+            "date": "2007-04-09T09:47:45.042+0000",
+            "id": 3
+        },
+        {
+            "author": "Ate Douma",
+            "body": "Hi Marcel,\n\nI just want to confirm Jukka's comment: that is what I encountered with Eclipse 3.2.\nBuilding using JDK1.4 does work, but Eclipse gives the above compile errors.\nSorry for my incorrect initial statement about this, but it would be nice if the compile error in Eclipse could be worked around.",
+            "date": "2007-04-09T20:16:40.025+0000",
+            "id": 4
+        }
+    ],
+    "component": "query",
+    "description": "Similar to MatchAllQuery also RangeQuery and WildcardQuery will result in use of MultiTermDocs. Those queries should also use the MultiScorer. See also issue JCR-791.",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "JCR-804",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Minor",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "Avoid using MultiTermDocs",
+    "systemSpecification": true,
+    "version": ""
+}

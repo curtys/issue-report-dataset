@@ -1,0 +1,59 @@
+{
+    "comments": [
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "From newsgroup:\n\nWell, yeah. I remember once reviewing this myself and it turns out  \nthat Context.enter() doesn't set factory, and other parts of the code  \nactually rely on factory == null to assume the context is meant to  \noperate with the global factory.  That's an admittedly really ugly  \ndesign in there. I think it originates from times when there was no  \nsuch thing as a pluggable context factory. Then someone introduced  \nthem, but retained this unfortunate anomaly. We'll really need to  \naddress this sometime... In the meantime, factory == null means the  \nContext actually uses the global (static) ContextFactory instance  \nsettings.\n\nAttila. ",
+            "date": "20071121T20:33:34",
+            "id": 0
+        },
+        {
+            "author": "bimargulies@gmail.com",
+            "body": "I wasn't quite clear.\n\nI experienced this when using the enter method of a specific factory. As per step 1 above, I created a brand new context factory, I called enter on it, it created a new context, and it left the parent slot null. So, this is not about the invisible default global factory.\n\n",
+            "date": "20071123T22:58:02",
+            "id": 1
+        },
+        {
+            "author": "szegedia@freemail.hu",
+            "body": "Yes, sadly this is a real bug. I've looked into this over the weekend, but it's unfortunately not too trivial to fix. As I said, the original implementation of the ContextFactory concept used a duality: factory was null for global factory, otherwise it was set. There is some subtly different behaviour based on whether factory is null or not, as originally there was no ContextFactory.enter() (I added that recently to support certain Spring interceptor patterns for opening and closing a factory bound context), but factory-bound contexts could only exist within a ContextFactory.call(ContextAction) invocation.\n\nI've started on fixing this -- as the first step, I made the \"factory\" field final and also rejecting null in the constructor. That will establish a good invariant (context always has a non-null factory) as a starting point. I'm sorry that I can't offer you a quick fix for this one. I'm really eager to fix it though, as I have software myself where I rely on ContextFactory.enter(). It's just puzzling that I didn't notice this myself earlier...",
+            "date": "20071126T11:58:36",
+            "id": 2
+        },
+        {
+            "author": "szegedia@freemail.hu",
+            "body": "This is fixed on CVS HEAD now. I had to rework the internals quite a lot, but I believe we now have a much cleaner code.\n\nI also deprecated the static Context.enter() methods, favoring ContextFactory.enterContext() instead. Also, ContextFactory.enter() is now deprecated because it is misnamed -- you aren't enterint a context factory, you're entering a context. Therefore, ContextFactory.enterContext() followed by Context.exit() is the preferred way of doing things now (and of course,  ContextFactory.call()).",
+            "date": "20071127T06:58:50",
+            "id": 3
+        },
+        {
+            "author": "bimargulies@gmail.com",
+            "body": "Thanks. I'll clean up my code to take advantage as soon as it releases into the mvn repo.",
+            "date": "20071127T11:58:40",
+            "id": 4
+        },
+        {
+            "author": "hannesw@gmail.com",
+            "body": "Thanks for fixing this, Attila. I struggled a quite a bit with the old code, and I think things are much better and clearer now. Since it took me a long time to figure things out with the old code, I'm writing this down for the record (and for myself and anybody who may be interested :-)\n\nIn the old code, calling ContextFactory.enter() only caused makeContext() to be called on the specific factory, but didn't cause the Context.factory field to be set to the factory. Context.factory was only set during calls of one of the Context.call() methods, causing Context.enter() and Context.exit() to be no-ops while the ContextAction was running. \n\nSo what we lose with this fix is \"protection\" against erroneous calls to Context.enter()/Context.exit() during execution of the Context.call() methods, but I don't think this was worth the complexity. If we did want that feature back, we could implement it by adding a new field to tell whether we are currently executing Context.call(), but I don't really this is needed.\n\nAnd now for the reason I'm writing this: Our code uses ContextFactory.exit(), which has gone. Since this was a public method and actually did something different from Context.exit() until now, I think it should stay and just be deprecated, just like ContextFactory.enter(). I'll upload a patch after lunch :-)",
+            "date": "20071129T12:03:13",
+            "id": 5
+        },
+        {
+            "author": "szegedia@freemail.hu",
+            "body": "(In reply to comment #6)\n> \n> And now for the reason I'm writing this: Our code uses ContextFactory.exit(),\n> which has gone. Since this was a public method and actually did something\n> different from Context.exit() until now, I think it should stay and just be\n> deprecated, just like ContextFactory.enter(). I'll upload a patch after lunch\n> :-)\n\nNo need to -- I already added it back. Thanks for pointing this out and have a nice lunch :-)",
+            "date": "20071129T12:33:24",
+            "id": 6
+        }
+    ],
+    "component": "Core",
+    "description": "User-Agent:       Mozilla/5.0 (Windows; U; Windows NT 5.1; en-US; rv:1.8.1.9) Gecko/20071025 Firefox/2.0.0.9\nBuild Identifier: 1.6R7\n\nI just traced through ContextFactory.enter. I see it create a brand new context, but never put the factory into the slot. So, later calls to retrieve it return null, and their may be other ill effects.\n\nI'm using Sun 1.5 (rev 14).\n\nReproducible: Always\n\nSteps to Reproduce:\n1. Call enter() on a context factory object.\n2. Trace in debugger and see that a new object is being created.\n3. Look at the new object.\nActual Results:  \n'factory' is null.\n\nExpected Results:  \nfactory is the factory(!).",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "404817",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "-- normal",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "ContextFactory.enter results in new contexts that don't have their factory slot set!",
+    "systemSpecification": true,
+    "version": "other"
+}

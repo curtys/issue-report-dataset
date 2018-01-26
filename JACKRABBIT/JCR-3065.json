@@ -1,0 +1,53 @@
+{
+    "comments": [
+        {
+            "author": "Marcel Reutegger",
+            "body": "This is a bit unexpected and I don't have a test case to reproduce it. AFAICS the usage of the maps in the slots array of the\nLockMap are properly protected by the writerStateRWLock.\n\nI will additionally protect the maps with a synchronized block while looping over the key set.",
+            "date": "2011-09-06T08:53:33.358+0000",
+            "id": 0
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "Proposed patch.",
+            "date": "2011-09-06T09:00:57.184+0000",
+            "id": 1
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "+1 Looks good.\n\nOne possible explanation for this is if we have multiple threads running inside the same transaction. Then the acquireReadLock() method could call the LockMap.addLock() method without acquiring the writeStateRWLock.\n\nThe logic behind the relevant TransactionContext code is that in some cases different parts of a transaction are performed by different threads, so locks acquired by one part should apply also to the other parts of the transaction. The assumption here is that even if something like that happens, the transaction manager should still ensure that only one thread at a time is executing within the scope of the transaction. Perhaps we should explicitly enforce that?",
+            "date": "2011-09-06T09:30:26.650+0000",
+            "id": 2
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "> [...] multiple threads running inside the same transaction.\n\nI also noticed that this could be a potential problem, but in this case there is no transaction wrapped around the save call.",
+            "date": "2011-09-06T09:46:30.926+0000",
+            "id": 3
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "Committed patch in revision: 1165609",
+            "date": "2011-09-06T11:27:00.963+0000",
+            "id": 4
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Merged to the 2.2 branch in revision 1174654, to 2.1 in 1174656, to 2.0 in 1174657, and to 1.6 in 1174659.",
+            "date": "2011-09-23T11:13:02.998+0000",
+            "id": 5
+        }
+    ],
+    "component": "jackrabbit-core",
+    "description": "We have a report where the FineGrainedISMLocking throws a ConcurrentModificationException (stacktrace\nfrom a Jackrabbit 2.2.x):\n\njava.util.ConcurrentModificationException\n\tat java.util.HashMap$HashIterator.nextEntry(HashMap.java:793)\n\tat java.util.HashMap$KeyIterator.next(HashMap.java:828)\n\tat org.apache.jackrabbit.core.state.FineGrainedISMLocking$LockMap.hasDependency(FineGrainedISMLocking.java:388)\n\tat org.apache.jackrabbit.core.state.FineGrainedISMLocking.acquireWriteLock(FineGrainedISMLocking.java:138)\n\tat org.apache.jackrabbit.core.state.SharedItemStateManager.acquireWriteLock(SharedItemStateManager.java:1848)\n\tat org.apache.jackrabbit.core.state.SharedItemStateManager.access$200(SharedItemStateManager.java:113)\n\tat org.apache.jackrabbit.core.state.SharedItemStateManager$Update.begin(SharedItemStateManager.java:563)\n\tat org.apache.jackrabbit.core.state.SharedItemStateManager.beginUpdate(SharedItemStateManager.java:1457)\n\tat org.apache.jackrabbit.core.state.SharedItemStateManager.update(SharedItemStateManager.java:1487)\n\tat org.apache.jackrabbit.core.state.LocalItemStateManager.update(LocalItemStateManager.java:351)\n\tat org.apache.jackrabbit.core.state.XAItemStateManager.update(XAItemStateManager.java:354)\n\tat org.apache.jackrabbit.core.state.LocalItemStateManager.update(LocalItemStateManager.java:326)\n\tat org.apache.jackrabbit.core.state.SessionItemStateManager.update(SessionItemStateManager.java:289)\n\tat org.apache.jackrabbit.core.ItemSaveOperation.perform(ItemSaveOperation.java:258)\n\tat org.apache.jackrabbit.core.session.SessionState.perform(SessionState.java:200)\n\tat org.apache.jackrabbit.core.ItemImpl.perform(ItemImpl.java:91)\n\tat org.apache.jackrabbit.core.ItemImpl.save(ItemImpl.java:329)\n\tat org.apache.jackrabbit.core.session.SessionSaveOperation.perform(SessionSaveOperation.java:42)\n\tat org.apache.jackrabbit.core.session.SessionState.perform(SessionState.java:200)\n\tat org.apache.jackrabbit.core.SessionImpl.perform(SessionImpl.java:355)\n\tat org.apache.jackrabbit.core.SessionImpl.save(SessionImpl.java:758)",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "JCR-3065",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Minor",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "ConcurrentModificationException in FineGrainedISMLocking",
+    "systemSpecification": true,
+    "version": "2.2"
+}

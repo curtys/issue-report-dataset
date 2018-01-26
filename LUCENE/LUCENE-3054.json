@@ -1,0 +1,179 @@
+{
+    "comments": [
+        {
+            "author": "Robert Muir",
+            "body": "really ugly prototype... i expect the generics/sort policeman will want to jump in here anyway :)\n\nbut it does catch that problem:\n{noformat}\n    [junit] Testsuite: org.apache.lucene.index.TestCodecs\n    [junit] Testcase: testSepPositionAfterMerge(org.apache.lucene.index.TestCodecs):    FAILED\n    [junit] insane comparator for: org.apache.lucene.search.PhraseQuery$PostingsAndFreq\n{noformat}",
+            "date": "2011-04-29T17:46:41.722+0000",
+            "id": 0
+        },
+        {
+            "author": "Otis Gospodnetic",
+            "body": "Btw. this is with Lucene 3.1\nFor full thread: http://search-lucene.com/m/ytANA59Q9G1\n",
+            "date": "2011-04-29T18:29:37.936+0000",
+            "id": 1
+        },
+        {
+            "author": "Robert Muir",
+            "body": "i expanded the patch to all the sorts, just to find all the wierd sorting/comparators going on.\n\nit also finds some false positives, ones that are documented as inconsistent with equals, ones in tests, etc.\n\nbut we can at least look into the ones it finds.",
+            "date": "2011-04-29T18:32:05.375+0000",
+            "id": 2
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "I investigated what happens here:\n\nThe problem is indeed quickSort, but not undernormal circumstances. The problem with quickSort (just google for stack overflow and quicksort) is that it only works fine for arrays with many values. Once you only have few distinct values and a large array, depending on the oreder it may happen that it splits into two subarrays for next iteration, where one is very large and the other only contains few items.\n\nAttached is a patch, that shows the problem. It almost every time stack overflows. Also quicksort is very *slow* for this case.\n\nThis is exactly what happens on PhraseQuery: we only have very few distinct items and possibly a very huge array. To fix this, we should change PhraseQuery to use mergeSort instead. Mergesort is also much faster in this case, as it always splits the array in the center. So the number of iterations is limited.\n\nFor TermsHash/BytesRefHash its mostly also not a problem, as the values (the terms are 100% distict, as only the hash is sorted).\n\nBut there may still be the slight chance this messes up. I propose to change SorterTemplate to fall back to mergeSort once it checks that number of iterations grows e.g. > 20 (have to test a little bit).\n\nI will change that issue to higher priority and we also need to backport to 3.1.",
+            "date": "2011-05-02T13:02:26.147+0000",
+            "id": 3
+        },
+        {
+            "author": "Robert Muir",
+            "body": "{quote}\nI propose to change SorterTemplate to fall back to mergeSort once it checks that number of iterations grows e.g. > 20 (have to test a little bit).\n{quote}\n\nI like the idea of some \"guard\" here to prevent the stack overflow, and hopefully keep the quickSort performance for the places where we know its better than mergesort.\n",
+            "date": "2011-05-02T13:07:54.709+0000",
+            "id": 4
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Patch that shows the issue.",
+            "date": "2011-05-02T13:09:16.114+0000",
+            "id": 5
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "As quicksort gets insanely slow when these type of data gets sorted, this also explains Otis' slowdown.",
+            "date": "2011-05-02T13:18:22.416+0000",
+            "id": 6
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Due to the realtime merge (LUCENE-3023), suddenly DocFieldProcessor got a reincarnation of quicksort again... will remove, too",
+            "date": "2011-05-02T13:58:06.072+0000",
+            "id": 7
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Here the patch that combines Robert's optimization for PhraseQuery (term with lower docFreq will also have less positions) and the safety for quickSort at all.",
+            "date": "2011-05-02T14:44:32.983+0000",
+            "id": 8
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Set fix versions (also backport to 3.1.1, as its serious for some large PhraseQueries and a serious slowdown then).",
+            "date": "2011-05-02T14:46:05.169+0000",
+            "id": 9
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Sorry, the safety net is only needed at 40 (from my tests), before it may affect BytesRefHash performance.\n\nI will commit later!",
+            "date": "2011-05-02T14:51:57.593+0000",
+            "id": 10
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Better test that fails faster in case of quickSort bug",
+            "date": "2011-05-02T15:04:55.357+0000",
+            "id": 11
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Final patch.\n\nAfter some discussion with robert: The use of QuickSort is fine after the comparator was fixed to not only sort by docFreq.",
+            "date": "2011-05-02T15:46:10.642+0000",
+            "id": 12
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Committed trunk revision: 1098633\n\nNow merging...",
+            "date": "2011-05-02T15:50:06.098+0000",
+            "id": 13
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Merged 3.x revision: 1098639\nMerged 3.1 revision: 1098641",
+            "date": "2011-05-02T16:11:42.690+0000",
+            "id": 14
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Reopening so we can discuss things further...:\n\nQuickSort is dangerous!  Yet, it's definitely faster than MergeSort\nfor some cases (~20% faster when sorting terms for writing segment, in\nquick test I ran on Wikipedia content).\n\nSo the core issue is we should not use QS when there's a risk of any\nties, because in that case it can run really slowly or hit infinite\nrecursion.\n\nAnd we (well, Otis; thank you!) found one such place today (where\nMultiPhraseQuery sorts its terms) where we could have many ties and\nthus run very slowly / hit stack overflow.\n\nI appreciate the motivation for the \"safety net\", but, it makes me\nnervous... because, say we had done this a few months back... then\nOtis likely would not have reported the issue?  Ie, the\nMultiPhraseQuery would run slowly... which could evade detection\n(people may just think it's slow).\n\nI prefer brittle fails over silent slowdowns because the brittle fail\ngets your attention and you get a real fix in.  Silent slowdowns evade\ndetection.  Sort of like the difference between a virus and\nspyware...\n\nAlso, what's preventing us from accidentally using QS somewhere in the\nfuture, where we shouldn't?  What's going to catch us?\n\nRobert's first patch would catch this and protect us going forward?\n\nOr, maybe we could strengthen that approach and \"assert cmp != 0\"\ninside QS (ie, no ties are allowed to be passed to QS)?\n\nThough, using asserts only is risky, because it could be the\ncomparator may return 0, but it's just that none of our test cases\ntickled it.\n\nMaybe instead we could do this in a type-safe way: make a new\nNoTiesComparator whose compare method can only return LESS_THAN or\nGREATER_THAN?  And then QS would require NoTiesComparator.  Could that\nwork?\n",
+            "date": "2011-05-02T16:51:49.228+0000",
+            "id": 15
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Also, I think PQ.PostingsAndFreq.compare is still able to return ties, if the app puts the same term at the same position (which is a silly thing to do... but, still possible).\n\nI think instead of disambiguating by Term, we should disambiguate by ord (ie, position of this term in the array of the query itself), since that can never be the same for entries in the array?",
+            "date": "2011-05-02T17:21:12.496+0000",
+            "id": 16
+        },
+        {
+            "author": "Dawid Weiss",
+            "body": "I'm sure many of you know this, but there is a new implementation of mergesort in java.util.Collections -- it is based on a few clever heuristics (so it is a merge sort, only a finely tuned one) and has been ported/ partially inspired by the sort in Python as far as I recall.\n\nMaybe it'd be sensible to compare against this and see what happens. I know Lucene/Solr would rather have its own implementation so that it doesn't rely on the standard library, but in my benchmarks the implementation in Collections.sort() was hard to beat...",
+            "date": "2011-05-02T18:58:43.755+0000",
+            "id": 17
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Dawid:\nThere are two problems we have seen with native sort:\n- it copies the array/collection always first, this caused slowdown for lots of places especiall in automaton - so it never sorts in plcace\n- we sometimes need to sort multiple arrays in parallel, one as sort \"key\" -> especially in TermsHash/BytesRefHash. This is where SorterTemplate comes into the game: it supports separate swap(i,j) and compare(i,j) operations.\n\nUwe",
+            "date": "2011-05-02T19:06:39.288+0000",
+            "id": 18
+        },
+        {
+            "author": "Dawid Weiss",
+            "body": "Thanks Uwe, I didn't know about it. Still, the algorithm folks developing OpenJDK have implemented is public, so an improvement can be filed -- maybe somebody will find the time to implement it in a version suitable for Lucene.\n\nhttp://en.wikipedia.org/wiki/Timsort",
+            "date": "2011-05-02T19:12:45.153+0000",
+            "id": 19
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "So, there are two known improvements to our QS, to try to avoid the O(N^2)\nworst-case, both from Robert Sedgewick.\n\nFirst, it's better to select median of low/mid/high as the pivot\n(http://en.wikipedia.org/wiki/Quicksort#Choice_of_pivot).  Second, we\nshould handle \"equal\" values better\n(http://www.angelfire.com/pq/jamesbarbetti/articles/sorting/001_QuicksortIsBroken.htm#Duplicates).\n\nSee also Lucy's nice QS impl:\n\n  http://svn.apache.org/viewvc/incubator/lucy/trunk/core/Lucy/Util/SortUtils.c?revision=1098445&view=markup#l331\n\nwhich I think addresses the above two issues, and goes even further\n(eq-to-pivot values are explicitly \"moved to the middle\" and then not\nrecursed on).\n\nThe thing is, fixing these will make our QS more \"general\", at the\nexpense of some added cost for the cases we know work fine today (eg\nsorting terms before flushing a segment).\n\nMaybe we leave our QS as is (except, changing the 40 to be dynamic\ndepending on input length), noting that you should not use it if your\ncomparator does not break ties, and even if it does there are still\nrisks because of potentially bad pivot selection?\n\nOr, maybe we remove QS always use MS?  Yes, there's a hit to the sort\nwhen flushing the segment, but this is a tiny cost compared to the\nrest of segment flushing...\n\nSeparately we can look into whether the tool timsort is faster for\nsorting terms for flush....",
+            "date": "2011-05-02T20:00:22.331+0000",
+            "id": 20
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "{quote}\nMaybe we leave our QS as is (except, changing the 40 to be dynamic\ndepending on input length), noting that you should not use it if your\ncomparator does not break ties, and even if it does there are still\nrisks because of potentially bad pivot selection?\n{quote}\n\nThat looks like this: http://en.wikipedia.org/wiki/Introsort\n\nWe only need a good recursion depth where to switch!",
+            "date": "2011-05-02T22:44:38.608+0000",
+            "id": 21
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Here a patch which implements what introsort does: if the depth of recursion is >75% of log2(n), switch to mergeSort.\n\nAlso this patch moves all remaining quickSort calls to mergeSort on search side, where the comparators are not good. A few remaining ones in indexer keep alive, but those are all unique sets of terms or field names (needs some more review tomorrow).\n\nMike: What do you think, maybe you can do some benchmarking?",
+            "date": "2011-05-02T23:25:32.999+0000",
+            "id": 22
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Studying the C++ STL code showed that they use 2 * log2(n) as depth limit. I implemented that. It showed that for the most cases in Lucene (BytesRefHash), it uses quicksort (so no change to performance). The other cases use already mergeSort and the \"bad\" test in TestArrayUtil switches sucessfully to mergeSort.",
+            "date": "2011-05-03T00:18:16.357+0000",
+            "id": 23
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Patch looks good!  I like the 2*log_2(N) dynamic cutover; this means we can tolerate somewhat lopsided QS recursion and remain using QS.",
+            "date": "2011-05-03T09:34:31.026+0000",
+            "id": 24
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Committed trunk revision: 1099041\nMerged 3.x revision: 1099045\nMerged 3.1 revision: 1099046",
+            "date": "2011-05-03T13:19:20.500+0000",
+            "id": 25
+        },
+        {
+            "author": "Robert Muir",
+            "body": "Bulk closing for 3.2",
+            "date": "2011-06-03T16:37:14.042+0000",
+            "id": 26
+        }
+    ],
+    "component": "",
+    "description": "Looking at Otis's sort problem on the mailing list, he said:\n{noformat}\n* looked for other places where this call is made - found it in\nMultiPhraseQuery$MultiPhraseWeight and changed that call from\nArrayUtil.quickSort to ArrayUtil.mergeSort\n* now we no longer see SorterTemplate.quickSort in deep recursion when we do a\nthread dump\n{noformat}\n\nI thought this was interesting because PostingsAndFreq's comparator\nlooks like it needs a tiebreaker.\n\nI think in our sorts we should add some asserts to try to catch some of these broken comparators.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-3054",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "OTHER",
+    "priority": "Critical",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "SorterTemplate.quickSort stack overflows on broken comparators that produce only few disticnt values in large arrays",
+    "systemSpecification": true,
+    "version": "3.1"
+}

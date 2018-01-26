@@ -1,0 +1,125 @@
+{
+    "comments": [
+        {
+            "author": "Uwe Schindler",
+            "body": "Only fails for Lucene trunk, seems to be related to the additional cleanupo by the removal of new IndexSearcher(directory).",
+            "date": "2011-11-19T11:31:44.845+0000",
+            "id": 0
+        },
+        {
+            "author": "Robert Muir",
+            "body": "hudson needs a space in its folder too :)\n\nThe problem is BenchmarkTestCase, i'm sure i introduced the bug when i fixed another bug (it used TEMP_DIR directly).",
+            "date": "2011-11-19T13:01:39.794+0000",
+            "id": 1
+        },
+        {
+            "author": "Robert Muir",
+            "body": "OK it fails even if you have no space in the directory.\n\nSo i'm guessing this test leaves a file open (outside of mockdirectorywrapper)\n\nWe need FileSystem.setDefault(new MockWindowsFileSystem())...",
+            "date": "2011-11-19T13:30:57.031+0000",
+            "id": 2
+        },
+        {
+            "author": "Robert Muir",
+            "body": "It looks to me like the problem is inside LineDocSourceTest:doIndexAndSearchTest\n\ni ran the test with -Dtestmethod=testWithDocsName, and it passes if i comment out the call to this method.",
+            "date": "2011-11-19T13:40:14.877+0000",
+            "id": 3
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Here the complete I/O event log created by sysinternals process monitor when running test TestLineDocSource",
+            "date": "2011-11-19T14:09:39.832+0000",
+            "id": 4
+        },
+        {
+            "author": "Robert Muir",
+            "body": "When LuceneTestCase cannot delete a file that it wants to, I'm gonna see if we can improve the output for starters.\n\nThis would make it easier to debug issues like this.",
+            "date": "2011-11-19T14:15:54.422+0000",
+            "id": 5
+        },
+        {
+            "author": "Robert Muir",
+            "body": "with this patch the benchmark tests pass *most* of the time on my windows computer.\n\nBut sometimes they still fail (with the same filenames involved)... I have no idea why.",
+            "date": "2011-11-19T14:37:10.743+0000",
+            "id": 6
+        },
+        {
+            "author": "Robert Muir",
+            "body": "By the way this is the reason these tests fail now:\nhttp://svn.apache.org/viewvc/lucene/dev/branches/lucene2621/modules/benchmark/src/test/org/apache/lucene/benchmark/BenchmarkTestCase.java?view=diff&r1=1201966&r2=1201967&pathrev=1201967\n\nBefore they just created files underneath TEMP_DIR directly and were not closing things and were silently wrong... so the\nproblems have been here a while.",
+            "date": "2011-11-19T14:42:11.026+0000",
+            "id": 7
+        },
+        {
+            "author": "Robert Muir",
+            "body": "Setting affects 3.x, becuase i'm gonna backport my previous fix that unravelled this problem.\n",
+            "date": "2011-11-19T15:36:08.245+0000",
+            "id": 8
+        },
+        {
+            "author": "Shai Erera",
+            "body": "Patch fixes the problem in LineDocSourceTest - add tasks.close() (otherwise LDS keeps a reader open on the file).\n\nI intend to commit shortly, after verifying all tests pass and no other such changes are required.",
+            "date": "2011-11-22T06:20:42.957+0000",
+            "id": 9
+        },
+        {
+            "author": "Shai Erera",
+            "body": "Committed rev 1204826 (3x).\nPorted changes to trunk in rev 1204828.",
+            "date": "2011-11-22T06:33:26.130+0000",
+            "id": 10
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "I still think we should also commit Robert's patch.",
+            "date": "2011-11-22T07:48:23.091+0000",
+            "id": 11
+        },
+        {
+            "author": "Shai Erera",
+            "body": "You're right, I didn't notice it. I'll work on it now.",
+            "date": "2011-11-22T08:06:35.753+0000",
+            "id": 12
+        },
+        {
+            "author": "Shai Erera",
+            "body": "Committed Robert's changes to trunk rev 1204851. However after porting to 3x and running the tests, LineDocSourceTest consistently fails with this:\n\nant test -Dtestcase=LineDocSourceTest -Dtests.seed=-2895bf521e2206c:0:4f1f278a279ce441\n\nI'm investigating (don't know if it fails on trunk too yet).",
+            "date": "2011-11-22T08:28:59.816+0000",
+            "id": 13
+        },
+        {
+            "author": "Shai Erera",
+            "body": "Ok found it: testInvalidFormat expected exceptions to be thrown while the algorithm runs, and so tasks.close() wasn't called. I'll change the code to close in a try-finally, for all Closeable resources.",
+            "date": "2011-11-22T08:34:51.929+0000",
+            "id": 14
+        },
+        {
+            "author": "Shai Erera",
+            "body": "Committed test fixes to 3x and trunk.",
+            "date": "2011-11-22T08:47:16.645+0000",
+            "id": 15
+        },
+        {
+            "author": "Robert Muir",
+            "body": "Shai: thanks for getting to the bottom of this!",
+            "date": "2011-11-22T13:51:56.445+0000",
+            "id": 16
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Bulk close after release of 3.5",
+            "date": "2011-11-27T12:29:29.381+0000",
+            "id": 17
+        }
+    ],
+    "component": "",
+    "description": "This seems to be a bug recently introduced. I have no idea what's wrong. Attached is a log file, reproduces everytime.\n\n",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-3583",
+    "issuetypeClassified": "OTHER",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "benchmark tests always fail on windows because directory cannot be removed",
+    "systemSpecification": true,
+    "version": "3.5, 4.0-ALPHA"
+}

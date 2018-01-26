@@ -1,0 +1,41 @@
+{
+    "comments": [
+        {
+            "author": "Michael D\u00fcrig",
+            "body": "The described behavior can be seen as 'works as intended' given that there might be a race between the two sessions in this test case. Things are a bit different when observation comes into play however: When session2 calls getItem on the path of a NODE_ADDED event, the same behavior can be observed. This doesn't seem correct to me. After all, the observation events that a node at the given path has just been added:\n\ninterface WaitableEventListener extends EventListener {\n    public void waitForEvent() throws InterruptedException, RepositoryException;\n}\n\npublic void testJCR_2293() throws RepositoryException, InterruptedException {\n    final String parentPath = testNode.getPath();\n    final String folderName = \"folder_\" + System.currentTimeMillis();\n    Session session = getHelper().getReadWriteSession();\n\n    final Session session2 = getHelper().getReadOnlySession();\n    session2.getItem(parentPath);  // removing this line makes the failure go away\n\n    WaitableEventListener eventListener = new WaitableEventListener() {\n        private RepositoryException failure;\n\n        public synchronized void onEvent(final EventIterator events) {\n            try {\n                while (events.hasNext()) {\n                    Event event = events.nextEvent();\n                    Item item2 = session2.getItem(event.getPath());\n                    assertEquals(parentPath + \"/\" + folderName, item2.getPath());\n                }\n            }\n            catch (RepositoryException e) {\n                failure = e;\n            }\n            finally {\n                notifyAll();\n            }\n        }\n\n        public synchronized void waitForEvent() throws InterruptedException,\n                        RepositoryException {\n            this.wait();\n            if (failure != null) {\n                throw failure;\n            }\n        }\n    };\n\n    session.getWorkspace().getObservationManager()\n            .addEventListener(eventListener, Event.NODE_ADDED,\n                                             parentPath, true, null, null, false);\n\n    Node parent = (Node) session.getItem(parentPath);\n    Node toDelete = parent.addNode(folderName, \"nt:folder\");\n    parent.save();\n\n    try {\n        eventListener.waitForEvent();\n    }\n    finally {\n        toDelete.remove();\n        parent.save();\n        assertFalse(parent.hasNode(folderName));\n    }\n}\n\n\n",
+            "date": "2009-09-07T15:19:57.727+0000",
+            "id": 0
+        },
+        {
+            "author": "angela",
+            "body": "summary of a short discussion michael and i had yesterday in the office:\n\nin case of invalidation cache-behavior the client (jcr2spi) is aware of changes only if the client is explicitely refreshed or (as a side effect) if the hierarchy at a given level isn't complete. this leaves to the inconsistencies mentioned above if the API consumer registered event-listeners as the hierarchy information isn't adjusted upon event delivery.\n\nsuggested fix: if event listeners are registered the hierarchy must be adjusted similar to observation cache-behavior. in contrast to the latter the update information isn't complete but only affects those items that fall within the responsibility of a registered event listener... all the rest (and after releasing the event listener again) is still governed by the normal invalidation behavior.",
+            "date": "2009-09-16T07:53:16.146+0000",
+            "id": 1
+        },
+        {
+            "author": "Michael D\u00fcrig",
+            "body": "The problem with the suggested fix is that event listeners are registered on a per session (i.e. WorkSpaceManager) basis. So when a event fires it would have to be delivered to all HierarchyEventListener of all WorkSpaceManagers such that all hierarchies are correctly updated. ",
+            "date": "2009-10-02T12:45:49.816+0000",
+            "id": 2
+        },
+        {
+            "author": "Michael D\u00fcrig",
+            "body": "Fixed in revision: 821598",
+            "date": "2009-10-04T20:16:47.886+0000",
+            "id": 3
+        }
+    ],
+    "component": "jackrabbit-jcr2spi",
+    "description": "The following test case (for jcr2spi) throws a PathNotFoundException for an item which exists. It does not throw if the marked line below is commented out. \n\npublic void testBug24687() throws RepositoryException {\n    String parentPath = testNode.getPath();\n    String folderName = \"folder_\" + System.currentTimeMillis();\n    Session session = getHelper().getReadWriteSession();\n\n    Session session2 = getHelper().getReadOnlySession();\n    session2.getItem(parentPath);  // removing this line makes the failure go away\n\n    Node parent = (Node) session.getItem(parentPath);\n    Node toDelete = parent.addNode(folderName, \"nt:folder\");\n    parent.save();\n\n    try {\n        Item item2 = session2.getItem(parentPath + \"/\" + folderName);  // wrongly throws PathNotFoundException\n        assertEquals(parentPath + \"/\" + folderName, item2.getPath());\n    }\n    finally {\n        toDelete.remove();\n        parent.save();\n        assertFalse(parent.hasNode(folderName));\n    }\n}\n",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "JCR-2293",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "PathNotFoundException but item exists",
+    "systemSpecification": true,
+    "version": "1.5.7, 2.0"
+}

@@ -1,0 +1,71 @@
+{
+    "comments": [
+        {
+            "author": "Thomas Mueller",
+            "body": "Obviously, this is really bad. It didn't help to make it a daemon thread, and to use a WeakHashMap. I will change the CacheManager: instead of being a singleton, the CacheManager will be associated with a PersistentManager (or Repository). And the thread must be stopped when the PersistentManager / Repository is closed. This should solve the problem. Unfortunately, it will be harder to avoid OutOfMemory if many repositories are open at the same time, but this is probably not that big a problem.\n\nThomas",
+            "date": "2006-11-07T11:38:09.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "How about starting the background thread only when there are caches to manage? Or stop the background thread when there are no more caches to manage respectively?",
+            "date": "2006-11-07T13:18:03.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "Starting / stopping the CacheManager thread on demand would probably be a solution, I didn't think about this. The singleton pattern would still not work when using different class loaders. Also, configuring the cache size per repository is not possible. I made a patch to keep the cache managers in the RepositoryImpl. Unfortunately, this means adding it to many constructors. The test case with the jcr-server works now (the unit tests work as well).",
+            "date": "2006-11-07T16:09:36.000+0000",
+            "id": 2
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "CacheManager in the RepositoryImpl",
+            "date": "2006-11-07T16:11:09.000+0000",
+            "id": 3
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "I don't really like the idea of having to use a separate thread to do this. Can't the various caches just call the CacheManager whenever an object is placed in the cache. You can amortize the performance hit by requesting reallocation only every N caching operations. This structure would avoid the need to manage a separate thread.\n\nAlso, it would be cleaner if you passed around a factory object instead of the CacheManager. That would make it much easier to plug in alternative caching behaviours. Something like this:\n\n    public interface ItemStateCacheFactory {\n\n        ItemStateCache newItemStateCache();\n\n    }\n\nand:\n\n    public class ManagedMLRUItemStateCacheFactory {\n\n        private final CacheManager manager;\n\n        public ManagedCacheFactory(CacheManager manager) {\n            this.manager = manager;\n        }\n\n        public ItemStateCache newItemStateCache() {\n            ItemStateCache cache = new MLRUItemStateCache();\n            manager.add(cache);\n            return cache;\n        }\n\n    }\n",
+            "date": "2006-11-07T16:41:11.000+0000",
+            "id": 4
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "A simpler alternative to using the factory pattern would be to pull the instantiation of the cache as high up the call chain as possible. It would still be cleaner to pass the cache instance to an ItemStateManager than the CacheManager, since the manager is really a detail of the cache implementation and should not be exposed to other components like the ItemStatemanagers.",
+            "date": "2006-11-08T09:23:56.000+0000",
+            "id": 5
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "Hi,\n\nAs requested by Jukka Zitting, I made a few changes to the cache manager. There is no new functionality, and the current behaviour changed only very slightly:\n\nInstead of passing the CacheManager to various constructors, now an ItemStateCacheFactory is passed (this is a new interface, and there is a single new class implementing this interface, ManagedMLRUItemStateCacheFactory).\n\nNow the caches calls the CacheManager from time to time (each time a cache was accessed 128 more times). This is not done directly, but using a new interface CacheAccessListener. The CacheManager is the only class implementing this interface. The CacheManager then checks if it's time to resize the caches (this is done at most every second). There is no more cache manager thread. The disadvantages are: The caches will not shrink if none of them is accessed, or accessed infrequently. And there is a (very small) overhead on each cache access.\n\nAgain, for me the CacheManager is a workaround. I hope we can soon replace this with a (more) unified cache. \n\nThomas",
+            "date": "2006-11-09T11:21:26.000+0000",
+            "id": 6
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "The CacheManager slows a few things down at the moment, for example the unit tests. I found the problem: The caches are never disposed, and therefore the CacheManager sometimes has a lot of caches to manage (at one point in the unit test over 3000). Garbage collection will eventually reclaim the unused objects (the CacheManager uses a WeakHashMap), so this is not a memory problem. I will submit a patch later today.",
+            "date": "2006-11-13T10:37:36.000+0000",
+            "id": 7
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "As far as I know, this problem has been fixed since a long time. Please reopen if not.",
+            "date": "2007-09-18T07:57:42.665+0000",
+            "id": 8
+        }
+    ],
+    "component": "jackrabbit-core",
+    "description": "This bug was introduced with the new CacheManager feature. See JCR-619.\n\nThe CacheManager starts a new background thread which optimizes memory distribution every second accross the various caches. When a jackrabbit repository is shutdown, this background thread is still running and prevents the GC from collecting the classloader when jackrabbit is deployed in a web application.\n\nSteps to reproduce:\n1) build jackrabbit and jcr-server from trunk and deploy into a tomcat\n2) touch the web.xml file of the jcr-server web app (this will force a redeployment)\n\nAfter step 2 two things may happen. Either:\n- The memory consumption increases because the CacheManager thread is not shutdown\nor\n- The CacheManager thread dies unexpectedly with a NullPointerException:\n\nException in thread \"org.apache.jackrabbit.core.state.CacheManager\" java.lang.NullPointerException\n        at org.apache.jackrabbit.core.state.CacheManager.run(CacheManager.java:90)\n        at java.lang.Thread.run(Unknown Source)",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "JCR-625",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Minor",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "Memory is not freed up when jackrabbit-server war is redeployed in tomcat",
+    "systemSpecification": true,
+    "version": ""
+}

@@ -1,0 +1,47 @@
+{
+    "comments": [
+        {
+            "author": "pschwartau@meer.net",
+            "body": "Testcase added to JS testsuite:\n\n          mozilla/js/tests/js1_5/Regress/regress-204210.js\n\nThe testcase puts |new eval();| inside |try...catch| blocks, since in Rhino\nthis construct is supposed to produce a run-time error due to bug 203909,\n\"Behavior of built-in functions called as constructors should follow standard.\"\n\nHowever: the Rhino interpreted-mode crash on |new eval();|, i.e. the\ncurrent bug, isn't occurring when |new eval();| is inside |try...catch|!\n\nSo it looks like I'll have to verify the fix for this bug manually -",
+            "date": "20030503T20:47:15",
+            "id": 0
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 122578\nFix: eval call reorganization\n\nThe patch merges ScriptRuntime.callSpecial and ScriptRuntime.newObjectSpecial\ninto single ScriptRuntime.callSpecial which takes a boolean flag to indicate if\nthis is a call from new and a special call type id as parameter for better\nerror reporting so new eval() prints:\njs: \"<stdin>\", line 1: uncaught JavaScript exception: TypeError: \"eval\" is not\na constructor. (<stdin>; line 1)",
+            "date": "20030506T15:45:37",
+            "id": 1
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "I committed the fix",
+            "date": "20030506T18:54:06",
+            "id": 2
+        },
+        {
+            "author": "pschwartau@meer.net",
+            "body": "Verified FIXED interactively in the Rhino shell:\n\n\n------------------------- BEFORE THE FIX -------------------------\njs> new eval();\nException in thread \"main\" java.lang.ArrayIndexOutOfBoundsException: -1\nat org.mozilla.javascript.Interpreter.interpret(Interpreter.java:2115)\nat org.mozilla.javascript.InterpretedScript.call(InterpretedScript.java:62)\nat org.mozilla.javascript.InterpretedScript.exec(InterpretedScript.java:55)\nat org.mozilla.javascript.Context.evaluateReader(Context.java:806)\nat org.mozilla.javascript.tools.shell.Main.evaluateReader(Main.java:363)\nat org.mozilla.javascript.tools.shell.Main.processSource(Main.java:260)\nat org.mozilla.javascript.tools.shell.Main.exec(Main.java:103)\nat org.mozilla.javascript.tools.shell.Main.main(Main.java:76)\n\n\n\n-------------------------- AFTER THE FIX -------------------------\njs> new eval();\njs: \"<stdin>\", line 1: uncaught JavaScript exception:\nTypeError: \"eval\" is not a constructor. (<stdin>; line 1)",
+            "date": "20030507T01:08:12",
+            "id": 3
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Targeting as resolved against 1.5R5",
+            "date": "20040213T11:42:22",
+            "id": 4
+        }
+    ],
+    "component": "Core",
+    "description": "The following one line script causes ArrayIndexOutOfBoundsException in\ninterpreted mode:\n\nnew eval();\n\n~> java -jar ~/.../js.jar -opt -1 -e 'new eval()'\nException in thread \"main\" java.lang.ArrayIndexOutOfBoundsException\n        at org.mozilla.javascript.Interpreter.interpret(Interpreter.java:2117)\n        at org.mozilla.javascript.InterpretedScript.call(InterpretedScript.java:62)\n        at org.mozilla.javascript.InterpretedScript.exec(InterpretedScript.java:5\n...\n\n\nFor the test case it may be necessary to use code like:\n\nfunction f()\n{\n\tnew eval();\n}\n\nf();\n\nsince the bug corrupts interpreter stack and it may not be visible if new eval()\nis not a single statement in function/script.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "204210",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "-- normal",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "new eval() triggers ArrayIndexOutOfBoundsException in interpreted mode",
+    "systemSpecification": false,
+    "version": "other"
+}

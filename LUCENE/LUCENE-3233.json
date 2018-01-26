@@ -1,0 +1,263 @@
+{
+    "comments": [
+        {
+            "author": "Robert Muir",
+            "body": "here's a rough start to building a datastructure that I think makes good tradeoffs between RAM and processing.\n\nNo matter what, the processing on the filter-side will be hairy because of the 'interleaving' with the tokenstream.\n\nThis one is just an FST<CharsRef,Int[]>(BYTE4) where Int is an ord to a BytesRefHash, containing the output Bytes for each term.\n\nThis way, at input time we can walk the FST with codePointAt()\n\nOn both sides, the Chars/Bytes are actually phrases, using \\u0000 as a word separator.\n",
+            "date": "2011-06-23T14:04:47.573+0000",
+            "id": 0
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Dumping my current state on FSTSynonymFilter -- it compiles but it's got tons of bugs I'm sure!  I added a trivial initial test.",
+            "date": "2011-06-24T10:48:02.138+0000",
+            "id": 1
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "New patch w/ current state.\n\nI think it's closer; the test has more cases now (but I'd still like to make a random test), fewer nocommits, etc.",
+            "date": "2011-07-04T17:42:11.197+0000",
+            "id": 2
+        },
+        {
+            "author": "Robert Muir",
+            "body": "patch with a first random test, this one currently does 10 iterations where it adds random shit to the synonym map, then it analyzes 10k random strings (each time capturing the output, and replaying it back to ensure the thing is deterministic and doesn't have reuse bugs).\n\ni also added the ignoreCase support.\n\nthe filter might have a reuse bug, see ant test -Dtestcase=TestFSTSynonymMapFilter -Dtestmethod=testRandom -Dtests.seed=-4122723628721952592:244824441557739968\n",
+            "date": "2011-07-05T13:25:30.306+0000",
+            "id": 3
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "New patch, folding in Robert's changes and the random stress test.  All tests pass.  I think it's now functionally correct, but I still need to compare perf vs existing syn filter, and there are still a few minor nocommits to work out.\n\nIdeally, if we get perf close enough, since RAM is much much less w/ this new syn filter, I think we should replace the old one with this new one.",
+            "date": "2011-07-05T19:49:05.731+0000",
+            "id": 4
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "New patch, adding dedup option to the builder, removing a couple nocommits, cutting back on iters/counts in testRandom2.",
+            "date": "2011-07-05T21:46:55.616+0000",
+            "id": 5
+        },
+        {
+            "author": "Robert Muir",
+            "body": "Updated patch:\n* added a SolrSynonymsParser and test to the analyzers module, that parses the existing solr synonyms format.\n* added a Solr factory for this thing (untested!) that uses this when \"format=solr\" (the default)\n\nThis way, the idea is the factory would be more extensible, e.g. you could load syns from a database, or we could add parsers for wordnet and nuke contrib/wordnet, etc etc.\n\nStill need to do some basic benchmarking.",
+            "date": "2011-07-06T05:25:54.429+0000",
+            "id": 6
+        },
+        {
+            "author": "Robert Muir",
+            "body": "fixed some bugs, added some tests, but there is a problem, I started to add a little benchmark and I hit this on my largish synonyms file:\n{noformat}\njava.lang.IllegalStateException: max arc size is too large (445)\n{noformat}\n\nJust run the TestFSTSynonymFilterFactory and you will see it, i enabled some prints and it doesn't appear like anything totally stupid is going on... giving up for the night :)",
+            "date": "2011-07-06T06:49:59.241+0000",
+            "id": 7
+        },
+        {
+            "author": "Robert Muir",
+            "body": "attaching my synonyms.txt test file that i was using: its derived from wordnet",
+            "date": "2011-07-06T06:51:52.288+0000",
+            "id": 8
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "bq. java.lang.IllegalStateException: max arc size is too large (445)\n\nAhh -- to fix this we have to call Builder.setAllowArrayArcs(false), ie, disable the array arcs in the FST (and this binary search lookup for finding arcs!).  I had to do this also for MemoryCodec, since postings encoded as output per arc can be more than 256 bytes, in general.\n\nThis will hurt perf, ie, the arc lookup cannot use a binary search; it's because of a silly limitation in the FST representation, that we use a single byte to hold the max size of all arcs, so that if any arc is > 256 bytes we are unable to encode it as an array.  We could fix this (eg, use vInt), however, arcs with such widely varying sizes (due to widely varying outputs on each arc) will be very wasteful in space because all arcs will use up a fixed number of bytes when represented as an array.\n\nFor now I think we should just call the above method, and then test the resulting perf.",
+            "date": "2011-07-06T10:52:41.027+0000",
+            "id": 9
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Actually, maybe a better general fix for FST would be for it to dynamically decide whether to make an array based on how many bytes will be wasted (in addition to the number of arcs / depth of the node).  This way we could turn on arcs always, and FST would pick the right times to use it.  If we stick to only 1 byte for the number of bytes per arc, the FST could simply not use the array when an arc is > 256 bytes.",
+            "date": "2011-07-06T13:45:29.196+0000",
+            "id": 10
+        },
+        {
+            "author": "Robert Muir",
+            "body": "Thanks Mike, I will set the option for now, we can address any potential perf hit in a number of different ways here (besides modifying FST itself).\n",
+            "date": "2011-07-06T14:46:17.538+0000",
+            "id": 11
+        },
+        {
+            "author": "Robert Muir",
+            "body": "I ran some quick numbers, using the syn file example here, just best of 3 runs:\n\n||Impl||Build time||RAM usage||\n|SynonymFilterFactory|6619ms|207.92 mb|\n|FSTSynonymFilterFactory|463 ms|3.51 mb|\n\nI modified the builder slightly to build the FST more efficiently for this, will upload the updated patch.\n\nSo i think the build-time and RAM consumption are really improved, the next thing is to benchmark the runtime perf.",
+            "date": "2011-07-06T17:00:36.176+0000",
+            "id": 12
+        },
+        {
+            "author": "David Smiley",
+            "body": "Wow that's striking; nice work guys.  FSTs are definitely one of those killer pieces of technology in Lucene.\n\nThe difference in build time is surprising to me.  Any theory why SynonymFilterFactory takes so much more time to build?",
+            "date": "2011-07-06T17:16:53.415+0000",
+            "id": 13
+        },
+        {
+            "author": "Robert Muir",
+            "body": "{quote}\nThe difference in build time is surprising to me. Any theory why SynonymFilterFactory takes so much more time to build?\n{quote}\n\nYes, its the n^2 portion where you have a synonym entry like this: a, b, c, d\nin reality this is creating entries like this:\na -> a\na -> b\na -> c\na -> d\nb -> a\nb -> b\n...\n\nin the current impl, this is done using some inefficient datastructures (like nested chararraymaps with Token),\nas well as calling merge().\n\nIn the FST impl, we don't use any nested structures (instead input and output entries are just phrases), and we explicitly \ndeduplicate both inputs and outputs during construction, the FST output is just a\nList<Integer> basically pointing to ords in the deduplicated bytesrefhash.\n\nso during construction when you add() its just a hashmap lookup on the input phrase, a bytesrefhash get/put on the UTF16toUTF8WithHash\nto get the output ord, and an append to an arraylist.\n\nthis code isn't really optimized right now and we can definitely speed it up even more in the future. but the main thing\nright now is to ensure the filter performance is good.\n",
+            "date": "2011-07-06T17:28:07.915+0000",
+            "id": 14
+        },
+        {
+            "author": "Robert Muir",
+            "body": "here is a patch with a little microbenchmark... so we have some tuning to do. \n\nthe benchmark analyzes a short string a million times, that doesn't match any synonyms (actually hte solr default)\n\n||impl||ms||\n|SynonymsFilter|1692|\n|FST with array arcs|2794|\n|FST with no array arcs|8823|\n\nso, disabling the array arcs is a pretty crucial hit here. but we could do other options to speed up this common case, e.g. with daciuk we could build a charrunautomaton of the K-prefixes of the synonyms, this would be really fast to reject these terms that don't match any syns.\n\nor we could explicitly put our bytesref output in a byte[], and use long pointers as outputs.\n\nor we could speed up FST! But i think its interesting to see how important this parameter is.",
+            "date": "2011-07-06T18:35:48.923+0000",
+            "id": 15
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Wow, it's very important to allow arcs to be encoded as arrays (for the binary search on lookup).  I think we should just fix FST... I'll think about it.  MemoryCodec would also get big gains here.",
+            "date": "2011-07-06T18:59:21.004+0000",
+            "id": 16
+        },
+        {
+            "author": "Robert Muir",
+            "body": "I agree, this would be the best solution. Maybe we should just open a separate issue for that? \n\nwe can let this one be for now until that is resolved, can even continue working on other parts of it.",
+            "date": "2011-07-06T19:24:40.523+0000",
+            "id": 17
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "New patch, including some optimizing to FST (which we can commit under a separate issue): array arcs can now be any size, and I re-use the BytesReader inner class that's created for parsing arcs.",
+            "date": "2011-07-06T21:18:47.670+0000",
+            "id": 18
+        },
+        {
+            "author": "Robert Muir",
+            "body": "bq. New patch, including some optimizing to FST (which we can commit under a separate issue)\n\nworks! I don't think we need to open a new issue, I didn't think you would come back with a patch in just two hours!\n\nI'll play with the patch some now and see what I can do with it.",
+            "date": "2011-07-06T23:09:03.760+0000",
+            "id": 19
+        },
+        {
+            "author": "Robert Muir",
+            "body": "updated patch, this tableizes the first FST arcs for latin-1.\n\nprecomputing this tiny table speeds up this filter a ton (~3000ms -> ~2000ms) and I think is a cheap easy win for the terms index too.",
+            "date": "2011-07-07T01:13:20.871+0000",
+            "id": 20
+        },
+        {
+            "author": "Robert Muir",
+            "body": "Benchmark with the synonyms.zip attached to this issue (so that we are actually matching synonyms):\nin this case i only analyzed the text 100,000 times, as its a lot more output.\nI also checked they are emitting the same stuff:\n\n||Impl||ms||\n|SynonymsFilter|112527|\n|FST|22872|\n\nSo, thats 5x faster, I think probably due to avoiding the expensive cloning.\n\nI think we are fine on performance.\n",
+            "date": "2011-07-07T02:17:54.335+0000",
+            "id": 21
+        },
+        {
+            "author": "Robert Muir",
+            "body": "so i don't forget, lets not waste an arc bitflag marking an arc as 'first'... \n\nI hear the secret is instead arc.target == startNode",
+            "date": "2011-07-07T11:57:02.970+0000",
+            "id": 22
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "New patch, moving the root arcs cache into FST, not using up our last precious arc bit.",
+            "date": "2011-07-07T13:07:36.298+0000",
+            "id": 23
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Another rev of the patch: I did a hard bump the FST version (so\nexisting trunk indices must be rebuilt), and added NOTE in suggest's\nFST impl that the file format is experimental; removed\nmaxVerticalContext; fixed false test failure.\n",
+            "date": "2011-07-07T18:54:37.964+0000",
+            "id": 24
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "I think this is ready to commit, but I'd like to rename existing syn filter to SlowSynonymFilter and rename the new one to SynonymFilter.\n\nBecause there are some minor diffs (deduping rules, lowercasing), for Solr to cutover I think we need some back compat logic; I'll open a separate issue for this.",
+            "date": "2011-07-09T13:33:21.327+0000",
+            "id": 25
+        },
+        {
+            "author": "Robert Muir",
+            "body": "I'll try to add some not-so-sophisticated backwards here!",
+            "date": "2011-07-09T13:50:45.927+0000",
+            "id": 26
+        },
+        {
+            "author": "Yonik Seeley",
+            "body": "bq. but I'd like to rename existing syn filter to SlowSynonymFilter and rename the new one to SynonymFilter.\n\nBut the lookup on the original is still faster, right?  And if someone has small synonym dicts (actually pretty common in my experience since SynonymFilter isn't necessary used to inject synonyms in the traditional sense, but for any mapping task) then build time and mem use won't be much of an issue (esp if the input to match is mostly single words).\n\nThis looks great for large synonym maps, but perhaps instead of Slow* or Fast* we could name them for the implementation and either name the new one FSTSynonymFilter or rename the current one to MapSynonymFilter?  Or is the plan to actually deprecate the current SynonymFilter? \n",
+            "date": "2011-07-09T13:58:46.138+0000",
+            "id": 27
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "bq. But the lookup on the original is still faster, right?\n\nThat was before we optimized FST for this usage case.\n\nNow, from the testing above, it looks like we are faster when syns actually match; if no syns match the two are around the same speed.\n\nSeparately: shouldn't we not have any syns in the default text_en field type?  Like we can have a synonyms.txt but comment out all the rules in there?\n\nI don't think we should keep the old one around, ie, we should [eventually] replace it with the new one.",
+            "date": "2011-07-09T14:09:14.109+0000",
+            "id": 28
+        },
+        {
+            "author": "Robert Muir",
+            "body": "This one is faster for the simple reason that the TokenFilter uses captureState() and restoreState() [and has logic to minimize cloning in more cases] instead of AttributeSource.cloneAttributes()/copyTo()",
+            "date": "2011-07-09T14:12:32.019+0000",
+            "id": 29
+        },
+        {
+            "author": "Yonik Seeley",
+            "body": "bq. Now, from the testing above, it looks like we are faster when syns actually match; if no syns match the two are around the same speed.\n\nOh cool!  I was looking at \"1692\" for the SynonymsFilter and a drop from \"~3000ms -> ~2000ms\" for the FST version.   I assumed Robert's last benchmark was building and not lookup (the 112527/22872).\n\nbq. Separately: shouldn't we not have any syns in the default text_en field type?\n\nI dunno... it's nice for both demonstration and testing (and it's in the current tutorial).\n",
+            "date": "2011-07-09T14:20:26.682+0000",
+            "id": 30
+        },
+        {
+            "author": "Robert Muir",
+            "body": "Updated patch: \n* renamed to SynonymFilter\n* added not-so-sophisticated backwards layer\n* added tests\n* added parser for format=\"wordnet\"\n* removed contrib/wordnet\n\nbut i found some bugs (well one, surely is) in the new tests, so i added nocommits here.",
+            "date": "2011-07-09T19:13:46.432+0000",
+            "id": 31
+        },
+        {
+            "author": "Robert Muir",
+            "body": "just updating patch to trunk, the nocommits remain...",
+            "date": "2011-07-10T08:53:10.496+0000",
+            "id": 32
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "New patch, also setting offsets in the produced tokens (the wordnet test passes), and adding adding a NOTE about the dup output words issue.\n\nI think it's finally ready to commit!",
+            "date": "2011-07-10T20:31:05.936+0000",
+            "id": 33
+        },
+        {
+            "author": "Glen Stampoultzis",
+            "body": "Does this support multi word synonyms? I tried one of the 3.4 builds and I was getting odd results on multi word synonyms.",
+            "date": "2011-08-22T06:23:57.058+0000",
+            "id": 34
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "It does support multi-word synonyms -- can you give some details on the odd behavior?  Maybe email dev@lucene.apache.org, or open a new Jira issue?",
+            "date": "2011-08-22T12:48:39.557+0000",
+            "id": 35
+        },
+        {
+            "author": "Glen Stampoultzis",
+            "body": "I'll try and put together a simple test case just to make sure I've got something repeatable and post to the list. I think it might have been related to synonym fields tokenized using KeywordTokenizerFactory.",
+            "date": "2011-08-23T07:16:05.324+0000",
+            "id": 36
+        },
+        {
+            "author": "Yonik Seeley",
+            "body": "Looks like that when Solr's synonym parsing was moved to the analysis module, it was also rewritten, introducing escaping bugs.\n\nExamples:\na\\,a is no longer treated as a single token\na\\=>a is no longer treated as a single token\na\\ta is treated as \"ata\" instead of containing a tab character\n\nI didn't do a full review, so I'm not sure if there are other differences in behavior.",
+            "date": "2011-08-26T15:48:39.585+0000",
+            "id": 37
+        },
+        {
+            "author": "Robert Muir",
+            "body": "Do you have a test?\n\nBecause we have tests for this:\n{noformat}\n    String testFile = \n      \"a\\\\=>a => b\\\\=>b\\n\" +\n      \"a\\\\,a => b\\\\,b\";\n...\n    assertAnalyzesTo(analyzer, \"a=>a\",\n        new String[] { \"b=>b\" },\n        new int[] { 1 });\n    \n    assertAnalyzesTo(analyzer, \"a,a\",\n        new String[] { \"b,b\" },\n        new int[] { 1 });\n{noformat}",
+            "date": "2011-08-26T16:00:18.146+0000",
+            "id": 38
+        },
+        {
+            "author": "Yonik Seeley",
+            "body": "I just tested by hand:\nI added a line to synonyms.txt \"a\\,a => b\\,b\", fired up the example server and then executed the following query:\nhttp://localhost:8983/solr/select?q=a,a&debugQuery=true\n\nI then verified that the synonyms were in effect in general, via:\nhttp://localhost:8983/solr/select?q=fooaaa&debugQuery=true",
+            "date": "2011-08-26T18:11:35.680+0000",
+            "id": 39
+        },
+        {
+            "author": "Yonik Seeley",
+            "body": "User error - the field type changes in the example schema tripped up the user (and me too).  The standard tokenizer does not keep \"a,a\" as a single token.",
+            "date": "2011-08-28T16:41:57.175+0000",
+            "id": 40
+        }
+    ],
+    "component": "",
+    "description": "The current synonymsfilter uses a lot of ram and cpu, especially at build time.\n\nI think yesterday I heard about \"huge synonyms files\" three times.\n\nSo, I think we should use an FST-based structure, sharing the inputs and outputs.\nAnd we should be more efficient with the tokenStream api, e.g. using save/restoreState instead of cloneAttributes()\n",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-3233",
+    "issuetypeClassified": "RFE",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Major",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "HuperDuperSynonymsFilter\u2122",
+    "systemSpecification": true,
+    "version": ""
+}

@@ -1,0 +1,59 @@
+{
+    "comments": [
+        {
+            "author": "inonit@inonit.com",
+            "body": "Created attachment 240095\nPatch which creates Java port of jsDriver.pl, fixes some JUnit issues",
+            "date": "20060926T02:52:57",
+            "id": 0
+        },
+        {
+            "author": "inonit@inonit.com",
+            "body": "Comment on attachment 240095\nPatch which creates Java port of jsDriver.pl, fixes some JUnit issues\n\nThe attached patch duplicates the contents of StandardTests.java, possibly for several reasons (bug # 353493, use of CVS keywords, heavily edited file).  The added lines are the \"correct\" lines and all lines after the second package statement must (of course) be deleted.",
+            "date": "20060926T02:58:23",
+            "id": 1
+        },
+        {
+            "author": "inonit@inonit.com",
+            "body": "Building on Attila's work on quality control and testing, I've \nsubmitted a patch for Rhino (filed under bug #353501) that does \nthe following:\n\n*\tBuilds on Attila's JUnit test suite\n\n\t*\tFixes a bug in which scripts that have compile-time errors are \n\t\tnot reported as failures\n\n\t*\tMakes it possible to configure the location of the test library \n\t\tand the timeout interval\n\n\t*\tIntegrates it with the Ant build.xml file\n\n*\tProvides a command-line Java port of jsDriver.pl which can run the \n\ttests in the JavaScript Test Library,\n\n\t*\tProduces an HTML output file that resembles the jsDriver.pl \n\t\toutput file\n\n\t*\tProvides configuration options that are compatible with the \n\t\tjsDriver.pl options, like the ability to include/exclude certain \n\t\ttests and the ability to specify the location of the tests and the \n\t\toutput destination.  Is command-line compatible with jsDriver.pl \n\t\t(at least the options that are documented on the man page), but \n\t\tignores several command-line options (what Java to use, shell \n\t\tpath, etc.).\n\n*\tIntegrates the Java port of jsDriver.pl with the Ant build system\n\nI am open to suggestions and feedback; I submit my patch humbly. :)  \nIn order to finish the implementation, I made some choices that we \ncould revisit.  Here are some I can think of:\n\n*\tI made little effort to target any particular version of the JRE \n\tand did no testing other than on my local setup.  I did refrain from \n\tusing the JDK 1.5 language enhancements, so the code is uglier than \n\tit need be in some places.\n\n*\tI pretty blindly followed conventions from jsDriver.pl without \n\tcritically evaluating them.  It's quite possible that there are \n\timprovements that could be made.\n\n\t*\tFor example, the output HTML links to bug numbers (as jsDriver.pl \n\t\tdoes), but these appear to be mostly SpiderMonkey bugs (at least \n\t\tat a glance).  It's possible that this check should be omitted, or \n\t\tthat Rhino bug numbers should be embedded in a properties file in \n\t\tthe mozilla/js/rhino part of the CVS tree (and then we could flag \n\t\ttest failures with no bug numbers?), or something.\n\n\t*\tI'm not in love with the HTML page itself.\n\n*\tOne area where the Java port (as well as Attila's JUnit suite) \n\tdiffers from the original is that it doesn't launch a separate \n\tinstance of the Java runtime for each test.  This leads to a \n\tsubstantial speed increase (about 1.5 seconds per test on my \n\tworkstation, which adds up fast).  In theory, though, this could \n\tcause differences between the results of jsDriver.pl and the Java \n\tport (for example, if a script modified Java system properties).  \n\tDoes anyone know whether there are any tests like this in practice?\n\nAlthough I left the timeout at 60 seconds in deference to Attila's \noriginal choice, I recommend running with a much lower timeout (e.g., \n1 second) because the tests then run in a manageable length of time, \nand are more stable (some of the tests that eventually fail with \nOutOfMemoryError, etc., won't use up so much if you don't give them \ntime).  It would be better to allow per-test configuration of whether \nto fork a new VM, and timeout, and things like that, but that's \nanother patch. :)\n\nI couldn't get the patch exactly right for various reasons, so I \napologize -- the file StandardTests.java needs to be manually edited \nafter applying the patch, by deleting everything after the second \npackage statement (it'll be clear if you see it).\n\nI'm happy to discuss thoughts.\n\n-- David Caldwell\nhttp://www.inonit.com/\n",
+            "date": "20060926T03:15:06",
+            "id": 2
+        },
+        {
+            "author": "inonit@inonit.com",
+            "body": "Created attachment 240146\nPatch which applies correctly\n\nFixes the issue in which StandardTests.java became corrupted after applying patch and needed to be fixed manually.  I think.",
+            "date": "20060926T13:46:42",
+            "id": 3
+        },
+        {
+            "author": "inonit@inonit.com",
+            "body": "Created attachment 246074\nPatch which handles other failure cases\n\nThis patch fixes some other possible modes of failure of tests so that they are correctly recorded as failures rather than successes.",
+            "date": "20061120T21:34:50",
+            "id": 4
+        },
+        {
+            "author": "inonit@inonit.com",
+            "body": "I have committed the patch (or rather a modified version of it that works and includes proper license headers)",
+            "date": "20070124T22:17:26",
+            "id": 5
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "Adding target milestone of 1.6R6 based on the date this bug was resolved FIXED.",
+            "date": "20070518T15:11:06",
+            "id": 6
+        }
+    ],
+    "component": "Core",
+    "description": "User-Agent:       Mozilla/5.0 (Windows; U; Windows NT 5.1; en-US; rv:1.8.0.7) Gecko/20060909 Firefox/1.5.0.7\nBuild Identifier: Rhino HEAD 20-Sep-2006 11:07AM EDT\n\nAttila Szegedi mentioned in the newsgroup (http://groups.google.com/group/mozilla.dev.tech.js-engine/browse_thread/thread/843e89123a051ce7/#) a push to more quality control on the Rhino codebase.  He has created a JUnit-based suite of tests (in the testsrc/ directory) that essentially emulate jsDriver.pl (read the post for the reasoning; I can confirm that running the tests with jsDriver.pl is amazingly slow, and was difficult to get right on a Cygwin installation because of pathname issues).\n\nI'm creating an enhancement request because I plan to create a test driver that is a Java command-line application and mirrors the behavior of jsDriver.pl.  I'll factor shared implementation code out of StandardTests.java to be used by both, and submit it as a patch, and we can evaluate.  I may try for some basic Ant integration as well.\n\nReproducible: Always",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "353501",
+    "issuetypeClassified": "OTHER",
+    "issuetypeTracker": "BUG",
+    "priority": "-- normal",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "[PATCH] Rhino test driver requires JUnit to run, jsDriver.pl is slow",
+    "systemSpecification": false,
+    "version": "other"
+}

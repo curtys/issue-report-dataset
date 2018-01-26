@@ -1,0 +1,251 @@
+{
+    "comments": [
+        {
+            "author": "mozilla.bugs@cgrand.net",
+            "body": "(In reply to comment #0)\n>      *      js_join\n\nHere goes js_join and js_sort is coming.\n",
+            "date": "20071011T10:32:51",
+            "id": 0
+        },
+        {
+            "author": "mozilla.bugs@cgrand.net",
+            "body": "Created attachment 284447\njs_join",
+            "date": "20071011T10:33:52",
+            "id": 1
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "Created attachment 284456\nTest case results from running with first patch\n\nRegression tests had a few failures (see attached). I don't know if it's related, but you should check the \"denseOnly\" boolean variable before doing the specialized dense code. Then you can just use NativeArray's length property and avoid calling getLengthProperty. \n\nIn addition to undefined, you should also compare against NOT_FOUND, which is a special value meaning the key is not defined.\n\nThen you should be able to accumulate your results in a StringBuilder, which will avoid all the object creation overhead of having partial results in String objects.\n\nThanks!",
+            "date": "20071011T13:00:50",
+            "id": 2
+        },
+        {
+            "author": "mozilla.bugs@cgrand.net",
+            "body": "Created attachment 284474\n2nd attempt\n\nFigured how to run the tests ;-)\n\ndenseOnly wasn't involved: dense being null on large array creation was the cause.\n\nI didn't change the string building yet. StringBuilder is Java 5, is it ok to use it?",
+            "date": "20071011T15:35:49",
+            "id": 3
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "(In reply to comment #4)\n> I didn't change the string building yet. StringBuilder is Java 5, is it ok to\n> use it?\n\nGood catch, thank you. We're continuing to support JDK 1.4 for a while longer, so you're right not to use StringBuilder.\n\n",
+            "date": "20071011T16:44:14",
+            "id": 4
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "I did change to use StringBuffer. Change committed:\n\nChecking in src/org/mozilla/javascript/NativeArray.java;\n/cvsroot/mozilla/js/rhino/src/org/mozilla/javascript/NativeArray.java,v  <--  NativeArray.java\nnew revision: 1.71; previous revision: 1.70\ndone\n",
+            "date": "20071011T17:25:40",
+            "id": 5
+        },
+        {
+            "author": "szegedia@freemail.hu",
+            "body": "Alternatively, we can use retrotranslator. \n\nI can set up our build.xml so that we create both a js.jar for use with JDK 1.5 and above, and an alternative js-14.jar that is js.jar treated with retrotranslator. Retrotranslator operates on a bytecode level, provides a JDK 1.4 replacement for 1.5 core JDK classes and methods, and replaces references to them to references to its private replacements of them.\n\nWe're following this practice with FreeMarker 2.4 as well, and for now it seems to work like charm, see <http://retrotranslator.sourceforge.net/>\n\nWhat do you think? ",
+            "date": "20071011T19:26:31",
+            "id": 6
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "I'd love to be able to use 1.5! Go for it.",
+            "date": "20071012T01:25:05",
+            "id": 7
+        },
+        {
+            "author": "mozilla.bugs@cgrand.net",
+            "body": "Created attachment 284603\njs_sort\n\nA minimal js_sort for denseOnly NativeArrays. (I'd like to investigate whether using Arrays.sort would be faster.)\n\njs_splice is near ready (I'm benchmarking it).",
+            "date": "20071012T10:16:59",
+            "id": 8
+        },
+        {
+            "author": "mozilla.bugs@cgrand.net",
+            "body": "Created attachment 284620\njs_splice\n\nsplice is now 55x faster (according to js-speed tests \"Array (de)construction, splice\") bringing it on par with shift/unshift.\n\nArray Construction, []:16384:0:4.85:0:156:17.442184438303535\nArray Construction, new Array():16384:0:1.41:0:32:5.049442413461974\nArray Construction, push:16384:203:213.2659574468085:187:329:29.35513932835981\nArray Deconstruction, pop:128:219:219.42391304347825:187:312:20.135384466077408\nArray Construction, unshift:128::63375:63375:63375:NaN\nArray Deconstruction, shift:128::61829:61829:61829:NaN\nArray Construction, splice:128::63000:63000:63000:NaN\nArray Deconstruction, splice:128::62375:62375:62375:NaN\nArray Construction, []:32768:0:0.62:0:16:3.0543229837214154\nArray Construction, new Array():32768:0:0.47:0:16:2.687250105835542\nArray Construction, push:32768:203:205.6734693877551:187:250:20.124240658123316\nArray Deconstruction, pop:256:203.5:209.46875:156:234:9.781780189935292\nArray Construction, unshift:256::62641:62641:62641:NaN\nArray Deconstruction, shift:256::63344:63344:63344:NaN\nArray Construction, splice:256::62890:62890:62890:NaN\nArray Deconstruction, splice:256::65640:65640:65640:NaN\nArray Construction, []:65536:0:0.63:0:16:3.1031264781497288\nArray Construction, new Array():65536:0:0.31:0:16:2.1820896295787557\nArray Construction, push:65536::207.95876288659792:187:250:20.186586679945226\nArray Deconstruction, pop:512::211.02105263157895:141:235:10.880373651445652\nArray Construction, unshift:512::63219:63219:63219:NaN\nArray Deconstruction, shift:512::62781:62781:62781:NaN\nArray Construction, splice:512::63297:63297:63297:NaN\nArray Deconstruction, splice:512::64734:64734:64734:NaN\nArray Construction, []:131072:0:0.47:0:16:2.687250105835542\nArray Construction, new Array():131072:0:0.47:0:16:2.687250105835542\nArray Construction, push:131072::215.89247311827958:187:313:27.59665321768573\nArray Deconstruction, pop:1024::217.23655913978496:156:422:27.035563474424137\nArray Construction, unshift:1024::64438:64438:64438:NaN\nArray Deconstruction, shift:1024::66796:66796:66796:NaN\nArray Construction, splice:1024::63360:63360:63360:NaN\nArray Deconstruction, splice:1024::62875:62875:62875:NaN",
+            "date": "20071012T13:24:23",
+            "id": 9
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "Committed with some modifications; it appeared that \"Array Deconstruction, splice\" wasn't going through the dense path. Christophe, if you could review my changes it'd be appreciated...\n\nChecking in src/org/mozilla/javascript/NativeArray.java;\n/cvsroot/mozilla/js/rhino/src/org/mozilla/javascript/NativeArray.java,v  <--  NativeArray.java\nnew revision: 1.72; previous revision: 1.71\ndone\n\nOn my machine I got 754X speedup on splice with these changes.\n\n\"sort\" was only improved by 9%, but that's probably because the bulk of the work was already done on a dense array even before the change. It would be interesting to see if Arrays.sort were faster.",
+            "date": "20071012T20:09:46",
+            "id": 10
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "Created attachment 284666\nPerf test for sort",
+            "date": "20071012T20:11:27",
+            "id": 11
+        },
+        {
+            "author": "mozilla.bugs@cgrand.net",
+            "body": "Created attachment 284747\nMisc changes on js_join and js_splice\n\nAbout js_sort: running your test I get a 2x-3x speed-up (running it directly into shell).",
+            "date": "20071013T10:08:53",
+            "id": 12
+        },
+        {
+            "author": "mozilla.bugs@cgrand.net",
+            "body": "Created attachment 284773\nsort now uses Arrays.sort instead of heapsort, 46% speed-up (compared to my previous js_sort patch)\n\nSo, using Arrays.sort and a Comparator leads to better performance.\nNorris, I measured at last the 9% improvement you previously mentioned (I figure another process skewed my previous runs).\nBut something is worrying me: 1.6R7 seems way faster (regarding Array.sort) than HEAD. Is it a build problem on my side?",
+            "date": "20071013T18:11:20",
+            "id": 13
+        },
+        {
+            "author": "mozilla.bugs@cgrand.net",
+            "body": "Created attachment 285486\njs_reverse for dense arrays\n\njs_reverse, 16x faster",
+            "date": "20071019T18:03:57",
+            "id": 14
+        },
+        {
+            "author": "mozilla.bugs@cgrand.net",
+            "body": "Created attachment 285487\ntest for js_reverse",
+            "date": "20071019T18:09:33",
+            "id": 15
+        },
+        {
+            "author": "mozilla.bugs@cgrand.net",
+            "body": "I had spare time to check-out 1.6R7 from the CVS and run Norris' perf test for sort and now I'm sure: there is a 2x slowdown between 1.6R7 and HEAD. I profiled several runs but to no avail (I think it's not specific to js_sort).\n\nIf you apply my second patch for js_sort you'll get an overall 2x faster sort which will only bring back HEAD on par with 1.6R7.\n\nI'm still ready to work on the remaining methods. I'll take indexOfHelper (and iterativeMethod next) if nobody already took it.",
+            "date": "20071020T13:48:34",
+            "id": 16
+        },
+        {
+            "author": "mozilla.bugs@cgrand.net",
+            "body": "The 2x slowdown appears with rev 1.321 of Interpreter.java (when adding support for generators). Is the interpretLoop method now too large for some HotSpot optimisations to happen ?",
+            "date": "20071022T10:24:39",
+            "id": 17
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "Thanks for tracking this down. What's the benchmark you're running to see the slowdown?",
+            "date": "20071022T15:32:17",
+            "id": 18
+        },
+        {
+            "author": "mozilla.bugs@cgrand.net",
+            "body": "Created attachment 285737\nBenchmark with which I got the slowdown\n\nIt's the benchmark you provided to me (I only reduced the number of iterations to make hunting the slowdown practical). On my machine it takes 5s with r1.320 and 10s with r1.321.",
+            "date": "20071022T15:44:38",
+            "id": 19
+        },
+        {
+            "author": "szegedia@freemail.hu",
+            "body": "(In reply to comment #18)\n> The 2x slowdown appears with rev 1.321 of Interpreter.java (when adding support\n> for generators). Is the interpretLoop method now too large for some HotSpot\n> optimisations to happen ?\n> \n\nThis is really weird. There's nothing apparent here that'd trigger this sort of a slowdown. I don't think it's a HotSpot deficiency. It rather sounds like a CPU cache overflow. What CPU and OS are you testing on? Also, are you just switching Interpreter.java between runs, or moving the date timestamp of your whole local CVS copy to match those revisions?",
+            "date": "20071022T16:02:59",
+            "id": 20
+        },
+        {
+            "author": "mozilla.bugs@cgrand.net",
+            "body": "Pentium M 1.73GHz / XP SP 2 / Sun JDK 1.6\nI also thought about bad cache misses.\n\nWith the CVS HEAD I've got the slowdown. Bringing back my whole working CVS copy down to 2007-06-06 I've got the slowdown. One day earlier, hallelujah, \"full\" speed. So I diff'd the two versions til I noticed that commenting out the three new cases in interpretLoop does the trick (or replacing Interpreter.java as a whole).\n\nFYI Intepreter.class is (1.320) 64372 bytes long and 66682 bytes long in 1.321... there's 64K in between...\n\n",
+            "date": "20071022T17:00:41",
+            "id": 21
+        },
+        {
+            "author": "szegedia@freemail.hu",
+            "body": "(In reply to comment #22)\n> Pentium M 1.73GHz / XP SP 2 / Sun JDK 1.6\n> I also thought about bad cache misses.\n\nAny idea what's your CPU L1 and L2 cache size?\n\n> With the CVS HEAD I've got the slowdown. Bringing back my whole working CVS\n> copy down to 2007-06-06 I've got the slowdown. One day earlier, hallelujah,\n> \"full\" speed. So I diff'd the two versions til I noticed that commenting out\n> the three new cases in interpretLoop does the trick (or replacing\n> Interpreter.java as a whole).\n> \n> FYI Intepreter.class is (1.320) 64372 bytes long and 66682 bytes long in\n> 1.321... there's 64K in between...\n\nYep, although that shouldn't matter, really. There's a limitation that a single method can't exceed 64K in bytecode, but that's all... Okay, I'll try to run the tests on hardware available to me: a MacBook Pro with Intel Core Duo and an iMac G5 -- two radically different architectures. Will be curious what'll happen.",
+            "date": "20071022T17:11:07",
+            "id": 22
+        },
+        {
+            "author": "mozilla.bugs@cgrand.net",
+            "body": "L1: 32kB/32kB (instruction/data)\nL2: 2MB\n\nI just tried to take Interpreter.java 1.321 and to extract some methods from somes cases of the big switch in interpretLoop... And I get the good perfs.\n\n",
+            "date": "20071022T17:30:10",
+            "id": 23
+        },
+        {
+            "author": "mozilla.bugs@cgrand.net",
+            "body": "I just ran the test on AMD Turion X2 TL-56 (L1 : 2x128k; L2 : 2x512k) / Vista + JRE 1.6:\nwith 1.7pre1 and 1.6R7 from ftp.mozilla.org: 1.7 is 4x slower (14s vs 3.5s) than 1.6r7!",
+            "date": "20071022T18:43:19",
+            "id": 24
+        },
+        {
+            "author": "mozilla.bugs@cgrand.net",
+            "body": "Running the jvm in interpreter mode (java -Xint) results in 1.7pre1 being faster than 1.6R7. It may be a CPU instruction cache problem: is the jitted code inside the loop too large? (\"keep your loops tight\" :-))",
+            "date": "20071023T12:45:48",
+            "id": 25
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "I just checked in code for concat. 54X speed improvement.\n\nAs far as the interpreter speed issue, sounds like it would be worth factoring some code out of the interpreter loop, perhaps into ScriptRuntime. Christophe, did you have some suggested code to move elsewhere?",
+            "date": "20071023T21:49:12",
+            "id": 26
+        },
+        {
+            "author": "mozilla.bugs@cgrand.net",
+            "body": "Created attachment 285969\nDense array optimization for indexOfHelper. 4x improvement.\n\nI got a 4x improvement with this perf test:\n\nvar a = [];\nfor (var i=0; i < 10000; i++) {\n  a[i] = i;\n}\nvar d = new Date();\nfor (var i=0; i < 1000; i++) {\n  a.indexOf(9999);\n  a.lastIndexOf(0);\n}\nprint((new Date()) - d);",
+            "date": "20071024T05:52:50",
+            "id": 27
+        },
+        {
+            "author": "mozilla.bugs@cgrand.net",
+            "body": "Optimizing iterativeMethod for dense arrays seems to lead no gain: the iteration cost is negligible compared to the function invocations cost.\nFurthermore iterativeMethod suffers from the interpretLoop slowdown. It may be interesting to give another try at iterativeMethod once interpretLoop fixed.\n\nFYI I used this test:\n\nvar a = [];\nfor (var i=0; i < 10000; i++) {\n  a[i] = i;\n}\nfunction allTrue() {\n  return true;\n}\nfunction allFalse() {\n  return false;\n}\n\nvar d = new Date();\nfor (var i=0; i < 100; i++) {\n  a.every(allTrue);\n  a.some(allFalse);\n  a.map(allTrue);\n  a.filter(allTrue);\n  a.filter(allFalse);\n}\nprint((new Date()) - d);\n\n",
+            "date": "20071024T06:57:40",
+            "id": 28
+        },
+        {
+            "author": "mozilla.bugs@cgrand.net",
+            "body": "Concerning the interpreter speed issue, I'll give it a look to see what makes much sense to me to factor out -- during my experiments I extracted code rather randomly.",
+            "date": "20071024T07:07:42",
+            "id": 29
+        },
+        {
+            "author": "szegedia@freemail.hu",
+            "body": "(In reply to comment #29)\n> Optimizing iterativeMethod for dense arrays seems to lead no gain: the\n> iteration cost is negligible compared to the function invocations cost.\n> Furthermore iterativeMethod suffers from the interpretLoop slowdown. It may be\n> interesting to give another try at iterativeMethod once interpretLoop fixed.\n\nOne thing that struck me with iterativeMethod is that we might want to replace the switch/case in it with a strategy pattern: declare an interface for bodies of respective case statements, and create a new object of an anonymous inner class implementing that interface, then pass it to the iterator loop. That way, we allow the HotSpot to perform optimizations -- it might detect the call site is mostly monomorphic (i.e. code mostly runs foreach) and inline it -- even for a single iteration over a fairly big array. It can do none of these with a switch statement. ",
+            "date": "20071024T09:24:05",
+            "id": 30
+        },
+        {
+            "author": "mozilla.bugs@cgrand.net",
+            "body": "Created attachment 286000\nstaged interpretLoop\n\nOkay: here is a quick and dirty hack of interpretLoop. It leads to 4x speed improvement on the sort perf test and a 2x on iterativeMethod test.\n\n(So, with my patch for using Arrays.sort and Comparator, we get an overall 8x on sort (4x compared to 1.6r7).)\n\nI have extracted in interpretLoopCore the handling of all the simple opcodes (ie: no control flow opcodes, no register loading opcodes).\n\nBTW what I mean by \"dirty\":\n\tprivate static int interpretLoopCore(Context cx, final CallFrame frame, final Object DBL_MRK, final Object undefined, final boolean instructionCounting, final int INVOCATION_COST, String stringReg, int indexReg, Object[] stack, double[] sDbl, Object[] vars, double[] varDbls, byte[] iCode, int stackTop, int op)\n\nThere's some obvious clean up to do :-)\n\nIs it okay with you to continue in this way?",
+            "date": "20071024T12:20:36",
+            "id": 31
+        },
+        {
+            "author": "mozilla.bugs@cgrand.net",
+            "body": "(In reply to comment #31)\n> One thing that struck me with iterativeMethod is that we might want to replace\n> the switch/case in it with a strategy pattern: declare an interface for bodies\n> of respective case statements, and create a new object of an anonymous inner\n> class implementing that interface, then pass it to the iterator loop. That way,\n> we allow the HotSpot to perform optimizations -- it might detect the call site\n> is mostly monomorphic (i.e. code mostly runs foreach) and inline it -- even for\n> a single iteration over a fairly big array. It can do none of these with a\n> switch statement. \n\nI thought of it but didn't give it a try because I benchmarked a (faulty) iterativeMethod without anything inside the loop except the method call and there was no difference. It was before I modified Interpreter.java. Must retry...",
+            "date": "20071024T13:28:19",
+            "id": 32
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "Thanks...\n\nHere are my quick numbers on the iterativeMethod timing test (see comment #29):\n1.6R7: 5831\n1.7R1pre: 15668\n1.7R1pre with patch from comment #32: 6713\n\nI'm concerned about the call overhead for invoking interpretLoopCore in the inner loop. I tried adding looping in interpretLoopCore, and that got the numbers down into the 6500's, but still well above the 5800's from 1.6R7. \n\nI'll look at it some more.\n",
+            "date": "20071024T15:50:11",
+            "id": 33
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "As an additional datapoint, I ran a comparison between the current sources and 1.6R7, but with -Xint option that disables any compilation/jitting in the JVM. The two timings are very close, so Christophe is right that it has to do with something not working for us in compilation with the JVM.\n\n[rhino] java -Xint -jar build/rhino1_7R1pre/js.jar -opt -1 iterativeMethod.js 79574\n[rhino] java -Xint -jar /home/norris/rhino/mozilla/js/rhino/build/rhino1_6R7/js.jar -opt -1 iterativeMethod.js\n78910\n",
+            "date": "20071029T17:40:33",
+            "id": 34
+        },
+        {
+            "author": "mozilla.bugs@cgrand.net",
+            "body": "Created attachment 290672\nRhino 1.7 -XX:+PrintCompilation trace",
+            "date": "20071129T10:44:05",
+            "id": 35
+        },
+        {
+            "author": "mozilla.bugs@cgrand.net",
+            "body": "Created attachment 290673\nRhino 1.6R7 -XX:+PrintCompilation trace",
+            "date": "20071129T10:44:55",
+            "id": 36
+        },
+        {
+            "author": "mozilla.bugs@cgrand.net",
+            "body": "I ran the tests on the sun server jvm with -XX:+PrintCompilation to trace the jitting.\n\nNow it's clear that it's not a cache problem: interpretLoop don't get jitted anymore.",
+            "date": "20071129T10:49:23",
+            "id": 37
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "Thanks--using -XX:+PrintCompilation is an easy way to see the problem. Using that approach, I played around with pulling pieces out of interpretLoop until it was jitted again. I've committed those changes:\n\nChecking in Interpreter.java;\n/cvsroot/mozilla/js/rhino/src/org/mozilla/javascript/Interpreter.java,v  <--  Interpreter.java\nnew revision: 1.340; previous revision: 1.339\ndone\n\nI'm marking this bug FIXED now, as all the original array methods have been\noptimized or at least examined and determined that a dense array specialization\nlikely wouldn't make much difference.",
+            "date": "20071203T13:53:38",
+            "id": 38
+        }
+    ],
+    "component": "Core",
+    "description": "I've been looking a little at John Resig's JavaScript speed tests (http://ejohn.org/apps/speed/). Rhino could do better on a number of those tests. Yesterday I checked in a change to Rhino that improves the performance of Array.prototype.shift on those tests by a factor of 755! \n\nThe change I made is relatively simple. Previously all array operations were implemented in terms of abstract getters and setters that looked up each element in either a dense Object[] array or in the normal JavaScript hashtables. I changed the previous dense array storage to grow for dense allocation patterns and then I added specialized implementations of some of the Array built-in functions, including shift. Here's the new shift code:\n\n    private static Object js_shift(Context cx, Scriptable thisObj,\n                                   Object[] args)\n    {\n        if (thisObj instanceof NativeArray) {\n            NativeArray na = (NativeArray) thisObj;\n            if (na.denseOnly && na.length > 0) {\n                synchronized (na) {\n                    na.length--;\n                    Object result = na.dense[0];\n                    System.arraycopy(na.dense, 1, na.dense, 0, (int)na.length);\n                    na.dense[(int)na.length] = NOT_FOUND;\n                    return result;\n                }\n            }\n        }\n        // pre-existing code that handles elements in either dense or hashtable...\n\nSo now for most array usages the shift is performed using System.arraycopy as it should be rather than a loop over a set of gets and puts. \n\nThat's great, you say, but why are you posting? I'm looking for volunteers to convert these remaining methods of NativeArray:\n\n     *      toStringHelper\n     *      js_join\n     *      js_reverse\n     *      js_sort\n     *      js_splice\n     *      js_concat\n     *      indexOfHelper\n     *      iterativeMethod",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "399348",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "BUG",
+    "priority": "-- normal",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "Improve performance of NativeArray methods using dense representation",
+    "systemSpecification": true,
+    "version": "1.7R1"
+}

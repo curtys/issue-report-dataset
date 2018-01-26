@@ -1,0 +1,131 @@
+{
+    "comments": [
+        {
+            "author": "Benjamin Chevillon",
+            "body": "First mail to httpclient-user list\nDate: 15 juin 2005 12:08\nObjet: Abort HttpMethod hangs due to bad proxy config\nRelated to File MethodAbortTest.java and MethodAbortTest.log\n--------------------------------------------------------------\n\nHello,\n\nI use HttpClient in my application to download description file. I\nwork on ensuring that if the application gets closed, everything stop\nas fast as possible.\n\nI'm getting problem with this: as many companies network, http request\nget out through an http proxy. If I configure correctly the proxy\nsettings, and if I try to abort a GetMethod, the connection is\nimmediately stopped, no problem.\nNow if I don't configure the proxy settings, the abort method does not\nwork, and my application hangs until timeout.\nAs my application will be deployed on many networks on which I cannot\nbe sure of the correct settings, I cannot accept that the application\nhangs until timeout.\n\nFor better understanding, here is the unit case I'm using to test it\n(source code at the end of this email):\nThere is two thread:\n- The main thread that starts the second one, sleeps for 3 seconds\nthen aborts the second one.\n- The GetMethod thread that execute the GetMethod on a dummy site\n(http://test.dyndns.org does not work for me) that do not reply and\ntimeouts in 10 seconds.\n\nPreliminary for testing:\nYou must be on a network with a proxy. Configure the proxy settings at\nthe beginning of the class.\n\nWhat do the test:\nIt just gets http://test.dyndns.org\n\nExpected result:\n- http://test.dyndns.org does not reply correctly\n- so the execute wait for 10 seconds,\n- and the main method abort the GetMethod after only 3 seconds\n- So the application stops just after the abort and don't wait for 10 seconds.\n\n1st test : with proxy settings.\n- uncomment the line \"\nclient.getHostConfiguration().setProxy(PROXY_HOST, PROXY_PORT);\"\n- Compile and start the class\n\nResult:\n- The application stops correctly in 3 seconds (just after the abort).\n\n2nd test : without proxy settings.\n- comment the line \"\nclient.getHostConfiguration().setProxy(PROXY_HOST, PROXY_PORT);\"\n- Compile and start the class\n\nResult:\n- the abort method is executed in 3 seconds\n- BUT the execute method still hangs until the end of the 10 seconds timeout.\n\nDo anybody can produce the same type of acting?\nSee below my test class and logs.\n\nThanks in advance\n\nBenjamin Chevillon\nFrance T\u00e9l\u00e9com R&D",
+            "date": "2005-06-16T18:20:37.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Benjamin Chevillon",
+            "body": "Created an attachment (id=15430)\nFirst test case: test if HttpMethod thread is aborted immediately or not\n\nSee HttpMethod logs for results",
+            "date": "2005-06-16T18:29:52.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Benjamin Chevillon",
+            "body": "Created an attachment (id=15431)\nFirst test case result: HttpMethod thread with correct proxy settings aborts\nimmediately\n",
+            "date": "2005-06-16T18:31:41.000+0000",
+            "id": 2
+        },
+        {
+            "author": "Benjamin Chevillon",
+            "body": "Created an attachment (id=15432)\nFirst test case result: HttpMethod thread without correct proxy settings aborts\ndoes not do anything and thread die at timeout\n",
+            "date": "2005-06-16T18:35:16.000+0000",
+            "id": 3
+        },
+        {
+            "author": "Benjamin Chevillon",
+            "body": "Second mail reply from Oleg\nOleg Kalnichevski \t\nDe: Oleg Kalnichevski <olegk@apache.org>\nDate: 15 juin 2005 15:06\nObjet: Re: Abort HttpMethod hangs due to bad proxy config\n-----------------------------------------------------------\n\nBenjamin,\n\nJava (version 1.2 and below) does not seem to offer any other means to\ninterrupt a blocking I/O operation except for Socket#close. All\nHttpMethod#abort can do is calling Connection#close, which in its turn\nsimply closes in sequence the output stream, the input stream and the\nsocket itself\n\nhttp://jakarta.apache.org/commons/httpclient/3.0/xref/org/apache/commons/httpclient/HttpMethodBase.html#1007\nhttp://jakarta.apache.org/commons/httpclient/3.0/xref/org/apache/commons/httpclient/HttpConnection.html#1141\n\nApparently the socket was blocked in the connect method while trying to\nestablish the connection with the target host (which in your case was\nthe proxy):\n\n> org.apache.commons.httpclient.ConnectTimeoutException: The host did\n> not accept the connection within timeout of 10000 ms\n>        at\n>\norg.apache.commons.httpclient.protocol.ReflectionSocketFactory.createSocket(ReflectionSocketFactory.java:154)\n>        at\n>\norg.apache.commons.httpclient.protocol.DefaultProtocolSocketFactory.createSocket(DefaultProtocolSocketFactory.java:124)\n\nSo, technically speaking from the JRE perspective the socket was still\nclosed when HttpMethod#abort was attempted, hence Socket#close appears\nto have made no effect on the blocked socket.\n\nI am afraid there's not really much we can do here. The only resort\ncould possibly try would be calling Socket#shutdownInput through\nreflection, but I suspect it will have no effect on sockets blocked\nin the connect method either:\n\nhttp://java.sun.com/j2se/1.4.2/docs/api/java/net/Socket.html#shutdownInput()\n\nOleg",
+            "date": "2005-06-16T18:36:46.000+0000",
+            "id": 4
+        },
+        {
+            "author": "Benjamin Chevillon",
+            "body": "Third mail reply from Benjamin\nDate: 15 juin 2005 18:01\nObjet: Re: Abort HttpMethod hangs due to bad proxy config\n-----------------------------------------------------------\n\nThank you for your precise and quick reply.\nEncourage by this precision, I downloaded the source code and traced it.\nMaybe this email should be posted to dev mailing list, except if this\nquestion has already been fixed.\n\nIndeed, the client.executeMethod hangs in\norg.apache.commons.httpclient.protocol.ReflectionSocketFactory where\nthe socket is opened. It hangs on the line 139 in the trunk CVS\n138 SOCKETBIND_METHOD.invoke(socket, new Object[] { localaddr});\n139 SOCKETCONNECT_METHOD.invoke(socket, new Object[] { remoteaddr, new\nInteger(timeout)});\nThese 2 lines are similar to\n       //  socket.bind(localaddr);\n       //  socket.connect(remoteaddr, timeout);\n\nBut I was puzzled when you say that we cannot do much against it,\nbecause, we can cancel some similar problem on web browser and it\ntakes effect immediately.\n\nActually, the socket.connect() method can be canceled with\nsocket.close(): see the class attached: a socket is opened with a 10\nseconds timeout and a second thread close it only 5 seconds later. It\nworks. (sorry for the quick & dirty style of the class)\n\nIt does not work on HttpClient, because the abort() method close only\nthe InputStream which is not already created at this moment (since the\nsocket hangs on opening).\nThere are 2 problems:\n- the socket is open within the same call of its creation (so we don't\nhave a pointer to it, to close it).\n- the abort() method has no way to call the close() method deeply.\n\nThe chain of call is here:\nHttpClient.executeMethod() ->...-> HttpConnection.open() ->\nDefaultSocketFactory.createSocket() ->\nReflectionSocketFactory.createSocket()\n\nThe public class closest to Socket is HttpConnection. A socket is\ncreated with the open() method. It calls\nReflectionSocketFactory.createSocket() but inside this method the\nsocket.bind(..) and socket.connect(..) methods are not separated and\nhangs. Thus, the HttpConnection.open() method never returns and the\nHttpConnection cannot close() the socket (since it socket variable is\nnull).\n\nTo resolve it, there should be 2 calls to ReflectionSocketFactory in\nHttpConnection:\n- One to create the socket (until bind). This method always return\nimmediately and this way, we could have a variable that points to the\nSocket instance.\n- A second call to connect the socket.\nIf the second call hangs, then we could call HttpConnection.close()\nsince the socket variable is not null.\n\nFinally, there should be a way to for the HttpClient to close the\nHttpConnection which concerns it.\n\nWhat do you think about this? Tell me if I am wrong.\n\nThanks\n\nBenjamin\n",
+            "date": "2005-06-16T18:37:37.000+0000",
+            "id": 5
+        },
+        {
+            "author": "Benjamin Chevillon",
+            "body": "Created an attachment (id=15433)\nSecond test case: It is possible to cancel immediately even if the socket\ncannot be connected\n",
+            "date": "2005-06-16T18:39:42.000+0000",
+            "id": 6
+        },
+        {
+            "author": "Benjamin Chevillon",
+            "body": "Created an attachment (id=15434)\nSecond test case results: socket.close() stops immediately\n",
+            "date": "2005-06-16T18:40:12.000+0000",
+            "id": 7
+        },
+        {
+            "author": "Benjamin Chevillon",
+            "body": "Fourth Mail reply from Oleg : decision to file a bug\nDate: 15 juin 2005 18:41\nObjet: Re: Abort HttpMethod hangs due to bad proxy config\n-----------------------------------------------------------------\n\nBenjamin,\n\nYour analysis is correct. Sockets blocked waiting in the connect()\nmethod can indeed be interrupted by calling close() on them. My\nassumption was wrong. The trouble is that the changes you are suggesting\ncannot be implemented without breaking the existing API. We cannot\nchange ProtocolSocketFactory interface so late in the release process.\nBesides, ability to create unconnected sockets has been introduced in\nJava 1.4 and cannot be easily simulated in older versions, whereas\nHttpClient must stay Java 1.2 compatible until next major release (4.0\nthat is). Please file a bug / feature request in Bugzilla and we'll get\nthis feature incorporated in the next major release of HttpClient. As of\nversion 4.0 HttpClient will require Java 1.4 or above.\n\nOleg\n",
+            "date": "2005-06-16T18:41:23.000+0000",
+            "id": 8
+        },
+        {
+            "author": "Benjamin Chevillon",
+            "body": "Resume of action to take and what's wrong:\n\nPb reason:\nIt does not work on HttpClient, because the abort() method close only\nthe InputStream which is not already created at this moment (since the\nsocket hangs on opening).\nActually, the socket.connect() method can be canceled with\nsocket.close(): see the class attached\n\nThere are 2 problems:\n- the socket is open within the same call of its creation (so we don't\nhave a pointer to it, to close it).\n- the abort() method has no way to call the close() method deeply.\n\nSolution:\nTo resolve it, there should be 2 calls to ReflectionSocketFactory in\nHttpConnection:\n- One to create the socket (until bind). This method always return\nimmediately and this way, we could have a variable that points to the\nSocket instance.\n- A second call to connect the socket.\nIf the second call hangs, then we could call HttpConnection.close()\nsince the socket variable is not null.\n\nFinally, there should be a way to for the HttpClient to close the\nHttpConnection which concerns it.\n\nTroubles:\nThe trouble is that the changes you are suggesting cannot be implemented without\nbreaking the existing API.\nBesides, ability to create unconnected sockets has been introduced in\nJava 1.4 and cannot be easily simulated in older versions, whereas\nHttpClient must stay Java 1.2 compatible until next major release (4.0\nthat is).",
+            "date": "2005-06-16T18:44:20.000+0000",
+            "id": 9
+        },
+        {
+            "author": "Ortwin Gl\u00fcck",
+            "body": "What happens if you just call Thread.interrupt()? A blocking call should\nimmediately return with an InterruptedException IMHO.",
+            "date": "2005-06-17T19:20:59.000+0000",
+            "id": 10
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Right. But it depends on what you want to achieve. There may be cases where one\nmay want to unblock the socket but not necessarily kill the running thread\n\nOleg",
+            "date": "2005-06-17T20:25:24.000+0000",
+            "id": 11
+        },
+        {
+            "author": "Benjamin Chevillon",
+            "body": "Anyway, I tried Thread.interrupt() and it does not interrupt:\nhttp://java.sun.com/j2se/1.4.2/docs/api/java/lang/Thread.html#interrupt()\nI don't think the thread is on any of the states listed:\nno wait or sleep\nI don't think Socket creation is an InterruptibleChannel (since it is not\nalready connected) nor Selector (I don't understand quite well, but...). These\nstates seems to be linked to java.nio package which is not the case of\njava.net.Socket.",
+            "date": "2005-06-18T00:19:15.000+0000",
+            "id": 12
+        },
+        {
+            "author": "Rob Manning",
+            "body": "If memory serves me correctly, you must close the socket that a thread is\nblocked reading on in order to get that thread to continue processing beyond the\ncall to read.",
+            "date": "2005-06-19T10:08:38.000+0000",
+            "id": 13
+        },
+        {
+            "author": "Benjamin Chevillon",
+            "body": "That's correct, but as I said it on comment #10, you cannot close the socket\nsince there is no variable pointing to it. There is no variable because the\ncreation and the connection of the socket are in the same function.\nThe workaround is to split the creation and the connection (ie split bind() and\nconnect()) of the Socket. This way, a pointer to the Socket is returned and you\ncan call close() on this socket if the thread is blocked, as you said it. As\nOleg said, these changes involve modifying the API, so it marked for release 4.0.\n\nBy the way. I don't know how important this bug has been marked (I see P2, but I\ndon't know what it means), but I think it is very important because this bug\nmeans that you cannot control the behaviour of the client in a real time\nenvironnement (for example you cannot be sure that the client will be closed\nimmediately).\n\nBenjamin",
+            "date": "2005-06-20T17:23:37.000+0000",
+            "id": 14
+        },
+        {
+            "author": "Roland Weber",
+            "body": "Here is a take on a new socket factory interface for HttpClient 4.x that supports unconnected sockets. It has a new method for returning an unconnected socket, and the old method gets an (optional) unconnected socket as an additional argument. That way, the timeout and local address binding stuff remains encapsulated in the factory.\nThis patch addresses mainly the new interface. Implementations are modified, but not necessarily pretty and definitely not tested. Since this issue is likely to affect HTTPCLIENT-602, I'll commit the patch next week unless somebody complains. We can straighten out the details later.\nConsidering the original problem report, this patch will not solve the issue completely. We can support unconnected sockets all right, but where does the abort() method go now that HttpMethod is gone? ;-)\n\ncheers,\n  Roland\n",
+            "date": "2006-12-27T17:25:32.000+0000",
+            "id": 15
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Patch look good. It, however, breaks some test cases. TestSSLSocketFactory no longer compiles for me.\n\nCan this method be given a better name? connectSocket maybe?\n\n    Socket createSocket(\n        Socket sock,\n        String host, \n        int port, \n        InetAddress localAddress, \n        int localPort,\n        HttpParams params\n    ) throws IOException, UnknownHostException, ConnectTimeoutException;\n\n> Considering the original problem report, this patch will not solve the issue completely. We can support \n> unconnected sockets all right, but where does the abort() method go now that HttpMethod is gone? ;-) \n\nImplementing abort() method should be double. Connection release may prove a much more serious problem in my opinion. I was thinking about something along these lines:\n\ninterface Request extends HttpRequest {\n \n void setConnection(HttpConnection conn);\n\n void abort() throws IOException;\n\n}\n\n\ninterface Response extends HttpResponse {\n \n void setConnection(HttpConnection conn);\n\n void abort() throws IOException;\n\n void releaseConnection();\n\n}\n\nBetter interface names are welcome.\n\nOleg\n",
+            "date": "2006-12-27T20:09:37.000+0000",
+            "id": 16
+        },
+        {
+            "author": "Roland Weber",
+            "body": "Hi Oleg,\n\nI had forgotten that there are test cases ;-( Will fix them before checking in.\nI had the method called connectSocket, then realized that all other methods in the socket factory were called createSocket. I'll change it back (tomorrow).\n\nMy thoughts for abort() were with the HttpClient:\n\ninterface HttpClient {\n  void abort(HttpRequest request)\n}\n\nand internally, the HttpClient keeps a map from requests to allocated connections (and other resources).\nShould work for connection release as well, and avoids setting the connection on request and response.\nThe response might need a link back to the client if we want to have a release method there.\n\ncheers,\n  Roland\n",
+            "date": "2006-12-27T20:59:36.000+0000",
+            "id": 17
+        },
+        {
+            "author": "Roland Weber",
+            "body": "patch committed with modifications:\n- createSocket renamed to connectSocket\n- test case fixed\n\nMarking this issue as resolved. Additional work to make use of the unconnected sockets will be performed has part of other issues.",
+            "date": "2006-12-28T10:08:42.000+0000",
+            "id": 18
+        }
+    ],
+    "component": "HttpClient (classic)",
+    "description": "Overview description:\nIf Proxy settings are incorrect or host does not reply, the\nHttpClient.executeMethod() hangs, and HttpMethod.abort() does not stop it. Thus,\nyou cannot assert that the entire application will stop immediately on demand.\n\nExpected Results:\nDuring a HttpMethod.executeMethod(), HttpMethod.abort() should cancel\nimmediately the executeMethod().\n\nActual Results:\nIf HttpMethod.executeMethod() freezes because of Proxy bad settings or not\nresponding hostname (in fact impossible to open the socket), the abort() method\ndoes not do anything.\n\nPlatform:\nI tested it on Windows XP and Linux Debian with HttpClient 3.0 RC2 (but if you\nlook further I point the problem and the source code of the nightly build is\nidentical).\n\nSee comments for the dialogue about the problem, and 2 Test cases. The solution\nis described at the end, but it may implies a change in the API and works only\nsince Java 1.4.",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "HTTPCLIENT-475",
+    "issuetypeClassified": "RFE",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Minor",
+    "product": "HTTPCLIENT",
+    "project": "HTTPCLIENT",
+    "summary": "Provide support for unconnected sockets",
+    "systemSpecification": true,
+    "version": ""
+}

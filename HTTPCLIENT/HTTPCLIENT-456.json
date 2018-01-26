@@ -1,0 +1,83 @@
+{
+    "comments": [
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Jeff,\nCan you provide a JUnit test case to reproduce the bug?\n\nOleg",
+            "date": "2005-05-09T06:18:31.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Jeff Hougentogler",
+            "body": "Created an attachment (id=14984)\nJUnit test case to reproduce HTTPCLIENT-456.\n\nChange line 40 to reflect the IP address and port number of your http proxy.\nYou will see no errors in the test if the bug is reproduced. Additional\ninformation is printed to System.out during the test to confirm the presence of\nthe bug.",
+            "date": "2005-05-11T03:23:07.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Created an attachment (id=14988)\nPatch (take 1)\n\nJeff, could you please test the patch against SVN trunk in your environment and\nlet me know if it fixes the problem?\n\nOleg",
+            "date": "2005-05-11T04:57:15.000+0000",
+            "id": 2
+        },
+        {
+            "author": "Jeff Hougentogler",
+            "body": "Line 381 in HttpClient.java is still causing a problem (after applying the patch\nagainst the SVN trunk):\nhostconfig = new HostConfiguration(defhostconfig);\n\nIf you re-run the JUnit test case in the attachments, it will come back with a\nconnection timeout on the executeMethod() call that is using a HostConfiguration\nwith a proxy set. This is because of line 381 making a copy of a default\nHostConfiguration object with no proxy information set.\n",
+            "date": "2005-05-11T21:55:49.000+0000",
+            "id": 3
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Created an attachment (id=14997)\nPatch (take2)\n\nSame procedure. Could you please test the patch against the SVN trunk in your\nenvironment and let me know if the problem still persists?\n\nOleg",
+            "date": "2005-05-11T23:31:12.000+0000",
+            "id": 4
+        },
+        {
+            "author": "Jeff Hougentogler",
+            "body": "Now it works...excellent!\n\n",
+            "date": "2005-05-12T03:47:22.000+0000",
+            "id": 5
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Folks, please review. I'll commit the patch in a few days unless someone complains\n\nOleg",
+            "date": "2005-05-12T04:22:59.000+0000",
+            "id": 6
+        },
+        {
+            "author": "Ortwin Gl\u00fcck",
+            "body": "Ran the test suite. Reviewd the code. Looks good to me.",
+            "date": "2005-05-12T16:56:23.000+0000",
+            "id": 7
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Patch committed.\n\nOleg",
+            "date": "2005-05-13T02:07:35.000+0000",
+            "id": 8
+        },
+        {
+            "author": "Tommy Menheere",
+            "body": "The patches do not solve the problem. I tried with the most recent nightly build\nof HttpClient. No luck. The process of getting from an URI to a HttpHost loses\nthe credentials.\n\nI've tried patching it myself, but this patch has a lot of impact.\n\n",
+            "date": "2006-03-21T21:37:58.000+0000",
+            "id": 9
+        },
+        {
+            "author": "Tommy Menheere",
+            "body": "wrong bug... sorry",
+            "date": "2006-03-21T21:38:54.000+0000",
+            "id": 10
+        }
+    ],
+    "component": "HttpClient (classic)",
+    "description": "This bug most likely occurs on all patforms and OS's, but I have only tested it\non WinXP.\n\nThe HttpClient.executeMethod(HostConfiguration,HttpMethod,HttpState) will\nreceive and throw an IllegalArgumentException stating that \"host parameter is\nnull\" when a  HostConfiguration object is passed in that ONLY has a proxy set\n(via HostConfiguration.setProxy(String, int)). Details to reproduce follow--the\nbug can be easily reproduced by using the Apache Axis 1.2 CommonsHTTPSender\nclass (with JVM system props http.proxyHost, http.proxyPort set):\n\nThere is a bug in the Apache Commons HTTP Client 3.0rc2 that does not set the\nhostname property\nin the <code>HostConfiguration</code> object if the following two steps\nare performed:<br>\n1. You call\n<code>HttpClient.executeMethod(HostConfiguration,HttpMethod,HttpState)</code>\nwith a <code>HostConfiguration</code> object and an <code>HttpMethod</code> object\n(created using the HttpMethod(String uri) constructor).This method \nis called in this exact way in the Apache Axis 1.2 client\n(CommonsHTTPSender.java lines 132 and 186).<br>\n2. That <code>HostConfiguration</code> object only has a proxy set (using\nsetProxy(String, int)). This method \nis called in this exact way in the Apache Axis 1.2 client\n(CommonsHTTPSender.java line 389).<br>\n\nApache Axis 1.2rc3 CommonsHTTPSender.java did not expose this bug in Commons\nHTTP Client 3.0rc2 because\nit set the <code>HostConfiguration</code> in a different manner, as follows:<br>\n1. Call <code>HttpClient.setHostConfiguration(HostConfiguration)</code> first.\nAgain,\nThe <code>HostConfiguration</code> object must only have a proxy set and no host\nname.<br>\n2. Then call <code>HttpClient.executeMethod(HttpMethod)</code>.<br>\n\nUsing the above steps (as in Axis 1.2rc3 CommonsHTTPSender.java, invoke()\nmethod), line 379 in HttpClient.java evaluates to true\nbecause the argument <code>hostConfiguration</code> is null (see line 324 in\nHttpClient.java) and the local \nvariable <code>defaultHostConfiguration</code> ==\n<code>HttpClient.setHostConfiguration(HostConfiguration)</code>\nwhich was set in item #1 above. The hostname then gets set in the\n<code>HostConfiguration</code>\nobject in line 384 of HttpClient.java.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "HTTPCLIENT-456",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "HTTPCLIENT",
+    "project": "HTTPCLIENT",
+    "summary": "HttpClient should always override the host of HostConfiguration if an absolute request URI is given",
+    "systemSpecification": true,
+    "version": "3.0 RC2"
+}

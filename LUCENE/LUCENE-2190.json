@@ -1,0 +1,101 @@
+{
+    "comments": [
+        {
+            "author": "Michael McCandless",
+            "body": "Patch attached, adding setNextReader to CustomScoreQuery, and a test case.  Also fixed a couple latent test bugs, when run on indexes with more than one segment.",
+            "date": "2010-01-04T20:31:31.885+0000",
+            "id": 0
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Patch applies to 2.9.x.",
+            "date": "2010-01-04T20:32:10.006+0000",
+            "id": 1
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "The fix is invalid:\nAdding setNextReader to CustomScoreQuery makes the Query itsself stateful. This breaks when using together with e.g. ParallelMultiSearcher.\nAs the package is experimental, I see no problem in changing the method signature of customScore to pass in the affected IndexReader (CustomScorer can do this)",
+            "date": "2010-02-19T15:45:38.907+0000",
+            "id": 2
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "We can preserve backwards compatibility is the default impl with the new reader only passes to the deprecated old customScore function.\n\nI will provide a patch tomorrow.",
+            "date": "2010-02-19T17:24:07.053+0000",
+            "id": 3
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "During refactoring I found out:\n\nCustomScoreQuery is more broken: the rewrite() method is wrong, for now its not really a problem but when we change to per-segment rewrite (as Mike plans) its broken. Its even broken if you rewrite against one IndexReader and want to reuse the query later on another IndexReader. It rewrites all its subqueries and returns itsself, which is wrong: if one of the subqueries was rewritten it must return a new clone instance (like BooleanQuery). Also hashCode and equals ignore strict.\n\nWill provide patch later. Now everything seems to work correct.",
+            "date": "2010-02-19T19:23:33.386+0000",
+            "id": 4
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "bq. Adding setNextReader to CustomScoreQuery makes the Query itsself stateful. This breaks when using together with e.g. ParallelMultiSearcher.\n\nUgh, you're right.  Passing the current IR to customScore method isn't great because then you have to a check per call (per doc scored) to detect a switch to a new reader.\n\nbq. but when we change to per-segment rewrite (as Mike plans) \n\nI'm not quite \"planning\" that ;)  I was mulling it... because it's somewhat inefficient now that an MTQ uses the multi terms enum instead of doing it per segment.  But: this is only done for the BQ rewrite, which is only done when the number of terms is smallish (with AUTO default rewrite), so I think in practice the actual cost is low?",
+            "date": "2010-02-20T13:16:33.699+0000",
+            "id": 5
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Here a better solution. It now works like Filter's getDocIdSet: For customizing scores, you have to override the similar protected method getCustomScoreProvider(IndexReader) and return a subclass of CustomScoreProvider. The default delegates to the backwards layer.\n\nThe semantics is now identical to filters: Each IndexReader of a segment gets its own calculator like its own DocIdSet in filters.\n\nAlso fixes the following problems:\n- rewrite() was incorrectly implemented (now works like BooleanQuery.rewrite())\n- equals/hashCode ignored strict",
+            "date": "2010-02-20T13:24:33.015+0000",
+            "id": 6
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Updated patch (forgot to add an IOException to getCustomScoreProvider and fixed test).\n\nWill backport after committing to 3.0 and 2.9 (argh).",
+            "date": "2010-02-20T13:36:55.728+0000",
+            "id": 7
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Patch looks good!\n\nOnly thing is I think we should revert this:\n{code}\n@@ -382,7 +387,7 @@\n \n     @Override\n     public boolean scoresDocsOutOfOrder() {\n-      return false;\n+      return subQueryWeight.scoresDocsOutOfOrder();\n     }\n{code}\n\nWe need to return false from here because CSQ always scores in order (it asks the sub scorers for in-order scorers).",
+            "date": "2010-02-21T16:52:18.999+0000",
+            "id": 8
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Here the patches for trunk (without deprecations) and 3.0 brach. 2.9 will be merged later. Merging from trunk -> 3.0 is not possible as TestCase heavily rewritten.",
+            "date": "2010-02-21T17:46:04.635+0000",
+            "id": 9
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "OK new patches look good Uwe!  Thanks for fixing this :)",
+            "date": "2010-02-21T17:56:07.152+0000",
+            "id": 10
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Updated patches without javadocs-warnings / fixed javadocs. In trunk the backwards branch needs to be patched, too (merge from 3.0 branch).",
+            "date": "2010-02-21T18:05:01.015+0000",
+            "id": 11
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Here the patch for 2.9",
+            "date": "2010-02-21T19:10:17.671+0000",
+            "id": 12
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Committed 3.0 branch revision: 912383, 912389\nCommitted trunk revision: 912386\nCommitted 2.9 branch revision: 912390\n\nThanks Mike for the help!",
+            "date": "2010-02-21T19:12:49.652+0000",
+            "id": 13
+        }
+    ],
+    "component": "core/search",
+    "description": "Spinoff from here:\n\n  http://lucene.markmail.org/message/psw2m3adzibaixbq\n\nWith the cutover to per-segment searching, CustomScoreQuery is not really usable anymore, because the per-doc custom scoring method (customScore) receives a per-segment docID, yet there is no way to figure out which segment you are currently searching.\n\nI think to fix this we must also notify the subclass whenever a new segment is switched to.  I think if we copy Collector.setNextReader, that would be sufficient.  It would by default do nothing in CustomScoreQuery, but a subclass could override.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-2190",
+    "issuetypeClassified": "RFE",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "CustomScoreQuery (function query) is broken (due to per-segment searching)",
+    "systemSpecification": true,
+    "version": "3.1"
+}

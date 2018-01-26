@@ -1,0 +1,47 @@
+{
+    "comments": [
+        {
+            "author": null,
+            "body": "Created attachment 21018\nTestcase taken from full-disclosure mailing list\n\nTry with the following command line: \n\nperl cve-2007-5461-exploit.pl 127.0.0.1 /webdav /etc/passwd",
+            "date": "20071022T02:59:31",
+            "id": 0
+        },
+        {
+            "author": null,
+            "body": "Created attachment 21019\nCode fragment showing how to intercept injected entities\n\nThe attached (ugly) code fragment shows how to intercept the process of \nentity expansion by detecting the injected strings.\nAs an example it intercepts entities with a \n\"file:\" prefix and posts it to stderr.\t\n\nAs the comitter is not really an expert\nof the WEBDAV semantics this patch draft may need some\nbrush up to be production ready. \n\nWhen used with Webdav write access enabled and the \nperl script with \n\nperl cve-2007-5461-exploit.pl 127.0.0.1 /webdav /etc/passwd \n\nthe entity expansion and injection attack is detected an the following output\nis posted to stderr: \n\nOct 19, 2007 1:01:15 PM org.apache.catalina.core.ApplicationContext log\npub:null\nsys:file:///etc/passwd\nattack\nOct 19, 2007 1:01:15 PM org.apache.catalina.core.StandardWrapperValve invoke\nSEVERE: Servlet.service() for servlet webdav threw exception\njava.lang.NullPointerException\n\tat\norg.apache.catalina.servlets.WebdavServlet.doLock(WebdavServlet.java:966)",
+            "date": "20071022T03:16:25",
+            "id": 1
+        },
+        {
+            "author": null,
+            "body": "(In reply to comment #0)\n> If a parser is validating, then this it will expand entity\n> references, even if this feature is set to false. That is, the validation\n> feature overrides the expand entity references feature.\n\nThis doesn't appear to be related to the validation setting which defaults to\nfalse and isn't changed from the default in this case. It appears to be that the\nsettings in documentBuilderFactory are not passed through to the underlying parser.\n\nThe proposed patch for this, based on your suggestion, is here:\nhttp://people.apache.org/~markt/patches/2007-10-20-webdav.patch",
+            "date": "20071022T05:25:08",
+            "id": 2
+        },
+        {
+            "author": null,
+            "body": "I've tested pre-patch and post-patch and Mark's new patch seems to do what it is\nsupposed to do. \n\nRe: logging.\nI personally prefer to put the onus on the user to manage their logs.",
+            "date": "20071022T11:25:43",
+            "id": 3
+        },
+        {
+            "author": null,
+            "body": "A work around exists in TC6. The root cause appears to be a JDK issue.",
+            "date": "20071022T17:55:32",
+            "id": 4
+        }
+    ],
+    "component": "Servlets:WebDAV",
+    "description": "DESCRIPTION:\n\nTomcat allows unauthorized users reading arbitrary files\nfrom the host file system by misusing the entity expansion\nfeature of the DOM parser. \n\nIt seems that\n\ndocumentBuilderFactory.setExpandEntityReferences(false);\n\nhas no atomic effect, instead it depends on other (undocumented) settings.\nThere are also (although antique) references on the web\nsupporting this assumption. They say XML validation overrides\ndisabling of entity expansion.\n\n(Quote: http://www.cafeconleche.org/books/xmljava/chapters/ch09s06.html)\n\n\"\"\"Expand Entity References\n\nThe following two methods determine whether the parsers produced by this factory\nexpand entity references.\npublic boolean isExpandEntityReferences();\npublic void setExpandEntityReferences(boolean expandEntityReferences);\n\nThe default is true. If a parser is validating, then this it will expand entity\nreferences, even if this feature is set to false. That is, the validation\nfeature overrides the expand entity references feature.\"\"\"\n(/Quote)\n\n\nhttp://mail-archives.apache.org/mod_mbox/xerces-j-users/200410.mbox/%3C20041010174829.58568.qmail@web40911.mail.yahoo.com%3E\n\nThe JDK I used was also not overaged:\n\njava version \"1.5.0_13\"\nJava(TM) 2 Runtime Environment, Standard Edition (build 1.5.0_13-b05)\nJava HotSpot(TM) Server VM (build 1.5.0_13-b05, mixed mode)\n\nEFFECT:\n\nUnauthenticated users get file contents presented when webdav write access is\nenabled, even when \ndocumentBuilderFactory.setExpandEntityReferences(false);\nis set. \n\n[mschoene@mschoene 20071014webdavexp]$ perl cve-2007-5461-exploit.pl 127.0.0.1\n/webdav /etc/passwd\nApache Tomcat Remote File Disclosure Zeroday Xploit\nkcdarookie aka eliteb0y / 2007\nLaunching Remote Exploit...\nHTTP/1.1 200 OK\nServer: Apache-Coyote/1.1\nContent-Type: text/xml;charset=UTF-8\nContent-Length: 2163\nDate: Fri, 19 Oct 2007 09:47:28 GMT\n\n<?xml version=\"1.0\" encoding=\"utf-8\" ?>\n<prop xmlns=\"DAV:\"><lockdiscovery><activelock><locktype><write/></locktype>\n<lockscope><exclusive/></lockscope>\n<depth>Infinity</depth>\n<owner>\n<href>&#10;<REMOTE>&#10;<RemoteX>root:x:0:0:root:/root:/bin/bash&#10;bin:x:1:1:bin:/bin:/sbin/nologin&#10;daemon:x:2:2:daemon:/sbin:/sbi\n\n\nPATCH PROPOSAL:\n\nThe abstract DocumentBuilder offers a method\n\npublic abstract void setEntityResolver(EntityResolver er)\n\nYou can override this with a custom resolver such as:\n\n  documentBuilder = documentBuilderFactory.newDocumentBuilder();\n  documentBuilder.setEntityResolver(new MyResolver());\n\n\nThe following PoC implementation shows the protection effect below:\n\n private class MyResolver implements EntityResolver {\n   public InputSource resolveEntity (String publicId, String systemId)\n   {\n    System.err.println(\"pub:\"+publicId);\n    System.err.println(\"sys:\"+systemId);\n    if (systemId.startsWith(\"file:\")) {\n        System.err.println(\"attack\");\n        return new InputSource(\"<!--hubbabubba-->\");\n    }   \n    return null;\n   }\n\nThis will catch file references to be expanded, and should be\nextended to http:// and other external stuff for production purpose.\nAnd there may be other side cases that are needed to observe.\nThe return value 'hubbabubba' may also need some nicer value :)\n\nResult:\n\nOct 19, 2007 1:01:15 PM org.apache.catalina.core.ApplicationContext log\npub:null\nsys:file:///etc/passwd\nattack\nOct 19, 2007 1:01:15 PM org.apache.catalina.core.StandardWrapperValve invoke\nSEVERE: Servlet.service() for servlet webdav threw exception\njava.lang.NullPointerException\n        at org.apache.catalina.servlets.WebdavServlet.doLock(WebdavServlet.java:966)\n\nSUMMARY: \nIt has been observed, that the unclear Contract between Entity expansion and DOM\nparser validation affects the security of the WebDAV servlet when write access\nis enabled. A PoC patch has been appended to show a potential way to mitigate  \nthe issue by blocking unwanted external entities which creates a Injection Flaw\nvulnerability (OWASP A2) .",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "43671",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "P2 major",
+    "product": "Tomcat 5",
+    "project": "TOMCAT",
+    "summary": "Unclear Contract between Entity expansion and DOM parser validation cause OWASP A2 in WebDAV  Servlet",
+    "systemSpecification": false,
+    "version": "5.5.24"
+}

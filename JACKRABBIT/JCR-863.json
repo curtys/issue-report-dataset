@@ -1,0 +1,71 @@
+{
+    "comments": [
+        {
+            "author": "Michael Neale",
+            "body": "Here is the patch. Please let me know if any more info is required.",
+            "date": "2007-04-25T03:24:34.379+0000",
+            "id": 0
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Good point, and thanks for the patch! (And sorry for the delayed feedback...)\n\nThe patch looks good to me, though it might have the same issues as recently discussed in issues JCR-912 and JCR-933. Also, I guess the change of the DISABLE_LOCKS constant is an oversight. Could you check these issues?\n\nYou haven't marked the attachment with the \"Grant license to ASF\" option on the attachment upload screen. I guess that's also an oversight. You can fix that either by uploading a new version of the patch and selecting the option, or simply by commenting here that you grant us the right to use the code under the Apache License.",
+            "date": "2007-05-24T02:55:16.017+0000",
+            "id": 1
+        },
+        {
+            "author": "Michael Neale",
+            "body": "Yes, I think it could have the same issues. Looking over the JDK code and the comments, it seems that this locking is really up to the OS/platform to decide exactly how to do (ie its possible to ignore it) - at least thats my reading, so JCR-933 could be an issue. As for JCR-912, I wasn't quite able to understand it.\n\nI grant the license to the ASF (my oversight ! sorry !).\n\nThe change to the DISABLE_LOCKS is also an oversight, I was turning off the system property when debugging, yes it should be left as it. I will try and upload a new patch soon.\n\n\n\n",
+            "date": "2007-05-24T05:27:37.219+0000",
+            "id": 2
+        },
+        {
+            "author": "Michael Neale",
+            "body": "Here is a patch with the constant fixed up the way it was (and license granted).",
+            "date": "2007-05-24T06:21:29.462+0000",
+            "id": 3
+        },
+        {
+            "author": "Michael Neale",
+            "body": "Have looked into the other JIRA - on second look I am not sure if its a problem, as this uses lock() not tryLock, which is fail fast and exclusive. A bigger problem is the issue of JRE implementation on a given platform, not entirely sure how much this can be relied on.\n\nAlso, I remember hearing some talk about this being done entirely in Lucene (so this code can be retired?) - then its Lucene's problem !",
+            "date": "2007-05-24T06:25:03.966+0000",
+            "id": 4
+        },
+        {
+            "author": "Stefan Guggisberg",
+            "body": "> Have looked into the other JIRA - on second look I am not sure if its a problem, as this uses lock() not tryLock, which is fail fast and exclusive. A bigger problem is the issue of JRE implementation on a given platform, not entirely sure how much this can be relied on.\n\nthe file locking issue discussed in JCR-912 and JCR-933 applies to both FileChannel#lock() & FileChannel#tryLock():\n\nA. as of java 1.6 the behaviour of lock() and tryLock() has changed. both methods now consistently throw \n    an OverlappingFileLockException on all platforms if the the lock is already held by the current process.\n\nB. in java 1.4 & 1.5 lock() and tryLock() have a platform-dependant behaviour if the lock is already held \n    by the current process::\n\n    on windows:\n        lock() blocks!\n        tryLock() returns null\n\n    on *nix:\n        lock() and tryLock() return a new FileLock object!\n        \nnote that A. is the correct behaviour according to the javadoc. \n\nsince lock() doesn't always fail fast (it potentially blocks) i suggest using tryLock() instead.\nthe suggested fix in JCR-933 addresses the incorrect & platform dependant behaviour\ndescribed in B.",
+            "date": "2007-05-24T08:13:44.030+0000",
+            "id": 5
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "> Also, I remember hearing some talk about this being done entirely in Lucene (so this code can be retired?) - \n> then its Lucene's problem !\n\nLucene 2.1 has a pluggable LockFactory and provides a NativeFSLockFactory: http://lucene.apache.org/java/2_1_0/api/org/apache/lucene/store/NativeFSLockFactory.html\n\nI suggest we remove the jackrabbit customizations once we upgrade to lucene 2.1.",
+            "date": "2007-05-25T15:07:43.912+0000",
+            "id": 6
+        },
+        {
+            "author": "Michael Neale",
+            "body": "I agree with Marcel. This is getting really nasty if we want to support from 1.4 through 1.6 (Java) in a non ugly fashion. Its also very hard to test. \n\nPerhaps the better solution is to make upgrading to Lucene 2.1 a priority, so this code (which is lucene specific anyway) can be retired and this JIRA closed. \n",
+            "date": "2007-05-26T01:08:34.451+0000",
+            "id": 7
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "Removed the customizations. The index now uses the NativeFSLockFactory from Lucene.\n\nFixed in revision: 587450",
+            "date": "2007-10-23T10:40:32.687+0000",
+            "id": 8
+        }
+    ],
+    "component": "jackrabbit-core, query",
+    "description": "The FSDirectory uses File.createNewFile to effectively lock a directory (in makeLock), yet the Java Spec says explcitly not to use it for this purpose, and instead use FileLock from nio.\n\nThe attached patch shows how this is/could be done (change is internal to the makeLock method only, and functionally equivalent, the same tests apply).",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "JCR-863",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Major",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "Use FileLock for locking instead of empty file",
+    "systemSpecification": true,
+    "version": ""
+}

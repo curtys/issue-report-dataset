@@ -1,0 +1,65 @@
+{
+    "comments": [
+        {
+            "author": "russgold@httpunit.org",
+            "body": "The submitted patch does not always work...  this one may be better:\n\nIndex: js/rhino/src/org/mozilla/javascript/Interpreter.java\n===================================================================\nRCS \nfile: /cvsroot/mozilla/js/rhino/src/org/mozilla/javascript/Interpreter.java,v\nretrieving revision 1.130\ndiff -u -r1.130 Interpreter.java\n--- js/rhino/src/org/mozilla/javascript/Interpreter.java        17 Feb 2003 \n08:50:55 -0000      1.130\n+++ js/rhino/src/org/mozilla/javascript/Interpreter.java        17 Feb 2003 \n15:43:53 -0000\n@@ -2032,6 +2032,16 @@\n         --stackTop;\n         Object lhs = stack[stackTop];\n         if (lhs == DBL_MRK) lhs = doubleWrap(sDbl[stackTop]);\n+        else if (lhs == undefined) {\n+            // special code for better error message for get property from \nundefined\n+            int j = pc-6;\n+            while (j > 0 && iCode[j] != 0) j--;\n+            int i = getShort(iCode, j);\n+            if (i >= 0 && i < strings.length) {\n+                lhs=strings[i];\n+                throw NativeGlobal.typeError1( \"msg.is.not.defined\", \nScriptRuntime.toString(lhs),scope );\n+            }\n+        }\n         stack[stackTop] = ScriptRuntime.getProp(lhs, name, scope);\n         break;\n     }",
+            "date": "20030217T15:44:51",
+            "id": 0
+        },
+        {
+            "author": "pschwartau@meer.net",
+            "body": "cc'ing Igor to consider this patch -",
+            "date": "20030217T20:31:29",
+            "id": 1
+        },
+        {
+            "author": "user@apochta.com",
+            "body": "Although the patch idea is fine, I think it would be better to report the\nproperty name for undefined null value, i.e. in x.y.z with undefined y it would\nbe sufficient for debugging to report about accessing the property z of\nundefined. In this way a reasonable message would be printed for x[0].z or x.y[0]. ",
+            "date": "20030218T00:43:52",
+            "id": 2
+        },
+        {
+            "author": "user@apochta.com",
+            "body": "Created attachment 114733\nUse property names in error messages about accessing undefined or null\n\nPatch adds to various getElem/getProp explicit checks for null/undefined and in\nsuch cases report which property of null/undefined was accessed.\n\nWith the patch I have in Rhino shell:\n\njs> x = {}\n[object Object]\njs> x.y.z\njs: \"<stdin>\", line 2: uncaught JavaScript exception: TypeError: Cannot get\nproperty \"z\" from undefined (<stdin>; line 2)\njs> x[0].z\njs: \"<stdin>\", line 3: uncaught JavaScript exception: TypeError: Cannot get\nproperty \"z\" from undefined (<stdin>; line 3)\njs> x.y[0]\njs: \"<stdin>\", line 4: uncaught JavaScript exception: TypeError: Cannot get\nproperty \"0\" from undefined (<stdin>; line 4)",
+            "date": "20030218T00:53:40",
+            "id": 3
+        },
+        {
+            "author": "user@apochta.com",
+            "body": "Created attachment 114831\nPatch update to report assignments to properties of undefined/null \n\nThis is a patch extention to cover property assignments as well so I have in\nRhino shell:\n\njs> x={}\n[object Object]\njs> x.y.z\njs: \"<stdin>\", line 2: uncaught JavaScript exception: TypeError: Cannot read\nproperty \"z\" from undefined (<stdin>; line 2)\njs> x.y.z=1\njs: \"<stdin>\", line 3: uncaught JavaScript exception: TypeError: Cannot set\nproperty \"z\" of undefined to \"1\" (<stdin>; line 3)\njs> x.y[0]=Math.sin\njs: \"<stdin>\", line 4: uncaught JavaScript exception: TypeError: Cannot set\nproperty \"0\" of undefined to \"org.mozilla.javascript.IdFunction@93dcd\"\n(<stdin>; line 4)\njs> x[1][2]=1\njs: \"<stdin>\", line 6: uncaught JavaScript exception: TypeError: Cannot set\nproperty \"2\" of undefined to \"1\" (<stdin>; line 6)",
+            "date": "20030218T23:42:30",
+            "id": 4
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "I commited the patch few days ago.",
+            "date": "20030306T10:01:06",
+            "id": 5
+        },
+        {
+            "author": "pschwartau@meer.net",
+            "body": "Verified Fixed -\n\njs> x = {}\n[object Object]\n\njs> x.y.z\njs: \"<stdin>\", line 8: uncaught JavaScript exception: TypeError: Cannot read\nproperty \"z\" from undefined (<stdin>; line 8)\n\njs> x.y.z=1\njs: \"<stdin>\", line 9: uncaught JavaScript exception: TypeError: Cannot set\nproperty \"z\" of undefined to \"1\" (<stdin>; line 9\n\njs> x.y[0]=Math.sin\njs: \"<stdin>\", line 10: uncaught JavaScript exception: TypeError: Cannot set\nproperty \"0\" of undefined to \"org.mozilla.javasc\nipt.IdFunction@1f14ceb\" (<stdin>; line 10)\n\njs> x[1][2]=1\njs: \"<stdin>\", line 11: uncaught JavaScript exception: TypeError: Cannot set\nproperty \"2\" of undefined to \"1\" (<stdin>; line 1)",
+            "date": "20030306T21:09:16",
+            "id": 6
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Targeting as resolved against 1.5R5",
+            "date": "20040213T11:52:09",
+            "id": 7
+        }
+    ],
+    "component": "Core",
+    "description": "User-Agent:       Mozilla/4.0 (compatible; MSIE 6.0; Windows NT 5.0)\nBuild Identifier: \n\nWhen parsing an expression like:\n\nbase.something.here, if \"base.something\" is undefined, the error message \ngenerated is \"The undefined object has no properties\" which is not very helpful \nin tracking down the problem.\n\nThe following patch should provide a better message:\n\nRCS \nfile: /cvsroot/mozilla/js/rhino/src/org/mozilla/javascript/Interpreter.java,v\nretrieving revision 1.130\ndiff -u -r1.130 Interpreter.java\n--- js/rhino/src/org/mozilla/javascript/Interpreter.java        17 Feb 2003 \n08:50:55 -0000      1.130\n+++ js/rhino/src/org/mozilla/javascript/Interpreter.java        17 Feb 2003 \n15:07:46 -0000\n@@ -2032,6 +2032,12 @@\n         --stackTop;\n         Object lhs = stack[stackTop];\n         if (lhs == DBL_MRK) lhs = doubleWrap(sDbl[stackTop]);\n+        else if (lhs == undefined) {\n+            // special code for better error message for get property from \nundefined\n+            int i = getShort(iCode, pc-6);\n+            if (i != -1) lhs=strings[i];\n+                throw NativeGlobal.typeError1( \"msg.is.not.defined\", \nScriptRuntime.toString(lhs),scope );\n+        }\n         stack[stackTop] = ScriptRuntime.getProp(lhs, name, scope);\n         break;\n     }\n\nReproducible: Always\n\nSteps to Reproduce:\n1. Ask Rhino to parse an expression in which the second-to-last element part is \nundefined\n2.\n3.\n\nActual Results:  \nIt generates the above error message",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "193700",
+    "issuetypeClassified": "OTHER",
+    "issuetypeTracker": "BUG",
+    "priority": "-- normal",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "Useless error message when retrieving property of undefined object",
+    "systemSpecification": true,
+    "version": "other"
+}

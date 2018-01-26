@@ -1,0 +1,59 @@
+{
+    "comments": [
+        {
+            "author": "Marcel Reutegger",
+            "body": "Moved getItemState() to the top of the method. This ensures that the state reference is still valid even if the property is discarded after the sanityCheck().",
+            "date": "2007-12-14T15:05:21.208+0000",
+            "id": 0
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "What about all the other value getters like getString()? I guess we should make them just call getValue() instead of trying to optimize things.",
+            "date": "2007-12-18T14:02:51.213+0000",
+            "id": 1
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "In fact there are tons of unguarded code that accesses the state variable. I'll come up with a patch for fixing them all.",
+            "date": "2007-12-18T14:31:51.922+0000",
+            "id": 2
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "You are right. The funny thing is getString() already uses getValue(). :-)\n\nI think we should get rid of the sections documented with:\n// avoid unnecessary object creation if possible\n\nThey add a significant amount of code and I doubt it is worth it.",
+            "date": "2007-12-18T14:44:47.283+0000",
+            "id": 3
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "The attached patch (JCR-1272.jz.patch) makes all type-specific getters and setters use the generic Value methods.\n\nThe new private getPropertyState() takes care of the sanity check and returns a safe PropertyState reference if the property is OK.\n\nThere still are a number of direct unprotected references to the state variable in PropertyImpl, NodeImpl, and ItemImpl. I'm not sure how vulnerable those references are to this error condition.",
+            "date": "2007-12-18T16:23:50.717+0000",
+            "id": 4
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "Looks good.\n\n+1\n\nI'll commit the patch.",
+            "date": "2007-12-19T10:34:14.586+0000",
+            "id": 5
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "Committed Jukkas patch in revision: 605506",
+            "date": "2007-12-19T10:38:22.541+0000",
+            "id": 6
+        }
+    ],
+    "component": "jackrabbit-core",
+    "description": "Running ConcurrentReadWriteTest (NUM_NODES=5, NUM_THREADS=3, RUN_NUM_SECONDS=120) resulted in a RepositoryException calling Property.getValue():\n\njavax.jcr.RepositoryException: Internal error while retrieving value of b3fc1ea8-3364-4236-bcc7-dea0baf90640/{}test: null: null\n\nDebugging shows that it is a NullPointerException:\n\njava.lang.NullPointerException\n\tat org.apache.jackrabbit.core.PropertyImpl.getValue(PropertyImpl.java:481)\n\tat org.apache.jackrabbit.core.ConcurrentReadWriteTest$1$1.execute(ConcurrentReadWriteTest.java:68)\n\tat org.apache.jackrabbit.core.AbstractConcurrencyTest$Executor.run(AbstractConcurrencyTest.java:110)\n\tat java.lang.Thread.run(Thread.java:619)\n\nIt's probably the state which has been discarded after the sanityCheck().",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "JCR-1272",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Minor",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "Property.getValue() throws RepositoryException with internal error",
+    "systemSpecification": true,
+    "version": ""
+}

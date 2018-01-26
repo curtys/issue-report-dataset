@@ -1,0 +1,65 @@
+{
+    "comments": [
+        {
+            "author": "Daniel Naber",
+            "body": "See here for some analysis: \nhttp://www.mail-archive.com/lucene-user%40jakarta.apache.org/msg09462.html ",
+            "date": "2004-09-16T05:16:42.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Spencer W. Thomas",
+            "body": "We also see this bug in Lucene 1.4.1, but NOT in 1.4.1 RC3.",
+            "date": "2004-09-27T20:26:51.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Spencer W. Thomas",
+            "body": "Never mind.  We had internal confusion about version numbering.  I was looking\nat 1.4RC3.",
+            "date": "2004-09-27T20:58:41.000+0000",
+            "id": 2
+        },
+        {
+            "author": "Rafal Krzewski",
+            "body": "Created an attachment (id=12890)\npatch that fixes the problem made against CVS HEAD as of September 29th\n",
+            "date": "2004-09-29T18:33:37.000+0000",
+            "id": 3
+        },
+        {
+            "author": "Rafal Krzewski",
+            "body": "Created an attachment (id=12891)\npatch that fixes the problem made against 1.4.1 release\n",
+            "date": "2004-09-29T18:34:39.000+0000",
+            "id": 4
+        },
+        {
+            "author": "Rafal Krzewski",
+            "body": "Comparator cache entries couldn't ever go away because IndexReader objects used\nas weak referenced keys were strong-references by the very same\nWeakHashMap$Entry object. This was because IndexReader was referenced from an\ninstance variable of the Comparator objects - an implicit one because final\nIndexReader reader argument of comparator* method is used inside Comparator\nobject initialization. Moving initialization of the fieldOrder/index variables\noutside object initialization eliminates the implicit reader field, thus\nallowing IndexReader object's to be GCd correctly.",
+            "date": "2004-09-29T18:41:07.000+0000",
+            "id": 5
+        },
+        {
+            "author": "Christoph Goller",
+            "body": "Thanks for the patch. I did not verify whether it solves the memory leak problem.\nHowever, I committed the changes (and did an analog chance in\nSortComparator.java) since they definitely cannot do any harm. Daniel agreed to\nmake some tests soon.\nIf positive, he will close the bug.\n\nChristoph",
+            "date": "2004-09-29T22:18:21.000+0000",
+            "id": 6
+        },
+        {
+            "author": "Daniel Naber",
+            "body": "Thanks, the patch works, i.e. the test case doesn't throw out of memory \nanymore. The patch has been applied to CVS (HEAD branch). ",
+            "date": "2004-09-30T02:47:57.000+0000",
+            "id": 7
+        }
+    ],
+    "component": "core/search",
+    "description": "This is the same post I sended two days before to the Lucene user's list. This \nbug seems to have something in common with bug no. 30628 but that bug is closed \nas invalid.\n\nI'm sending test code that everyone can try. The code is singular, don't say \nthere is no sense in reopening the same index. I can only show, that reopening \nleaks memory. The index is filled by pseudo-real data, they aren't significant \nand the process of index creation as well. \n\nThe problem must be in field caching code used by sort.\n\nAffected versions of Lucene:\n1.4.1\nCVS 1.5-rc1-dev\n\nThis code survives only few first iterations if you run java with -Xmx5m. With \nLucene 1.4-final ends regulary.\n\nimport org.apache.lucene.analysis.standard.StandardAnalyzer;\nimport org.apache.lucene.document.Document;\nimport org.apache.lucene.document.Field;\nimport org.apache.lucene.index.IndexReader;\nimport org.apache.lucene.index.IndexWriter;\nimport org.apache.lucene.index.Term;\nimport org.apache.lucene.search.Hits;\nimport org.apache.lucene.search.IndexSearcher;\nimport org.apache.lucene.search.Searcher;\nimport org.apache.lucene.search.Sort;\nimport org.apache.lucene.search.SortField;\nimport org.apache.lucene.search.TermQuery;\nimport org.apache.lucene.store.Directory;\nimport org.apache.lucene.store.RAMDirectory;\n\nimport java.io.IOException;\nimport java.text.SimpleDateFormat;\nimport java.util.Calendar;\nimport java.util.Date;\n\n/**\n * Run this test with Lucene 1.4.1 and -Xmx5m\n */\npublic class ReopenTest\n{\n    private static long mem_last = 0;\n\n    public static void main(String[] args) throws IOException\n    {\n        Directory directory = create_index();\n\n        for (int i = 1; i < 100; i++) {\n            System.err.println(\"loop \" + i + \", index version: \" + IndexReader.\ngetCurrentVersion(directory));\n            search_index(directory);\n            add_to_index(directory, i);\n        }\n    }\n\n    private static void add_to_index(Directory directory, int i) throws \nIOException\n    {\n        IndexWriter writer = new IndexWriter(directory, new StandardAnalyzer(), \nfalse);\n\n        SimpleDateFormat df = new SimpleDateFormat(\"yyyy-MM-dd\");\n        Document doc = new Document();\n\n        doc.add(Field.Keyword(\"date\", \n          df.format(new Date(System.currentTimeMillis()))));\n        doc.add(Field.Keyword(\"id\", \"CD\" + String.valueOf(i)));\n        doc.add(Field.Text(\"text\", \"Tohle neni text \" + i));\n        writer.addDocument(doc);\n\n        System.err.println(\"index size: \" + writer.docCount());\n        writer.close();\n    }\n\n    private static void search_index(Directory directory) throws IOException\n    {\n        IndexReader reader = IndexReader.open(directory);\n        Searcher searcher = new IndexSearcher(reader);\n\n        print_mem(\"search 1\");\n        SortField[] fields = new SortField[2];\n        fields[0] = new SortField(\"date\", SortField.STRING, true);\n        fields[1] = new SortField(\"id\", SortField.STRING, false);\n        Sort sort = new Sort(fields);\n        TermQuery query = new TermQuery(new Term(\"text\", \"\\\"text 5\\\"\"));\n\n        print_mem(\"search 2\");\n        Hits hits = searcher.search(query, sort);\n        print_mem(\"search 3\");\n\n        for (int i = 0; i < hits.length(); i++) {\n            Document doc = hits.doc(i);\n            System.out.println(\"doc \" + i + \": \" + doc.toString());\n        }\n        print_mem(\"search 4\");\n        searcher.close();\n        reader.close();\n    }\n\n    private static void print_mem(String log)\n    {\n        long mem_free = Runtime.getRuntime().freeMemory();\n        long mem_total = Runtime.getRuntime().totalMemory();\n        long mem_max = Runtime.getRuntime().maxMemory();\n\n        long delta = (mem_last - mem_free) * -1;\n\n        System.out.println(log + \"= delta: \" + delta + \", free: \" + mem_free + \n\", used: \" + (mem_total-mem_free) + \", total: \" + mem_total + \", max: \" + \nmem_max);\n\n        mem_last = mem_free;\n    }\n\n    private static Directory create_index() throws IOException\n    {\n        print_mem(\"create 1\");\n        Directory directory = new RAMDirectory();\n\n        Calendar c = Calendar.getInstance();\n        SimpleDateFormat df = new SimpleDateFormat(\"yyyy-MM-dd\");\n        IndexWriter writer = new IndexWriter(directory, new StandardAnalyzer(), \ntrue);\n        for (int i = 0; i < 365 * 15; i++) {\n            Document doc = new Document();\n\n            doc.add(Field.Keyword(\"date\", \n               df.format(new Date(c.getTimeInMillis()))));\n            doc.add(Field.Keyword(\"id\", \"AB\" + String.valueOf(i)));\n            doc.add(Field.Text(\"text\", \"Tohle je text \" + i));\n            writer.addDocument(doc);\n\n            doc = new Document();\n\n            doc.add(Field.Keyword(\"date\", \n               df.format(new Date(c.getTimeInMillis()))));\n            doc.add(Field.Keyword(\"id\", \"ef\" + String.valueOf(i)));\n            doc.add(Field.Text(\"text\", \"Je tohle text \" + i));\n            writer.addDocument(doc);\n\n            c.add(Calendar.DAY_OF_YEAR, 1);\n        }\n        writer.optimize();\n        System.err.println(\"index size: \" + writer.docCount());\n        writer.close();\n\n        print_mem(\"create 2\");\n        return directory;\n    }\n}",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "LUCENE-276",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "Memory leak when sorting",
+    "systemSpecification": false,
+    "version": "1.4"
+}

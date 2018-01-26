@@ -1,0 +1,89 @@
+{
+    "comments": [
+        {
+            "author": "Connell Gauld",
+            "body": "A patch that appears to solve the issue.",
+            "date": "2009-09-09T13:56:11.740+0000",
+            "id": 0
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "How about a slightly different take? Please review / test\n\nOleg",
+            "date": "2009-09-09T14:22:15.148+0000",
+            "id": 1
+        },
+        {
+            "author": "Connell Gauld",
+            "body": "Yup, this appears to work for me.\n\nThanks,\nC",
+            "date": "2009-09-09T15:04:45.995+0000",
+            "id": 2
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Fixed in SVN trunk. Please note because it is possible to work the problem around by replacing DefaultClientConnectionOperator with a custom impl this fix will have to wait until 4.1\n\nOleg",
+            "date": "2009-09-09T20:33:16.722+0000",
+            "id": 3
+        },
+        {
+            "author": "Glyn Davies",
+            "body": "\nThis doesn't fix all cases as the call to conn.update() checks that the previous socket is still open, by calling assertOpen()\n\nIf the original socket is screwed up (likely given the use case) this throws an 'IllegalStateEXception: Connection is not open'",
+            "date": "2009-12-08T21:24:13.312+0000",
+            "id": 4
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "This is actually the expected behaviour of the method, see javadocs. Why it is a problem?   \n\nhttp://hc.apache.org/httpcomponents-client/httpclient/apidocs/org/apache/http/conn/OperatedClientConnection.html#update%28java.net.Socket,%20org.apache.http.HttpHost,%20boolean,%20org.apache.http.params.HttpParams%29\n\nOleg",
+            "date": "2009-12-08T22:35:26.849+0000",
+            "id": 5
+        },
+        {
+            "author": "Glyn Davies",
+            "body": "\nI'm looking at MultihomePlainSocketFactory which creates a new client socket object under exception situations.\n\nThis new socket is returned, and replaces the initial socket that was created.\n\nThis would be fine if the update() replaced the existing socket straight away, but this fails because the initial socket is not open.\n",
+            "date": "2009-12-09T00:06:03.609+0000",
+            "id": 6
+        },
+        {
+            "author": "Glyn Davies",
+            "body": "\nI've found the following works:\n\n{code}\n        conn.opening(sock, target);\n\n        conn.openCompleted(sf.isSecure(sock), params);\n        \n        prepareSocket(sock, context, params);\n        \n        conn.update(sock, target, sf.isSecure(sock), params); \n{code}\n\n1. openCompleted() requires the socket to be in a CLOSED state\n2. prepareSocket() calls conn.bind() which marks the socket as OPEN\n3. update() requires the socket in OPEN state\n\nI do not think this is a viable true fix though, as I am sure it breaks a number of expectations.\n \n(If Id not move opening() down, I see:\n\nCaused by: java.net.SocketException: Socket is not connected\n        at java.net.Socket.getInputStream(Socket.java:770)\n        at org.apache.http.impl.io.SocketInputBuffer.<init>(SocketInputBuffer.java:123)\n        at org.apache.http.impl.SocketHttpClientConnection.createSessionInputBuffer(SocketHttpClientConnection.java:99)\n        at org.apache.http.impl.conn.DefaultClientConnection.createSessionInputBuffer(DefaultClientConnection.java:165)\n        at org.apache.http.impl.SocketHttpClientConnection.bind(SocketHttpClientConnection.java:162)\n        at org.apache.http.impl.conn.DefaultClientConnection.openCompleted(DefaultClientConnection.java:123)\n",
+            "date": "2009-12-09T09:56:15.493+0000",
+            "id": 7
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Glyn\n\nI do not quite understand this has to do with MultihomePlainSocketFactory. MultihomePlainSocketFactory is for creating plain connections that do not need a socket upgrade.\n\nOleg",
+            "date": "2009-12-09T11:07:57.615+0000",
+            "id": 8
+        },
+        {
+            "author": "Glyn Davies",
+            "body": "\n\nWhen DefaultMultihomePlainSocketFactory receives an IOException on connect, it \n\n1. Creates a new socket\n2. Attempts to connect to the next IP address that exists for that DNS hostname\n\nSo, in a situation where the first IP address returned in the DNS fails to connect (connection refused, say) the DefaultMultihomePlainSocketFactory will create a new socket, and attempt to connect to the server with this new socket.\n\nThis new socket is returned from the connectSocket() method call, and is intended to replace the existing socket - which is a dead / failed connection.\n\n4.0 of httpclient doesn't update this socket, and ignores the returned socket.\n\nThe '4.1' declared fix fails for me, because of the assertOpen() - as the initial socket is dead.\n\n",
+            "date": "2009-12-09T13:02:43.696+0000",
+            "id": 9
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "#assertOpen() executed by DefaultClientConnection#update method is perfectly reasonable, as the #update method is intended for updating TLS/SSL connections after the original plain Socket has been wrapped with SSLSocket. The use of DefaultMultihomePlainSocketFactory should never result in a call to DefaultClientConnection#update\n\nOleg",
+            "date": "2009-12-09T14:23:47.422+0000",
+            "id": 10
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Glyn\n\nSupport for multihome addresses is basically broken at the moment. I am planning to have it fixed in the next release. You can track the progress by  watching HTTPCLIENT-898\n\nOleg",
+            "date": "2009-12-10T10:47:21.208+0000",
+            "id": 11
+        }
+    ],
+    "component": "HttpClient (classic)",
+    "description": "In the DefaultClientConnectionOperator function openConnection(...) it calls SocketFactory.connectSocket(...). The documentation for connectSocket(...) says that it returns:\n   \"the connected socket. The returned object may be different from\nthe sock argument if this factory supports a layered protocol. \"\n\nA quick peek at the source showed:\nIn org.apache.http.impl.conn.DefaultClientConnectionOperator:\n\n117         final SocketFactory sf = schm.getSocketFactory();\n118\n119         Socket sock = sf.createSocket();\n120         conn.opening(sock, target);\n121\n122         try {\n123             sock = sf.connectSocket(sock, target.getHostName(),\n124                     schm.resolvePort(target.getPort()),\n125                     local, 0, params);\n126         } catch (ConnectException ex) {\n127             throw new HttpHostConnectException(target, ex);\n128         }\n129         prepareSocket(sock, context, params);\n130         conn.openCompleted(sf.isSecure(sock), params);\n\nSo DefaultClientConnectionOperator never updates conn with the new version of sock that may have been returned from connectSocket(...).\n\nadding:\n        130         conn.openCompleted(sf.isSecure(sock), params);\n+++ 131         conn.update(sock, target, sf.isSecure(sock), params);\nappears to fix the issue.\n",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "HTTPCLIENT-875",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "HTTPCLIENT",
+    "project": "HTTPCLIENT",
+    "summary": "DefaultClientConnectionOperator doesn't update socket after call to connectSocket(...)",
+    "systemSpecification": true,
+    "version": "4.0 Beta 2, 4.0 Final"
+}

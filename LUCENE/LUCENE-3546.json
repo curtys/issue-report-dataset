@@ -1,0 +1,47 @@
+{
+    "comments": [
+        {
+            "author": "Michael McCandless",
+            "body": "Egads!  Nice catch Simon and Yonik.  Sorry I didn't think/realize that this change (cutover to IR.openIfChanged) could have been what lead to Solr's TestRTGet failures...",
+            "date": "2011-10-31T12:56:03.696+0000",
+            "id": 0
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "I was wrong - docWriter.anyChanges() takes that into account already. sorry for the noise",
+            "date": "2011-10-31T14:46:30.864+0000",
+            "id": 1
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "I wasn't completely wrong here. The DWDQ#anyChanges() implementation actually has this particular issue. Patch follows...",
+            "date": "2011-11-01T12:53:22.851+0000",
+            "id": 2
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "I added an isolated testcase which fails without this patch. I was able to reproduce SOLR-2861 with softCommits = 101% fairly easy , without this patch it fails but passes over 1k iterations for me so far. Seems like this is the issue",
+            "date": "2011-11-01T12:54:57.607+0000",
+            "id": 3
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "Committed in revision 1196211",
+            "date": "2011-11-01T19:03:36.813+0000",
+            "id": 4
+        }
+    ],
+    "component": "core/index",
+    "description": "spinnoff from SOLR-2861 - since the delete queue is not necessarily applied entirely on each request there is a chance that there are changes in the delete queue but not yet in buffered deletes. this can prevent NRT readers from reopen when they should... this shows the problematic code:\n\n{code}\nIndex: java/org/apache/lucene/index/IndexWriter.java\n===================================================================\n--- java/org/apache/lucene/index/IndexWriter.java\t(revision 1195214)\n+++ java/org/apache/lucene/index/IndexWriter.java\t(working copy)\n@@ -4074,7 +4074,7 @@\n   synchronized boolean nrtIsCurrent(SegmentInfos infos) {\n     //System.out.println(\"IW.nrtIsCurrent \" + (infos.version == segmentInfos.version && !docWriter.anyChanges() && !bufferedDeletesStream.any()));\n     ensureOpen();\n-    return infos.version == segmentInfos.version && !docWriter.anyChanges() && !bufferedDeletesStream.any();\n+    return infos.version == segmentInfos.version && !docWriter.anyChanges() && !docWriter.deleteQueue.anyChanges();\n   }\n{code}",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-3546",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "IW#nrtIsCurrent retruns true if changes are in del queue but not in bufferedDeleteStream yet",
+    "systemSpecification": true,
+    "version": "4.0-ALPHA"
+}

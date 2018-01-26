@@ -1,0 +1,47 @@
+{
+    "comments": [
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "We will happily accept a patch\n\nOleg",
+            "date": "2006-06-16T21:31:17.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Gordon Mohr",
+            "body": "Attached patch avoids double-slash-triggered parsing of authority when it would be inappropriate: when URI is a simple authority-less path. Test for setting 'isStartedWithPath' improved to not indicate 'true' for URIs that begin '//'; 'isStartedWithPath' reused in later check to suppress inappropriate authority-parsing. Unit test verifies problem in current code and corrected behavior for test case after fix. ",
+            "date": "2006-06-17T07:17:12.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Seems all right. I'll check the patch in in a few days if nobody complains\n\nOleg",
+            "date": "2006-06-17T22:48:13.000+0000",
+            "id": 2
+        },
+        {
+            "author": "Roland Weber",
+            "body": "looks good\n\ncheers,\n  Roland",
+            "date": "2006-06-21T02:59:30.000+0000",
+            "id": 3
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Patch checked in. Many thanks, Gordon\n\nOleg",
+            "date": "2006-06-21T18:10:04.000+0000",
+            "id": 4
+        }
+    ],
+    "component": "HttpClient (classic)",
+    "description": "URI.parseUriReference()'s heuristic for interpreting URI parts is thrown off by relative URIs which include an internal '//'. As a result, portions of the supplied relative URI (path) can be lost. \n\nFor example:\n\nURI rel = new URI(\"foo//bar//baz\");\nrel.toString();\n(java.lang.String) //bar//baz\n\nThe culprit seems to be line 1961 of URI improperly concluding that two slashes later than the beginning of 'tmp' are still indicative the URI is a 'net_path'. \n\nA possible quick fix might be to add a '!isStartedFromPath &&' to the beginning of the line 1961 test, making the line:\n\n            if (!isStartedFromPath && at + 2 < length && tmp.charAt(at + 1) == '/') {\n\n... and thus preventing the misguided authority-parsing from happening when earlier analysis already identified the current string as a strictly path-oriented URI.\n\n(It also appears the setting of the is_net_path boolean at the end of this if's block may be wrong; this code is run for hier_path URIs that are not net_paths in the 2396 syntax. For example:\n\nURI uri = new URI(\"http://www.example.com/some/page\");\nuri.isNetPath();\n (boolean) true \n\n)",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "HTTPCLIENT-588",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "HTTPCLIENT",
+    "project": "HTTPCLIENT",
+    "summary": "relative URIs with internal double-slashes ('//') misparsed",
+    "systemSpecification": true,
+    "version": "3.0.1"
+}

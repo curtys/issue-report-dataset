@@ -1,0 +1,83 @@
+{
+    "comments": [
+        {
+            "author": "Robert Muir",
+            "body": "Patch: I think its ready to commit but before committing I want mike to double-check the unrelated nocommit i added for MemoryCodec.\n\nLooks like its TermsWriter writes a vLong for sumTotalTermFreq, its TermsReader reads a vInt... maybe we need a Test2BPostings :)\n",
+            "date": "2011-07-08T02:27:12.363+0000",
+            "id": 0
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "You are right -- nice catch!  Can you change the sumTotalTF to be a readVLong?  Thanks.",
+            "date": "2011-07-08T10:14:43.859+0000",
+            "id": 1
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Patch looks awesome!  Nice to add these additional status.",
+            "date": "2011-07-08T10:40:19.160+0000",
+            "id": 2
+        },
+        {
+            "author": "Robert Muir",
+            "body": "i committed the fix to memorycodec, synced the patch up to trunk, and renamed the confusing 'sumDF' variable in termsconsumer, that actually is no sumDF at all :)\n\nI think this is ready to go",
+            "date": "2011-07-08T11:25:54.132+0000",
+            "id": 3
+        },
+        {
+            "author": "Robert Muir",
+            "body": "The FieldInvertState.numUniqueTerms portion is backported to 3.x (no collection level stats are in 3.x in general, seems tricky)",
+            "date": "2011-07-08T21:22:55.108+0000",
+            "id": 4
+        },
+        {
+            "author": "Yonik Seeley",
+            "body": "Is there currently a way to get the number of documents that have a value in the field?\nThen one could compute the average length of a (sparse) field via sumTotalTermFreq(field)/docsWithField(field)\ndocsWithField(field) would be useful in other contexts that want to know how sparse a field is (automatically selecting faceting algorithms, etc).",
+            "date": "2011-07-08T21:40:21.173+0000",
+            "id": 5
+        },
+        {
+            "author": "Robert Muir",
+            "body": "not at the moment, we would have to write this separately.",
+            "date": "2011-07-08T21:57:47.079+0000",
+            "id": 6
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "I reopen this one:\n\nbq. The FieldInvertState.numUniqueTerms portion is backported to 3.x (no collection level stats are in 3.x in general, seems tricky)\n\nAs we backported this, we must add a Lucene 3.4 backwards index to the TestBackwardsCompatibility test. And hopefully this new 3.4 Index format opens sucessfully in trunk!",
+            "date": "2011-07-09T11:17:06.390+0000",
+            "id": 7
+        },
+        {
+            "author": "Robert Muir",
+            "body": "Uwe, the index format did not change in 3.x !",
+            "date": "2011-07-09T11:18:17.954+0000",
+            "id": 8
+        },
+        {
+            "author": "Robert Muir",
+            "body": "Just more explanation, there are two parts to the patch:\n# FieldInvertState gets an additional variable, numUniqueTerms. its not stored anywhere. this just allows you to use this as part of your Similarity.computeNorm calculation, if you like.\n# in trunk *only* we store sumDocFreq, which changes the index format. but this is not easy to backport to 3.x, as fields are not clearly separated (which would make it a little tricky), and its missing new stats anyway like totalTermFreq (because it would bloat TermInfos).\n",
+            "date": "2011-07-09T11:21:59.679+0000",
+            "id": 9
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "OK, sorry for the noise!",
+            "date": "2011-07-09T11:47:09.031+0000",
+            "id": 10
+        }
+    ],
+    "component": "core/index",
+    "description": "For scoring systems like lnu.ltc (http://trec.nist.gov/pubs/trec16/papers/ibm-haifa.mq.final.pdf), we need to supply 3 stats:\n* average tf within d\n* # of unique terms within d\n* average number of unique terms across field\n\nIf we add FieldInvertState.numUniqueTerms, you can incorporate the first two into your norms/docvalues (once we cut over),\nthe average tf within d being length / numUniqueTerms.\n\nto compute the average across the field, we can just write the sum of all terms' docfreqs into the terms dictionary header,\nand you can then divide this by maxdoc to get the average.\n",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-3290",
+    "issuetypeClassified": "RFE",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Major",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "add FieldInvertState.numUniqueTerms, Terms.sumDocFreq",
+    "systemSpecification": true,
+    "version": ""
+}

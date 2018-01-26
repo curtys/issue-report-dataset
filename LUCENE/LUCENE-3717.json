@@ -1,0 +1,47 @@
+{
+    "comments": [
+        {
+            "author": "Robert Muir",
+            "body": "I committed this. I will go thru the analyzers and try to make sure they are all using checkRandomData (i think most are), just to see if we have any other bugs sitting out there.\n\nIt would be nice to have these offsets all under control for the next release.",
+            "date": "2012-01-23T00:26:21.888+0000",
+            "id": 0
+        },
+        {
+            "author": "Robert Muir",
+            "body": "i started adding checkRandomData to more analyzers, and found 5 bugs already:\n* broken offsets in TrimFilter, WordDelimiterFilter along the same lines here \n* HyphenatedWordsFilter was broken worse: if the text ends with a hyphen the last token had end offset of 0 always (because it read uninitialized attributes)\n* PatternAnalyzer completely broken with charfilters.\n* WikipediaTokenizer broken in many ways, in general the tokenizer keeps a ton of state variables, but never resets this state.\n\npatch fixes these but I'm sure adding more tests to the remaining filters will find more bugs.",
+            "date": "2012-01-23T03:52:51.756+0000",
+            "id": 1
+        },
+        {
+            "author": "Robert Muir",
+            "body": "reopening since we have more work to do / more bugs.\n\nI'll look at committing/backporting the current patch as a start but i think we should check every tokenizer/filter/etc and just clean this up.",
+            "date": "2012-01-23T04:14:35.900+0000",
+            "id": 2
+        },
+        {
+            "author": "Robert Muir",
+            "body": "second patch is committed+backported.\n\njust remains to add the random test to all remaining tokenstreams...\n",
+            "date": "2012-01-23T21:54:20.141+0000",
+            "id": 3
+        },
+        {
+            "author": "Robert Muir",
+            "body": "more bugs in the n-gram tokenizers. they:\n* were wrongly computing end() from the trimmed length \n* not calling correctOffset\n* not checking return value of Reader.read causing bugs in some situations (e.g. empty stringreader)",
+            "date": "2012-01-24T09:48:36.187+0000",
+            "id": 4
+        }
+    ],
+    "component": "",
+    "description": "Recently lots of issues have been fixed about broken offsets, but it would be nice to improve the\ntest coverage and test that they work across the board (especially with charfilters).\n\nin BaseTokenStreamTestCase.checkRandomData, we can sometimes pass the analyzer a reader wrapped\nin a \"MockCharFilter\" (the one in the patch sometimes doubles characters). If the analyzer does\nnot call correctOffsets or does incorrect \"offset math\" (LUCENE-3642, etc) then eventually\nthis will create offsets and the test will fail.\n\nOther than tests bugs, this found 2 real bugs: ICUTokenizer did not call correctOffset() in its end(),\nand ThaiWordFilter did incorrect offset math.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-3717",
+    "issuetypeClassified": "OTHER",
+    "issuetypeTracker": "OTHER",
+    "priority": "Major",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "Add fake charfilter to BaseTokenStreamTestCase to find offsets bugs",
+    "systemSpecification": true,
+    "version": ""
+}

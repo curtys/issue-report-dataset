@@ -1,0 +1,77 @@
+{
+    "comments": [
+        {
+            "author": "Robert Muir",
+            "body": "Here's a patch for trunk (including fix to the deprecated 3.x filter).\n\nWe should fix this bug in 3.x too.",
+            "date": "2011-02-28T20:45:05.228+0000",
+            "id": 0
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Patch looks fine!\n\nJust one question: is the clone() method itsself thread-safe? if not, it must be synchronized somehow.",
+            "date": "2011-02-28T20:57:54.761+0000",
+            "id": 1
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "I changed my mind a little bit:\n\nThe cloning of the Collator should be done in the Analyzer not in the Filter. The same applies to the AttributeImpl, the cloning should not be done in the ctor. The problem is not that the TokenStream or the Attribute instance may reuse the attribute in different threads, the problem is that the factory class (the Analyzer) does reuse the Collator in different threads when it produces multiple tokenstreams or the AF multiple attributes.\n\nThis is a slight difference, because the following code is always safe:\nnew CollationFilter(Collator.newInstance(lang)), cloning would be wrong.\n\nThe reason for the whole thing: TokenStream and Attribute instances itsself are single-threaded only, but not the factory or the analyzer.",
+            "date": "2011-02-28T21:05:08.166+0000",
+            "id": 2
+        },
+        {
+            "author": "Robert Muir",
+            "body": "Uwe, that is one alternative.\n\nThe only reason i did it this way, is because I felt it was a bit of a trap (to any users using the Filter directly). This is because JDK collators are in fact thread safe.\n\n{quote}\nThis is a slight difference, because the following code is always safe:\nnew CollationFilter(Collator.newInstance(lang)), cloning would be wrong.\n{quote}\n\nI don't think this is really a reasonable example, usually in the search engine you would never use code like this: the sort keys will be way too large for no reason. For example usually its the case you will set something more reasonable like primary strength (case-insensitive).\n\nBecause the clone is cheap, and this is a trap to users, I'm still going to fight for my original patch. This way the ICU and JDK functionality behave consistently from a user perspective.",
+            "date": "2011-02-28T21:10:45.276+0000",
+            "id": 3
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "I would be fine with both solutions, for me it just looks wrong that way, but for safety reasons its fine.",
+            "date": "2011-02-28T21:38:04.885+0000",
+            "id": 4
+        },
+        {
+            "author": "Robert Muir",
+            "body": "Uwe, i can agree it looks a little wrong, but it makes the 'reusable' case easier.\n\nthe example you gave is the slow non-reusable case... honestly i'm not very worried about making this slower... its already slow.\n\nif we are to put responsibility on the user to pass Collator clones to each TokenFilter, it will make reusing more difficult (e.g. custom analyzers). \n\nAgain, the big trap is that usually you see \"WARNING THIS CLASS IS NOT THREAD SAFE\" but the icu javadoc doesn't really say that, you have to instead read this general architecture document... so I think by pushing the responsibility to the user, there would be lots of bugs (if anyone makes a custom analyzer/factory/etc).\n",
+            "date": "2011-02-28T21:44:28.258+0000",
+            "id": 5
+        },
+        {
+            "author": "Robert Muir",
+            "body": "Updated patch: I clone the JDK ones too.\n\nIts not really the case that these are \"thread-safe\", instead really what happens is their methods are synced (if they are correct). So its good to clone to reduce contention.\n\nAlso i took a look at harmony, which simply wraps the ICU impl and doesn't sync, which means its not thread safe (but should be).\n\nFor these reasons I think we should just clone the JDK one for safety too.\n",
+            "date": "2011-02-28T22:32:58.310+0000",
+            "id": 6
+        },
+        {
+            "author": "Robert Muir",
+            "body": "i added a testThreadSafe for this issue (which fails without the fix)",
+            "date": "2011-03-01T03:32:37.148+0000",
+            "id": 7
+        },
+        {
+            "author": "Robert Muir",
+            "body": "Committed revisions 1075850, 1076017 (branch_3x)",
+            "date": "2011-03-01T20:49:39.781+0000",
+            "id": 8
+        },
+        {
+            "author": "Grant Ingersoll",
+            "body": "Bulk close for 3.1",
+            "date": "2011-03-30T15:50:12.881+0000",
+            "id": 9
+        }
+    ],
+    "component": "modules/analysis",
+    "description": "The ICU Collators (unlike the JDK ones) aren't thread safe: http://userguide.icu-project.org/collation/architecture , a little non-obvious since its not mentioned\nin the javadocs, and its not clear if the docs apply to only the C code, but i looked\nat the source and there is all kinds of internal state.\n\nSo in my opinion, we should clone the icu collators (which are passed in from the outside) \nwhen creating a new TokenStream/AttributeImpl to prevent problems. This shouldn't be a big\ndeal since everything uses reusableTokenStream anyway.\n",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-2943",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "ICU collator thread-safety issues",
+    "systemSpecification": true,
+    "version": ""
+}

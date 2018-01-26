@@ -1,0 +1,71 @@
+{
+    "comments": [
+        {
+            "author": "Jukka Zitting",
+            "body": "> Support for the child axis would be a nice addition.\n\nOr better yet, support for generic XPath expressions in predicates.  As described in the JSR 170 XPath grammar:\n\n    [44] Predicates ::= ( \"[\" Expr \"]\" )*\n",
+            "date": "2005-11-12T02:40:02.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "Implemented support for child axis in predicates.\n\nE.g. you can now execute queries like:\n\n//*[foo/@bar = 1234]\n//page[jcr:contains(paragraph, 'text')]\n//page[jcr:like(fn:lower-case(paragraph/@author), 'marcel%')]\n\nand the famous:\n\n//element(*, nt:file)[jcr:contains(jcr:content, 'text')]\n\nyou may also use * as a name test:\n\n//foo[bar/*/@bar > 1234]\n\nOne limitation though:\n- nested predicates are not supported (which also means that you cannot use an index within the predicate):\n\nE.g. the following query will fail:\n\n//page[jcr:contains(paragraph[3], 'text')]",
+            "date": "2006-11-21T10:38:31.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "> Implemented support for child axis in predicates.\n\nWay to go, Marcel! This will be a killer feature for many in the 1.2 release.\n",
+            "date": "2006-11-21T11:23:55.000+0000",
+            "id": 2
+        },
+        {
+            "author": "Jaka Jaksic",
+            "body": "This is a killer feature alright, but it does not yet work as expected. Namely, full-text search within linked files doesn't seem to work.\n\nTake the following query for example:\n    \"//element(*, nt:linkedFile)[jcr:deref(@jcr:content, '*')/jcr:contains(., 'search string')]\"\n    (should return all linked file nodes whose referenced resources contain the given search string)\n\nRunning this query, an ArrayStoreException occurs in PathQueryNode, line 77:\n    return (LocationStepQueryNode[]) operands.toArray(new LocationStepQueryNode[operands.size()]);\n\nThe problem is that the query operands are copied into an array of LocationStepQueryNode, while the last operand is not of that type - it is of type TextsearchQueryNode, which only extends QueryNode.\n\nI have no idea how complex it would be to fix this. If it would require a lot of work, then maybe for now just add some operand type checking and throw a descriptive exception if an incompatible query node is found.",
+            "date": "2007-01-17T17:57:06.805+0000",
+            "id": 3
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "Jaka, thanks for reporting this issue. The reason why the query fails is acutally the jcr:deref() within the predicate which is currently not supported and not well handled. With the resolution of this issue only the use of the child axis is supported, but not jcr:deref(). I've created a separate issue report: JCR-709.",
+            "date": "2007-01-18T09:50:18.660+0000",
+            "id": 4
+        },
+        {
+            "author": "Randy Simon",
+            "body": "This feature has saved me.  However, I think there may still be some issues.\n\nFor example,\nI want to find the root of a node tree that contains a node with a specified id.  The child node may be n layers deep in the node tree.  In my specific case, I know how deep it is so \n\n//element(*, my:foo)[bar/*/*/*/*/@jcr:uuid = 'abc'] \n\nfinds the node of type my:foo that contains the child node with id 'abc'.\n\nNow, I would like to generalize this so I thought i could simply do the following.\n//element(*, my:foo)[bar//*/@jcr:uuid = 'abc'] \n\nbut this does not work.\n\nIs this supported?  Should this bug be re-opened? Thanks.",
+            "date": "2007-02-10T00:57:07.128+0000",
+            "id": 5
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "No, this is not supported. Only support for the child axis was added not for the descendant-or-self axis. Please file a separate jira request for this enhancement.",
+            "date": "2007-02-12T11:17:51.432+0000",
+            "id": 6
+        },
+        {
+            "author": "Helio S. P.",
+            "body": "I think that is an issue.\nI am trying to search like:\n\n/jcr:root/A/B//element(*,my:type)[X/Y/3ca3f395-7ae9-4553-b0d2-401b3bdff3d2/@prop:number >= 1]\n\nif I do the search without the 3ca3f395-7ae9-4553-b0d2-401b3bdff3d2 and replace it with *, it works, but not for my use case, :-( ....\nI am naming these nodes with a uuid of another node in workspace.\n\nWould it be easily fixed? Should this reopen this jira?",
+            "date": "2008-02-08T19:41:46.003+0000",
+            "id": 7
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "You need to escape the initial digit of the uuid. Digits are not valid start characters for XML names.\n\n/jcr:root/A/B//element(*,my:type)[X/Y/_x0033_ca3f395-7ae9-4553-b0d2-401b3bdff3d2/@prop:number >= 1]\n\nPlease use the mailing list if you are not sure whether you found a bug.",
+            "date": "2008-02-11T08:54:09.324+0000",
+            "id": 8
+        }
+    ],
+    "component": "xpath",
+    "description": "It seems that Jackrabbit currently only supports the attribute axis in XPath predicates. Support for the child axis would be a nice addition.",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "JCR-247",
+    "issuetypeClassified": "RFE",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Major",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "Child axis support for XPath predicates",
+    "systemSpecification": true,
+    "version": ""
+}

@@ -1,0 +1,71 @@
+{
+    "comments": [
+        {
+            "author": "Michael McCandless",
+            "body": "Ahh great catch!  Yes please create a patch?  Thanks!",
+            "date": "2010-08-03T09:49:45.336+0000",
+            "id": 0
+        },
+        {
+            "author": "Alexander Kanarsky",
+            "body": "OK, I'll create patches tomorrow. ",
+            "date": "2010-08-04T01:38:01.866+0000",
+            "id": 1
+        },
+        {
+            "author": "Alexander Kanarsky",
+            "body": "Mike, the patches are attached. One note, I noticed (in flex_1458/trunk) that you are using the HashSet to collect the file names and then convert it to ArrayList; while this is a good idea to  guarantee the uniqueness of the file names, it also could mask any code that accidentally adds the same file more than once (something that I would prefer to notice rather than mask). So I used an assertion to ensure both the uniqueness of the names and correctness of the code that adds names. Also, with assertions disabled, this approach adds no additional performance overhead at all. But if you'd like to use the HashSet to collect the file names, let me know so I will redo the patches.",
+            "date": "2010-08-04T20:23:31.676+0000",
+            "id": 2
+        },
+        {
+            "author": "Shai Erera",
+            "body": "On one hand, it's good to add the files to a Set, so that we can be sure they are added uniquely. On the other hand though, if we expect files are added properly, then adding to the set is redundant. Since this code is executed once per SI instance, I think explicitly adding to a Set is better.\n\nNote that while the assert you added will work, if someone runs without assertions he may get duplicate file names, if indeed they are added twice. I think that it's not so crucial to know that the same files was added twice, it's a very unlikely bug, but it is crucial that files() return unique names.\n\nSo can you please use a Set in the method instead of the assert (like it's done on trunk). Also, while you're at it, the method doesn't have javadocs - they appear in regular comments. Can you convert them to javadocs (there is a warning there about not modifying the returned List, but it's not visible as javadocs :).",
+            "date": "2011-01-18T11:12:07.514+0000",
+            "id": 3
+        },
+        {
+            "author": "Shai Erera",
+            "body": "Patch against 3x - fixes the bug according to Alexander's other patch (but uses HashSet all the way), and I added a CHANGES entry and test case to TestSegmentInfo. I plan to commit this soon and also backport to 3.0 and 2.9",
+            "date": "2011-01-18T13:10:55.143+0000",
+            "id": 4
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Patch looks good Shai!\n\nI don't think you need to backport to 2.9/3.0 immediately (unless you really want to!)?  We can backport if/when we do another release...",
+            "date": "2011-01-18T13:30:08.423+0000",
+            "id": 5
+        },
+        {
+            "author": "Shai Erera",
+            "body": "Committed revision 1060358 (3x).\nCommitted revision 1060391 (3.0).\nCommitted revision 1060398 (2.9).\n\nThanks Alexander !",
+            "date": "2011-01-18T14:45:53.961+0000",
+            "id": 6
+        },
+        {
+            "author": "Alexander Kanarsky",
+            "body": "Thanks Shai and Michael!",
+            "date": "2011-01-24T23:14:13.475+0000",
+            "id": 7
+        },
+        {
+            "author": "Grant Ingersoll",
+            "body": "Bulk close for 3.1",
+            "date": "2011-03-30T15:50:25.613+0000",
+            "id": 8
+        }
+    ],
+    "component": "core/index",
+    "description": "The multi-threaded call of the files() in SegmentInfo could lead to the ConcurrentModificationException if one thread is not finished additions to the ArrayList (files) yet while the other thread already obtained it as cached (see below). This is a rare exception, but it would be nice to fix. I see the code is no longer problematic in the trunk (and others ported from flex_1458), looks it was fixed while implementing post 3.x features. The fix to 3.x and 2.9.x branches could be the same - create the files set first and populate it, and then assign to the member variable at the end of the method. This will resolve the issue. I could prepare the patch for 2.9.4 and 3.x, if needed.\n\n--\n\nINFO: [19] webapp= path=/replication params={command=fetchindex&wt=javabin} status=0 QTime=1\nJul 30, 2010 9:13:05 AM org.apache.solr.core.SolrCore execute\nINFO: [19] webapp= path=/replication params={command=details&wt=javabin} status=0 QTime=24\nJul 30, 2010 9:13:05 AM org.apache.solr.handler.ReplicationHandler doFetch\nSEVERE: SnapPull failed\njava.util.ConcurrentModificationException\n        at java.util.AbstractList$Itr.checkForComodification(AbstractList.java:372)\n        at java.util.AbstractList$Itr.next(AbstractList.java:343)\n        at java.util.AbstractCollection.addAll(AbstractCollection.java:305)\n        at org.apache.lucene.index.SegmentInfos.files(SegmentInfos.java:826)\n        at org.apache.lucene.index.DirectoryReader$ReaderCommit.<init>(DirectoryReader.java:916)\n        at org.apache.lucene.index.DirectoryReader.getIndexCommit(DirectoryReader.java:856)\n        at org.apache.solr.search.SolrIndexReader.getIndexCommit(SolrIndexReader.java:454)\n        at org.apache.solr.handler.SnapPuller.fetchLatestIndex(SnapPuller.java:261)\n        at org.apache.solr.handler.ReplicationHandler.doFetch(ReplicationHandler.java:264)\n        at org.apache.solr.handler.ReplicationHandler$1.run(ReplicationHandler.java:146)\n",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-2584",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Minor",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "Concurrency issues in SegmentInfo.files() could lead to ConcurrentModificationException",
+    "systemSpecification": true,
+    "version": "2.9, 2.9.1, 2.9.2, 2.9.3, 3.0, 3.0.1, 3.0.2"
+}

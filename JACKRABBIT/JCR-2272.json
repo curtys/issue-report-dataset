@@ -1,0 +1,239 @@
+{
+    "comments": [
+        {
+            "author": "Tobias Bocanegra",
+            "body": "Added org/apache/jackrabbit/core/ConcurrentImportTest.java that reproduces this issue.\n",
+            "date": "2009-08-21T20:50:55.698+0000",
+            "id": 0
+        },
+        {
+            "author": "Stefan Guggisberg",
+            "body": "attached a patch which causes an InvaliditemStateException to be thrown on coliding node creations\n\nConcurrentImportTest.testConcurrentImport fails now with an InvalidItemStateException (as expected); the test should IMO be fixed.\n\nConcurrentImportTest.testConcurrentImportVersionable fails now with a VersionException (History already exists ...);\ni am not sure whether that's a VersionManager issue.",
+            "date": "2009-08-27T13:47:52.231+0000",
+            "id": 1
+        },
+        {
+            "author": "Stefan Guggisberg",
+            "body": "revised patch",
+            "date": "2009-08-31T13:05:19.623+0000",
+            "id": 2
+        },
+        {
+            "author": "Dominique Pfister",
+            "body": "Applying the revised patch exposes another problem with an ItemState's internal data object, which results in a NullPointerException when a session tries to modify an item that has been destroyed concurrently by another session.\n\nSubmitting a cumulative patch (JCR-2272_NPE.patch) that fixes this issue and lets ConcurrentImportTest throw an unexpected exception - such as NPE - again as RepositoryException.",
+            "date": "2009-09-10T15:32:30.692+0000",
+            "id": 3
+        },
+        {
+            "author": "Stefan Guggisberg",
+            "body": "adapted patch to current trunk (r825918)\n\nhowever, applying the patch causes a test failure:\n\n-------------------------------------------------------------------------------\nTest set: org.apache.jackrabbit.core.integration.JCRAPITest\n-------------------------------------------------------------------------------\nTests run: 1895, Failures: 0, Errors: 1, Skipped: 0, Time elapsed: 47.385 sec <<< FAILURE!\ntestUpdate(org.apache.jackrabbit.test.api.NodeTest)  Time elapsed: 0.015 sec  <<< ERROR!\njavax.jcr.RepositoryException: org.apache.jackrabbit.core.state.StaleItemStateException: d1edb4c2-a258-4fe4-864b-1bb73252b55f has been created externally\n\tat org.apache.jackrabbit.core.VersionManagerImpl.mergeOrUpdate(VersionManagerImpl.java:350)\n\tat org.apache.jackrabbit.core.VersionManagerImpl.update(VersionManagerImpl.java:287)\n\tat org.apache.jackrabbit.core.NodeImpl.update(NodeImpl.java:3126)\n\tat org.apache.jackrabbit.test.api.NodeTest.testUpdate(NodeTest.java:305)\nCaused by: org.apache.jackrabbit.core.state.StaleItemStateException: d1edb4c2-a258-4fe4-864b-1bb73252b55f has been created externally\n\tat org.apache.jackrabbit.core.state.SharedItemStateManager$Update.begin(SharedItemStateManager.java:677)\n\tat org.apache.jackrabbit.core.state.SharedItemStateManager.beginUpdate(SharedItemStateManager.java:1087)\n\tat org.apache.jackrabbit.core.state.SharedItemStateManager.update(SharedItemStateManager.java:1117)\n\tat org.apache.jackrabbit.core.state.LocalItemStateManager.update(LocalItemStateManager.java:351)\n\tat org.apache.jackrabbit.core.state.XAItemStateManager.update(XAItemStateManager.java:354)\n\tat org.apache.jackrabbit.core.state.LocalItemStateManager.update(LocalItemStateManager.java:326)\n\tat org.apache.jackrabbit.core.version.VersionManagerImplBase$WriteOperation.save(VersionManagerImplBase.java:463)\n\tat org.apache.jackrabbit.core.version.VersionManagerImplMerge.merge(VersionManagerImplMerge.java:109)\n\tat org.apache.jackrabbit.core.VersionManagerImpl.mergeOrUpdate(VersionManagerImpl.java:348)\n\t... 23 more\n\n",
+            "date": "2009-10-16T14:52:06.869+0000",
+            "id": 4
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "See JCR-2295 for an occasional query test failure that was caused by the ConcurrentImportTest class introduced here. Marcel disabled the test in revision 812032.",
+            "date": "2009-11-03T20:08:57.418+0000",
+            "id": 5
+        },
+        {
+            "author": "Julian Reschke",
+            "body": "The last patch applies against trunk if \n\n  public static final int STATUS_STALE_MODIFIED = 5;\n\ngets re-added (not sure about the rational for removing it).\n\nConfirming that testUpdate fails.\n\nI also get four failures in the ShareableNodesTests.",
+            "date": "2011-09-01T13:24:35.126+0000",
+            "id": 6
+        },
+        {
+            "author": "Stefan Guggisberg",
+            "body": "as of JCR-2650 STATUS_STALE_MODIFIED is not applicable anymore ",
+            "date": "2011-09-01T13:34:10.212+0000",
+            "id": 7
+        },
+        {
+            "author": "Julian Reschke",
+            "body": "> I also get four failures in the ShareableNodesTests. \n\nApparently known issue (JCR-2756) - was running from Eclipse.\n\nStefan:\n\n> as of JCR-2650 STATUS_STALE_MODIFIED is not applicable anymore \n\nSo is there another state that could be used? I tried STATUS_UNDEFINED which seems to yield exactly the same result.",
+            "date": "2011-09-02T13:13:37.578+0000",
+            "id": 8
+        },
+        {
+            "author": "Julian Reschke",
+            "body": "Patch updated for trunk, with STATUS_STALE_MODIFIED replaced by STATUS_UNDEFINED.\n\nThe problem in NodeTest.testUpdate remains, though.",
+            "date": "2011-09-02T13:26:02.302+0000",
+            "id": 9
+        },
+        {
+            "author": "Julian Reschke",
+            "body": "NodeTest.testUpdate fails. because the update operation happens on a node which has an additional child node in the workspace the update() imports from. This node handled as addedState and detected as status != STATUS_NEW, thus the operation fails.\n\nWild guess: maybe the update/merge code needs to create a NodeState with a different status here?",
+            "date": "2011-09-05T15:04:32.072+0000",
+            "id": 10
+        },
+        {
+            "author": "Julian Reschke",
+            "body": "Stefan wrote:\n\n> ConcurrentImportTest.testConcurrentImportVersionable fails now with a VersionException (History already exists ...);\ni am not sure whether that's a VersionManager issue. \n\nI think it's correct that an exception occurs here; the question seems to be mainly whether it's the correct exception to throw, and whether the save() operation is properly aborted...\n\n",
+            "date": "2011-09-06T12:18:45.067+0000",
+            "id": 11
+        },
+        {
+            "author": "Julian Reschke",
+            "body": "Proposed patch.",
+            "date": "2011-09-06T14:29:43.655+0000",
+            "id": 12
+        },
+        {
+            "author": "Julian Reschke",
+            "body": "Summary so far:\n\n- the problem on update() was caused by the node state of the new node being flipped from NEW to EXISTING_MODIFIED while removing the jcr:mixins property (which apparently isn't seen on the source node, not sure why); the pattern to change the state only for != NEW was already common in NodeStateEx, so it was probably an oversight that it wasn't followed in this case as well.\n\n- the change for ItemStateManager used STATUS_STALE_MODIFIED previously which has been removed in the meantime; somebody needs to have a look whether STATUS_UNDEFINED is correct here\n\n...ConcurrentImportTests:\n\n- these had be excluded (both in pom.xml and not being added in TestAll) before.\n\n-- testConcurrentImport works for me *in Eclipse* when I move addNode(test, uuid, JcrConstants.NT_UNSTRUCTURED, uuid, mixins); inside the try block (so the exception happens early; before save). It doesn't work for me when run from Maven (me confused)\n\n- testConcurrentImportVersionable aborts as it should, but with a VersioningException instead of the expected StaleItemException; not sure how we should address this (tune the test expectation?)",
+            "date": "2011-09-06T14:36:06.708+0000",
+            "id": 13
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "What is the reason for the change in the ItemManager?\n\n> STATUS_UNDEFINED\n\nThis doesn't sound correct, but all other alternative seem inappropriate as well.\n\nMaybe we should introduce a STATUS_STALE_NEW? After all, the node is still new because it had been added. We just want to make sure it isn't persisted.",
+            "date": "2011-09-07T09:33:47.163+0000",
+            "id": 14
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "> STATUS_UNDEFINED\n\nOn the other hand, we also use it in ItemState.discard(). So, the status isn't just used as default value for uninitialized ItemState.",
+            "date": "2011-09-07T09:37:34.204+0000",
+            "id": 15
+        },
+        {
+            "author": "Julian Reschke",
+            "body": "> What is the reason for the change in the ItemManager? \n\nDunno; it seems it was added by Dominique in the 2009-09-10 patch.",
+            "date": "2011-09-07T11:08:39.177+0000",
+            "id": 16
+        },
+        {
+            "author": "Julian Reschke",
+            "body": "Running ConcurrentImportTest.testConcurrentImport some more I still see various different, non-reproducible exceptions (not entirely surprisingly given the nature of the test).\n\nWe probably need to go through each of them and decide whether they are just cases where the wrong exception is thrown, or whether there's an issue left.\n\nI think it would make sense to add code that tests for the repository corruption we're after. Is there something more elegant than doing a query for all nodes, and checking getPath() on each of them?",
+            "date": "2011-09-07T17:04:38.727+0000",
+            "id": 17
+        },
+        {
+            "author": "Julian Reschke",
+            "body": "...attached a new patch that (a) attempts to explain why we set the state \"UNDEFINED\", and (b) adds a sanity check to the test case for a subsequent save() after a failed save().\n\nThe remaining issues still are:\n\n- how do we in general test for RM corruption\n- fix the remaining test failures (are these acceptable or do they need more tests and fixes?)\n",
+            "date": "2011-09-12T13:34:21.467+0000",
+            "id": 18
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "> (b) adds a sanity check to the test case for a subsequent save() \n\nthe session.save() must happen before the session.refresh(), otherwise it will always succeed and fail is called. Unfortunately fail is called within the Task thread and will not cause the test case to fail. A failure in the Task thread must be reported back to the main test thread, which then calls fail.\n\n> how do we in general test for RM corruption\n\nThis is a more general problem with the checkConsistency() method on the PersistenceManager. It does not have a return value, nor does it throw an exception when it detects inconsistencies. I think we should open a new issue about this.\n\n> fix the remaining test failures\n\nAre there other test failures other than JCR-3068?",
+            "date": "2011-09-13T07:44:45.484+0000",
+            "id": 19
+        },
+        {
+            "author": "Julian Reschke",
+            "body": ">the session.save() must happen before the session.refresh(), otherwise it will always succeed and fail is called. Unfortunately fail is called within the Task thread and will not cause the test case to fail. A failure in\n> the Task thread must be reported back to the main test thread, which then calls fail.\n\nIndeed. Will fix.\n\n>This is a more general problem with the checkConsistency() method on the PersistenceManager. It does not have a return value, nor does it throw an exception when it detects inconsistencies. I think we should\n> open a new issue about this.\n\nWill open a separate ticket for this TODO.\n\n> Are there other test failures other than JCR-3068? \n\n(1) ConcurrentImportTest occasionally falls with other exceptions.\n(2) ConcurrentImportTest.testConcurrentImportVersionable fails with VersionException /History already exists) and we need to decide whether this is ok, Given the fact that in theory the save operation should not fail at all (see JCR-3068) we probably can treat it like the other exception for now.",
+            "date": "2011-09-13T08:24:34.691+0000",
+            "id": 20
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "I agree, the version history issue probably has the same root cause.\n\nIt would be nice when the test did not throw an exception at all, but I don't consider this a critical issue right now. The use case is IMO rather theoretical and an application could still handle the exception caused by a concurrent import.\n\nI think the important part of this issue is to make sure the repository keeps consistent.",
+            "date": "2011-09-13T11:30:21.301+0000",
+            "id": 21
+        },
+        {
+            "author": "Julian Reschke",
+            "body": "> the session.save() must happen before the session.refresh(), otherwise it will always succeed and fail is called. Unfortunately fail is called within the Task thread and will not cause the test case to fail. A failure in the Task thread must be reported back to the main test thread, which then calls fail.\n\nUpdated the test so it doesn't use fail(), and does the 2nd save() without a refresh, Surprise (or not): the subsequent save() actually *succeeds*. This is not that surprising, as we have a race condition, and the save() should have succeeded anyway.",
+            "date": "2011-09-13T12:06:21.467+0000",
+            "id": 22
+        },
+        {
+            "author": "Julian Reschke",
+            "body": "More observations:\n\n- concurrent import fails with different kinds of RepositoryExceptions, not only InvalidItemStateExceptions -- as, for this case, there shouldn't be any exceptions, it seems to be ok to allow all kinds of RepositoryExceptions for now, and address this problem later on\n\n- exceptions sometimes happen before save() and thus are not accepted; I think that behavior is ok, so we should move addNode() into the try block\n\nThe most important issue continues to fix those exceptions which are caused by the attempt to add a node to the persistence although it is already there (on the PersistenceManager level); we should (a) change BundleDBPersistenceManager to produce a more useful exception in this case, and (b) in the test case follow the exception chain checking for an SQLIntegrityViolationException, treating that as a test failure.\n\nPatch follow -- with that patch, we still see occasional failures, and we probably need to dig deeper.\n\n",
+            "date": "2011-09-13T15:20:23.125+0000",
+            "id": 23
+        },
+        {
+            "author": "Julian Reschke",
+            "body": "Updated patch; now aborts suspicious call into BundleDBPersistenceManager; running ConcurrentImportTest frequently enough still causes this (constraint violations on the DB level) to happen.",
+            "date": "2011-09-15T16:23:20.089+0000",
+            "id": 24
+        },
+        {
+            "author": "Julian Reschke",
+            "body": "Traces, obtained by adding debug output to various places.\n\nIt shows that the new code in LocalItemStateManager does not catch the change done in thread 1 as thread 1's beginUpdate happens too late.",
+            "date": "2011-09-19T12:32:52.628+0000",
+            "id": 25
+        },
+        {
+            "author": "Julian Reschke",
+            "body": "Another trace, now logging the downgrade of the write log as well.\n\nNote that threads 1 and 2 finish before 0 and 3 start; so it's only two threads (0 and 3) involved here.",
+            "date": "2011-09-19T14:21:03.298+0000",
+            "id": 26
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "The latest patch looks like a reasonable step forward. I'll try to review the attached traces to better understand also the deeper interactions here. Meanwhile, some comments:\n\n* The SQLIntegrityConstraintViolationException class is only available since Java 6. As an alternative we could try to interpret the value returned by the SQLException.getSQLState() method.\n\n* I couldn't get the ConcurrentImportTest to fail with the latest patch despite numerous attempts, but that might be just due to my pretty fast server and the relatively low level of concurrency in the test case. Or then everything is just fine. :-)\n\n* What I do see instead is plenty of warnings like the following. I didn't check yet if this is because of the changes in the patch or something we'd in any case need to fix.\n\n15:01:43.975 WARN  [Executor 0] ItemSaveOperation.java:885  /testroot/9afd33fd-b66d-4c8f-9d02-0fe16245d0bc/jcr:mixinTypes: failed to restore transient state\njavax.jcr.RepositoryException: org.apache.jackrabbit.core.state.ItemStateException: there's already a property state instance with id 9afd33fd-b66d-4c8f-9d02-0fe16245d0bc/{http://www.jcp.org/jcr/1.0}mixinTypes\n        at org.apache.jackrabbit.core.PropertyImpl.restoreTransient(PropertyImpl.java:197) ~[classes/:na]\n        at org.apache.jackrabbit.core.ItemSaveOperation.restoreTransientItems(ItemSaveOperation.java:879) [classes/:na]\n        at org.apache.jackrabbit.core.ItemSaveOperation.perform(ItemSaveOperation.java:277) [classes/:na]\n        at org.apache.jackrabbit.core.session.SessionState.perform(SessionState.java:200) [classes/:na]\n        at org.apache.jackrabbit.core.ItemImpl.perform(ItemImpl.java:91) [classes/:na]\n        at org.apache.jackrabbit.core.ItemImpl.save(ItemImpl.java:329) [classes/:na]\n        at org.apache.jackrabbit.core.session.SessionSaveOperation.perform(SessionSaveOperation.java:64) [classes/:na]\n        at org.apache.jackrabbit.core.session.SessionState.perform(SessionState.java:200) [classes/:na]\n        at org.apache.jackrabbit.core.SessionImpl.perform(SessionImpl.java:360) [classes/:na]\n        at org.apache.jackrabbit.core.SessionImpl.save(SessionImpl.java:809) [classes/:na]\n        at org.apache.jackrabbit.core.ConcurrentImportTest$1.execute(ConcurrentImportTest.java:95) [test-classes/:na]\n        at org.apache.jackrabbit.core.AbstractConcurrencyTest$Executor.run(AbstractConcurrencyTest.java:209) [test-classes/:na]\n        at java.lang.Thread.run(Thread.java:662) [na:1.6.0_23]\nCaused by: org.apache.jackrabbit.core.state.ItemStateException: there's already a property state instance with id 9afd33fd-b66d-4c8f-9d02-0fe16245d0bc/{http://www.jcp.org/jcr/1.0}mixinTypes\n        at org.apache.jackrabbit.core.state.SessionItemStateManager.createTransientPropertyState(SessionItemStateManager.java:631) ~[classes/:na]\n        at org.apache.jackrabbit.core.PropertyImpl.restoreTransient(PropertyImpl.java:191) ~[classes/:na]\n        ... 12 common frames omitted\n",
+            "date": "2011-09-20T13:22:58.804+0000",
+            "id": 27
+        },
+        {
+            "author": "Julian Reschke",
+            "body": "> The SQLIntegrityConstraintViolationException class is only available since Java 6. As an alternative we could try to interpret the value returned by the SQLException.getSQLState() method.\n\nWill fix.\n\n> I couldn't get the ConcurrentImportTest to fail with the latest patch despite numerous attempts, but that might be just due to my pretty fast server and the relatively low level of concurrency in the test case. Or then everything is just fine. :-) \n\nOn my test machine, it usually requires > 10 iterations.\n\n> What I do see instead is plenty of warnings like the following. I didn't check yet if this is because of the changes in the patch or something we'd in any case need to fix. \n\nI don't believe I have seen those; will pay attention.",
+            "date": "2011-09-20T13:33:09.458+0000",
+            "id": 28
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "I created the JCR-2272 branch for this so we can better exchange code until the tests no longer fail and we can merge the work back to trunk. In revision 117316 I committed your latest patch to the branch and in revision 1173169 I broke the Java 6 dependency.",
+            "date": "2011-09-20T14:40:41.104+0000",
+            "id": 29
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "There's a pretty nasty case of an IllegalStateException (a RuntimeException) being thrown by ItemState.connect() when it detects an inconsistency caused by this problem. To make such issues more visible and easier to catch I changed the exception to an ItemStateException in revision 1173558 of the JCR-2272 branch.\n\nOne very troublesome effect of that exception is that it can cause a repository deadlock since the cluster lock never gets released in SISM.Update.end() when the exception gets thrown from within the ChangeLog.persisted() call. I'll look into making the cluster lock handling more robust (move the unlocking to a finally block) before digging deeper into this consistency problem.",
+            "date": "2011-09-21T10:26:54.297+0000",
+            "id": 30
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "See revisions 1173578 and 1173579 for the changes required to prevent an unexpected exception from locking the entire cluster.\n\nI digged deeper into this problem and I think I now have a pretty good idea of what goes wrong. When a session creates a node with an explicitly given UUID, it can be that the new transient NodeState gets created right after some other thread has persisted another node with the exact same UUID. In such a case the new NodeState doesn't necessarily receive notifications about the other node having been created and thus its status is still STATUS_NEW. \n\nThe attached patch contains an initial patch that attempts to prevent such cases by explicitly checking the underlying persistence manager for duplicate ids once a new NodeState has already been connected to the state notification mechanism. This check is only done when a predefined UUID is used, so it shouldn't affect performance too badly, though I'll still need to check how the creation of the localState instance in NodeImpl.makePersistent() affects this assumption (since there the id of a transient node gets copied).\n\nThe patch passes all tests and as far as I can tell fixes also the ConcurrentImportTest. However, it's a pretty complex change, so code reviews would be welcome.",
+            "date": "2011-09-21T16:35:16.023+0000",
+            "id": 31
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "I committed the proposed patch to the JCR-2272 branch in revision 1174016. In the followup revision 1174017 I fixed a problem for handling of transient spaces that both remove and add a node with the same UUID. The followup revision also avoids the duplicate id checks in NodeImp.makePersistent(), which should prevent the extra performance hit.",
+            "date": "2011-09-22T09:32:21.538+0000",
+            "id": 32
+        },
+        {
+            "author": "Julian Reschke",
+            "body": "It seems to me that the changes really help, but I still see occasional failures; from running ConcurrentImportTest in a loop I'd say it happen roughly 2% of the time.",
+            "date": "2011-09-22T13:47:09.451+0000",
+            "id": 33
+        },
+        {
+            "author": "Julian Reschke",
+            "body": "With the current code, I see occasional NPEs such as:\n\nException in thread \"Executor 0\" java.lang.NullPointerException\n        at org.apache.jackrabbit.core.ItemSaveOperation.validateTransientItems(I\ntemSaveOperation.java:493)\n        at org.apache.jackrabbit.core.ItemSaveOperation.perform(ItemSaveOperatio\nn.java:216)\n        at org.apache.jackrabbit.core.session.SessionState.perform(SessionState.\njava:200)\n        at org.apache.jackrabbit.core.ItemImpl.perform(ItemImpl.java:91)\n        at org.apache.jackrabbit.core.ItemImpl.save(ItemImpl.java:329)\n        at org.apache.jackrabbit.core.session.SessionSaveOperation.perform(Sessi\nonSaveOperation.java:64)\n        at org.apache.jackrabbit.core.session.SessionState.perform(SessionState.\njava:200)\n        at org.apache.jackrabbit.core.SessionImpl.perform(SessionImpl.java:360)\n        at org.apache.jackrabbit.core.SessionImpl.save(SessionImpl.java:809)\n\nor\n\nException in thread \"Executor 1\" java.lang.NullPointerException\n        at org.apache.jackrabbit.core.ItemManager.getDefinition(ItemManager.java\n:206)\n        at org.apache.jackrabbit.core.ItemData.getDefinition(ItemData.java:99)\n        at org.apache.jackrabbit.core.AbstractNodeData.getNodeDefinition(Abstrac\ntNodeData.java:73)\n        at org.apache.jackrabbit.core.NodeImpl.getDefinition(NodeImpl.java:2423)\n\n        at org.apache.jackrabbit.core.xml.SessionImporter.startNode(SessionImpor\nter.java:349)\n        at org.apache.jackrabbit.core.xml.SysViewImportHandler.processNode(SysVi\newImportHandler.java:94)\n        at org.apache.jackrabbit.core.xml.SysViewImportHandler.endElement(SysVie\nwImportHandler.java:249)\n        at org.apache.jackrabbit.core.xml.ImportHandler.endElement(ImportHandler\n.java:195)\n        at org.apache.jackrabbit.core.ConcurrentImportTest.addNode(ConcurrentImp\nortTest.java:200)\n        at org.apache.jackrabbit.core.ConcurrentImportTest$1.execute(ConcurrentI\nmportTest.java:95)\n        at org.apache.jackrabbit.core.AbstractConcurrencyTest$Executor.run(Abstr\nactConcurrencyTest.java:209)",
+            "date": "2011-09-22T14:35:59.715+0000",
+            "id": 34
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "To solve JCR-3063 it looks like we may need to revert the changes of JCR-2171. That shouldn't be a problem since Stefan has meanwhile modified how transient items are handled and the original deadlock scenario of JCR-2171 should no longer be possible.\n\nReverting JCR-2171 should help also here, as doing so would move the troublesome item state notifications back inside the SISM write lock.",
+            "date": "2011-09-23T15:08:36.756+0000",
+            "id": 35
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Together with JCR-3063 (that explains the above NPEs) and some last touches I added in revision 1176545 I think we're pretty much done here. I merged the branch work back to trunk in revision 1176546.\n\nI also merged the changes back to the 2.2 branch in revision 1176577 for inclusion in the 2.2.9 release.",
+            "date": "2011-09-27T19:58:47.622+0000",
+            "id": 36
+        }
+    ],
+    "component": "jackrabbit-core, xml",
+    "description": "21.08.2009 16:22:14 *ERROR* [Executor 0] ConnectionRecoveryManager: could not execute statement, reason: The statement was aborted because it would have caused a duplicate key value in a unique or primary key constraint or unique index identified by 'SQL090821042140130' defined on 'DEFAULT_BUNDLE'., state/code: 23505/20000 (ConnectionRecoveryManager.java, line 453)\n21.08.2009 16:22:14 *ERROR* [Executor 0] BundleDbPersistenceManager: failed to write bundle: 6c292772-349e-42b3-8255-7729615c67de (BundleDbPersistenceManager.java, line 1212)\nERROR 23505: The statement was aborted because it would have caused a duplicate key value in a unique or primary key constraint or unique index identified by 'SQL090821042140130' defined on 'DEFAULT_BUNDLE'.\n\tat org.apache.derby.iapi.error.StandardException.newException(Unknown Source)\n\tat org.apache.derby.impl.sql.execute.IndexChanger.insertAndCheckDups(Unknown Source)\n\tat org.apache.derby.impl.sql.execute.IndexChanger.doInsert(Unknown Source)\n\tat org.apache.derby.impl.sql.execute.IndexChanger.insert(Unknown Source)\n\tat org.apache.derby.impl.sql.execute.IndexSetChanger.insert(Unknown Source)\n\tat org.apache.derby.impl.sql.execute.RowChangerImpl.insertRow(Unknown Source)\n\tat org.apache.derby.impl.sql.execute.InsertResultSet.normalInsertCore(Unknown Source)\n\tat org.apache.derby.impl.sql.execute.InsertResultSet.open(Unknown Source)\n\tat org.apache.derby.impl.sql.GenericPreparedStatement.execute(Unknown Source)\n\tat org.apache.derby.impl.jdbc.EmbedStatement.executeStatement(Unknown Source)\n\tat org.apache.derby.impl.jdbc.EmbedPreparedStatement.executeStatement(Unknown Source)\n\tat org.apache.derby.impl.jdbc.EmbedPreparedStatement.execute(Unknown Source)\n\tat org.apache.jackrabbit.core.persistence.bundle.util.ConnectionRecoveryManager.executeStmtInternal(ConnectionRecoveryManager.java:371)\n\tat org.apache.jackrabbit.core.persistence.bundle.util.ConnectionRecoveryManager.executeStmtInternal(ConnectionRecoveryManager.java:298)\n\tat org.apache.jackrabbit.core.persistence.bundle.util.ConnectionRecoveryManager.executeStmt(ConnectionRecoveryManager.java:261)\n\tat org.apache.jackrabbit.core.persistence.bundle.util.ConnectionRecoveryManager.executeStmt(ConnectionRecoveryManager.java:239)\n\tat org.apache.jackrabbit.core.persistence.bundle.BundleDbPersistenceManager.storeBundle(BundleDbPersistenceManager.java:1209)\n\tat org.apache.jackrabbit.core.persistence.bundle.AbstractBundlePersistenceManager.putBundle(AbstractBundlePersistenceManager.java:709)\n\tat org.apache.jackrabbit.core.persistence.bundle.AbstractBundlePersistenceManager.storeInternal(AbstractBundlePersistenceManager.java:651)\n\tat org.apache.jackrabbit.core.persistence.bundle.AbstractBundlePersistenceManager.store(AbstractBundlePersistenceManager.java:527)\n\tat org.apache.jackrabbit.core.persistence.bundle.BundleDbPersistenceManager.store(BundleDbPersistenceManager.java:563)\n\tat org.apache.jackrabbit.core.state.SharedItemStateManager$Update.end(SharedItemStateManager.java:724)\n\tat org.apache.jackrabbit.core.state.SharedItemStateManager.update(SharedItemStateManager.java:1101)\n\tat org.apache.jackrabbit.core.state.LocalItemStateManager.update(LocalItemStateManager.java:351)\n\tat org.apache.jackrabbit.core.state.XAItemStateManager.update(XAItemStateManager.java:354)\n\tat org.apache.jackrabbit.core.state.LocalItemStateManager.update(LocalItemStateManager.java:326)\n\tat org.apache.jackrabbit.core.state.SessionItemStateManager.update(SessionItemStateManager.java:326)\n\tat org.apache.jackrabbit.core.ItemImpl.save(ItemImpl.java:1098)\n\tat org.apache.jackrabbit.core.SessionImpl.save(SessionImpl.java:925)\n\tat org.apache.jackrabbit.core.ConcurrentImportTest$1.execute(ConcurrentImportTest.java:73)\n\tat org.apache.jackrabbit.core.AbstractConcurrencyTest$Executor.run(AbstractConcurrencyTest.java:209)\n\tat java.lang.Thread.run(Thread.java:637)\n",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "JCR-2272",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "Errors during concurrent session import of nodes with same UUIDs",
+    "systemSpecification": true,
+    "version": "2.0-alpha8"
+}

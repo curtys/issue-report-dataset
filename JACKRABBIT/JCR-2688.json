@@ -1,0 +1,149 @@
+{
+    "comments": [
+        {
+            "author": "Michael D\u00fcrig",
+            "body": "Proposed patch\n\nExample usage:\n\n // Create a new TreeManager instance rooted at node. Splitting of nodes takes place\n // when the number of children of a node exceeds 40 and is done such that each new\n // node has at least 40 child nodes. The keys are ordered according to the natural\n // order of java.lang.String.\n TreeManager treeManager = new BTreeManager(node, 20, 40, Rank.<String>comparableComparator(), true);\n\n // Create a new NodeSequence with that tree manager\n NodeSequence nodes = ItemSequence.createNodeSequence(treeManager);\n\n // Add nodes with key \"jcr\" and \"day\"\n nodes.addNode(\"jcr\", NodeType.NT_UNSTRUCTURED);\n nodes.addNode(\"day\", NodeType.NT_UNSTRUCTURED);\n\n // Iterate over the node in the sequence.\n // Prints \"day jcr \"\n for (Node n : nodes) {\n     System.out.print(n.getName() + \" \");\n }\n\n // Retrieve node with key \"jcr\"\n Node n = nodes.getItem(\"jcr\");\n\n // Remove node with key \"day\"\n nodes.removeNode(\"day\");\n\nThe nodes in the JCR sub tree are arranged such that any node named x only contains child nodes with names greater or equal to x. The implementation keeps the child nodes in the sub tree ordered if the respective node type supports ordering of child nodes. Ordering is always wrt. to a Comparator on the respective keys. For lexical order this arrangement corresponds to how words are arranged in a multi volume encyclopedia.\n\n",
+            "date": "2010-07-28T10:12:03.804+0000",
+            "id": 0
+        },
+        {
+            "author": "Michael D\u00fcrig",
+            "body": "Open questions:\n\n- Currently these utility classes live in a new package o.a.j.flat. There might be better names...\n- I would like to add unit tests. However jcr-commons currently does not have dependencies to the core (and other modules) which would be needed for the tests. Should we add the required deps with scope test or should we place the unit test somewhere else? where?",
+            "date": "2010-07-28T10:16:02.522+0000",
+            "id": 1
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "I would use a test dependency. Placing the tests somewhere else is weird.",
+            "date": "2010-07-28T10:26:23.253+0000",
+            "id": 2
+        },
+        {
+            "author": "Justin Edelson",
+            "body": "> I would use a test dependency. Placing the tests somewhere else is weird.\nYou can't do this; it will create a circular dependency between core and jcr-commons.",
+            "date": "2010-07-28T13:16:36.431+0000",
+            "id": 3
+        },
+        {
+            "author": "Michael D\u00fcrig",
+            "body": "Maven seems to fine with jackrabbit-core as test dependency. Eclipse doesn't like it however since it results in a circular classpath. \n\nSo the questions remains: where should units tests for classes in jcr-commons go which need a repository?",
+            "date": "2010-07-28T13:37:50.773+0000",
+            "id": 4
+        },
+        {
+            "author": "Justin Edelson",
+            "body": "> Maven seems to fine with jackrabbit-core as test dependency.\n\nThis may be true if you run a single project build, but it fails when running a reactor build:\n\n[INFO] The projects in the reactor contain a cyclic reference: Edge between 'Vertex{label='org.apache.jackrabbit:jackrabbit-core'}' and 'Vertex{label='org.apache.jackrabbit:jackrabbit-jcr-commons'}' introduces to cycle in the graph org.apache.jackrabbit:jackrabbit-jcr-commons --> org.apache.jackrabbit:jackrabbit-core --> org.apache.jackrabbit:jackrabbit-jcr-commons\n",
+            "date": "2010-07-28T13:48:19.913+0000",
+            "id": 5
+        },
+        {
+            "author": "Michael D\u00fcrig",
+            "body": "So I see four option for the unit tests:\n\n1. Move above utility classes along with the unit test into their own module\n2. Add the unit tests to jackrabbit-core\n3. Add the unit tests to jcr-commons but run them during the core build. Needs a jcr-commons test artifact\n4. Do away with the unit tests all together\n\nAlthough 1. is the cleanest way I don't like it since we have enough modules already. \n4. is bad\nFor 2. I think jackrabbit-core is the wrong place. Unit tests always have a documentation aspect. People just wont look for them in core.\nSo I think we are left with 3. Which is not a bright solution neither.",
+            "date": "2010-07-28T14:49:40.370+0000",
+            "id": 6
+        },
+        {
+            "author": "Alexander Klimetschek",
+            "body": "1. is the \"right\" way: if jackrabbit's JCR API implementation (core) depends on jcr-commons functionality, jcr-commons itself can't really offer functionality that depends on the JCR API (and on an API implementation to run/test it). But that extends to existing utilities in jcr-commons, I guess.",
+            "date": "2010-07-28T15:17:46.124+0000",
+            "id": 7
+        },
+        {
+            "author": "Michael D\u00fcrig",
+            "body": "Yes technically 1. is the right way... However I fear its not a realistic option. \nAs it seems 2. is the way taken by others (i.e. for o.a.j.c.query.GQL). So I guess I'll also take this approach. ",
+            "date": "2010-07-28T15:26:31.418+0000",
+            "id": 8
+        },
+        {
+            "author": "Justin Edelson",
+            "body": "5. Leave the unit tests in jcr-commons and use mocks\n\nor\n\n6. Break jcr-commons into two:\n* jcr-impl-commons - utility classes/interfaces for help *implementing* JCR\n* jcr-api-commons - utility classes/interfaces for help *using* JCR\n\nAnd then combine those into jcr-commons (for backwards compatibility)",
+            "date": "2010-07-28T15:26:59.125+0000",
+            "id": 9
+        },
+        {
+            "author": "Michael D\u00fcrig",
+            "body": "5. means basically reimplementing JCR... \n6. is more or less the same as 1.",
+            "date": "2010-07-28T15:31:37.046+0000",
+            "id": 10
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "I suggest you go with 3)\n\nWe already did this with test cases for the spi and it worked quite well.",
+            "date": "2010-07-30T12:23:33.898+0000",
+            "id": 11
+        },
+        {
+            "author": "Felix Meschberger",
+            "body": "(6) would probably be best and also solve the mistakes others have done by going (3), (1) the second best and everything else is just not a good idea ;-)\n\nBTW IMHO the \"excuse\" 'I don't like it since we have enough modules already' is just FUD. The problem is not the number of modules. The problem really is the unclear separation between modules. What you do with (2) or (3) is add to this incertainty.\n\nSo please, don't go the (2) or (3) route (what others have done already IMHO is equally wrong and should probably be fixed).",
+            "date": "2010-07-30T14:23:05.031+0000",
+            "id": 12
+        },
+        {
+            "author": "Michael D\u00fcrig",
+            "body": "I committed the patch with minor modifications along with test cases in revision 981597",
+            "date": "2010-08-02T16:58:32.459+0000",
+            "id": 13
+        },
+        {
+            "author": "Michael D\u00fcrig",
+            "body": "I created JCR-2692 to track the issue of splitting jcr-commons into tow separate modules. ",
+            "date": "2010-08-02T17:06:56.149+0000",
+            "id": 14
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "There's no need for the tests in jcr-commons to depend on the latest snapshot version of jackrabbit-core. Using the following should avoid the circular dependency:\n\n    <dependency>\n      <groupId>org.apache.jackrabbit</groupId>\n      <artifactId>jackrabbit-core</artifactId>\n      <version>2.0.0</version>\n      <scope>test</scope>\n    </dependency>\n",
+            "date": "2010-08-03T09:38:37.076+0000",
+            "id": 15
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Could we move the org.apache.jackrabbit.flat package to org.apache.jackrabbit.commons.flat? I'd like to keep as much of jcr-commons inside o.a.j.commons as possible.\n\nThe RankTest class should also go from flat to o.a.j.commons.flat.",
+            "date": "2010-08-04T09:54:17.450+0000",
+            "id": 16
+        },
+        {
+            "author": "Michael D\u00fcrig",
+            "body": "Sorry for the miss placed packages. Flat package representation in Eclipse got me. \nI fixed this in revision 982221.",
+            "date": "2010-08-04T11:46:21.970+0000",
+            "id": 17
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "BTW, I'm not too excited about the new commons-collections dependency in jcr-commons. So far we've tried to minimize the number of dependencies in jcr-commons.\n\nThe attached patch (JCR-2688-no-cc.patch) replaces the commons-collections dependencies in o.a.j.commons.flat with roughly equivalent constructs from the standard Java libraries.\n\nThere are still a few related iterator classes based on commons-collections after JCR-2698. I'll reopen that issue to figure out what to do with them.",
+            "date": "2010-08-04T13:49:35.985+0000",
+            "id": 18
+        },
+        {
+            "author": "Michael D\u00fcrig",
+            "body": "I'm basically fine with the patch. However I would refactor it a bit to regain readability of the code. ",
+            "date": "2010-08-04T14:49:21.772+0000",
+            "id": 19
+        },
+        {
+            "author": "Michael D\u00fcrig",
+            "body": "Reopening to address Jukka's comment regarding the commons-collection dependency ",
+            "date": "2010-08-05T16:56:27.844+0000",
+            "id": 20
+        },
+        {
+            "author": "Michael D\u00fcrig",
+            "body": "Fixed at revision 982695",
+            "date": "2010-08-05T17:04:20.995+0000",
+            "id": 21
+        }
+    ],
+    "component": "jackrabbit-jcr-commons",
+    "description": "Jackrabbit does not cope well with 'flat' hierarchies. That is with hierarchies where a node has many child nodes and/or properties. The current recommendation for such situations is to manually add intermediate nodes. \n\nIt would be nice to have an utility which adds/removes intermediate nodes as needed and expose a 'flat' view to users. Such an utility should:\n\n- expose a large number of nodes/properties as sequence\n- parametrize the order of how nodes/properties appear in the sequence\n- provide methods to lookup/add/remove nodes/properties by key \n- organize the node/properties in the underlying JCR hierarchy in a way which is both efficient for above operations and easily understandable to users looking at the hierarchy. ",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "JCR-2688",
+    "issuetypeClassified": "RFE",
+    "issuetypeTracker": "RFE",
+    "priority": "Major",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "Provide utility for handling large number of child nodes/properties",
+    "systemSpecification": true,
+    "version": "2.2"
+}

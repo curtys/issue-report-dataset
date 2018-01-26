@@ -1,0 +1,119 @@
+{
+    "comments": [
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 130119\nStoring numerical constants in the single class\n\nThis is a small step to address the issue, but it makes sense on its own since\ncurrently script containing\n\nfunction f() { return 1; }\nfunction g() { return 1; }\n\nprint(f()+g()+Math.sqrt(1));\n\nwould create 3 classes each contain a code to generate a wrapper Number object\nto represent 1 and with the patch the single constant from the class for the\nmain script will be used.",
+            "date": "20030820T13:36:52",
+            "id": 0
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 130216\nAll function implementations are generated in the single class.\n\nThis is an extension of the previous patch to place code implementing functions\nbodies in single class. \n\nWith the new patch classes implementing functions contain only constructor and\na call method that calls a static method \n\nc<function-index>(<FunctionClass> function, Context cx. Scriptable scope,\nScriptable thisObj, <possible-direct-call-params>, Object[] args)\n\nIn this way almost all strings representing JS names and strings are stored in\nthe main class reducing total amount of memory that generated classes occupy.",
+            "date": "20030822T07:25:24",
+            "id": 1
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 130279\nAll script and function specific code are generated in one class\n\nWith this patch the first generated class will contain all code to initialize\nand execute script and functions. The rest of generated classes contain\neffectively 3 functions that looks like:\n\nvoid constructor(Context cx, Scriptable scope, int id)\n{\n    store id\n    static call to firestGeneratedClass._i<id>(this, cx, scope);\n}\n\nObject call(Context cx, Scriptable scope, Scriptable thisObj, Object[] args)\n{\n    static call to firestGeneratedClass._c<id>(\n\tsignature-with-possible-direct-call-optimization);\n}\n\nObject getEncodedSource()\n{\n    static call to firestGeneratedClass.getEncodedSourceImpl(id);\n}\n\nSo only the first class contains all script-specific strings and functions, the\nrest of the generated classes looks almost identical. To make them identical,\nit would be necessary to replace \n    static call to firestGeneratedClass._i<id>(this, cx, scope);\n    static call to firestGeneratedClass._c<id>(this, cx, scope);\nby a switch like\n\nswitch (id) {\n  case 0: static call to firestGeneratedClass._i0(this, cx, scope);\n  case 1: static call to firestGeneratedClass._i1(this, cx, scope);\n  ...\n}\n\nand \nswitch (id) {\n  case 0: static call to firestGeneratedClass._c0(...);\n  case 1: static call to firestGeneratedClass._c1(...);\n  ...\n}\n\nThe patch touches org/mozilla/classfile/ClassFileWriter to add a support for\nswitch generation which patch uses to generate switch in getEncodedSourceImpl\nand adds public methods to NativeFunction to initialize protected fields which\nare not accessible otherwise for code in static functions in\nfirestGeneratedClass.",
+            "date": "20030823T18:49:18",
+            "id": 2
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 130359\nAn update for the previous patch to fix some ugliness",
+            "date": "20030825T10:41:05",
+            "id": 3
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 130412\nWorking full fix: generating only 2 classes to represent script code\n\nWith the above patch the optimizer produces at most 2 classes for a script with\narbitrary number of possibly nested functions.\n\nThe patch passes the test suite with optimization set to 0 and 9 but since it\nis very intrusive, I will try to test it before committing. \n\nIn principle it is possible to make optimizer to generate exactly one class\nsince a subclass of omj.NativeScript is not necessary and can be replaced by a\nomj.NativeFunction implementing some interface and hence the same class that\npatch uses to generate omj.NativeFunction subclass can also implement that\ninterface. But such change would probably require non-trivial modifications in\nomj.NativeScript.",
+            "date": "20030826T12:09:36",
+            "id": 4
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 130422\nPatch update after partial committ.\n\nI committed the changes non-optimizer related changes that are necessary for\nthe patch like support for tableswitch in org/mozilla/classfile/ClassFileWriter\nand making BaseFunction.createObject public instead of protected so it can be\ncalled from after changes to the optimizer.",
+            "date": "20030826T18:13:55",
+            "id": 5
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 130464\nPatch update to use more compact bytecode for call switch and remove changes to OptNameHelper\n\nI removed changes to OptNameHelper since they were too intrusive and changed\nnaming of generated files which I would prefer to keep as compatible with the\ncurrent naming as possible.\n\nThe patch passes the test suite and few my own stress tests. In addition the JS\ncompiler is working fine as well.",
+            "date": "20030827T14:38:19",
+            "id": 6
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "I benchmarked the patch against BenchPress.js and from func_bench.js\nmozilla/js/benchmarks. As far as I can tell an additional overhead switch/static\nmethod call to implement Function.call does not change the running time in any\nsignificant way. Such overhead is present only when direct call optimization is\nnot available since direct calls invoke the corresponding static method directly\nand their timing should be the same as before the patch. \n\nThe benchmarks confirmed this as I could not see a statistically meaningful\ndifference between running time when using -opt 9. \n\nWith -opt 0 under JDK 1.1 there is not change in timing, under JDK 1.3 the patch\nmakes benchmarks slower by 1-2% while under JDK 1.4 they are faster by 1-2%.\nThis is under Linux.\n\nNow regarding the generated class files size. Using JS compiler for\nexamples/NervousText.js as described at the bottom of\nhttp://mozilla.org/rhino/jsc.html gives without the patch 8 class files with\ntotal size 21321 and corresponding compressed jar gives 9842 bytes. \n\nAfter the patch the compiler produces only 3 class files with the total size\n12851 and the jar size 5569 bytes.\n\n\n",
+            "date": "20030827T15:01:15",
+            "id": 7
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 130526\nYet another patch update to generate smaller bytecode for switches.",
+            "date": "20030828T11:59:18",
+            "id": 8
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 130530\nTest case to check for class file limitations.\n\n\nDue to limitations of JVM class format, the patch clearly adds restrictions to\ncomplexity of script code that optimizer can handle since now all the constants\nand strings goes into single file. But such additional restrictions are not\nthat bad since the patch does not affect the major restriction of restricting\nbyte code size for methods to 64K.\n\nThe test case generates a JS source of the form\n\nfunction f1(n) { return n; }\nfunction f2(n) { return f1(n); }\nfunction f3(n) { return f2(n); }\n...\nfunction f<N>(n) { return f<N-1>(n); }\n\nf<N>(<some-value>);\n\nand then compile/execute it via \"var code = new Script(); code()\" since eval\ncan not be used as Rhino uses interpreter mode for it.\n\nIt turned out that before patch the maximum value for N with optimization level\n0 was 2847 before JVM refused to load the file and after it actually increased\nto 2853. The limit came from the code for script body that has to instantiate N\ndifferent functions and the patch made that slightly more compact that explains\nthe reason for the limit increase. Of cause a mixture of top-level functions\nand nested ones would show the patch limitations since without the patch nested\nfunctions will be initialized in a separated classes, but still a limit of 2500\nfunctions per script seems reasonable.",
+            "date": "20030828T12:25:10",
+            "id": 9
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "I tagged Rhino sources with before_less_classes_optimizer tag and committed the\npatch. I do not mark the bug as fixed since I would prefer to try to change\noptimizer to produce exactly one class for both script and all the functions it\ncontains. It will allow to make all internal fields and methods private which\nwould allow for better optimization of generated code by JVM.",
+            "date": "20030828T12:45:10",
+            "id": 10
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 130587\nRemoval of the dual nature of NativeScript\n\nThe patch changes omj.NativeScript to represent only instances of Script object\nin scripts and removes its second role to server as a superclass for compiled\nforms of JS scripts. In is not only allow to make optimizer to generate only\nsingle class but also would make instances of Script generated by optimizer not\nto depend on the scope. The later is essential for Script object reuse to\nexecute it against different scopes.\n\nCurrently the optimizer sets the prototype of the compiled script to\nScript.prototype from the scope but this wrong since the compiled script is\nnever exported to script. The interpreter never did it so compiled script\nproduced in this mode were almost scope independent (they currently hold a\nscope reference through instantiated regular expressions while scripts\ngenerated by the compiler instantiate the regexps during eval call).",
+            "date": "20030829T10:33:28",
+            "id": 11
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 130593\nOne class for script and all its functions\n\nPatch makes optimizer to generate exactly one class to represent a script and\nall functions. That class implements Script and initializes in the default\nconstructor and Script.eval implementation script support while using a\nseparated constructor to initialize the function objects.",
+            "date": "20030829T15:33:11",
+            "id": 12
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "I committed the last patch which finally allows to mark the bug as fixed.",
+            "date": "20030830T12:03:40",
+            "id": 13
+        },
+        {
+            "author": "pschwartau@meer.net",
+            "body": "Rubber-stamp vrfy -",
+            "date": "20030901T01:31:21",
+            "id": 14
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 130969\nFix for regression that prevented script to be executed twice\n\nWithout this fix which I committed Script instances can not be executed twice\nsince it would reinitialize NativeFunction each time the script is executed. \n\nThe fix also moves initialization of regular expression for scripts (and only\nfor scripts) directly into the call method implementation where they are stored\ninto a local variable. Previously regexps would be stored in a class field\nwhich the call method accessed thus making Script.exec non-reentrant and thread\nunsafe.\n\nThe last part would probably should go as a fix for bug 218440 but it is too\ncomplex to separate the patches.\n\nNote that the test case from attachment 130962 from that bug can be used to\ncheck this regression since the test calls Script.exec twice.",
+            "date": "20030905T21:16:15",
+            "id": 15
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Trageting as resolved against 1.5R5",
+            "date": "20040213T11:35:43",
+            "id": 16
+        }
+    ],
+    "component": "Compiler",
+    "description": "Currently Rhino optimizer generates one Java class per JavaScript function which\nmay lead to significant runtime overhead. I think it would be worth to try to\nreplace that by a single class with a switch dispatch to select code for a\nparticular function. I open this report to record work on it.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "198086",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "RFE",
+    "priority": "-- enhancement",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "optimizer enhancement: generate only single class per script and all its functions",
+    "systemSpecification": false,
+    "version": "other"
+}

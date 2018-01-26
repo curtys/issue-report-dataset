@@ -1,0 +1,89 @@
+{
+    "comments": [
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Working on a fix. Draft patch posted to the mailing list\n\nOleg",
+            "date": "2003-04-15T00:42:36.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Created an attachment (id=5825)\nPatch (take 2)\n",
+            "date": "2003-04-15T00:43:54.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Hi Oleg,\n\nThis one looks good.  My only question is in regard to the formerly deprecated\nmethods.  You have removed the deprecated tags from most of the methods in\nPostMethod.  Was this intentional?  Also, a test might be nice.\n\nMike",
+            "date": "2003-04-15T10:15:46.000+0000",
+            "id": 2
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Mike,\nThose methods were deprecated primarily because we wanted to spare us a trouble\nof having to maintain a list of parameters. Since it turned out that there was\nno way around keeping the parameters in order to be able to re-apply character\nencoding, there's really no reason for having all these methods deprecated anymore.\n\nI know that test case for this bug is missing. The problem is that there's no\nway to ensure the correct executing of character encoding related tests on all\nplatforms due to possible locale incompatibilities (Java source files have no\nway of enforcing a particular character encoding last time I looked). There are\nfunny people (like myself) who do not speak English natively and insist on\nhaving their LC_CTYPE variable set to something other that en_US. I'd rather\nhave our test cases execute on all platforms regardless of local regional settings.\n\nOleg",
+            "date": "2003-04-15T18:38:42.000+0000",
+            "id": 3
+        },
+        {
+            "author": "Laura Werner",
+            "body": "The way we used to handle this kind of thing in the JDK unit tests was to\nhardcode  an array of chars in the test, and give the Unicode value for each\nchar.  Then construct a String from it and use it in the test.  It's a pain in\nthe posterior, but as you point out there's no way to have an actual non-ASCII\nstring constant in a source file because you can't guarantee what character set\nwill be used to compile it.",
+            "date": "2003-04-16T02:16:59.000+0000",
+            "id": 4
+        },
+        {
+            "author": "Andre John Mas",
+            "body": "In the context of test cases:\n\nAnother approach to this would be to specify an array of character ranges to\ntest. For example:\n\n  int[][] tests = new int[][]{{65,120},{19000,21000}};\n\nAnd then loop through each of the ranges. You even adapt the code so it\nprints out the array with the java formatting for copying and pasting.\nThinking about it, we probably should add several character encoding\ntests, for several different character sets. With UTF-8 it is important\nto test characters appearing in various of the alphabets, including those\nthat would appear in the fourth byte - this is the only way\nto validate that everything is really passing through as expected.\n\nAlso, we should probably test the case where no character set is specified\nin the header. In my tests I was getting back cp1215 (or something of the\nsort, which would be MS-Window's default encoding), rather what the ISO\ncharacter set that was specified in the docs, when I checked the\nencoding that was being received by my servlet in Tomcat (4.1.18). This\nwould have to be tested on multiple platforms to ensure that using the\ntested code with another VM doesn't spring any surprises.",
+            "date": "2003-04-16T02:32:45.000+0000",
+            "id": 5
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Laura, \nThanks for the hint. Of course, I can simply use arrays of ints as input for the\ntest case. I should have thought of it myself.\n\nAndre,\nI'll whip up a few test cases for trivial stuff such as German umlauts and\nprobably Cyrillic encodings (Win1251 & KOI8-R). If you could contribute more\nsophisticated ones, it would really be hugely appreciated.\n\nIn case of no charset being given in the 'Content-Type' header, HttpClient\nalways falls back onto HTTP default content encoding ISO-8859-1. I am pretty\nsure about that. This said, I'll provide a test case for default content encoding\n\nOleg ",
+            "date": "2003-04-16T03:22:46.000+0000",
+            "id": 6
+        },
+        {
+            "author": "Andre John Mas",
+            "body": "Created an attachment (id=5846)\nCharacter generator for use in test cases\n",
+            "date": "2003-04-16T04:49:07.000+0000",
+            "id": 7
+        },
+        {
+            "author": "Andre John Mas",
+            "body": "Created a character generator for use in test cases. You will need to remove\nthe package name. The idea is that this class can be modified to create the\nappropriate characters for the various character sets. Hopefully this will\ndo the job.",
+            "date": "2003-04-16T04:51:23.000+0000",
+            "id": 8
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Created an attachment (id=5869)\nPatch (take 3 - test cases included)\n",
+            "date": "2003-04-17T01:30:43.000+0000",
+            "id": 9
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Looks good to me.  A quality team effort.\n\nMike",
+            "date": "2003-04-17T10:20:41.000+0000",
+            "id": 10
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Patch applied\n\nOleg",
+            "date": "2003-04-17T18:37:41.000+0000",
+            "id": 11
+        }
+    ],
+    "component": "HttpClient (classic)",
+    "description": "I have just spent the best part of two days trying to work out why\na servlet running in Tomcat was not getting UTF-8 when I had set my\nclient to send UTF-8. It turns out that if I set my PostMethod request\nheader after setting the request body the content does not get sent as\nUTF-8.\n\nThe following gets sent as UTF-8:\n\n      PostMethod post = new PostMethod(destinationUrl.toString());\n      post.setStrictMode(false);\n      post.setRequestHeader(\"Content-Type\",\"text/xml; charset=UTF-8\");\n      post.setRequestHeader(\"user-agent\", \"myAgent\");\n      post.setRequestBody(content);\n      post.setFollowRedirects(true);\n\nthe following doesn't:\n\n      PostMethod post = new PostMethod(destinationUrl.toString());\n      post.setStrictMode(false);\n      post.setRequestBody(content);\n      post.setRequestHeader(\"Content-Type\",\"text/xml; charset=UTF-8\");\n      post.setRequestHeader(\"user-agent\", \"myAgent\");\n      post.setFollowRedirects(true);\n\nIn a live execution I would understand that order makes a big difference, but\nwhen you fill out an object that feels like defining the values of a Java Bean\nthis likely to be less obvious.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "HTTPCLIENT-185",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "HTTPCLIENT",
+    "project": "HTTPCLIENT",
+    "summary": "Ordering of methods in PostMethod changes behaviour",
+    "systemSpecification": false,
+    "version": "2.0 Alpha 3"
+}

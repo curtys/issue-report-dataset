@@ -1,0 +1,77 @@
+{
+    "comments": [
+        {
+            "author": null,
+            "body": "Created attachment 11188\nPatch with a diff and new interface SSOValve",
+            "date": "20040408T17:37:30",
+            "id": 0
+        },
+        {
+            "author": null,
+            "body": "Your two related patches seem useful. I'll look at them.",
+            "date": "20040410T15:11:55",
+            "id": 1
+        },
+        {
+            "author": null,
+            "body": "Great.  I'm sorry to say the two patches conflict (not logically, but in the \nsense that they are diffs to the same code base), but if one is committed I'll \ngladly redo the other.",
+            "date": "20040410T18:06:06",
+            "id": 2
+        },
+        {
+            "author": null,
+            "body": "After reviewing, I am not going to apply this patch or the other. I don't see\nthe point of adding complexity and additional interfaces when SSO is used\nthrough a standard Valve (SingleSignOn), which can easily be extended to\nimplement the needed clustering support.",
+            "date": "20040425T14:55:00",
+            "id": 3
+        },
+        {
+            "author": null,
+            "body": "I thought you might feel that way about the 28039 patch, which is one reason \nwhy I wrote the interface proposal ;-)  And, it's true an interface isn't \nabsolutely needed; subclassing would work.  The fact that SingleSignOnEntry is \nnot public (and I'm not arguing it should be) is a big stumbling block in \neasily subclassing SingleSignOn, but getting around that problem in a subclass \nis no harder than writing a whole new implementation of an interface.\n\nBut, to get subclassing to work effectively, a couple things need to be \nchanged:\n\n1) AuthenticatorBase.reauthenticateFromSSO() invokes SingleSignOn.lookup().  \nThis method returns a SingleSignOnEntry, which is a package protected class.  \nThis effectively precludes subclassing this method.  \n\n2) SingleSignOn.update() is package protected, again preventing subclassing.\n\nI'm attaching another patch that addresses these two issues by:\n\n1) Changing the way AuthenticatorBase.reauthenticateFromSSO() works so it does \nnot need to call SingleSignOn.lookup().  lookup() is now only called \ninternally in SingleSignOn, so someone who wished to write a subclass could \njust remove any calls to it, write their own lookup algorithm, and replace \nSingleSignOnEntry with their own class.\n\n2) Makes SingleSignOn.update() protected.\n\nMaybe 3rd time's the charm? ;-)",
+            "date": "20040426T05:48:15",
+            "id": 4
+        },
+        {
+            "author": null,
+            "body": "Created attachment 11330\nPatch to allow subclassing",
+            "date": "20040426T05:49:01",
+            "id": 5
+        },
+        {
+            "author": null,
+            "body": "I'm all for making the entry public. I think I'm going to apply your patch.",
+            "date": "20040426T16:44:59",
+            "id": 6
+        },
+        {
+            "author": null,
+            "body": "This is committed. I don't see the point of not allowing to extend the entry as\nwell, so I also patched it.",
+            "date": "20040426T21:58:01",
+            "id": 7
+        },
+        {
+            "author": null,
+            "body": "The constructor in SingleSignOnEntry is package protected, so the class cannot \nbe extended.  The attached patch makes the c'tor protected.",
+            "date": "20040515T18:41:48",
+            "id": 8
+        },
+        {
+            "author": null,
+            "body": "Created attachment 11566\nPatch to allow subclassing of SingleSignOnEntry",
+            "date": "20040515T18:42:49",
+            "id": 9
+        }
+    ],
+    "component": "Catalina",
+    "description": "Attached is a patch that loosens the coupling between the SingleSignOn valve \nimplementation and the various Authenticator classes.  Right now, all \nauthenticators check for an instance of the SingleSignOn class in the pipeline, \nand interact directly with it.  In the patch, SingleSignOn implements interface \nSSOValve, and all external classes interact with it through the interface.  This \nwill allow application developers to deploy custom SSO implementations without \nhaving to replace the entire TC5 Authenticator infrastructure.  This follows the \npattern used by other TC components.\n\nI've been messing around with trying to use the SingleSignOn valve in a cluster \n(see enhancement request 28039) and can easily see how different implementations \nwould be appropriate for different environments.  My 28039 patch attacks the \nproblem by adding a property to SingleSignOn where deployers can specify use of \nan implementation of a new interface SSOClusterManager.  I think that's a valid \napproach, but loosening the coupling between SingleSignOn and Authenticators \nwill provide greater flexibility.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "28286",
+    "issuetypeClassified": "REFACTORING",
+    "issuetypeTracker": "RFE",
+    "priority": "P3 enhancement",
+    "product": "Tomcat 5",
+    "project": "TOMCAT",
+    "summary": "Loosely couple SingleSignOn Valve and Authenticators",
+    "systemSpecification": true,
+    "version": "5.0.22"
+}

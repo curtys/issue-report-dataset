@@ -1,0 +1,29 @@
+{
+    "comments": [
+        {
+            "author": "szegedia@freemail.hu",
+            "body": "Created attachment 191702\nThe patch that implements the feature\n\nI've attached the patch that implements the feature. If nobody objects until\nMonday, I'll commit it then.",
+            "date": "20050805T15:45:06",
+            "id": 0
+        },
+        {
+            "author": "szegedia@freemail.hu",
+            "body": "Committed the patch.",
+            "date": "20050808T08:50:06",
+            "id": 1
+        }
+    ],
+    "component": "Core",
+    "description": "User-Agent:       Opera/8.01 (Windows NT 5.0; U; en)\nBuild Identifier: \n\nThere's a situation where scripts catch and then selectively rethrow exceptions:\n\ntry\n{\n    ...\n}\ncatch(e)\n{\n    if(e instanceof JavaException && e.javaException.class.name == \"com.foo.\nValidationException\")\n    {\n        ...\n    }\n    else\n    {\n        throw e;\n    }\n}\n\nNow, when the thrown exception is some internal Rhino exception, i.e. TypeError, \nits stack trace will be lost after the throw -- the Java code invoking the \nscript will ultimately get a JavaScriptException with the error object \nconstructed in the catch clause. I'd suggest that similar to the nonstandard \n\"javaException\" field, the error object should also have an also nonstandard  \n\"rhinoException\" field for these exceptions. Then the Java code invoking the \nscript could do the following to ensure it logs the root cause exception \nregardless of how many times it is caught and rethrown in the script:\n\nThrowable terminationCause;\ntry\n{\n    script.exec(...);\n    terminationCause = null;\n}\ncatch(JavaScriptException e)\n{\n    terminationCause = e;\n    Object val = e.getValue();\n    if(val instanceof Scriptable)\n    {\n        Object njo = ScriptableObject.getProperty(((Scriptable)val), \n                \"rhinoException\");\n        if(njo instanceof NativeJavaObject)\n        {\n            val = njo;\n        }\n        else\n        {\n            njo = ScriptableObject.getProperty(((Scriptable)val), \n                \"javaException\");\n            if(njo instanceof NativeJavaObject)\n            {\n                val = njo;\n            }\n        }\n    }\n    if(val instanceof NativeJavaObject)\n    {\n        Object t = ((NativeJavaObject)val).unwrap();\n        while(t instanceof InvocationTargetException)\n        {\n            t = ((InvocationTargetException)t).getCause();\n        }\n        if(t instanceof Throwable)\n        {\n            terminationCause = (Throwable)t;\n        }\n    }\n}\ncatch(Throwable t)\n{\n    terminationCause = t;\n}\nif(terminationCause != null)\n{\n    logger.error(\"Script failed\", terminationCause);\n}\n\nI'll attach a patch\n\nReproducible: Always\n\nSteps to Reproduce:",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "303572",
+    "issuetypeClassified": "OTHER",
+    "issuetypeTracker": "RFE",
+    "priority": "-- enhancement",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "Need access to underlying RhinoException in rethrown error objects",
+    "systemSpecification": false,
+    "version": "other"
+}

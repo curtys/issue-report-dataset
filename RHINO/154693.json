@@ -1,0 +1,83 @@
+{
+    "comments": [
+        {
+            "author": "erik@strelzoff.com",
+            "body": "Created attachment 89456\nProblem script & test case.",
+            "date": "20020627T21:53:21",
+            "id": 0
+        },
+        {
+            "author": "erik@strelzoff.com",
+            "body": "I forgot to mention that I also tried this against the latest release version \n(1.5 R3) and it demonstrates the same problem.",
+            "date": "20020627T21:55:00",
+            "id": 1
+        },
+        {
+            "author": "user@apochta.com",
+            "body": "Here is a simpler example to expose the problem in Rhino shell:\n\nfunction f() { \n\tfunction nested() { }  \n\treturn nested; \n}\n\nvar f1 = f(); \nvar f2 = f(); \n \nvar ok = (f1 != f2);\n\nprint(ok ? \"GOOD\" : \"BAD\");\n \n",
+            "date": "20021126T20:28:20",
+            "id": 2
+        },
+        {
+            "author": "pschwartau@meer.net",
+            "body": "Igor: thank you for this test! I have added it to the JS testsuite:\n\n      mozilla/js/tests/js1_5/Scope/regress-154693.js\n\nIt is currently passing in SpiderMonkey and Rhino compiled mode,\nbut failing in Rhino interpreted mode, as Erik reported -",
+            "date": "20021127T01:03:17",
+            "id": 3
+        },
+        {
+            "author": "user@apochta.com",
+            "body": "Created attachment 108053\nFix for omj/Interpreter.java\n\nThe reason for the bug is the current code in Interpreter.interpret that\ninstead of creating new InterpretedFunction for each nested function statement\non function entry, put to the activation scope a function currently stored in\nInterpretedData.itsNestedFunction. \n\nI believe the patch fixes that (Rhino passes all tests with it) but as it\nremoves redundant generation of CLOSURE statements for each nested function\nstatement, as it seems they are only needed for function expression and\nfunction expression statements, it would be nice to here something from someone\nwho wrote initial code.",
+            "date": "20021203T18:30:32",
+            "id": 4
+        },
+        {
+            "author": "user@apochta.com",
+            "body": "Created attachment 108193\nReduced version of the previous patch as I commited part of it\n\nI commited essentially cosmetics part of the previous patch as it reduces\ncodesize and makes a real bug fix smaller which still needs some considerations\nbefore the commit.",
+            "date": "20021204T10:33:50",
+            "id": 5
+        },
+        {
+            "author": "user@apochta.com",
+            "body": "Created attachment 108404\nAnother patch reduction due to a partial commit\n\nI commited another part of the patch where it removes closure icode generation\nfor function statements. It seems for me it was a bug on its own.\n\n diff -u -r1.115 Interpreter.java\n--- Interpreter.java\t4 Dec 2002 09:49:07 -0000\t1.115\n+++ Interpreter.java\t5 Dec 2002 20:57:58 -0000\n@@ -271,13 +271,20 @@\n\t switch (type) {\n \n\t     case TokenStream.FUNCTION : {\n-\t\t Node fn = (Node) node.getProp(Node.FUNCTION_PROP);\n-\t\t int index = fn.getExistingIntProp(Node.FUNCTION_PROP);\n-\t\t iCodeTop = addByte(TokenStream.CLOSURE, iCodeTop);\n-\t\t iCodeTop = addIndex(index, iCodeTop);\n-\t\t itsStackDepth++;\n-\t\t if (itsStackDepth > itsData.itsMaxStack)\n-\t\t     itsData.itsMaxStack = itsStackDepth;\n+\t\t FunctionNode fn\n+\t\t     = (FunctionNode) node.getProp(Node.FUNCTION_PROP);\n+\t\t if (fn.itsFunctionType != FunctionNode.FUNCTION_STATEMENT) {\n+\t\t     // Only function expressions or function expression\n+\t\t     // statements needs closure code creating new function\n+\t\t     // object on stack as function statements are initialized\n+\t\t     // at script/function start\n+\t\t     int index = fn.getExistingIntProp(Node.FUNCTION_PROP);\n+\t\t     iCodeTop = addByte(TokenStream.CLOSURE, iCodeTop);\n+\t\t     iCodeTop = addIndex(index, iCodeTop);\n+\t\t     itsStackDepth++;\n+\t\t     if (itsStackDepth > itsData.itsMaxStack)\n+\t\t\t itsData.itsMaxStack = itsStackDepth;\n+\t\t }\n\t\t break;\n\t     }",
+            "date": "20021205T21:17:44",
+            "id": 6
+        },
+        {
+            "author": "user@apochta.com",
+            "body": "I commited the fix, so the bug can be marked as fixed.",
+            "date": "20021207T14:16:07",
+            "id": 7
+        },
+        {
+            "author": "pschwartau@meer.net",
+            "body": "Marking FIXED -",
+            "date": "20021210T00:40:19",
+            "id": 8
+        },
+        {
+            "author": "pschwartau@meer.net",
+            "body": "Marking Verified Fixed.\n\nThe above testcase used to pass in Rhino compiled mode,\nbut fail in interpreted mode. Now it passes in both -",
+            "date": "20021210T00:43:39",
+            "id": 9
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Targeting as resolved against 1.5R4",
+            "date": "20040213T12:17:35",
+            "id": 10
+        }
+    ],
+    "component": "Core",
+    "description": "I have a script where I define a function on an object, I construct the object \ntwice and then Rhino thinks that the the functions in the two different objects \nare identical.  This only occurs in interpretted mode \n(Context.setOptimizationLevel(-1)).  I'll attach a test case to demonstrate the \nproblem.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "154693",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "-- normal",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "Interpreted mode doesn't grok different functions on different objects",
+    "systemSpecification": true,
+    "version": "other"
+}

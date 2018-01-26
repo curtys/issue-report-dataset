@@ -1,0 +1,59 @@
+{
+    "comments": [
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "Yes, we should report an error.",
+            "date": "20080626T19:02:01",
+            "id": 0
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "Fixed: \n\nChecking in src/org/mozilla/javascript/ScriptableObject.java;\n/cvsroot/mozilla/js/rhino/src/org/mozilla/javascript/ScriptableObject.java,v  <--  ScriptableObject.java\nnew revision: 1.133; previous revision: 1.132\ndone\n",
+            "date": "20080627T12:45:59",
+            "id": 1
+        },
+        {
+            "author": "hannesw@gmail.com",
+            "body": "I think the committed fix breaks getter/setter definitions when both jsGet_* and jsSet_* methods are defined for a property. I have methods jsGet_status and jsSet_status to defina a read/write property named status and get the following: \n\norg.mozilla.javascript.EvaluatorException: Invalid method \"jsSet_status\": name \"status\" is already in use. (/home/hannes/svn/helma-ng/modules/helma/rhino.js#24)\n        at org.mozilla.javascript.DefaultErrorReporter.runtimeError(DefaultErrorReporter.java:109)\n        at org.mozilla.javascript.Context.reportRuntimeError(Context.java:922)\n        at org.mozilla.javascript.Context.reportRuntimeError(Context.java:978)\n        at org.mozilla.javascript.Context.reportRuntimeError2(Context.java:948)\n        at org.mozilla.javascript.ScriptableObject.buildClassCtor(ScriptableObject.java:1159)\n        at org.mozilla.javascript.ScriptableObject.defineClass(ScriptableObject.java:998)\n        at org.mozilla.javascript.ScriptableObject.defineClass(ScriptableObject.java:931)\n        at org.helma.javascript.RhinoEngine.defineHostClass(RhinoEngine.java:108)\n        ....\n",
+            "date": "20080702T13:01:30",
+            "id": 2
+        },
+        {
+            "author": "hannesw@gmail.com",
+            "body": "Created attachment 327950\nFix definition of getters and setters\n\nThis patch fixes the problem with jsGet_ and jsSet_ described in comment #3. I just moved the check for conflicts down below the block that handles jsGet_ and jsSet_. Since now the method name and property name are required to coexist for longer, I renamed variable name to methodName and always use propName when referring to the property name.",
+            "date": "20080703T13:04:12",
+            "id": 3
+        },
+        {
+            "author": "hannesw@gmail.com",
+            "body": "Created attachment 328845\nA simpler and less obtrusive patch\n\nThis patch is much simpler than the previous one. We're simply moving up the continue statement to where the setterPrefix is detected, simplifying the code and avoiding the duplicate method check at the same time.",
+            "date": "20080710T09:01:37",
+            "id": 4
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "Thanks for finding and fixing this. I've submitted your patch.",
+            "date": "20080710T12:59:52",
+            "id": 5
+        },
+        {
+            "author": "jlosada@denodo.com",
+            "body": "I'm migrating from rhino 1.6R7 to rhino 1.7R2 and I'm getting the following error:\n\nInvalid method \"jsGet_tagName\": name \"tagName\" is already in use\n\nI have a class with the method jsGet_tagName and this getter method is redefined in one subclass.\nI'm getting the error while redefining the subclass.\n\nIn rhino 1.6R7 everything works fine.\n\nCould be a bug related with this issue?",
+            "date": "20090604T18:00:08",
+            "id": 6
+        }
+    ],
+    "component": "Core",
+    "description": "User-Agent:       Mozilla/5.0 (Windows; U; Windows NT 5.1; en-US; rv:1.8.1.9) Gecko/20071025 Firefox/2.0.0.9\nBuild Identifier: 1.6R7\n\nDefining a JavaScript class in Java:\n\nIf you mistakenly try to define multiple overloads of a JavaScript method via multiple jsFunction_foo functions, there is no diagnosis, and unpredictable results. One of the function will end up as the function-of-record, but which one depends on the JVM version or the phase of the moon.\n\nReproducible: Always\n\nSteps to Reproduce:\n1. Define class with jsFunction_send() and jsFunction_send(String x)\n2. write code to call it from JavaScript\n\nActual Results:  \nNo diagnosis and unpredictable results.\n\nExpected Results:  \nA diagnosis. Or at least some rule to determine which function gets the prize.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "404211",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "-- normal",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "Multiple competing function definitions leads to chaotic results",
+    "systemSpecification": true,
+    "version": "other"
+}

@@ -1,0 +1,59 @@
+{
+    "comments": [
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Mirco,\nThe 'modality' of the response handling logic in HttpClient is a well know and a very old problem that dates back to the days of HttpClient 1.x. (I remember discussing the issue as early as year 2002). The problem has been resolved in HttpClient 4.0 codeline. I do not see a possibility for fixing  the problem in HttpClient 3.x without taking a very high risk of breaking existing applications.\n\nOleg",
+            "date": "2007-05-15T09:11:51.840+0000",
+            "id": 0
+        },
+        {
+            "author": "Ortwin Gl\u00fcck",
+            "body": "We will improve the API doc.\n\nI agree it's arguable if the response should be buffered at all in getResponseBodyAsString. Anyway, the buffered body is eligible for gc as soon as you release the reference to the method object.",
+            "date": "2007-05-15T09:14:52.734+0000",
+            "id": 1
+        },
+        {
+            "author": "Mirko Friedenhagen",
+            "body": "Hello Oleg, hello Ortwin,\n\nthanks for the quick answers :-)\n\nOleg, I looked in the trunk (see the link in my message, I do not find a branch for the 4.0 codeline) and I do not the think the behaviour has changed?!\n\nOrtwin, IMO a new major version should fix an issue even if breaking some old code instead of describing a strange behaviour (this is of course better than doing nothing ;-)).\n\nRegards\nMirko",
+            "date": "2007-05-15T09:21:58.471+0000",
+            "id": 2
+        },
+        {
+            "author": "Ortwin Gl\u00fcck",
+            "body": "Mirko,\n\n4.0 is under Http Components. See http://svn.apache.org/repos/asf/jakarta/httpcomponents/httpclient/trunk/\n\nAs mentioned before, the next major release (4.0) has a modified behaviour. We are not going to change the behaviour in the minor release (3.1).\n\nOrtwin",
+            "date": "2007-05-15T09:29:34.037+0000",
+            "id": 3
+        },
+        {
+            "author": "Mirko Friedenhagen",
+            "body": "Again thanks for the quick answer. I did not understand that you wanted to fix the documentation for 3.1, which is of course the only possibility without breaking everyones code.\n\nBest Regards\nMirko",
+            "date": "2007-05-15T09:36:39.054+0000",
+            "id": 4
+        },
+        {
+            "author": "Ortwin Gl\u00fcck",
+            "body": "Improved API doc",
+            "date": "2007-05-18T12:52:50.562+0000",
+            "id": 5
+        },
+        {
+            "author": "Ortwin Gl\u00fcck",
+            "body": "Patch committed.",
+            "date": "2007-05-18T12:57:22.329+0000",
+            "id": 6
+        }
+    ],
+    "component": "HttpClient (classic)",
+    "description": "`getReponseBodyAsString` is storing the body  and may therefore provide a valid result if the code is requesting the body as stream afterwards. If you switch the order and first call getResponseBodyAsStream and afterwards try to `getReponseBodyAsString`, the result will be `null`.\n\nI wrote a unittest which hopefully describes the IMHO confusing behaviour:\n\n    public void testHttpClientBodyVsStream() throws HttpException, IOException {\n        final HttpClient httpClient = new HttpClient();\n        final GetMethod getMethod = new GetMethod(\"http://www.heise.de/\");\n        final String bodyFromStream;\n        final String body;\n        try {\n            httpClient.executeMethod(getMethod);\n            body = getMethod.getResponseBodyAsString();\n            bodyFromStream = IOUtils.toString(getMethod\n                    .getResponseBodyAsStream());\n        } finally {\n            getMethod.releaseConnection();\n        }\n        assertEquals(body, bodyFromStream);\n    }\n    \n    public void testHttpClientStreamVsBody() throws HttpException, IOException {\n        final HttpClient httpClient = new HttpClient();\n        final GetMethod getMethod = new GetMethod(\"http://www.heise.de/\");\n        final String bodyFromStream;\n        final String body;\n        try {\n            httpClient.executeMethod(getMethod);\n            bodyFromStream = IOUtils.toString(getMethod\n                    .getResponseBodyAsStream());\n            body = getMethod.getResponseBodyAsString();\n        } finally {\n            getMethod.releaseConnection();\n        }\n        // ** This will fail **\n        assertEquals(body, bodyFromStream);\n    }\n\nSearching http://svn.apache.org/repos/asf/jakarta/commons/proper/httpclient/trunk/src/java/org/apache/commons/httpclient/HttpMethodBase.java I understand the outcome, but this is confusing.\n\nI would expect the body data to be gone after calling one of the getResponse*-Methods and calling them again not to return null but even to throw an IllegalStateException. I would not store the body at all in the method.\n",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "HTTPCLIENT-651",
+    "issuetypeClassified": "OTHER",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Minor",
+    "product": "HTTPCLIENT",
+    "project": "HTTPCLIENT",
+    "summary": "Inconsistent, order dependant behaviour in HttpMethodBase.getResponse*",
+    "systemSpecification": true,
+    "version": "3.1 RC1"
+}

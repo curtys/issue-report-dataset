@@ -1,0 +1,41 @@
+{
+    "comments": [
+        {
+            "author": "Jason Gritman",
+            "body": "We're also experiencing this issue on JBoss 5.0.",
+            "date": "2009-05-04T19:51:05.532+0000",
+            "id": 0
+        },
+        {
+            "author": "Jason Gritman",
+            "body": "We created a workaround for this issue by subclassing org.apache.jackrabbit.core.security.authentication.AuthContextProvider and overridding isJAAS() to always return false. \n\nNext we had to create a complete copy of org.apache.jackrabbit.core.security.simple.SimpleSecurityManager and have it call our new AuthContextProvider class in the init() method instead of the old one.\n\nFinally we added a <SecurityManager> element to our repository configuration referencing the new class.\n\nIt seems like this issue could be fixed by allowing the <SecurityManger> node to pass in a param for enabling/disabling JAAS.  This flag could then be passed to AuthContextProvider.",
+            "date": "2009-06-01T19:01:08.800+0000",
+            "id": 1
+        },
+        {
+            "author": "angela",
+            "body": "rev. 785981\nChanged AuthContextProvider to prefer 'local' LoginModule over JAAS. This means that the 'local' configuration always takes precedence and JAAS configuration is only respected if no local config is present.",
+            "date": "2009-06-18T09:24:28.634+0000",
+            "id": 2
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Merged to the 1.x branch in revision 791815.",
+            "date": "2009-07-07T12:32:29.372+0000",
+            "id": 3
+        }
+    ],
+    "component": "jackrabbit-core, security",
+    "description": "In 1.4.x inside RepositoryImpl.login(...) at first the local configuration is checked for configured LoginModules and after it was unsuccessful, the JAAS component is asked:\n\n          AuthContext authCtx;\n            LoginModuleConfig lmc = repConfig.getLoginModuleConfig();\n            if (lmc == null) {\n                        authCtx = new AuthContext.JAAS(repConfig.getAppName(), credentials);\n            } else {\n...\n\nWith 1.5.x this behaviour has moved to SimpleSecurityManager.init(..) and is changed:\n        LoginModuleConfig loginModConf = config.getLoginModuleConfig();\n        authCtxProvider = new AuthContextProvider(config.getAppName(), loginModConf);\n        if (authCtxProvider.isJAAS()) {\n            log.info(\"init: using JAAS LoginModule configuration for \" + config.getAppName());\n        } else if (authCtxProvider.isLocal()) {\n...\n\nThe problem is with JBoss JAAS implemantation, that authCtxProvider.isJAAS()  is always true.\nBecause for any reason, the result of Configuration.getAppConfigurationEntry(appName) is never empty,\nwhen a jaas.config is specified for Liferay. Using different appName takes no effect, always the configuration inside the jaas.config is used.\n\nI think still first the local configuration should be concerned, before using JAAS.",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "JCR-1977",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "BUG",
+    "priority": "Critical",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "authentication order has changed from 1.4.x to 1.5.x",
+    "systemSpecification": true,
+    "version": "1.5, 1.5.2"
+}

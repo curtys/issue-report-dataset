@@ -1,0 +1,119 @@
+{
+    "comments": [
+        {
+            "author": "hannesw@gmail.com",
+            "body": "The problem here seems to be the lookup of the Array.push function property. The slot allocation mechanism in ScriptableObject scales really badly for dense arrays, because it completely fills the slot array without leaving any gaps. Now if a function property or other non-index property is looked up, ScriptableObject.getSlotPosition() searches from the property's hashcode value until it finds either the slot in question or a null slot. If the first n thousand slots are occupied by array elements, this causes a lot of useless looping.\n\nI created an experimental patch that warps the hash/slot index to leave a free slot every 500 elements. With this, push() is roughly half as fast as direct element access for very large arrays.\n\nMaybe the right solution would be to always store numeric Array properties in the dense array in NativeArray (how common are sparse arrays, really?), or separate the array elements from other properties by some other means. \n",
+            "date": "20061121T15:51:49",
+            "id": 0
+        },
+        {
+            "author": "hannesw@gmail.com",
+            "body": "Created attachment 246156\nImproves performance of demo script by leaving gaps in dense array slot allocation",
+            "date": "20061121T15:54:39",
+            "id": 1
+        },
+        {
+            "author": "james@phsys.co.uk",
+            "body": "Is there a good reason not to just use a Java HashMap for this?",
+            "date": "20061121T17:31:21",
+            "id": 2
+        },
+        {
+            "author": "hannesw@gmail.com",
+            "body": "I don't know for sure, but I guess the reasons were performance considerations and keeping order for numeric array elements. \n\nI think the easiest way to fix this would be to use chaining instead of linear probing (see <http://en.wikipedia.org/wiki/Hash_table#Open_addressing_versus_chaining>). I'll see if I can come up with a patch.",
+            "date": "20061122T11:10:15",
+            "id": 3
+        },
+        {
+            "author": "james@phsys.co.uk",
+            "body": "\"I don't know for sure, but I guess the reasons were performance considerations\nand keeping order for numeric array elements.\"\n\nFWIW, this doesn't prevent numeric array elements getting out of order... eg:var \n\na = {};\na [0] = 0;\na [2] = 2;\na.b = 'b';\na.n = 'n';\na [1] = 1;\nfor (var i in a) java.lang.System.out.println (''+i');\n\n0\nn\n2\n1\nb\n",
+            "date": "20061123T15:06:04",
+            "id": 4
+        },
+        {
+            "author": "hannesw@gmail.com",
+            "body": "Created attachment 246454\nImplement slot table using chaining instead of linear probing\n\nHere's a patch that implements the ScriptableObject slot table using chaining rather than linear probing for hash collisions. I've been using it for a few days locally and also run the test suite on it without any noticable problems. From my testing, performance is quite a bit better for large objects/arrays, and pretty much unchanged (maybe a hint slower, but almost unmeasurable) for small ones.",
+            "date": "20061124T10:20:50",
+            "id": 5
+        },
+        {
+            "author": "hannesw@gmail.com",
+            "body": "Created attachment 248648\nImplement slot table using chaining instead of linear probing\n\nContains a few fixes and improvements over the previous patch:\n* Actually check integer index in slot lookup (!!!) This caused numeric slots to get lost in sparse arrays.\n* Make Slot.next transient. This should preserve serialization compatibility, and should be ok since the slot table is newly built upon deserialization (haven't actually tested).\n* Unify the two local getSlot() methods, no real need for the static one.\n* Only use REMOVED object for lastAccess cache, we never actually use it in the slot table.\n* Various fixes in replacing setterSlot: Check for slot identity, set wasDeleted on old slot, break the loop when done.",
+            "date": "20061214T13:30:17",
+            "id": 6
+        },
+        {
+            "author": "szegedia@freemail.hu",
+            "body": "Hannes,\n\nas you seem to be familiar with ScriptableObject's hashing code, I'd like to ask whether you see any reason why couldn't we just simply use a HashMap in the ScriptableObject implementation? \n\nIn fact, we could go one step further and introduce a sort of a \"MapFactory\" somewhere (probably pluggable into the Context object), so people could plug in whatever map implementations they want, i.e. \n- the Trove <http://trove4j.sourceforge.net/> THashMap, to restore open-addressing implementation if they're unsatisfied with HashMap's strategy\n- TreeMap if they'd want ordering guarantees in \"for\"\n- LinkedHashMap if they'd want weaker ordering guarantees\n",
+            "date": "20061217T12:53:25",
+            "id": 7
+        },
+        {
+            "author": "hannesw@gmail.com",
+            "body": "(In reply to comment #8)\n> as you seem to be familiar with ScriptableObject's hashing code, I'd like to\n> ask whether you see any reason why couldn't we just simply use a HashMap in the\n> ScriptableObject implementation? \n\nThat would normally seem like the way to go. But from a gut level, I'd hesitate to make such a big change at a spot that is so central to Rhino. For example, this might affect those people using the small-footprint version of Rhino in an environment where memory or cpu performance are scarse. So the goal of my patch was to fix the problem but change as little as possible otherwise.\n\n> In fact, we could go one step further and introduce a sort of a \"MapFactory\"\n> somewhere (probably pluggable into the Context object), so people could plug in\n> whatever map implementations they want\n\nThat would definitely be interesting to experiment with, and to compare it with the current implementation. I don't think it would be useful for me to have as a permanent feature, but maybe it would be for others.",
+            "date": "20061219T10:26:04",
+            "id": 8
+        },
+        {
+            "author": "james@phsys.co.uk",
+            "body": "(In reply to comment #9)\n> (In reply to comment #8)\n> > as you seem to be familiar with ScriptableObject's hashing code, I'd like to\n> > ask whether you see any reason why couldn't we just simply use a HashMap in the\n> > ScriptableObject implementation? \n> \n> That would normally seem like the way to go. But from a gut level, I'd hesitate\n> to make such a big change at a spot that is so central to Rhino. For example,\n> this might affect those people using the small-footprint version of Rhino in an\n> environment where memory or cpu performance are scarse. So the goal of my patch\n> was to fix the problem but change as little as possible otherwise.\n> > In fact, we could go one step further and introduce a sort of a \"MapFactory\"\n> \n> That would definitely be interesting to experiment with, and to compare it with\n> the current implementation. I don't think it would be useful for me to have as\n> a permanent feature, but maybe it would be for others.\n\nTo satisfy both of these efficiently you could create a factory for the default Scriptable implementation. Then you can have a hand-crafted version if you want, or one which uses java libraries and things like map factories internally. I'd definitely like to see this kind of flexibility in Rhino...\n\nJames",
+            "date": "20061219T10:49:34",
+            "id": 9
+        },
+        {
+            "author": "hannesw@gmail.com",
+            "body": "The patch for bug 224334 that has been committed breaks my patch. Since the problem with linear probing in ScriptableObject.java persists, I'll work on a new, updated patch when I have time.",
+            "date": "20070130T11:01:05",
+            "id": 10
+        },
+        {
+            "author": "hannesw@gmail.com",
+            "body": "Created attachment 254164\nNew implementation for slot table using chaining instead of linear probing\n\nThis is a rewrite of my previous patch adapted to recent changes in ScriptableObject. Running the test suite over it with 5 second timeout, I got the same results as with CVS HEAD, with performance slightly improved.",
+            "date": "20070206T15:13:18",
+            "id": 11
+        },
+        {
+            "author": "hannesw@gmail.com",
+            "body": "David: adding you to CC list, maybe you are interested in looking into this.",
+            "date": "20070206T15:15:43",
+            "id": 12
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "I get a compile error building with the 2007-02-06 07:13 PDT patch:\n\n    [javac] Compiling 112 source files to /home/norris/rhino/mozilla/js/rhino/build/classes\n    [javac] /home/norris/rhino/mozilla/js/rhino/src/org/mozilla/javascript/ScriptableObject.java:2293: cannot find symbol\n    [javac] symbol  : variable tableSize\n    [javac] location: class org.mozilla.javascript.ScriptableObject\n    [javac]                 int insertPos = getSlotIndex(tableSize, slot.indexOrHash);\n    [javac]                                              ^\n    [javac] 1 error\n",
+            "date": "20070606T19:14:46",
+            "id": 13
+        },
+        {
+            "author": "hannesw@gmail.com",
+            "body": "Created attachment 267488\nUpdated version of previous patch\n\nThe definition of int tableSize was removed in revision 1.120 of ScriptableObject. This new patch puts it in again. From a quick test I did, everything looks ok.",
+            "date": "20070606T21:04:51",
+            "id": 14
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "Patch committed on both 1.6R6 branch and trunk. \n\nThe idea of switching to HashMap is good, but that's more of a task for next release rather than this release. \n",
+            "date": "20070607T12:35:35",
+            "id": 15
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "Created Bug 383592 for the future enhancement of using HashMap in ScriptableObject.",
+            "date": "20070607T12:40:23",
+            "id": 16
+        }
+    ],
+    "component": "Core",
+    "description": "User-Agent:       Mozilla/5.0 (X11; U; Linux i686; en-US; rv:1.8.1) Gecko/20060601 Firefox/2.0 (Ubuntu-edgy)\nBuild Identifier: Rhino 1.6 R4\n\nThe code below shows a hundred fold speed difference between the push function and setting array elements directly. Furthermore, when running push some calls do execute quickly and some don't.\n\nThis looks like some kind of simple optimisation problem in the push function, I've had a look but can't spot quite what it is....\n\n\nReproducible: Always\n\nSteps to Reproduce:\nvar iMax = 100, jMax = 1000;\nvar sys = java.lang.System;\nvar t0 = sys.currentTimeMillis ();\n\nvar x = [];\nfor (var i = 0; i < iMax; i++) {\n\tfor (var j = 0; j < jMax; j++) {\n\t\tx.push ({});\n\t}\n\tsys.out.print ('.');\n}\n\nvar t1 = java.lang.System.currentTimeMillis ();\njava.lang.System.out.println (t1 - t0);\n\nvar x = [], n = 0;\nfor (var i = 0; i < iMax; i++) {\n\tfor (var j = 0; j < jMax; j++) {\n\t\tx [n++] = {};\n\t}\n\tsys.out.print ('.');\n}\n\nvar t2 = java.lang.System.currentTimeMillis ();\njava.lang.System.out.println (t2 - t1);\n\nActual Results:  \nThe first line of dots are slow and appear erraticaly. The second line appear very quickly.\n\n....................................................................................................36170.0\n....................................................................................................352.0\n\n\nExpected Results:  \nBoth lines should appear quickly and show short (< 1 second) times.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "360964",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "BUG",
+    "priority": "-- normal",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "Native array push is really slow",
+    "systemSpecification": true,
+    "version": "other"
+}

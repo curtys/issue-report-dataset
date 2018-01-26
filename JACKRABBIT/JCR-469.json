@@ -1,0 +1,23 @@
+{
+    "comments": [
+        {
+            "author": "Tobias Bocanegra",
+            "body": "fixed.\n\nDate: Fri Jun 23 01:14:31 2006\nNew Revision: 416629\n",
+            "date": "2006-06-23T15:14:51.000+0000",
+            "id": 0
+        }
+    ],
+    "component": "versioning",
+    "description": "The following sequence leads to swapped child nodes in the mentioned trunk version (this worked in 1.0.1).\nSpecifically:\n\nAdd nodes:\n parent\n   childA\n   childB\n\nRemove childA:\n parent\n   childB\n\nRestore initial version:\n parent\n   childB\n   childA\n\nThe parent node is of type nt:unstructured which carries an\nOrderableChildNodes=true so I would assume that upon restoring the order\nwould be preserved.\n\nCheers,\nTanju\n\n--------------\n\nTESTCASE used with both Derby & InMemPMs (boiled down beyond sense :)\n\n// Add parent & childA, childB\nNode parent = session.getRootNode().addNode(\"parent\", \"nt:unstructured\");\nparent.addMixin(\"mix:versionable\");\nNode c1 = parent.addNode(\"childA\", \"nt:unstructured\");\nc1.addMixin(\"mix:versionable\");\nNode c2 = parent.addNode(\"childB\", \"nt:unstructured\");\nc2.addMixin(\"mix:versionable\");\nsession.save();\nc1.checkin();\nc2.checkin();\nVersion v1 = parent.checkin();\n// OK : parent.getNodes() -> childA, childB\n\n// Remove childA\nparent = session.getRootNode().getNode(\"parent\");\nparent.checkout();\nc1 = parent.getNodes().nextNode();\nc1.checkout();\nc1.remove();\nsession.save();\nVersion v2 = parent.checkin();\n// OK : parent.getNodes() -> childA, childB\n\n// Remove childA\nparent = session.getRootNode().getNode(\"parent\");\nparent.restore(v1, true);\n// Not OK : parent.getNodes() -> childB, childA",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "JCR-469",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Critical",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "Problem with child order after restoring of parent",
+    "systemSpecification": true,
+    "version": "0.9, 1.0, 1.0.1"
+}

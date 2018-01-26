@@ -1,0 +1,77 @@
+{
+    "comments": [
+        {
+            "author": "Robert Muir",
+            "body": "+1, i added a simple test, sigsegv's without patch, passes with it.",
+            "date": "2011-11-23T00:59:04.588+0000",
+            "id": 0
+        },
+        {
+            "author": "Dawid Weiss",
+            "body": "Looks good to me. Interesting solution.",
+            "date": "2011-11-23T08:06:59.018+0000",
+            "id": 1
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Here a much simplier patch than the one yesterday (including Robert's test):\nThe added complexity by ConcurrentHashMap with WeakReference and ReferenceQueue is nonsense, as CHM is optimized for many clients getting entries from the map. In our use-case the only one who gets entries from the map is our close() method. When cloning, we only call put() so its always synchronized by CHM and no difference to a standard synchronized WhateverMap.\nThis patch uses the simple apprach: Use a native WeakHashMap where we have a synchronization on the put()/close() cleanups. This removes all Reference handling and simplifies code a lot.\n\nI think this is ready to commit.",
+            "date": "2011-11-23T11:28:15.130+0000",
+            "id": 2
+        },
+        {
+            "author": "Dawid Weiss",
+            "body": "I was thinking about this when looking at the code and I thought the intention of using CHM was to get an iterator that won' throw CME while iterating. If this isn't possible then you're right -- same thing to use a decorated WhateverMap.",
+            "date": "2011-11-23T11:48:04.127+0000",
+            "id": 3
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "WeakHashMap silently discards GCed references during iteration. And the close() method synchronized on the map, too.",
+            "date": "2011-11-23T11:51:27.396+0000",
+            "id": 4
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Improved patch:\n- The clones (even clones of clones) share all the same WeakHashMap with the original. Only the original MMapIndexInput will unset the buffers in all clones/cloned-clones.\n- This reduces cost of creating clones (no HashMap instantiation, no ReferenceQueues,...)\n\nAdded test with clone of clone.",
+            "date": "2011-11-23T12:10:32.544+0000",
+            "id": 5
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "New patch, that no longer throws NPE, all NPEs are converted to AlreadyClosedExceptions in MMapIndexInput. This does not add overhead, the try/catch blocks are already there.\n\nLUCENE-3588.patch is now the authoritative patch file.",
+            "date": "2011-11-23T14:02:15.142+0000",
+            "id": 6
+        },
+        {
+            "author": "Doron Cohen",
+            "body": "Patch (last one) works well for me - the new test fails without the fix and passes with the fix.\n\nIt relies on shallow cloning of 'clones' - and so would break if WHM starts to implement Cloneable for some reason, but then the 'assert clone.clones == this.clones' in clone() guarantees early detection of this in the tests, cool.",
+            "date": "2011-11-23T14:33:48.049+0000",
+            "id": 7
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Committed trunk revision: 1205430\nCommitted 3.x revision: 1205434",
+            "date": "2011-11-23T15:20:35.600+0000",
+            "id": 8
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "I missed one more possible NPE -> AlreadyClosedException transformation in getFilePointer. Committed revs 1205954 (trunk), 1205956 (3x)",
+            "date": "2011-11-24T18:43:11.109+0000",
+            "id": 9
+        }
+    ],
+    "component": "core/store",
+    "description": "We are unmapping mmapped byte buffers which is disallowed by the JDK, because it has the risk of SIGSEGV when you access the mapped byte buffer after unmapping.\n\nWe currently prevent this for the main IndexInput by setting its buffer to null, so we NPE if somebody tries to access the underlying buffer. I recently fixed also the stupid curBuf (LUCENE-3200) by setting to null.\n\nThe big problem are cloned IndexInputs which are generally not closed. Those still contain references to the unmapped ByteBuffer, which lead to SIGSEGV easily. The patch from Mike in LUCENE-3439 prevents most of this in Lucene 3.5, but its still not 100% safe (as it uses non-volatiles).\n\nThis patch will fix the remaining issues by also setting the buffers of clones to null when the original is closed. The trick is to record weak references of all clones created and close them together with the original. This uses a ConcurrentHashMap<WeakReference<MMapIndexInput>,?> as store with the logic borrowed from WeakHashMap to cleanup the GCed references (using ReferenceQueue).\n\nIf we respin 3.5, we should maybe also get this in.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-3588",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Major",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "Try harder to prevent SIGSEGV on cloned MMapIndexInputs",
+    "systemSpecification": true,
+    "version": "3.4, 3.5"
+}

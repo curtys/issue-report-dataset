@@ -1,0 +1,41 @@
+{
+    "comments": [
+        {
+            "author": "Marlis Lamp",
+            "body": "The error occurs at org.apache.jackrabbit.core.version.VersionManagerImplRestore.internalRestoreFrozen(VersionManagerImpl.java:493) when replacing all existing child nodes on N: \n\n// if node is present, remove it\nstate.removeNode(entry.getName(), entry.getIndex());\n\nLet N (node) and F (frozen node) have 2 child nodes.\nThis removes the correct node from the state object at the first cycle, but at the second, when the first child node has been removed from position 1 and added to position 2 on the state object, the indices in the state object have moved and the childnode that has been added at the first cycle is removed at the second cycle. The second cycle also removes the 2nd child node from the state object in line 505:\n\n                // check for existing\n                if (f.getFrozenId() != null) {\n                    if (stateMgr.hasItemState(f.getFrozenId())) {\n                        NodeStateEx existing = state.getNode(f.getFrozenId());\n                        if (removeExisting) {\n                            NodeStateEx parent = existing.getParent();\n                            parent.removeNode(existing);\n                            parent.store(); \n                            ...\n\nFinally the 2nd child node of F is added, resulting in a restored state, where the first child node of the frozen node is missing.",
+            "date": "2011-03-25T12:14:35.060+0000",
+            "id": 0
+        },
+        {
+            "author": "Julian Reschke",
+            "body": "repro test case",
+            "date": "2011-12-12T17:24:15.997+0000",
+            "id": 1
+        },
+        {
+            "author": "Julian Reschke",
+            "body": "proposed patch (minimally changed), includes test case",
+            "date": "2011-12-12T18:17:44.557+0000",
+            "id": 2
+        },
+        {
+            "author": "Julian Reschke",
+            "body": "Fixed based on Marlis Lamps patch (thanks!)",
+            "date": "2011-12-13T14:24:00.639+0000",
+            "id": 3
+        }
+    ],
+    "component": "jackrabbit-core, versioning",
+    "description": "When restoring a versionable node which has several (non-versionable) child nodes with the same name, some child nodes disappear. \n\n            Node node = session.getRootNode().addNode(\"myNode\");\n            node.addMixin(\"mix:versionable\");\n            for (int i = 1; i < 6; i++) {\n                Node child = node.addNode(\"child\");\n                child.setProperty(\"name\", \"child_\"+i);\n            }\n            session.save();\n            VersionManager versionManager = session.getWorkspace().getVersionManager();\n            versionManager.checkin(node.getPath());\n            System.out.println(\"number of child nodes: \" + node.getNodes().getSize());\n\n            versionManager.checkout(node.getPath());\n            node.getNode(\"child\").setProperty(\"name\", \"modified\");\n            session.save();\n            Version baseVersion = versionManager.getBaseVersion(node.getPath());\n            versionManager.restore(baseVersion, true);\n            System.out.println(\"number of child nodes in restored node: \"+node.getNodes().getSize());\n\n\nproduces the following output:\n\nnumber of child nodes: 5\nnumber of child nodes in restored node: 3\n\nGiving unique names or adding the mixin versionable to the child nodes solves the problem.\n",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "JCR-2930",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Critical",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "same named child nodes disappear on restore",
+    "systemSpecification": true,
+    "version": "2.2.4"
+}

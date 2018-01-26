@@ -1,0 +1,53 @@
+{
+    "comments": [
+        {
+            "author": "angela",
+            "body": "test case illustrating the problem",
+            "date": "2011-11-23T11:32:52.343+0000",
+            "id": 0
+        },
+        {
+            "author": "angela",
+            "body": "michi, does that ring a bell?",
+            "date": "2011-11-23T11:33:20.745+0000",
+            "id": 1
+        },
+        {
+            "author": "Michael D\u00fcrig",
+            "body": "This was introduced as a side effect of JCR-2726",
+            "date": "2011-11-23T11:45:29.190+0000",
+            "id": 2
+        },
+        {
+            "author": "Michael D\u00fcrig",
+            "body": "Group#getMembers() does not pose a uniqueness constraint on the returned iterator. So the current implementation is to the contract. Since uniqueness is desirable I think we should also tighten that contract. \n\nHowever, adding uniqueness will partially undo the gains from collecting group members lazily since the implementation would have to remember members in order to test for uniqueness. ",
+            "date": "2011-11-23T12:16:38.993+0000",
+            "id": 3
+        },
+        {
+            "author": "angela",
+            "body": "> Group#getMembers() does not pose a uniqueness constraint on the returned iterator.\n\ncome on.... that's the whole story about having the shortcut compared to Group.getDeclaredMembers and having to\nfetch the members of member-groups of the membergroups of the member-groups. but if common sense is\nnot sufficient let's add this explicitly to the API contract.\n\n> However, adding uniqueness will partially undo the gains from collecting group members lazily \n> since the implementation would have to remember members in order to test for uniqueness. \n\nwhere exactly is the gain if every single API consumer has to maintain that list because the implementation\ndoesn't do it? i don't see the benefit and it would just lead to have that very same code being written\nmultiple times... just thinking of our own usages of Group.getMembers() i know at least 4 places where we\nwould need to add that filter. furthermore i think it is sufficient to remember the IDs of the members that \nhave already been served. ",
+            "date": "2011-11-23T13:32:24.280+0000",
+            "id": 4
+        },
+        {
+            "author": "Michael D\u00fcrig",
+            "body": "Fixed at revision 1205400",
+            "date": "2011-11-23T14:06:47.596+0000",
+            "id": 5
+        }
+    ],
+    "component": "jackrabbit-core, security",
+    "description": "i just happen to detect the following regression that seems to be introduces quite a while ago:\n\nGroup#getMembers is defined to return all group members including those inherited by another group being member of that group.\n\nExample:\nUser t\nGroup a : t is declared member\nGroup b : t is declared member\nGroup c : a, b are declared members\n\nThe expected result of Group.getMembers was: a, b and t.\n\nWhat is currently happening is that t is included twice in the returned iterator.\nQuickly testing on jackrabbit 2.0 revealed that this used to work before...\n\nI didn't carefully check when that bug has been introduced but the the refactoring of the membership\ncollections seems to be a possible culprit.\n\n",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "JCR-3156",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "Group#getMembers may list inherited members multiple times",
+    "systemSpecification": true,
+    "version": "2.2, 2.3"
+}

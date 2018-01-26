@@ -1,0 +1,65 @@
+{
+    "comments": [
+        {
+            "author": "hannesw@gmail.com",
+            "body": "Created attachment 561735\nClone slots when resizing\n\nThis patch creates clones of the Slot instances when resizing the property table. We're using the ordered list to clone slots in order to preserve property order.\n\nThe other option for fixing this bug would have been to synchronize getSlot(), but since read access is far more frequent than resizing that doesn't seem like a good idea.",
+            "date": "20110922T14:48:00",
+            "id": 0
+        },
+        {
+            "author": "hannesw@gmail.com",
+            "body": "Created attachment 564840\nRemove deleted slots from ordered list directly in removeSlot()\n\nThis patch removes deleted slots from the ordered list right when they are deleted. This makes delete O(n) which should be acceptable since it is not a very frequent operation.",
+            "date": "20111005T14:22:56",
+            "id": 1
+        },
+        {
+            "author": "hannesw@gmail.com",
+            "body": "Committed the last patch.\n\nhttps://github.com/mozilla/rhino/commit/83678e6e932049780d9a9afa0ba2583ba7865081",
+            "date": "20111005T14:24:59",
+            "id": 2
+        },
+        {
+            "author": "hannesw@gmail.com",
+            "body": "Unfortunately my patch introduced another race condition. After slots are cloned, writes to the original slots from other threads will be lost. It seems like the only sane way to keep the object consistent in a multi-threaded environment during table resizing short of synchronizing reads is to keep existing slots after all. I'm working on a new patch.",
+            "date": "20111110T15:36:53",
+            "id": 3
+        },
+        {
+            "author": "hannesw@gmail.com",
+            "body": "Created attachment 573535\nTest case for newly introduced race condition",
+            "date": "20111110T17:13:36",
+            "id": 4
+        },
+        {
+            "author": "hannesw@gmail.com",
+            "body": "Created attachment 573540\nPatch fixing newly introduced race condition\n\nAfter trying different approaches I think I found one that works well. \n\nThis patch introduces a Slot subclass called RelinkedSlot that wraps the original slot and allows it to keep its identity while providing a new `next` link that doesn't interfere with the one of the original slot. RelinkedSlot wrappers are only used when a slot actually has the `next` field set, so overhead shouldn't be that bad. \n\nAnother benefit is that we can keep our ordered slot list and don't have to rebuild it during table growth like we did with the cloning patch.",
+            "date": "20111110T17:24:42",
+            "id": 5
+        },
+        {
+            "author": "hannesw@gmail.com",
+            "body": "Created attachment 573555\nSlightly revised second patch",
+            "date": "20111110T18:05:32",
+            "id": 6
+        },
+        {
+            "author": "hannesw@gmail.com",
+            "body": "Committed patch and test case.",
+            "date": "20111110T20:23:19",
+            "id": 7
+        }
+    ],
+    "component": "Core",
+    "description": "Created attachment 561730\nScript to reproduce the problem\n\nWhen the property table in ScriptableObject is grown the existing Slot objects are copied to a new slots array. Even though the copyTable() method and other methods mutating slot data are synchronized, slots may be read during resizing from the unsynchronized getSlot() method. Since copyTable() may null out a slot's `next` field this can result in defined slots not being found and the corresponding property to be undefined.\n\nSee http://groups.google.com/group/mozilla-rhino/browse_frm/thread/1f30ec809bb7d41c for the original report.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "688458",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "BUG",
+    "priority": "-- normal",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "Race condition in ScriptableObject property table resizing",
+    "systemSpecification": true,
+    "version": "head"
+}

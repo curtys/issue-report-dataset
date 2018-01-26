@@ -1,0 +1,23 @@
+{
+    "comments": [
+        {
+            "author": "hannesw@gmail.com",
+            "body": "I included the changes you proposed into my patch for bug #637587. Please let me know if this works for you.",
+            "date": "20110306T22:35:10",
+            "id": 0
+        }
+    ],
+    "component": "Core",
+    "description": "User-Agent:       Mozilla/5.0 (Windows; U; Windows NT 5.1; en-US) AppleWebKit/532.0 (KHTML, like Gecko) Chrome/3.0.195.10 Safari/532.0\nBuild Identifier: R3Pre\n\nScriptRuntime no longer checks the global scope for an Array constructor, but rather is hard-coded to use new NativeArray to create arrays.\n\nReproducible: Always\n\nSteps to Reproduce:\n1. Create a custom array class that should be used for all array creation in the JS environment.\n2. \nActual Results:  \nYou can't use it!\n\nExpected Results:  \nShould be able to override array construction. The Persevere project relies on this functionality.\n\nI don't need \"Array\" to be looked up in the scope, but at the very least, there should be a way to override array construction. This can be fixed with this simple patch:\nat line 3495 in ScriptRuntime.java\n\n            NativeArray array = new NativeArray(sparse);\n            setObjectProtoAndParent(array, scope);\n            return array;\n        }\n\n        NativeArray array = new NativeArray(length);\n        setObjectProtoAndParent(array, scope);\n\n->\n\n            return cx.newArray(scope, sparse);\n        }\n\n        Scriptable array = cx.newArray(scope, length);\n\n\nat line 1546 in Context.java\n\n    public final Scriptable newArray(Scriptable scope, int length)\n\n->\n\n    public Scriptable newArray(Scriptable scope, int length)\n\nat line 1563 in Context.java\n\n    public final Scriptable newArray(Scriptable scope, Object[] elements)\n\n->\n\n    public Scriptable newArray(Scriptable scope, Object[] elements)",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "515419",
+    "issuetypeClassified": "OTHER",
+    "issuetypeTracker": "BUG",
+    "priority": "-- major",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "Array constructor can no longer be overriden to provide a custom Array class",
+    "systemSpecification": true,
+    "version": "other"
+}

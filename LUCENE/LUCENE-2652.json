@@ -1,0 +1,89 @@
+{
+    "comments": [
+        {
+            "author": "Robert Muir",
+            "body": "here's a patch to disable use of the runners.\n\nreally i think the two runners (LocalizedTestCase/MultiCodecTestCase) are obselete anyway,\nyou can run any junit test under any locale/codec, and we select locale, timezone, and codec\nrandomly by default.\n",
+            "date": "2010-09-18T15:35:48.101+0000",
+            "id": 0
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "{quote}\nreally i think the two runners (LocalizedTestCase/MultiCodecTestCase) are obselete anyway,\nyou can run any junit test under any locale/codec, and we select locale, timezone, and codec\nrandomly by default.\n{quote}\nYeah I agree that we should fix that and get rid of them. I also think we should apply a quick fix to make builds on hudson pass again. Yet, you patch changes lots of files - the patch I attached is less intrusive and has the same effect.\n\nLets commit that and do a real fix within the next days. Thoughts?",
+            "date": "2010-09-18T15:58:22.359+0000",
+            "id": 1
+        },
+        {
+            "author": "Robert Muir",
+            "body": "bq. Yet, you patch changes lots of files\n\nRight, but long term we should remove these runners anyway.\nSo maybe we should delete the RunWiths *and* delete the runner code.\n\nThese runners are obselete and weaker than our general test support itself:\n* the MultiCodecRunner cannot set parameters for the codecs, but LuceneTestCase can do this\n* The LocalizedRunner cannot set timezone (this runner is used by lots of tests), but LuceneTestCase can do this\n",
+            "date": "2010-09-18T16:03:00.142+0000",
+            "id": 2
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "{quote}\nRight, but long term we should remove these runners anyway.\nSo maybe we should delete the RunWiths and delete the runner code.\n{quote}\nI agree robert but I want to let other folk have a chance to comment on how to proceed (its weekend and some may have other things to do) but at the same time I don't want to let hudson fail again due to clover / Junit 4.\n\nI'd commit the fix to trunk and 3.x and decide once others have commented, thoughts?\n ",
+            "date": "2010-09-18T16:07:15.189+0000",
+            "id": 3
+        },
+        {
+            "author": "Robert Muir",
+            "body": "bq. I'd commit the fix to trunk and 3.x and decide once others have commented, thoughts?\n\n+1, commit it so our clover works",
+            "date": "2010-09-18T17:36:44.966+0000",
+            "id": 4
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "I committed the quick fix for now\n\n* 3.x -- Committed revision 998503.\n* trunk -- Committed revision 998507.\n\nI will work on a new patch tomorrow.\n\nsimon",
+            "date": "2010-09-18T18:09:49.193+0000",
+            "id": 5
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "I added support for tests.locale=all && tests.codec=all while still utilizing the TestRunners we used before. With this patch we preserve all functionality we had before  - being able to run with all locale / codec types for those tests which have been marked with the corresponding runners. Should we commit that until we change to a single runner?\n\nYet, i think what we should ultimately do is remove the runners and add support to run all permutations like a test with all codecs, locale , timezone etc. I don't think that it makes lot of sense to do that for every test but maybe we want to offer the test to tell if it wants to run with all locale and / or all codec .... \n\nmaybe something like \n\n{code}\n\nenum TestProperty {\n  Locale, Codec, Timezone\n\n}\n\n...\n\nsetTestProperties(TestProperty ... properties) {\n  ...\n}\n\n{code}",
+            "date": "2010-09-19T11:43:32.969+0000",
+            "id": 6
+        },
+        {
+            "author": "Robert Muir",
+            "body": "{quote}\nI added support for tests.locale=all && tests.codec=all while still utilizing the TestRunners we used before. With this patch we preserve all functionality we had before - being able to run with all locale / codec types for those tests which have been marked with the corresponding runners. Should we commit that until we change to a single runner?\n{quote}\n\nNot sure, i think its a little confusing, because this 'all' only affects tests that use the runner.\n\nI still think we should remove these runners completely. there is other ways to test all locales/codecs: for example by doing ant test -Dtestcase=foo -Dtests.iter=1000, as it should randomly hit them all anyway, same with codecs.\n\nand this works for all test cases, not just those annotated with the runners.",
+            "date": "2010-09-19T15:14:17.931+0000",
+            "id": 7
+        },
+        {
+            "author": "Robert Muir",
+            "body": "Rethinking: Now that all tests are Junit4 tests, this issue is obselete.\n\nthese runners don't properly setup the locale correctly: only in setUp+test method itself.\n\nBut our build system now with -Dtests.locale does it correctly, @beforeClass is consistent too.\n\nI'll remove these runners from LuceneTestCase shortly.\n",
+            "date": "2010-10-18T23:48:31.692+0000",
+            "id": 8
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "bq. I'll remove these runners from LuceneTestCase shortly.\n +1 thanks for taking this issue!",
+            "date": "2010-10-19T06:26:20.639+0000",
+            "id": 9
+        },
+        {
+            "author": "Robert Muir",
+            "body": "Committed revision 1024219, 1024223 (3x)",
+            "date": "2010-10-19T13:00:38.297+0000",
+            "id": 10
+        },
+        {
+            "author": "Grant Ingersoll",
+            "body": "Bulk close for 3.1",
+            "date": "2011-03-30T15:50:28.198+0000",
+            "id": 11
+        }
+    ],
+    "component": "general/test",
+    "description": "As a spinn off from this [conversation|http://www.lucidimagination.com/search/document/ae20885bf5baedc5/build_failed_in_hudson_lucene_3_x_116#7ed351341152ee2d] we should rethink the way how we execute testcases with different locals since glover reports appears to throw OOM errors b/c Junit treats each local as a single test case run.\n\nHere are some options:\n* select the local at random only run the test with a single local\n* set the local via system property -Dtest.locale=en.EN\n* run with the default locale only -Dtest.skiplocale=true\n* one from the above but only if instrumented with clover (let common tests run all the locale)\n\n",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-2652",
+    "issuetypeClassified": "OTHER",
+    "issuetypeTracker": "OTHER",
+    "priority": "Major",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "Rethink LocalizedTestCaseRunner with JUnit 4 - Clover OOM",
+    "systemSpecification": true,
+    "version": ""
+}

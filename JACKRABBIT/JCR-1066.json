@@ -1,0 +1,77 @@
+{
+    "comments": [
+        {
+            "author": "Christoph Kiehl",
+            "body": "This is an initial patch. I'm not fully satisfied with it because PathQueryNode shouldn't know about NodeTypeQueryNode or node types. Maybe someone has a better idea how to implement this?",
+            "date": "2007-08-16T15:38:37.996+0000",
+            "id": 0
+        },
+        {
+            "author": "Christoph Kiehl",
+            "body": "The first patch was incomplete",
+            "date": "2007-08-16T16:32:45.278+0000",
+            "id": 1
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "> the application specific node type can't be added to the \"jcr:system\"-tree and are therefore are added\n> never to the system index (am I right?).\n\nYes, I think that's correct.\n\nThe list VALID_SYSTEM_INDEX_NODE_TYPE_NAMES is missing some values:\n- intermediate node in the version history tree are of type: rep:versionStorage\n- the node /jcr:system is of type: rep:system (not sure if this one needs to be added)\n- also all supertypes of the ones already in the list need to be added. for sure nt:base and mix:referenceable. I'm not 100% sure if there are more.\n- /jcr:system/jcr:nodeTypes if of type: rep:nodeTypes",
+            "date": "2007-08-17T12:41:25.703+0000",
+            "id": 2
+        },
+        {
+            "author": "Christoph Kiehl",
+            "body": "Added a corrected patch which incorporates the suggested changes. You were absolutely right. I used Section 6.7.22.1 of the JCR 1.0 spec to verify your additions.",
+            "date": "2007-08-17T16:56:19.826+0000",
+            "id": 3
+        },
+        {
+            "author": "Christoph Kiehl",
+            "body": "rep:system was still missing",
+            "date": "2007-08-20T12:55:42.784+0000",
+            "id": 4
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "There's another potential issue. I know of at least one implementation that customizes jackrabbit and uses more than the listed node types under /jcr:system. We should try to make the list customizable.\n\nWe could move the list to the SearchIndex class and add a parameter to the method QueryNode.needsSystemTree(). We'd then have: \n\npublic abstract boolean needsSystemTree(Set jcrSystemNodeTypes);\n\nwhere jcrSystemNodeTypes is a Set of QNames.",
+            "date": "2007-08-21T13:05:01.313+0000",
+            "id": 5
+        },
+        {
+            "author": "Christoph Kiehl",
+            "body": "I'm not really happy with all those solutions. I'm still not sure which part of the core should be responsible for deciding which node types are system tree node types. But I think until now the best solution was to let SearchIndex be responsible for that. What I dislike with that approach is that every QueryNode now knows about the jcr system tree node types. Maybe it would be better to have a QueryNodeFactory which could return a PathQueryNode which already knows about the jcr system tree node types?\nAnyway - I attached a patch implementing the proposed changes.",
+            "date": "2007-08-21T23:23:50.648+0000",
+            "id": 6
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "I like the idea of a QueryNodeFactory.\n\nWhat do you think about the patch?",
+            "date": "2007-08-22T12:38:11.994+0000",
+            "id": 7
+        },
+        {
+            "author": "Christoph Kiehl",
+            "body": "I like the patch. Just one thought: \n\nI would prefer removing all those methods that have no factory in their parameter list (like QueryTreeBuilder.createQueryTree() and QueryParser.parse()). Instead I would like to remove DEFAULT_QUERY_NODE_FACTORY from XPathQueryBuilder and JCRSQLQueryBuilder and instantiate QueryImpl in SearchIndex.createExecutableQuery() with the default query ... well maybe I better create a patch. A few lines of code are probably clearer than this text ;)\n\nThe patch doesn't compile because of MergingPathQueryNode not being covered by the factory. But I think if we go the QueryNodeFactory way it should create MergingPathQueryNode instances as well or MergingPathQueryNode should be removed. The functionality could probably be replaced by plain methods. Unfortunately I'm really busy at the moment and have no time to investigate further. Maybe next week.\n\nAlthough I'm not sure if you like this approach at all. Maybe you need those methods without the factory parameter for backwards compatibility?\n\nAnother thought is that QueryNodes still have public constructors which means anyone could instance them. They should probably be package private to force the use of the factory. Ok then, enough ranting. Back to work ... ;)",
+            "date": "2007-08-24T07:57:05.190+0000",
+            "id": 8
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "Applied Christoph's patch with minor changes:\n- Changed all QueryNode constructors to protected\n- Removed unused constructors\n\nCommitted in revision: 570095",
+            "date": "2007-08-27T12:56:13.778+0000",
+            "id": 9
+        }
+    ],
+    "component": "jackrabbit-core, query",
+    "description": "We already have code that is able to decide whether the system index needs to be included in a search or not (see JCR-967). If I execute a query like \"my:app//element(*, my:doc)\" this will only search the workspace index. Unfortunately this is slower than \"//element(*, my:doc)\", since the first query can not be optimized as the second. In our case both queries return the same result set because we use application specific node types. Even though the second query includes the system index it is still faster than the first one. But it could be even faster because it doesn't need to search the system index because nodes with the application specific node type can't be added to the \"jcr:system\"-tree and are therefore are added never to the system index (am I right?).",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "JCR-1066",
+    "issuetypeClassified": "RFE",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Minor",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "Exclude system index for queries that restrict the result set to nodetypes not availble in the \"jcr:system\" subtree",
+    "systemSpecification": true,
+    "version": ""
+}

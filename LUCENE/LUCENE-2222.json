@@ -1,0 +1,83 @@
+{
+    "comments": [
+        {
+            "author": "Renaud Delbru",
+            "body": "Simple patch that adds a call to blockReader.readBlock() in the Reader initialisation",
+            "date": "2010-01-18T00:45:29.830+0000",
+            "id": 0
+        },
+        {
+            "author": "Renaud Delbru",
+            "body": "Fixed patch",
+            "date": "2010-01-18T11:14:43.712+0000",
+            "id": 1
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "It's great that you're working with the intblock codec, Renaud!\n\nAre you using PForDelta?  Or some other means of encoding?\n\nI think, instead of reading a block in the ctor for Reader, we should set upto = blockSize?  Ie, the file may have nothing it it, so we should defer reading the block until the first read.  I added 2 unit tests showing the issues.  Attached patch.",
+            "date": "2010-01-18T11:20:11.339+0000",
+            "id": 2
+        },
+        {
+            "author": "Renaud Delbru",
+            "body": "For the moment, I first try to use FrameOfRef, and compare it with some simpler encoding methods such as VInt using the Codec interface. I would like to see if the BlockReader and Reader interface do not add too much overhead compared to a simple index input based on vint, and therefore loose the speed benefits we got on decompression.\n\nI agree with your modifications, it is more clean. I have applied the patch, and run the tests, all seems to run without problems.\n\nP.S.: I had some problems (errors on CHANGES.txt and FixedIntBlockIndexInput.java) when applying the patch (within eclipse). I had to do it manually, Don't know what is the cause.\nP.S.: Sorry for the first patches, my eclipse is configured to format automatically the code (add final, this., etc.) and therefore my patches are generally including all these modifications. Is it a problem for you ?",
+            "date": "2010-01-18T13:09:27.037+0000",
+            "id": 3
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "OK I'll commit shortly.\n\n{quote}\nFor the moment, I first try to use FrameOfRef, and compare it with some simpler encoding methods such as VInt using the Codec interface. I would like to see if the BlockReader and Reader interface do not add too much overhead compared to a simple index input based on vint, and therefore loose the speed benefits we got on decompression.\n{quote}\n\nOK -- sounds interesting -- please report back!\n\nbq. P.S.: Sorry for the first patches, my eclipse is configured to format automatically the code (add final, this., etc.) and therefore my patches are generally including all these modifications. Is it a problem for you ?\n\nActually I don't mind these additions...",
+            "date": "2010-01-18T13:16:31.934+0000",
+            "id": 4
+        },
+        {
+            "author": "Renaud Delbru",
+            "body": "I have noticed also another problem with the block index I/O and PFOR I/O. The fixed int block index can be configured with any block size, but PFOR requires at least a block size of 32 (and even, I think it requires a block size which is a product of 32), otherwise the decompression do not work correctly (the inputSize in decompressFrame is based on frameOfRef.unComprSize). There should be a block size checking in the PFOR index I/O. Should I open a new issue ?",
+            "date": "2010-01-18T13:40:10.387+0000",
+            "id": 5
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "This is a check that should be added to the PFOR codec (currently lives as a patch on LUCENE-1410), right?",
+            "date": "2010-01-18T15:00:14.788+0000",
+            "id": 6
+        },
+        {
+            "author": "Renaud Delbru",
+            "body": "Yes, it is something that should be tested in the PFOR codec.",
+            "date": "2010-01-18T15:18:32.297+0000",
+            "id": 7
+        },
+        {
+            "author": "Paul Elschot",
+            "body": "{quote}\nI have noticed also another problem with the block index I/O and PFOR I/O. The fixed int block index can be configured with any block size, but PFOR requires at least a block size of 32 (and even, I think it requires a block size which is a product of 32), otherwise the decompression do not work correctly (the inputSize in decompressFrame is based on frameOfRef.unComprSize). There should be a block size checking in the PFOR index I/O. Should I open a new issue ?\n{quote}\n\nI have not looked at the flex branch yet, but the PFOR implementation at LUCENE-1410 has the possibility to encode/decode any block length. To decode blocks that are not a multiple of 32 in size it will fall back from the faster decoding routine (the generated code) to the general (and slow) decoding routine at ForDecompress.decodeAnyFrame().\n\nLately I've been tinkering with Simple9 (LUCENE-2189) which is simpler than PFOR but has the problem that the input block size is not known beforehand. As far as I can see now, we might end up with a general pair of block encoding/decoding routines that uses PFOR for longer blocks, Simple9 (or a variant of that) for the remainder and vByte for whatever is left.\n\n",
+            "date": "2010-01-18T17:06:44.568+0000",
+            "id": 8
+        },
+        {
+            "author": "Renaud Delbru",
+            "body": "{quote}\nI have not looked at the flex branch yet, but the PFOR implementation at LUCENE-1410 has the possibility to encode/decode any block length. To decode blocks that are not a multiple of 32 in size it will fall back from the faster decoding routine (the generated code) to the general (and slow) decoding routine at ForDecompress.decodeAnyFrame().\n{quote}\n\nOk, I see. I deactivated this functionalities in my FrameOfReference implementation. My mistake.\n\n{quote}\nLately I've been tinkering with Simple9 (LUCENE-2189) which is simpler than PFOR but has the problem that the input block size is not known beforehand. As far as I can see now, we might end up with a general pair of block encoding/decoding routines that uses PFOR for longer blocks, Simple9 (or a variant of that) for the remainder and vByte for whatever is left.\n{quote}\n\nI have an implementation of Simple16 (which normally wastes less bits than Simple 9). It is based on some code I found on the Web (a problem is that I don't find anymore its origin. If I remember, it was from an academic project in c) that I translated, fixed and optimised. I can share it if you're interested. ",
+            "date": "2010-01-18T17:42:03.472+0000",
+            "id": 9
+        },
+        {
+            "author": "Paul Elschot",
+            "body": "ForDecompress.decodeAnyFrame() is pretty slow, it is mainly there as a fallback and I have also used it for testing initially.\nFor decoding blocks just shorter than 32, a few Simple9 blocks will be faster than ForDecompress.decodeAnyFrame().\n\nSimple16 (4 bits for the cases, just as Simple9) would be good. I remember looking for a link to an implementation of Simple16 in one of the articles on Simple9, but the linked page had gone, so I just went ahead myself and started on Simple9.\nOne can also use 32 or 64 cases (5 or 6 bits for the cases) and use a variable number of ints (or bytes) in the encoded forms of such SimpleNN variants. Such variants nicely hit the middle ground between Simple9 and PFOR in block length and decoding speed. Perhaps we'd better continue the discussion on such methods at LUCENE-2189.\n\nWhen there are sufficient methods available an issue could be opened for a general variable length block encoding/decoding that uses the best of such methods depending on the block length. This makes sense because in lucene indexes the block length is always known.",
+            "date": "2010-01-18T18:39:07.610+0000",
+            "id": 10
+        }
+    ],
+    "component": "core/index",
+    "description": "The FixedIntBlockIndexInput.Reader.pending int array is not initialised. As a consequence, the FixedIntBlockIndexInput.Reader#next() method returns always 0.\n\nA call to FixedIntBlockIndexInput.Reader#blockReader.readBlock() during the Reader initialisation may solve the issue (to be tested).",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-2222",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Minor",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "FixedIntBlockIndexInput.Reader does not initialise 'pending' int array",
+    "systemSpecification": true,
+    "version": "4.0-ALPHA"
+}

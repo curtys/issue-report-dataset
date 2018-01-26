@@ -1,0 +1,47 @@
+{
+    "comments": [
+        {
+            "author": "andrebargull@googlemail.com",
+            "body": "Created attachment 585038\nsimple JUnit test case",
+            "date": "20111230T21:42:02",
+            "id": 0
+        },
+        {
+            "author": "andrebargull@googlemail.com",
+            "body": "In order to pass the initial test case of the bug reporter, a simple patch for \"IRFactory#decompile(AstNode)\" is necessary:\n---\n--- a/src/org/mozilla/javascript/IRFactory.java\n+++ b/src/org/mozilla/javascript/IRFactory.java\n@@ -2182,6 +2182,9 @@ public final class IRFactory extends Parser\n           case Token.GETELEM:\n               decompileElementGet((ElementGet) node);\n               break;\n+          case Token.THIS:\n+              decompiler.addToken(node.getType());\n+              break;\n           default:\n               Kit.codeBug(\"unexpected token: \"\n                           + Token.typeToName(node.getType()));\n---\n\nBut that change won't be sufficient to cover the other tests of the JUnit test case.\n\nPS: The bug subject should be changed to mention \"Destructuring Assignment\" instead of \"Array comprehension\"",
+            "date": "20111230T21:50:43",
+            "id": 1
+        },
+        {
+            "author": "metaweta@gmail.com",
+            "body": "Subject changed.",
+            "date": "20111230T23:05:33",
+            "id": 2
+        },
+        {
+            "author": "andrebargull@googlemail.com",
+            "body": "The following patch for \"Parser#destructuringAssignmentHelper(int, Node, Node, String)\" should make the other tests pass:\n---\n--- a/src/org/mozilla/javascript/Parser.java\n+++ b/src/org/mozilla/javascript/Parser.java\n@@ -3514,6 +3514,12 @@ public class Parser\n               break;\n           case Token.GETPROP:\n           case Token.GETELEM:\n+              switch (variableType) {\n+                case Token.CONST:\n+                case Token.LET:\n+                case Token.VAR:\n+                    reportError(\"msg.bad.assign.left\");\n+              }\n               comma.addChildToBack(simpleAssignment(left, createName(tempName)));\n               break;\n           default:\n---",
+            "date": "20111231T14:36:43",
+            "id": 3
+        },
+        {
+            "author": "hannesw@gmail.com",
+            "body": "Thanks for both the report and the fix! Pushed to git master:\n\nhttps://github.com/mozilla/rhino/commit/b515ff81c327aaa68861ffb2abb1653aa91921b7",
+            "date": "20120110T10:11:03",
+            "id": 4
+        }
+    ],
+    "component": "Core",
+    "description": "User Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_6_8) AppleWebKit/535.7 (KHTML, like Gecko) Chrome/16.0.912.63 Safari/535.7\n\nSteps to reproduce:\n\nfunction F(var_args) {\n  [this.x, this.y] = arguments;\n}\n\n\n\nActual results:\n\njava.lang.IllegalStateException \"unexpected token THIS\"\n\n\nExpected results:\n\nShould have the same semantics as\n\nfunction F(var_args) {\n  var t = this;\n  [t.x, t.y] = arguments;\n}\nvar f = new F(1,2);\n// f.x === 1, f.y === 2\n\nwhich works fine.",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "714204",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "-- normal",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "Destructuring Assignment does not allow 'this'",
+    "systemSpecification": false,
+    "version": "1.7R1"
+}

@@ -1,0 +1,41 @@
+{
+    "comments": [
+        {
+            "author": "Lars Krapf",
+            "body": "Proposed patch addressing the issue illustrated by the test above.\nPlease review. ",
+            "date": "2011-06-29T15:27:34.817+0000",
+            "id": 0
+        },
+        {
+            "author": "Stefan Guggisberg",
+            "body": "+1, patch looks good",
+            "date": "2011-06-29T15:40:05.795+0000",
+            "id": 1
+        },
+        {
+            "author": "Stefan Guggisberg",
+            "body": "committed patch in svn r1141141\n\nthanks!",
+            "date": "2011-06-29T15:56:39.062+0000",
+            "id": 2
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "Merged into 2.2 branch in revision 1141745",
+            "date": "2011-06-30T22:52:18.768+0000",
+            "id": 3
+        }
+    ],
+    "component": "jackrabbit-core",
+    "description": "This is another instance of the problems with ACL evaluation within transactions described in https://issues.apache.org/jira/browse/JCR-2999.\nIn this case PropertyImpl#getParent() called from PropertyImpl#checkSetValue() is trying to check read permissions of the yet uncommited parent and thus fails with an ItemNotFound exception.\n\nThe problem is reproducible with the following test:\n\npublic void testTransaction() throws Exception {\n\n        // make sure testUser has all privileges\n        Privilege[] privileges = privilegesFromName(Privilege.JCR_ALL);\n        givePrivileges(path, privileges, getRestrictions(superuser, path));\n\n        // create new node and lock it\n        Session s = getTestSession();\n        UserTransaction utx = new UserTransactionImpl(s);\n        utx.begin();\n\n        // add node and save it\n        Node n = s.getNode(childNPath);\n        if (n.hasNode(nodeName1)) {\n            Node c = n.getNode(nodeName1);\n            c.remove();\n            s.save();\n        }\n\n        // create node and save\n        Node n2 = n.addNode(nodeName1);\n        s.save(); // -> node is NEW -> no failure\n\n        // set a property on a child node of an uncommited parent\n        n2.setProperty(propertyName1, \"testSetProperty\");\n        s.save();  // -> fail because PropertyImpl#getParent called from PropertyImpl#checkSetValue\n                       //    was checking read permission on the not yet commited parent\n\n        // commit\n        utx.commit();\n    }",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "JCR-3007",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "setProperty access control evaluation does not properly cope with XA transactions",
+    "systemSpecification": true,
+    "version": "2.2.7"
+}

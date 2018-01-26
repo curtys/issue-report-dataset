@@ -1,0 +1,53 @@
+{
+    "comments": [
+        {
+            "author": "Eric van Lydegraf",
+            "body": "Index: \nHttpMethodBase.java\n===================================================================\nRCS \nfile: /home/cvspublic/jakarta-\ncommons/httpclient/src/java/org/apache/commons/httpclient/HttpMethodBase.java,v\nretrieving \nrevision 1.28\ndiff -u -b -r1.28 HttpMethodBase.java\n--- HttpMethodBase.java\t16 Apr 2002 \n14:30:42 -0000\t1.28\n+++ HttpMethodBase.java\t19 Apr 2002 19:49:40 -0000\n@@ -1032,6 +1032,8 \n@@\n         }\n         responseHeaders.clear();\n \n+        String name = null;\n+        String value = null;\n         for(;;) \n{\n             String line = conn.readLine();\n             if ((line == null) || (line.length() < 1)) {\n@@ -1039,20 \n+1041,42 @@\n             }\n \n             // Parse the header name and value\n+            // Check for folded headers first\n+            // \nDetect LWS-char see HTTP/1.0 or HTTP/1.1 Section 2.2 \n+            // discussion on folded headers\n+            \nboolean isFolded = false;\n+            if ( line.charAt(0) == ' ' || line.charAt(0) == '\\t' )\n+            {\n+                // we \nhave continuation folded header\n+                // so append value\n+                isFolded = true;\n+                value = \nline.substring(1).trim();\n+            }\n+            else\n+            {\n+                // Otherwise we should have normal HTTP header \nline\n             int colon = line.indexOf(\":\");\n             if (colon < 0) {\n                 throw new HttpException(\"Unable to \nparse header: \" + line);\n             }\n-            String name = line.substring(0, colon).trim();\n+                name = \nline.substring(0, colon).trim();\n+                value = line.substring(colon + 1).trim();\n+            }\n             \nString match = name.toLowerCase();\n-            String value = line.substring(colon + 1).trim();\n             \nHeader header = (Header)(responseHeaders.get(match));\n             if (null == header) {\n                 header = new \nHeader(name, value);\n             } else {\n                 String oldvalue =  header.getValue();\n                 if (null != oldvalue) \n{\n+                    if ( isFolded ) {\n+                        // LWS becomes space plus extended value\n+                        header = new \nHeader(name,oldvalue + \" \" + value);\n+                    }\n+                    else {\n+                        // Append additional header value\n                     \nheader = new Header(name,oldvalue + \", \" + value);\n+                    }\n                 } else {\n                     header = new \nHeader(name,value);\n                 }",
+            "date": "2002-04-22T23:09:31.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Jeff Dever",
+            "body": "Eric is quite right about this problem.  I was not around for the discussion of \nthis during April so I do not know if there is a good reason not to fullfill \nthis bug.\n\nThe patch is not good inlined in the message like it is, and refrences some \nstrnage file names and does not apply directly.\n\nEric, perhaps you can re-submit this patch in context with the current code \nbase, and please use the \"Create a new attachment\" on the bug itself and use \ncvs diff -u to create the patch.  Don't forget to add your name to the authors \nlist at the top of the file.\n\n<cite href=\"http://www.ietf.org/rfc/rfc2616.txt\">\n   HTTP/1.1 header field values can be folded onto multiple lines if the\n   continuation line begins with a space or horizontal tab. All linear\n   white space, including folding, has the same semantics as SP. A\n   recipient MAY replace any linear white space with a single SP before\n   interpreting the field value or forwarding the message downstream.\n</cite>",
+            "date": "2002-07-19T01:04:29.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Davanum Srinivas",
+            "body": "Created an attachment (id=2416)\nUptodate patch for this bug.\n",
+            "date": "2002-07-19T23:16:45.000+0000",
+            "id": 2
+        },
+        {
+            "author": "Davanum Srinivas",
+            "body": "Created an attachment (id=2417)\nTestCase for this bug.\n",
+            "date": "2002-07-19T23:17:41.000+0000",
+            "id": 3
+        },
+        {
+            "author": "Davanum Srinivas",
+            "body": "Jeff,\n\nAdded an up-to-date patch and a testcase....See attachments at\nhttp://nagoya.apache.org/bugzilla/show_bug.cgi?id=7754.\n\nThanks,\ndims",
+            "date": "2002-07-19T23:18:53.000+0000",
+            "id": 4
+        },
+        {
+            "author": "Jeff Dever",
+            "body": "Patch applied.  \nTest cases added.",
+            "date": "2002-07-20T13:48:44.000+0000",
+            "id": 5
+        }
+    ],
+    "component": "HttpClient (classic)",
+    "description": "As of 4/4/02 CVS repository the HttpMethodBase class\ndoesn't handle folded headers in the \nreadResponseHeaders method\n\nHTTP/1.1 and HTTP/1.0 descriptions of folded headers (see \nsection 2.2 Basic Rules)\nhttp://www.ietf.org/rfc/rfc2616.txt\nhttp://www-\nold.ics.uci.edu/pub/ietf/http/rfc1945.html#Basic-Rules\n\nI've prepared a patch and was \nemailed to jakarta-commons@jakarta.apache.org",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "HTTPCLIENT-19",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "HTTPCLIENT",
+    "project": "HTTPCLIENT",
+    "summary": "Response Folded Headers throws HttpException",
+    "systemSpecification": false,
+    "version": "2.0 Milestone 1"
+}

@@ -1,0 +1,143 @@
+{
+    "comments": [
+        {
+            "author": "Bin Chen",
+            "body": "Created an attachment (id=5969)\nPATCH\n",
+            "date": "2003-04-23T22:02:54.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Bin,\nWe are aware of the ConnectMethod being a terrible mess. It needs a complete\nrewrite. Having to cast the HttpMethod interface to HttpMethodBase in order to\nget things done is simply appalling.\n\nThe problem is we can't fix the problem cleanly while retaining API compatibility.\n\nThere's already a bug report in the Bugzilla for it, which has been targeted for\n2.1 release. \n\nhttp://nagoya.apache.org/bugzilla/show_bug.cgi?id=15534\n\nHow critical is this bug for you? Can it be targeted for 2.1 release?\n\nOleg ",
+            "date": "2003-04-23T22:54:44.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Bin Chen",
+            "body": "It is very critical for us to get all the bugs, includign thi sone, we reported \nfixed in order for us to use httpClient as Open Source once 2.0 is released.  \nCurrently we have to maintain our own version of the httpClient code and we \nwill not be able to get any latest fixes merge in.\n\nFor this particular problem, when we negotiate NTLM proxy, we need to get more \ninformation from user (domain and host) than Basic or Digest proxies.  When we \nget a 407 response code back, we have to look into the response header to find \nout what type of proxy is in use.  I just don't know any other way for the \napplication to get that information besides getting it from the method.  We can \nnot prompt all users for the additional information either, that will confuse \nthe user who don't use NTLM.",
+            "date": "2003-04-24T00:08:04.000+0000",
+            "id": 2
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Ok, I see. I'll be working on a fix. I want to see if I manage to come up with a\nsomewhat cleaner structure for the ConnectMethod.\n\nOleg",
+            "date": "2003-04-24T00:21:54.000+0000",
+            "id": 3
+        },
+        {
+            "author": "Bin Chen",
+            "body": "A related issue, I also noticed that the response body was also not brought \nback in the original method instance.  Currently we do not have any need for \nthis.  But if an application want to display the response in a html page \nformat, it would need teh body as well.  If you are going to fix it, you may \nwant to consider that as well.",
+            "date": "2003-04-24T00:25:08.000+0000",
+            "id": 4
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Created an attachment (id=6009)\nPatch (take 2) by Oleg Kalnichevski\n",
+            "date": "2003-04-25T19:19:33.000+0000",
+            "id": 5
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "I have done my best to inject a bit of sanity into HttpClient's SSL tunneling\ncode. Unfortunately without a better design (HttpMethod split into HttpRequest/\nHttpResponse pair) this hacks appears the only feasible solution compatible with\nthe present API. I really hate having to introduce such an ugly work-around.\nAnyone who sees a better approach is welcome to come forward with it\n\nOleg",
+            "date": "2003-04-25T19:25:00.000+0000",
+            "id": 6
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Wow that is ugly:)\n\nUnfortuantely though I agree this is the way to go for now.  There is no other\nway to return the response, except to force it on the original method.  It seems\nlike we may also want to fake the response body on the method as well.\n\nIt looks like a little extra code for HttpConnection was accidentally added as\nwell.  I'm guessing this is from the patch for HTTPCLIENT-199.\n\nWe will also need to resolve this one with the fix for HTTPCLIENT-195, as they both\npatch HttpMethodBase.shouldCloseConnection().\n\nMike\n\n",
+            "date": "2003-04-25T20:50:20.000+0000",
+            "id": 7
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Mike, I really feel bad about this hack. Really.\nI am currently working on a cumulative patch that will include all your fixes \nas all these problems appear to have been caused by the same flaky code. The \npatch should address this bug, as well as \nhttp://nagoya.apache.org/bugzilla/show_bug.cgi?id=19286 and \nhttp://nagoya.apache.org/bugzilla/show_bug.cgi?id=19226\n\nYou'll hear from me within a few hours\n\nOleg",
+            "date": "2003-04-25T20:59:20.000+0000",
+            "id": 8
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Created an attachment (id=6015)\nPatch (take 3) - includes fixes for HTTPCLIENT-199 & HTTPCLIENT-195\n",
+            "date": "2003-04-25T22:24:40.000+0000",
+            "id": 9
+        },
+        {
+            "author": "Michael Becke",
+            "body": "This looks like a good merge to me.  \n\nI think we also want to have the ConnectMethod set the response stream on a\nfailed execute().  I think we just need to add a readResponseBody() after or in\nthe fakeResponse() call.\n\nMike",
+            "date": "2003-04-26T00:19:36.000+0000",
+            "id": 10
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Mike,\nI was concerned about messing aroud with the response stream too much as I\nthought it might somehow interfere with connection pooling logic. \n\nI suggest I commit the patch as it, so all the folks out there could test the\nlatest fixes. If you find it safe to extend the HttpMethodBase#fakeResponse\nmethod to include response stream, we can do it with an incremental patch.\n\nWhat do you think?\n\nOleg",
+            "date": "2003-04-26T00:28:36.000+0000",
+            "id": 11
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Works for me.\n\nMike",
+            "date": "2003-04-26T00:34:16.000+0000",
+            "id": 12
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Patch (take 3) has been committed. I leave the bug open until Mike decides if it\nis safe to add CONNECT method response to the 'wrapped' method\n\nOleg",
+            "date": "2003-04-26T01:18:43.000+0000",
+            "id": 13
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Mike, can pass your judgement on this one?\n\nOleg",
+            "date": "2003-04-28T04:08:33.000+0000",
+            "id": 14
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Yup, I'm working on it right now.  I should post something soon.\n\nMike",
+            "date": "2003-04-28T04:12:42.000+0000",
+            "id": 15
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Created an attachment (id=6040)\nFake ConnectMethod response patch\n",
+            "date": "2003-04-28T04:33:07.000+0000",
+            "id": 16
+        },
+        {
+            "author": "Michael Becke",
+            "body": "The attached method adds support for setting the response body via the fakeResponse() method.  I \nhave also created a test case to make sure that connections can be released after a failed \nCONNECT.\n\nMike",
+            "date": "2003-04-28T04:35:02.000+0000",
+            "id": 17
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Patch looks fine. I ran a few tests againt my local squid, all seems ok. Go\nahead and commit it. I do not think we should spend anymore time on code that\nshould have never been there in the first place\n\nOleg",
+            "date": "2003-04-28T05:04:07.000+0000",
+            "id": 18
+        },
+        {
+            "author": "Bin Chen",
+            "body": "Created an attachment (id=6053)\nLog file indicating that the cookie header added by app was not sent.\n",
+            "date": "2003-04-28T23:37:43.000+0000",
+            "id": 19
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Patch applied.",
+            "date": "2003-04-29T06:22:15.000+0000",
+            "id": 20
+        }
+    ],
+    "component": "HttpClient (classic)",
+    "description": "Description:\n\nWhen doing tunnelling through proxy servers, in case of 407 response, the \nwrapper class ConnectMethod failed to pass the response header back to the \nwrapped method (PostMethod in our case).  As result, the response headers are \nnot passed back to the application.\n\nProposed Fix:\nChange the ConnectMethod to use the wrapped method instance to get response \nheaders.  It will be reinitialized again if \"CONNECT\" is successful.\n\nAlso have to modify the addProxyAuthorizationRequestHeader code to use the \nwrapped method for the authenticator to work.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "HTTPCLIENT-198",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Critical",
+    "product": "HTTPCLIENT",
+    "project": "HTTPCLIENT",
+    "summary": "The PostMethod did not bring back response headers from proxy servers",
+    "systemSpecification": true,
+    "version": "2.0 Beta 1"
+}

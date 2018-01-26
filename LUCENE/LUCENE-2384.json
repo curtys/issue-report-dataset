@@ -1,0 +1,89 @@
+{
+    "comments": [
+        {
+            "author": "Ruben Laguna",
+            "body": "The mailing list discussion that originated this is [1]\n\n\n[1] http://lucene.markmail.org/thread/ndmcgffg2mnwjo47\n\n",
+            "date": "2010-04-08T11:12:52.851+0000",
+            "id": 0
+        },
+        {
+            "author": "Robert Muir",
+            "body": "If tokenizers like StandardTokenizer just end out reading things into ram anyway, we should remove Reader from the Tokenizer interface.\n\nsupporting reader instead of simply tokenizing the entire doc causes our tokenizers to be very very complex (see CharTokenizer).\nIt would be nice to remove this complexity, if the objective doesn't really work anyway.",
+            "date": "2010-04-08T11:18:05.242+0000",
+            "id": 1
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "For JFlex this does not help as the Jflex-generated code always needs a Reader. This is special here, the lexer will not need to load the whole document into the reader, it only needs sometimes a large look forward/backwards buffer.",
+            "date": "2010-04-08T11:20:47.389+0000",
+            "id": 2
+        },
+        {
+            "author": "Ruben Laguna",
+            "body": "patch to reset the zzBuffer when the input is reseted. The code is really taken from https://sourceforge.net/mailarchive/message.php?msg_id=444070.38422.qm@web38901.mail.mud.yahoo.com  so I can't really grant license to use it but I think the guy realeased it as public domain by posting it to the mailing list. \n\nI tested it and it seems to work for me. Just including it here is case somebody want to apply the patch directly to 3.0.1 (although it's better to wait for 3.1)",
+            "date": "2010-04-08T11:23:00.835+0000",
+            "id": 3
+        },
+        {
+            "author": "Robert Muir",
+            "body": "bq. For JFlex this does not help as the Jflex-generated code always needs a Reader.\n\nThis can be fixed. Currently all I/O in all tokenizers is broken and buggy, and does not correctly handle special cases around their 'buffering'.\n\nThe only one that is correct is CharTokenizer, but at what cost? It has so much complexity because of this Reader issue.\n\nWe should stop pretending like we can really stream docs with Reader.\nWe should stop pretending like 8GB documents or something exist, where we cant just analyze the whole doc at once and make things simple.\nAnd then we can fix the lucene tokenizers to be correct.\n",
+            "date": "2010-04-08T11:25:45.450+0000",
+            "id": 4
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "{quote}\npatch to reset the zzBuffer when the input is reseted. The code is really taken from https://sourceforge.net/mailarchive/message.php?msg_id=444070.38422.qm@web38901.mail.mud.yahoo.com so I can't really grant license to use it but I think the guy realeased it as public domain by posting it to the mailing list. \nI tested it and it seems to work for me. Just including it here is case somebody want to apply the patch directly to 3.0.1 (although it's better to wait for 3.1)\n{quote}\n\nYour fix adds an addtional complexity. Just reset the buffer back to the default ZZ_BUFFERSIZE if grown on reset. Your patch always reallocates a new buffer.\n\nUse this:\n{code}\npublic final void reset(Reader r) {\n  // reset to default buffer size, if buffer has grown\n  if (zzBuffer.length > ZZ_BUFFERSIZE) {\n    zzBuffer = new char[ZZ_BUFFERSIZE];\n  }\n  yyreset(r);\n}\n{code}",
+            "date": "2010-04-08T11:38:20.096+0000",
+            "id": 5
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Committed revision: 932163",
+            "date": "2010-04-08T22:57:48.714+0000",
+            "id": 6
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "The zzBuffer bug is fixed in JFlex r591, we should add a version check and remove the code. Also WikipediaTokenizer's files should be regened.",
+            "date": "2010-05-17T12:13:59.117+0000",
+            "id": 7
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Patch for 3.x and trunk. The 3.x patch also contains the lost merge of JFlex 1.5 update in Wikipedia",
+            "date": "2010-05-17T12:52:55.607+0000",
+            "id": 8
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Committed:\n- trunk revision: 945130\n- 3x revision: 945133",
+            "date": "2010-05-17T13:16:04.650+0000",
+            "id": 9
+        },
+        {
+            "author": "Robert Muir",
+            "body": "reopening for possible 2.9.4/3.0.3 backport.\n",
+            "date": "2010-10-29T13:00:26.500+0000",
+            "id": 10
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Backported to 3.0 branch revision: 1028739\nBackported to 2.9 branch revision: 1028744",
+            "date": "2010-10-29T13:53:36.126+0000",
+            "id": 11
+        }
+    ],
+    "component": "modules/analysis",
+    "description": "When indexing large documents, the lexer buffer may stay large forever. This sub-issue resets the lexer buffer back to the default on reset(Reader).\n\nThis is done on the enclosing issue.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-2384",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "",
+    "priority": "Major",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "Reset zzBuffer in StandardTokenizerImpl* when lexer is reset.",
+    "systemSpecification": true,
+    "version": "3.0.1"
+}

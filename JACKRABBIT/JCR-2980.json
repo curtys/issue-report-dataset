@@ -1,0 +1,71 @@
+{
+    "comments": [
+        {
+            "author": "Alex Deparvu",
+            "body": "fixed on trunk in rev 1128325\nfixed on branch 2.2 in rev 1128329",
+            "date": "2011-05-27T14:51:49.653+0000",
+            "id": 0
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "This change seems to introduce some regressions to the 2.2 branch, so reopening.\n\nSee https://builds.apache.org/job/Jackrabbit-2.2/1/org.apache.jackrabbit$jackrabbit-core/ for example build failures.\n\nI'll revert the change from the 2.2 branch so I can proceed with the 2.2.7 release. We can do another 2.2.x release with this change once we've figured out the cause of the regression.",
+            "date": "2011-06-01T06:44:13.830+0000",
+            "id": 1
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Reverted from 2.2 in revision 1130018.",
+            "date": "2011-06-01T07:02:07.640+0000",
+            "id": 2
+        },
+        {
+            "author": "Alex Deparvu",
+            "body": "ouch, I've been looking at this all day and I can't figure it out :)\n\nthe extraction logic has changed a bit, also the lucene version, but still I can't put my finger on it.\n\nI still think that the test was good enough to check what is going on in that small window when the processing happens, but adding the extra properties to the node copy seems to introduce some problems.\n\nalso, apparently running the failing tests (IndexingAggregateTest.testNtFileAggregate and IndexingQueueTest.testInitialIndex) 2 times makes them pass, so I'd point to the sync logic between the extraction and current session, but I'm not sure.\n\ncomments are always welcome",
+            "date": "2011-06-01T15:09:58.673+0000",
+            "id": 3
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Yep, I spent most of yesterday trying to understand the problem here and in the end had to just revert the change for now.\n\nWe only upgraded to Lucene 3.0 in the trunk after 2.2 had already been branched (see JCR-2415), which is probably related to why the fix doesn't work the same in the 2.2 branch as it does in trunk. However, I'm still at loss at why this seemingly innocent change is causing trouble for 2.2. ",
+            "date": "2011-06-01T15:32:52.241+0000",
+            "id": 4
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Actually I just encountered this problem also on Jackrabbit trunk:\n\ntestInitialIndex(org.apache.jackrabbit.core.query.lucene.IndexingQueueTest)  Time elapsed: 0.626 sec  <<< FAILURE!\njunit.framework.AssertionFailedError: expected:<110> but was:<107>\n        at junit.framework.Assert.fail(Assert.java:47)\n        at junit.framework.Assert.failNotEquals(Assert.java:282)\n        at junit.framework.Assert.assertEquals(Assert.java:64)\n        at junit.framework.Assert.assertEquals(Assert.java:136)\n        at junit.framework.Assert.assertEquals(Assert.java:142)\n        at org.apache.jackrabbit.core.query.lucene.IndexingQueueTest.testInitialIndex(IndexingQueueTest.java:127)\n",
+            "date": "2011-06-01T17:17:29.512+0000",
+            "id": 5
+        },
+        {
+            "author": "Alex Deparvu",
+            "body": "I have finally figured it out. \nIt was my change that triggered this issue, in fact the TokenStream that I was passing to the node's copy was not meant to be consumed more than once, so sometimes the copy consumed the data, leaving nothing else for the real node.\nTo be more exact, when the extraction was slow, it passed to the background. If this happened, the real node would loose its original data, because of the TokenStream.\n\nThe fix was to add 'reset' and 'close' methods to the SingletonTokenStream, so that it can be consumed mode than once.",
+            "date": "2011-06-05T04:40:34.823+0000",
+            "id": 6
+        },
+        {
+            "author": "Alex Deparvu",
+            "body": "fixed on trunk in Revision 1131652\nbackported to 2.2 in Revision 1131653",
+            "date": "2011-06-05T04:49:08.733+0000",
+            "id": 7
+        },
+        {
+            "author": "Alex Deparvu",
+            "body": "I removed 2.2.7 as it is better to wait a bit and make sure that this time there are no more surprises :)\n\nIt will be included in 2.2.8.",
+            "date": "2011-06-06T09:29:58.202+0000",
+            "id": 8
+        }
+    ],
+    "component": "indexing",
+    "description": "The problems only appears when dealing with nodes that have async extractors. In this case we return a lightweight copy of the node (without the property that will be processed in the background).\n\nThe copy algorithm ignores certain field types (that have been probably introduced during the Lucene 3 upgrade, not sure) such as SingletonTokenStream(s).\nSo the lightweight copy does not include all the existing properties, therefore the node will not appear in queries during the extraction time.",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "JCR-2980",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "Nodes that have properties marked for async extraction should be available for querying",
+    "systemSpecification": true,
+    "version": "2.3"
+}

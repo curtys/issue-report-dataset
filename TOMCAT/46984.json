@@ -1,0 +1,35 @@
+{
+    "comments": [
+        {
+            "author": null,
+            "body": "This has been fixed in trunk and proposed for 6.0.x and 5.5.x.",
+            "date": "20090409T07:03:21",
+            "id": 0
+        },
+        {
+            "author": null,
+            "body": "This has been fixed in 6.0.x and will be included in 6.0.20 onwards.",
+            "date": "20090502T18:29:41",
+            "id": 1
+        },
+        {
+            "author": null,
+            "body": "This has been fixed in 5.5.x and will be included in 5.5.28 onwards.",
+            "date": "20090604T07:58:44",
+            "id": 2
+        }
+    ],
+    "component": "Connector:HTTP",
+    "description": "I managed to send a corrupt data stream to Tomcat.  The result was that the method name turned out to be '0\\n\\n0\\n\\n0\\n\\nPOST'.  This was actually the method name that was returned to the servlet's .service(request, response) method by Tomcat.  The error message returned back to the client was:\n\n java.io.IOException: Server returned HTTP response code: 501 for URL: http://localhost/method-bug/bug\n\tat sun.net.www.protocol.http.HttpURLConnection.getInputStream(HttpURLConnection.java:1305)\n\tat sun.net.www.protocol.http.HttpURLConnection.getHeaderFields(HttpURLConnection.java:2187)\n\n\nThe 501 error indicates that the method is not implemented or not supported.  While this is somewhat true, there is a more applicable error message.  The 501 error is confusing, in that it indicates a valid method name was received.  In this case, the method name was formed with invalid characters (numbers and carriage returns). \n\nThe correct behavior is that Tomcat should detect the bad/invalid/malformed method name and throw a 400 error, bad request.  \n\nThe offending code is in org.apache.coyote.http11.InternalInputBuffer.\n\nThe parseRequestLine code is naive.  It starts by skipping blank lines, then puts EVERYTHING up until the next 'space' character into the method name, including carriage returns, special characters, numbers, etc.  \n\nCorrect behavior is that it should detect an invalid method name (according to the spec) at this point, and throw error 400 (I think 400 is correct).\n\n    public void parseRequestLine() throws IOException {\n        int start = 0;\n        //\n        // Skipping blank lines\n        //\n        byte chr = 0;\n        do {\n            // Read new bytes if needed\n            if (pos >= lastValid) {\n                if (!fill())\n                    throw new EOFException(sm.getString(\"iib.eof.error\"));\n            }\n            chr = buf[pos++];\n        } while ((chr == Constants.CR) || (chr == Constants.LF));\n        pos--;\n        // Mark the current buffer position\n        start = pos;\n         //\n        // Reading the method name\n        // Method name is always US-ASCII\n        //\n        boolean space = false;\n        while (!space) {\n            // Read new bytes if needed\n            if (pos >= lastValid) {\n                if (!fill())\n                    throw new EOFException(sm.getString(\"iib.eof.error\"));\n            }\n            ascbuf[pos] = (char) buf[pos];\n            // Spec says single SP but it also says be tolerant of HT\n            if (buf[pos] == Constants.SP || buf[pos] == Constants.HT) {\n                space = true;\n                request.method().setChars(ascbuf, start, pos - start);\n            }\n            pos++;\n        }",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "46984",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "BUG",
+    "priority": "P3 minor",
+    "product": "Tomcat 5",
+    "project": "TOMCAT",
+    "summary": "Server incorrectly reports a 501 error on bad method name.  Should report 400 error.",
+    "systemSpecification": false,
+    "version": "5.5.27"
+}

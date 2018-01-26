@@ -1,0 +1,83 @@
+{
+    "comments": [
+        {
+            "author": "Doron Cohen",
+            "body": "Patch with test that fail due to this bug.",
+            "date": "2011-03-22T18:56:53.068+0000",
+            "id": 0
+        },
+        {
+            "author": "Shai Erera",
+            "body": "Patch looks good. Few tiny comments:\n\n* Should ContentSourceTest extend BenchmarkTestCase?\n* I think that instead of assertTrue(testDir.isDirectory()); you can assertTrue(testDir.mkdirs());\n* In case you wanted a second opinion about the \"nocommit\" lines, I think they can all go away :).",
+            "date": "2011-03-22T19:22:39.071+0000",
+            "id": 1
+        },
+        {
+            "author": "Doron Cohen",
+            "body": "Thanks Shai!\n\nI fixed the super class and the assert as suggested.\n\nFor those nocommits, they stand for a larger problem - I was ready for a trivial fix for this bug - just lower case the extension in ContentSource before consulting with the map. However the test failed, and I found out that this is because the input stream returned by CompressorStreamFactory.createCompressorInputStream() does not close its underlying stream when it is exhausted or when its close method is called. \n\nI opened COMPRESS-127 for this.\n\nAs a workaround to this bug, ContentSource now returns a wrapper on the input stream created by the CsFactory, delegates all methods to it, except for close() which is also delegated to the underlying stream. This fix is required for the extension letter cases tests to pass, but it fixes a more serious problem, - leaking file handles in ContentSource.\n\nAs Solr also makes use of CommonCompress I searched in it for references to CompressorStreamFactory.createCompressorInputStream() but found none, so it seems Solr is not affected by COMPRESS-127.",
+            "date": "2011-03-22T22:18:39.553+0000",
+            "id": 2
+        },
+        {
+            "author": "Doron Cohen",
+            "body": "Attached patch adds fixes for:\n- extension letter case problem.\n- closing underlying stream of g/bzip streams.",
+            "date": "2011-03-22T22:24:37.328+0000",
+            "id": 3
+        },
+        {
+            "author": "Shai Erera",
+            "body": "That's a serious problem - good catch !\n\nPatch looks good. Perhaps we should add a specific test in CSTest for this problem? I wouldn't use file.delete() as in indicator because on Linux it will pass. Perhaps a test which writes to a byte[] and then an extension of ByteArrayInputStream would mark whether close() was called and the test would assert on it.",
+            "date": "2011-03-23T03:59:57.524+0000",
+            "id": 4
+        },
+        {
+            "author": "Doron Cohen",
+            "body": "bq. Perhaps we should add a specific test in CSTest for this problem? I wouldn't use file.delete() as in indicator because on Linux it will pass\n\nAgree, I'll add one.",
+            "date": "2011-03-23T09:50:40.979+0000",
+            "id": 5
+        },
+        {
+            "author": "Doron Cohen",
+            "body": "bq. Perhaps we should add a specific test in CSTest for this problem? I wouldn't use file.delete() as in indicator because on Linux it will pass\n\nChanged my mind about adding this test to ContentSourceTest - I think such a test fits more to the CommonCompress project, because it should directly call CompressorStreamFactory.createCompressorInputStream(in). In our test we invoke ContentSource.getInputStream(File) and so we cannot pass such a close-sensing stream. \n\nBut this is a valid point, especially, the test case I provided to COMPRESS-127 will fail on Windows but will likely pass on Linux. I'll add a reference to your comment in COMPRESS-127.",
+            "date": "2011-03-23T10:06:40.293+0000",
+            "id": 6
+        },
+        {
+            "author": "Shai Erera",
+            "body": "Agreed.",
+            "date": "2011-03-23T11:12:23.425+0000",
+            "id": 7
+        },
+        {
+            "author": "Doron Cohen",
+            "body": "Updated patch applies workaround only for GZIP format, as other types do close their wrapped stream (COMPRESS-127).",
+            "date": "2011-03-23T11:27:06.271+0000",
+            "id": 8
+        },
+        {
+            "author": "Doron Cohen",
+            "body": "Committed:\n- trunk: r1084544, r1084549\n- 3x: r1084552",
+            "date": "2011-03-23T12:01:33.770+0000",
+            "id": 9
+        },
+        {
+            "author": "Robert Muir",
+            "body": "Bulk closing for 3.2",
+            "date": "2011-06-03T16:37:14.607+0000",
+            "id": 10
+        }
+    ],
+    "component": "modules/benchmark",
+    "description": "file.gz is correctly handled as gzip, but file.GZ handled as text which is wrong.\n",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-2980",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "BUG",
+    "priority": "Minor",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "Benchmark's ContentSource should not rely on file suffixes to be lower cased when detecting file type (gzip/bzip2/text)",
+    "systemSpecification": true,
+    "version": ""
+}

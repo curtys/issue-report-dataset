@@ -1,0 +1,95 @@
+{
+    "comments": [
+        {
+            "author": "matthieu.riou@gmail.com",
+            "body": "Created attachment 326426\nPatch to apply on xmlimplsrc/org/mozilla/javascript/xmlimpl/XmlNode.java",
+            "date": "20080624T02:23:36",
+            "id": 0
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "I tried the patch and got this:\n\ne4x-compile:\n    [javac] Compiling 11 source files to /home/norris/rhino17/mozilla/js/rhino/build/classes\n    [javac] /home/norris/rhino17/mozilla/js/rhino/xmlimplsrc/org/mozilla/javascript/xmlimpl/XmlNode.java:92: cannot find symbol\n    [javac] symbol  : method getUri()\n    [javac] location: class org.mozilla.javascript.xmlimpl.XmlNode.QName\n    [javac]         if (qname.getUri().length() == 0)\n    [javac]                  ^\n    [javac] /home/norris/rhino17/mozilla/js/rhino/xmlimplsrc/org/mozilla/javascript/xmlimpl/XmlNode.java:94: cannot find symbol\n    [javac] symbol  : method getUri()\n    [javac] location: class org.mozilla.javascript.xmlimpl.XmlNode.QName\n    [javac]         else e = document.createElementNS(qname.getUri(), qname.qualify(referenceDom));\n    [javac]                                                ^\n    [javac] 2 errors\n",
+            "date": "20080630T21:45:01",
+            "id": 1
+        },
+        {
+            "author": "matthieu.riou@gmail.com",
+            "body": "Created attachment 327700\nPatch updated to apply on Rhino trunk",
+            "date": "20080701T21:56:37",
+            "id": 2
+        },
+        {
+            "author": "matthieu.riou@gmail.com",
+            "body": "Sorry about that, I created the patch against 1.7RC1 and didn't notice that some cleanup had been done on trunk since then. I've attached a new patch that should work on trunk.",
+            "date": "20080701T21:58:22",
+            "id": 3
+        },
+        {
+            "author": "matthieu.riou@gmail.com",
+            "body": "Can someone have a look at this? I've updated the patch last time.",
+            "date": "20080820T15:09:23",
+            "id": 4
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "I'll take a look.",
+            "date": "20080820T17:24:37",
+            "id": 5
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "I patched in the change (here's my context diff, with minor formatting changes):\n\nRCS file: /cvsroot/mozilla/js/rhino/xmlimplsrc/org/mozilla/javascript/xmlimpl/XmlNode.java,v\nretrieving revision 1.10\ndiff -u -r1.10 XmlNode.java\n--- xmlimplsrc/org/mozilla/javascript/xmlimpl/XmlNode.java      2 Jul 2008 18:16:35 -0000       1.10\n+++ xmlimplsrc/org/mozilla/javascript/xmlimpl/XmlNode.java      20 Aug 2008 18:17:37 -0000\n@@ -94,7 +94,15 @@\n             document = processor.newDocument();\n         }\n         Node referenceDom = (reference != null) ? reference.dom : null;\n-        Element e = document.createElementNS(qname.getNamespace().getUri(), qname.qualify(referenceDom));\n+        Element e;\n+        if (qname.getNamespace() == null ||\n+            qname.getNamespace().getUri().length() == 0)\n+        {\n+            e = document.createElement(qname.getLocalName());\n+        } else {\n+            e = document.createElementNS(qname.getNamespace().getUri(),\n+                qname.qualify(referenceDom));\n+        }\n         if (value != null) {\n             e.appendChild(document.createTextNode(value));\n         }\n\n\nThe following tests start failing after making the change:\n\ne4x/Expressions/11.1.2.js\ne4x/Expressions/11.2.2.js\ne4x/Regress/regress-264369.js\ne4x/Regress/regress-369032.js\ne4x/Types/9.1.1.2.js\n",
+            "date": "20080820T18:18:51",
+            "id": 6
+        },
+        {
+            "author": "matthieu.riou@gmail.com",
+            "body": "Ah sorry, I didn't where the tests were before. Thanks for checking this, it looks like I'll have to do another deep dive in that code.",
+            "date": "20080820T18:30:54",
+            "id": 7
+        },
+        {
+            "author": "matthieu.riou@gmail.com",
+            "body": "I think I've found the problem and fixed my patch. Sorry about the back and forth, XML namespaces are a real pain in the neck. I'd like to try the tests on it but don't know which bug list you typically use. Do you always test with all the 2618? Seems to be taking a looong time... :)\n\nAnyway I'll attach my patch still but if you could let me know what you usually run for the tests, that'd be great.",
+            "date": "20080822T14:23:38",
+            "id": 8
+        },
+        {
+            "author": "matthieu.riou@gmail.com",
+            "body": "Created attachment 335044\nSame as previous but forces empty NS instead of no NS",
+            "date": "20080822T14:25:37",
+            "id": 9
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "I'll run them locally and let you know if there are any regressions.",
+            "date": "20080822T15:28:36",
+            "id": 10
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "That passed. I've committed the change:\n\nChecking in xmlimplsrc/org/mozilla/javascript/xmlimpl/XmlNode.java;\n/cvsroot/mozilla/js/rhino/xmlimplsrc/org/mozilla/javascript/xmlimpl/XmlNode.java,v  <--  XmlNode.java\nnew revision: 1.11; previous revision: 1.10\ndone\n\nChecking in testsrc/doctests/441417.doctest;\n/cvsroot/mozilla/js/rhino/testsrc/doctests/441417.doctest,v  <--  441417.doctest\ninitial revision: 1.1\ndone\n",
+            "date": "20080822T16:50:43",
+            "id": 11
+        },
+        {
+            "author": "matthieu.riou@gmail.com",
+            "body": "Perfect, thanks!",
+            "date": "20080822T17:11:26",
+            "id": 12
+        }
+    ],
+    "component": "E4X",
+    "description": "User-Agent:       Mozilla/5.0 (X11; U; Linux i686; en-US; rv:1.9) Gecko/2008060309 Firefox/3.0\nBuild Identifier: 1.7RC1\n\nThis isn't really easy to describe so you'll have to bear with me a little (and have a look at the steps to reproduce first).\n\nWhen an expression like friendInfo.name gets executed, a new name element is created as a child of friendInfo. The new element qname matches the qname of the previous element if there was one before (friendInfo already had a name child). However when the new element gets created, the default namespace lookup happens on the parent node (the friendInfo element in this example) which does have a qname. So the code ends up creating an element with an empty namespace (as was previously) but with a prefix which is assumed to match the parent. That doesn't work quite well in DOM land.\n\n\nReproducible: Always\n\nSteps to Reproduce:\nJust type the following in a Rhino interpreter:\n\nvar friendInfo = <friend xmlns=\"http://ode.apache.org/simpel/1.0/definition/XmlData\"><name xmlns=\"\"/><phone xmlns=\"\"/></friend>;\nvar msgIn = <xd:dataOpRequest xmlns:xd=\"http://ode.apache.org/simpel/1.0/definition/XmlData\">\n                    <person>\n                       <firstName>John</firstName>\n                       <lastName>Doe</lastName>\n                       <phone>(999)999-9999</phone>\n                    </person>\n                </xd:dataOpRequest>;\nfriendInfo.name = msgIn.person.firstName.text() + \" \" + msgIn.person.lastName.text();\n\nActual Results:  \nException in thread \"main\" org.w3c.dom.DOMException: NAMESPACE_ERR: An attempt is made to create or change an object in a way which is incorrect with regard to namespaces.\n        at com.sun.org.apache.xerces.internal.dom.ElementNSImpl.setName(ElementNSImpl.java:176)\n        at com.sun.org.apache.xerces.internal.dom.ElementNSImpl.<init>(ElementNSImpl.java:112)\n        at com.sun.org.apache.xerces.internal.dom.CoreDocumentImpl.createElementNS(CoreDocumentImpl.java:1969)\n        at com.sun.org.apache.xerces.internal.dom.CoreDocumentImpl.importNode(CoreDocumentImpl.java:1487)\n        at com.sun.org.apache.xerces.internal.dom.CoreDocumentImpl.importNode(CoreDocumentImpl.java:1444)\n        at org.mozilla.javascript.xmlimpl.XmlNode.insertChildAt(XmlNode.java:223)\n        at org.mozilla.javascript.xmlimpl.XmlNode.insertChildrenAt(XmlNode.java:237)\n        at org.mozilla.javascript.xmlimpl.XML.insertChildAfter(XML.java:531)\n        at org.mozilla.javascript.xmlimpl.XML.replace(XML.java:478)\n        at org.mozilla.javascript.xmlimpl.XMLName.setMyValueOn(XMLName.java:341)\n        at org.mozilla.javascript.xmlimpl.XML.putXMLProperty(XML.java:195)\n        at org.mozilla.javascript.xmlimpl.XMLObjectImpl.ecmaPut(XMLObjectImpl.java:299)\n        at org.mozilla.javascript.ScriptRuntime.setObjectProp(ScriptRuntime.java:1515)\n        at org.mozilla.javascript.ScriptRuntime.setObjectProp(ScriptRuntime.java:1507)\n        at org.mozilla.javascript.Interpreter.interpretLoop(Interpreter.java:3063)\n        at org.mozilla.javascript.Interpreter.interpret(Interpreter.java:2484)\n        at org.mozilla.javascript.InterpretedFunction.call(InterpretedFunction.java:162)\n        at org.mozilla.javascript.ContextFactory.doTopCall(ContextFactory.java:401)\n        at org.mozilla.javascript.ScriptRuntime.doTopCall(ScriptRuntime.java:3003)\n        at org.mozilla.javascript.InterpretedFunction.exec(InterpretedFunction.java:173)\n        at org.mozilla.javascript.tools.shell.Main.evaluateScript(Main.java:526)\n        at org.mozilla.javascript.tools.shell.Main.processSource(Main.java:386)\n        at org.mozilla.javascript.tools.shell.Main.processFiles(Main.java:179)\n        at org.mozilla.javascript.tools.shell.Main$IProxy.run(Main.java:100)\n        at org.mozilla.javascript.Context.call(Context.java:499)\n        at org.mozilla.javascript.ContextFactory.call(ContextFactory.java:511)\n        at org.mozilla.javascript.tools.shell.Main.exec(Main.java:162)\n        at org.mozilla.javascript.tools.shell.Main.main(Main.java:140)",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "441417",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "-- normal",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "DOM exception when mixing empty and non-empty namespaces",
+    "systemSpecification": true,
+    "version": "other"
+}

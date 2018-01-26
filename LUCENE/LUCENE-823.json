@@ -1,0 +1,47 @@
+{
+    "comments": [
+        {
+            "author": "Yonik Seeley",
+            "body": "> TermInfosReader.close() was setting its ThreadLocal enumerators to\n >  null without first closing the SegmentTermEnum in there.\n\nAre you sure descriptors are really leaked in this case?\nThere are other cases where Lucene doesn't close IndexInput clones... see LUCENE-686\n\nThe SegmentTermEnum constructor is only called in two places:\n - to init TermInfosReader.origEnum\n - to init TermInfosReader.indexEnum\n\nWe can therefore conclude that all other SegmentTermEnum instances are clones, and hence close is a no-op.",
+            "date": "2007-03-04T15:50:29.446+0000",
+            "id": 0
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Ahh, tricky!\n\nYou are right, this is not a real leak, since it's a clone that's\nfailing to be closed and since FSIndexInput does not make a clone of\nthe underlying file descriptor.\n\nI had assumed/expected that a clone must be closed, but I guess it's\n[currently] a no-op.  This is the heart of the debate in LUCENE-686.\n\nI guess I'll leave the close in there, but change MockRAMDirectory to\nignore still-open clones when the dir is closed and add a comment\nabout this LUCENE-686.\n",
+            "date": "2007-03-04T19:56:02.268+0000",
+            "id": 1
+        },
+        {
+            "author": "Yonik Seeley",
+            "body": "> guess I'll leave the close in there\n\nSince it's a thread-local, that only closes (maybe) for a single thread.\nDoesn't seem worth it, and could be misleading to anyone thinking it closed all the enumerators.",
+            "date": "2007-03-04T20:06:30.967+0000",
+            "id": 2
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "> Since it's a thread-local, that only closes (maybe) for a single thread.\n> Doesn't seem worth it, and could be misleading to anyone thinking it closed all the enumerators.\n\nGood point.  OK, I won't add the close call in.",
+            "date": "2007-03-04T20:23:00.300+0000",
+            "id": 3
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Fixed patch based on Yonik's comments (thanks for the review!).",
+            "date": "2007-03-04T21:12:31.706+0000",
+            "id": 4
+        }
+    ],
+    "component": "core/index",
+    "description": "As a followon to LUCENE-820, I've added a further check in\nMockRAMDirectory to assert that there are no open files when the\ndirectory is closed.\n\nThat check caused a few unit tests to fail, and in digging into the\nreason I uncovered these cases where Lucene fails to close file\nhandles:\n\n  * TermInfosReader.close() was setting its ThreadLocal enumerators to\n    null without first closing the SegmentTermEnum in there.  It looks\n    like this was part of the fix for LUCENE-436.  I just added the\n    call to close.\n\n    This is somewhat severe since we could leak many file handles for\n    use cases that burn through threads and/or indexes.  Though,\n    FSIndexInput does have a finalize() to close itself.\n\n  * Flushing of deletes in IndexWriter opens SegmentReader to do the\n    flushing, and it correctly calls close() to close the reader.  But\n    if an exception is hit during commit and before actually closing,\n    it will leave open those handles.  I fixed this first calling\n    doCommit() and then doClose() in a finally.  The \"disk full\" tests\n    we now have were hitting this.\n\n  * IndexWriter's addIndexes(IndexReader[]) method was opening a\n    reader but not closing it with a try/finally.  I just put a\n    try/finally in.\n\nI've also changed some unit tests to use MockRAMDirectory instead of\nRAMDirectory to increase testing coverage of \"leaking open file\nhandles\".\n",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-823",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Minor",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "Lucene fails to close file handles under certain situations",
+    "systemSpecification": true,
+    "version": "2.1"
+}

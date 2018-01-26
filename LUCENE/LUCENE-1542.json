@@ -1,0 +1,107 @@
+{
+    "comments": [
+        {
+            "author": "Jonathan Mamou",
+            "body": "I think that the bug is not related to payload and to the fact that terms at located at the same position. \nIt seems to occur only for the first term of the document, if its positionIncrement is equal to 0. In this case, the position of the first term will be wrong: -1 if there is no payload, and 2147483647 if there is a payload.",
+            "date": "2009-05-06T09:51:35.458+0000",
+            "id": 0
+        },
+        {
+            "author": "Mark Miller",
+            "body": "something like this to fix",
+            "date": "2009-05-28T14:56:28.436+0000",
+            "id": 1
+        },
+        {
+            "author": "Mark Miller",
+            "body": "so that appears to fix it - but i'm not sure thats the *right* fix. have to look closer at why we do the -1, and then sometimes do 0 - 1 for a position. odd.",
+            "date": "2009-05-28T15:05:38.664+0000",
+            "id": 2
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Alas, this looks like a dup of LUCENE-1255, where we at first did a fix (like this one) but then decided it was not back-compatible and so reverted it.\n\nHowever, if that first token (with posIncr=0) also has a payload, it appears to be particularly disastrous, since the way we encode a payload (by left-shifting the position delta by 1 bit) does not preserve the -1, right?",
+            "date": "2009-05-28T15:46:35.560+0000",
+            "id": 3
+        },
+        {
+            "author": "Mark Miller",
+            "body": "with unit test",
+            "date": "2009-05-28T16:00:48.218+0000",
+            "id": 4
+        },
+        {
+            "author": "Mark Miller",
+            "body": "and Spans. if its its included in a span, it will think the span starts ends at -1/+1 without payload it looks and with payloads +/- 2147483647 - or something to that effect.\n\nReally, anything that counts on the position of the term is going to be screwed I think.",
+            "date": "2009-05-28T16:06:01.545+0000",
+            "id": 5
+        },
+        {
+            "author": "Mark Miller",
+            "body": "I don't think the fix here needs to disallow -1, but I think it must put the tokens at the right positions, and that is not -1.",
+            "date": "2009-05-28T16:07:35.713+0000",
+            "id": 6
+        },
+        {
+            "author": "Shai Erera",
+            "body": "Just wanted to say we've had an internal discussion at work about it, when we wanted to utilize the positions to encode integers, and found out that we always need to increment the position returned by 1 (i.e., if you set posIncr to 5, the position you get when iterating on the positions is 4), and we specifically did not understand why when you set the posIncr to 0 for the first position, Lucene writes a -1. (Well, we understood why it happens, but didn't understand the reason).\n\nSo whatever you do here, I'm glad this issue was opened.\n\nWe figured that the right solution on our side, w/o changing the Lucene code, is to not set the posIncr for the first position, but do so from the 2nd forward. Maybe that's what we need to do in Lucene? I.e. if posIncr is 0 for the first position, we don't decrement by 1?",
+            "date": "2009-05-28T17:18:46.315+0000",
+            "id": 7
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "New patch attached, that merges in Mark's test & fix, and the original\nspans test (converted to a unit test) from LUCENE-1465, and adds\na method to IndexWriter to emulate the buggy behavior.\n\nPreviously, in LUCENE-1255, this problem was just an \"oddity\" that\nLucene would record position -1 for the first token(s) if those tokens\nall have position incrment 0.  We started to fix it, realized it\nbreaks back-compat, and reverted it (accepting the \"oddity\").\n\nNow, for this issue we are realizing the problem is much worse if a\npayload happens to be attached to such tokens: instead of -1, the\nposition now comes back as Integer.MAX_VALUE (a side effect of how\npayloads are stored in the index, which require that position delta be\nnon-zero), which then messes up *SpanQuery and I'm sure other things.\nSubsequent tokens (once posIncr is > 0) then overflow int, and switch\nto MIN_VALUE.\n\nI think this is a real and nasty bug, and we should fix it, despite\nback-compat.\n\nSo in the patch, I've added deprecated\nIndexWriter.setAllowMinus1Postion() to get back to the buggy\nbehaviour, if for some reason an application needs this, and then\nfixed the bug by default.\n",
+            "date": "2009-05-29T10:42:51.224+0000",
+            "id": 8
+        },
+        {
+            "author": "Shai Erera",
+            "body": "So Mike, just for clarification - let's say I have an index with -1 encoded for positions, already. I then upgrade to 2.9 and realize I should set this on IndexWriter, so in fact more -1 positions will be encoded.\n\nMy question is - when will those -1 positions be fixed? I think this breaks back-compat since it changes the indexed data, and should be handled just like any other indexed data/format changes - i.e., last until 4.0. In the meantime, we can make sure that when segments are merged, or the index is optimized, or whatever else we do to support those back-compat issues, we fix those encodings, so that hopefully by 4.0 my indexes don't contain the -1s anymore (if they do, then I'm screwed and can choose between not upgrading to 4.0, or rebuild them).\n\nIf I'm right, then you don't need this deprecated method, and make the changes under the covers?\n\nIf I'm wrong, and our back-compat policy only covers index format changes, then I will already need to rebuild my indexes, so why wait until 3.0? Basically this is one of the cases that were discussed recently on the back-compat policy thread - a change to indexed data. One that we did not agree on (I vaguely remember we said it should be handled like index format changes, but I may be wrong).",
+            "date": "2009-05-29T10:54:57.536+0000",
+            "id": 9
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "bq. My question is - when will those -1 positions be fixed?\n\nI think the app must decide that?  I don't think we should correct it\nduring merging, since that'd sneakily change your index whenever\nmerges complete?\n\nWe could leave this deprecated \"keep the bug\" method around until 4.0?\nThis way you'd have until 4.0 to reindex.\n\nbq. I think this breaks back-compat\n\nRight, my patch breaks back compat, but I think this bug warrants an\nexception.\n\nThis is a bad bad bug.  Not only does it corrupt your positions\n(storing Int.MAX_VALUE instead of -1, and then storing the next\nposition as Int.MIN_VALUE), it also can allow that corruption to\nspread as segments are merged (if those other segments didn't have\ndocs w/ payloads).  And, it causes Span*Query to return the wrong\nresults in some cases.\n\nI think new users shouldn't have to wait until 4.0 to see this bug\nfixed?\n\nI suppose an alternate approach would be to leave the -1 bug in place,\nand only fix the case when there are payloads.  It'd be messy.  I\nthink we'd have to fix SegmentTermPositions to add an \"if (firstTime\n&& pos==Integer.MAX_VALUE)\" to rewire it back to -1.  If we did this\nwe'd be back to Lucene's \"oddity\".  It's not great because it's a perf\ncost on the search side...\n",
+            "date": "2009-05-29T13:59:29.575+0000",
+            "id": 10
+        },
+        {
+            "author": "Shai Erera",
+            "body": "I absolutely agree this is a bug that should be fixed. I was just worried with keeping the bug there, and forcing the app to reindex. I thought that can be avoided if we fix it under the cover, whenever merges occur. But I may be wrong.\n\nMaybe when this new \"segment-level metadata\" comes in, we could have written some code which reads a Segment and based on its version fixes the positions.\n\nOh well .. it's just one more case where the app would need to reindex due to a bug fix (the other case I'm aware of is the invalid acronyms). I suppose that's acceptable, since it's a bug fix.",
+            "date": "2009-05-29T14:17:21.009+0000",
+            "id": 11
+        },
+        {
+            "author": "Yonik Seeley",
+            "body": "Most bug fixes aren't back compatible :-)\nWhat's the real user-visible impact of this fix to someone who hasn't re-indexed?\n",
+            "date": "2009-05-29T15:12:42.698+0000",
+            "id": 12
+        },
+        {
+            "author": "Shai Erera",
+            "body": "I don't think there's a user-visible impact. This happens only if you set posIncr=0 for the very first token. I guess it's not a common thing (if at all), which is why we haven't heard of it?\nI was worried though that if I have an index with -1s already encoded, and I don't call setAllowMinus1Position, then some of the positions will be -1 and some 0. And since it is deprecated, and will be removed in 3.0, I'll need to reindex in 3.0.\n\nBut I agree that a bug fix should not be carried into the internal Lucene processes. You should reindex.",
+            "date": "2009-05-29T20:15:21.130+0000",
+            "id": 13
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "OK I plan to commit the current patch shortly.  I'll add an entry under \"Changes in runtime behavior\" explaining the change...",
+            "date": "2009-05-30T09:22:07.432+0000",
+            "id": 14
+        }
+    ],
+    "component": "",
+    "description": "More info in LUCENE-1465",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-1542",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Minor",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "Lucene can incorrectly set the position of tokens that start a field with positonInc 0.",
+    "systemSpecification": true,
+    "version": "2.4"
+}

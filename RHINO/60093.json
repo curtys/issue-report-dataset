@@ -1,0 +1,53 @@
+{
+    "comments": [
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "Can you attach the diff for your change?\n\nThanks!",
+            "date": "20001117T02:13:08",
+            "id": 0
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "Proposed patch:\n\nIndex: Interpreter.java\n===================================================================\nRCS file: /cvsroot/mozilla/js/rhino/org/mozilla/javascript/Interpreter.java,v\nretrieving revision 1.37\ndiff -u -r1.37 Interpreter.java\n--- Interpreter.java    2000/11/20 16:16:32     1.37\n+++ Interpreter.java    2000/12/01 15:17:33\n@@ -241,8 +241,7 @@\n                                         + node.toString());\n     }\n\n-    private int generateICode(Node node, int iCodeTop)\n-    {\n+    private int generateICode(Node node, int iCodeTop) {\n         int type = node.getType();\n         Node child = node.getFirstChild();\n         Node firstChild = child;\n@@ -860,8 +859,9 @@\n                             before that goto.\n                         */\n                         Node nextSibling = child.getNextSibling();\n-                        if (nextSibling == catchTarget ||\n-                            nextSibling == finallyTarget)\n+                        if (nextSibling != null &&\n+                            (nextSibling == catchTarget ||\n+                             nextSibling == finallyTarget))\n                         {\n                             iCodeTop = addByte((byte) TokenStream.ENDTRY,\n                                                iCodeTop);",
+            "date": "20001201T15:18:36",
+            "id": 1
+        },
+        {
+            "author": "dnavas@yahoo.com",
+            "body": "The only concern I have with that (and I apologize for not getting you a diff \nyet :( -- I only have a hack ;^/) is that the ENDTRY would seem to be added in \nthe catch clause for the following case:\n   try\n   {\n   }\n   catch () {}\n   finally {}\n\nWhen you're in the catch node, the next node is the finally node, and an\nendtry is added.  Don't think that's right -- you only want to add the ENDTRY \nonce.  I may be misremembering the code however, and if that's not the case,\nthen I see no problem with this.\n",
+            "date": "20001201T15:34:11",
+            "id": 2
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "Ok, thanks for pointing that out. How about the following, which I think is \nsimilar to what you did:\n\nIndex: Interpreter.java\n===================================================================\nRCS file: /cvsroot/mozilla/js/rhino/org/mozilla/javascript/Interpreter.java,v\nretrieving revision 1.37\ndiff -u -r1.37 Interpreter.java\n--- Interpreter.java\t2000/11/20 16:16:32\t1.37\n+++ Interpreter.java\t2000/12/01 15:53:32\n@@ -241,8 +241,7 @@\n                                         + node.toString());\n     }\n     \n-    private int generateICode(Node node, int iCodeTop)\n-    {\n+    private int generateICode(Node node, int iCodeTop) {\n         int type = node.getType();\n         Node child = node.getFirstChild();\n         Node firstChild = child;\n@@ -846,6 +845,7 @@\n                         set the stackDepth to 1 to account for the incoming\n                         exception object.\n                     */\n+                    boolean insertedEndTry = false;\n                     while (child != null) {\n                         if (catchTarget != null && lastChild == catchTarget) {\n                             itsStackDepth = 1;\n@@ -860,11 +860,13 @@\n                             before that goto.\n                         */\n                         Node nextSibling = child.getNextSibling();\n-                        if (nextSibling == catchTarget ||\n-                            nextSibling == finallyTarget)\n+                        if (!insertedEndTry && nextSibling != null &&\n+                            (nextSibling == catchTarget ||\n+                             nextSibling == finallyTarget))\n                         {\n                             iCodeTop = addByte((byte) TokenStream.ENDTRY,\n                                                iCodeTop);\n+                            insertedEndTry = true;\n                         }\n                         iCodeTop = generateICode(child, iCodeTop);\n                         lastChild = child;\n\nI verified that only one ENDTRY gets added for the snippet in the last comment.\n\n",
+            "date": "20001201T15:59:42",
+            "id": 3
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "Committed that change:\n\nChecking in Interpreter.java;\n/cvsroot/mozilla/js/rhino/org/mozilla/javascript/Interpreter.java,v  <--  Interp\nreter.java\nnew revision: 1.38; previous revision: 1.37\ndone",
+            "date": "20001205T16:05:09",
+            "id": 4
+        },
+        {
+            "author": "dnavas@yahoo.com",
+            "body": "This is nearly identical to what I did.",
+            "date": "20001211T17:56:07",
+            "id": 5
+        }
+    ],
+    "component": "Core",
+    "description": "The problem appears to be simple (and I hope not a result of my merge ;^/).\nThe ENDTRY instruction decrements the tryStackTop.  So does the actual \nexception handling code at the bottom of the interpret() function.  The \nfollowing fails:\n    try\n    {\n        throw SOME_EXCEPTION;\n    } catch (e) {}\n    try\n    {\n        throw SOME_EXCEPTION;\n    } catch(e) {}\n\nbecause when the second TRY begins, the tryStackTop is -1.\n\nThe problem appears to be with the generateICode().  There is a comparison \nbetween nextSibling and catchTarget and nextSibling and finallyTarget.  If it \nmatches one of them, then the ENDTRY is added.  But, nextSibling and \nfinallyTarget can be null!  Also, if the ENDTRY has already been added for the \ncatchTarget, you don't want to add one again before the finallyTarget (which \nmay or may not exist, but will always match nextSibling once...).\n\nThe hack I used was to set a boolean before the while() loop, initialized to \nfalse.  I made the conditional additionally check for falsity of the boolean \nflag, and inside the body set the boolean flag to true.  That way, only one \nENDTRY statement is added....\n\nSeems to work.",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "60093",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "P3 major",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "series of try {} catch() doesn't work",
+    "systemSpecification": true,
+    "version": "other"
+}

@@ -1,0 +1,275 @@
+{
+    "comments": [
+        {
+            "author": "James Abley",
+            "body": "I've implemented gzip and deflate support already - patch to follow once I get my git fu sorted.\n\ncompress I'm not so familiar with, and identity is a no-op so requires no changes.\n\nThe patch has been implemented so that it won't interfere with existing clients if they are already setting an Accept-Encoding header in the request.",
+            "date": "2009-03-15T21:23:46.962+0000",
+            "id": 0
+        },
+        {
+            "author": "James Abley",
+            "body": "Initial patch which introduces gzip and deflate support.\n\nSorry, mangled git patch. If any of the committers use git, then they should be able to apply it. Otherwise, I'll need to spend some more time understanding how to generate a patch suitable for application with the patch command.",
+            "date": "2009-03-15T21:44:30.970+0000",
+            "id": 1
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Hi James\n\n(1) ThreadLocals are often considered evil and ought to be avoided, especially in general purpose libraries. If you need to persist some data between different interceptors please consider using HttpContext. This is precisely what it is meant for.\n\n(2) Please consider providing some means of defining applicable content coding algorithms and their order of preference. \n\n(3) Patch utility compatible diff would be nice.\n\nOleg",
+            "date": "2009-03-16T13:54:45.935+0000",
+            "id": 2
+        },
+        {
+            "author": "James Abley",
+            "body": "Hi Oleg,\n\nThanks for the feedback.\n\n1) Thanks, I wasn't aware of the idiomatic way to do that, so I'll change it. Can you share why you feel ThreadLocals are so bad? I wasn't aware of any issues and would like to know more.\n\n2) I don't follow. Can you provide more information, or maybe describe it as a test?\n\n3) Will do. I just wanted to get it out there for discussion. UPDATE: Actually, patch -p1 <path/to/patch works for me.\n\nCheers,\n\nJames",
+            "date": "2009-03-16T19:54:43.337+0000",
+            "id": 3
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "(1) Because ThreadLocals, when misused/abused, can lead to memory leaks or, worse, very subtle bugs, especially in managed environments such as servlet or EJB containers, where threads are frequently pooled / re-used. The most catastrophic bug I have seen involved a ThreadLocal holding a UserPrincipal in a web application, which was not correctly unset with a try-catch-finally. You can pretty much guess the consequence of that bug. \n\nThe only two legitimate uses of ThreadLocal I know of is (1) in single-user standalone applications or (2) in web applications when ThreadLocals set and unset using a HttpServletFilter in try-catch-finally. ThreadLocal simply cannot be reliably unset from inside a library. ThreadLocals in general purpose libraries == major trouble.\n\n(2) There should be a way to instruct the interceptor to generate different Accept-Encoding values, for example 'gzip,deflate', \"deflate,gzip\", \"identity\", etc, based a configuration parameter.\n\nOleg",
+            "date": "2009-03-16T20:57:55.325+0000",
+            "id": 4
+        },
+        {
+            "author": "Sebb",
+            "body": "Two discussions of ThreadLocal that might be useful:\n\nhttp://blog.arendsen.net/index.php/2005/02/16/threadlocals-are-evil/\n\nhttp://crazybob.org/2006/07/hard-core-java-threadlocal.html\n",
+            "date": "2009-03-16T22:39:25.324+0000",
+            "id": 5
+        },
+        {
+            "author": "James Abley",
+            "body": "1) OK, thanks for the clarification. That pretty much ties with my understanding, but I thought it was a reasonable approach at the time and seemed in line with recommendations from Java Concurrency in Practice. I've removed the usage as you suggested.\n\n2) I initially thought you wanted to specify quality values. But you're describing something similar. I'm still not clear why that requires configuration. If the user doesn't want the interceptor to indicate to the server that various content codings are supported, the user can specify their own Accept-Encoding header for the request and the request won't be altered and the response won't be processed by the new interceptors. Indeed, that behaviour is there to ensure that it doesn't break any existing clients that may be using an interceptor already to support this functionality. Although thinking about that, the new interceptor is getting added before the client has a chance to add an interceptor, so the new ones that I've written will fire before a user-provided one gets a chance to handle the request response. Is that the issue? What else am I missing? Can you point me at an example of something similar that already exists, for configuration parameters?\n\nAs as aside, is there any reason why the Javadocs aren't built as part of the site hosted at apache?",
+            "date": "2009-03-16T22:40:40.091+0000",
+            "id": 6
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "I was thinking about something along this line:\n\n{{{\nenum ContentCoding { identity, gzip, deflate };\n}}}    \n\n{{{\n@SuppressWarnings(\"unchecked\")\nCollection<ContentCoding> codings = (Collection<ContentCoding>) request.getParams().getParameter(\n                \"http.protocol.accept-encoding\");\nif (codings != null) {\n     // Add Accept-Encoding header\n}\n}}}\n\n>> Although thinking about that, the new interceptor is getting added before the client has a chance to add an interceptor, so the new ones that I've written \n>> will fire before a user-provided one gets a chance to handle the request response.Is that the issue? \n\nI am afraid it is. The content processor in its current form will break existing code that relies on protocol interceptors to transparently handle content encoding. This is the reason I would like to have an explicit configuration parameter the user would have to set in order to enable content processing.\n\n>> Can you point me at an example of something similar that already exists, for configuration parameters? \n\nTake a look at the default header interceptor, which populates HTTP request headers dynamically based on a configuration parameter\n\nhttp://hc.apache.org/httpcomponents-client/httpclient/xref/org/apache/http/client/protocol/RequestDefaultHeaders.html\n\nOleg\n",
+            "date": "2009-03-17T11:32:02.653+0000",
+            "id": 7
+        },
+        {
+            "author": "James Abley",
+            "body": "Cool.\n\nI am still aiming for a transparent implementation that won't do anything if the user has configured their own behaviour, and will do the right thing (be in effect) if they haven't. I'm hopeful that we're not yet at the stage where this will require explicitly enabling to work.\n\nI'll create a failing test to demonstrate how it will impact existing protocol interceptors, then fix it and see what falls out of that.\n\nThanks for your help; it's always good to collaborate with new people and get new insights.",
+            "date": "2009-03-17T12:26:28.688+0000",
+            "id": 8
+        },
+        {
+            "author": "James Abley",
+            "body": "Git based patch and same again for SVN.\nSVN patch sets svn:eol-style=native.\n\nThis patch is re-worked to avoid breaking existing clients that may already be doing something like this.",
+            "date": "2009-03-17T21:53:32.439+0000",
+            "id": 9
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "I reviewed the patch and checked in the patch to the 4.1 branch:\n\nhttp://svn.apache.org/repos/asf/httpcomponents/httpclient/branches/branch_4_1/\nhttp://svn.apache.org/viewvc?rev=755629&view=rev\n\nMany thanks for this contribution, James.\n\nI am also going to add your name to the list of project contributors, if do not mind.\n\nThe only problem with the current approach is that there is no way to disable or customize the way content coding is handled per default. One can remove any standard protocol interceptor and replace it with a custom one. This obviously will not work for ContentProcessor, which is not nice. An alternative solution might be to simply use a different implementation class derived from DefaultHttpClient.\n\nI am looking forward to follow-up patches ;-)\n\nWould you also be willing to look into content caching at some point of time?\n\nOleg",
+            "date": "2009-03-18T16:40:23.948+0000",
+            "id": 10
+        },
+        {
+            "author": "James Abley",
+            "body": "W00t! By all means list me as a contributor. I wasn't expecting it to be accepted yet; I thought it was still a little rough. I hadn't found a coding style guide, so I was expecting some feedback there, apache license header, maybe a contributors agreement to submit? Not that I'm complaining. Thank you.\n\nIf the demand is there to allow it to be configured / removed, then we can add that.\n\nI would like to look at content caching. I would think that's a bit more involved and I'm not sure that I can commit the time that I think it would require at the moment, but it's definitely something that I'd like to see in the library. Or I might see what else is in JIRA that looks fun, that would take the amount of time that I can commit to at the moment.\n\nI'll also have to give it some thought as to how that might be implemented. I've got a little too much baggage in terms of how I've implemented something like that using httpclient-3.x and ehcache, so I need to step back and think about it using the 4.x API and (pluggable) cache implementations.\n\nJames",
+            "date": "2009-03-18T20:24:28.598+0000",
+            "id": 11
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "> I wasn't expecting it to be accepted yet; I thought it was still a little rough\n\nThe work is far from being done. I just prefer smaller, incremental patches.\n\n> maybe a contributors agreement to submit\n\nYes, you should consider submitting an indivudual CLA, maybe even a corporate CLA, if you are working on HttpClient during office hours\n\n> If the demand is there to allow it to be configured / removed, then we can add that\n\nIt surely must be possible to disable content encoding. There are enough situations when it is not desired, for instance when trouble-shooting.  I am still not convinced it should be enabled per default.\n\nOleg",
+            "date": "2009-03-18T22:03:28.619+0000",
+            "id": 12
+        },
+        {
+            "author": "James Abley",
+            "body": "Sorry, didn't mean to go dark for so long. Moving house and Real Work got in the way. I'd like to bring this to a conclusion.\n\nWhere in SVN should I target now, and is there IRC or something?",
+            "date": "2009-07-31T15:35:36.524+0000",
+            "id": 13
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Welcome back, James.\n\nNot much has changed since I committed your patch. The code is still in the 4.1 branch (to be merged down to trunk after 4.0 GA release) [1]. I am still of the same opinion that DefaultHttpClient ought not have the transparent content coding enabled per default (there are different options of solving the problem, HTTPCLIENT-838 being one). You should still consider submitting an an individual or a corporate CLA.\n\nAll discussions about HttpCore / HttpClient development should take place on the dev mailing list.\n\nOleg\n\n[1] http://svn.apache.org/repos/asf/httpcomponents/httpclient/branches/branch_4_1/ ",
+            "date": "2009-07-31T15:58:21.226+0000",
+            "id": 14
+        },
+        {
+            "author": "James Abley",
+            "body": "Speculative patch to show how it could be disabled. If this was decided as a reasonable way to go, then the ContentEncodingProcessor would need to be made public and put into a different package, to highlight that it is part of the published API. I still strongly feel that this behaviour should be enabled by default, but it is also necessary to give us the out of turning it off. Is the special case shown here worthwhile, or could it be accomplished in another way?\n\nAlso added some additional filtering for the Content-Encoding header in the response - if the ResponseProcessor handles it, then we should probably remove the existence of that header from the client application.",
+            "date": "2009-08-04T21:28:49.917+0000",
+            "id": 15
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "James,\n\nWhat is the reason for your opposition to the idea of just using a subclass of DefaultHttpClient for transparent content coding? This would make ContentEncodingProcessor and even possibly the config parameter unnecessary altogether.\n\nOleg",
+            "date": "2009-08-06T12:37:26.631+0000",
+            "id": 16
+        },
+        {
+            "author": "James Abley",
+            "body": "Oleg,\n\nI hopefully described in the ticket why I think that this should work out of the box without requiring changes for existing clients. That's why I'm trying to get it working as part of the existing API.\n\nIf the functionality that I'm describing was done by adding a new ContentEncodingHttpClient, then what do we think the impact of this is? Would people need to alter their code (or maybe just Spring / Guice / etc configuration)? I think that complicates the API surface area and increases the semantic load on client developers. I don't think the clients should be required to know these details of the RFC;  application developers typically want to write code at a different level and expect that the library abstraction will do the right thing at its level.\n\nI'm happy to write a version that subclasses as you suggest and see how it feels from a client perspective. Should that be based on trunk or the existing 4.1 branch?\n\nJames",
+            "date": "2009-08-06T13:23:38.061+0000",
+            "id": 17
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "> I hopefully described in the ticket why I think that this should work out of the box without requiring changes for existing clients. \n> That's why I'm trying to get it working as part of the existing API. \n\nYes, you did, but I still think the chance of breaking existing apps in some subtle ways is simply too high to have this feature enabled per default. \n\n> Would people need to alter their code (or maybe just Spring / Guice / etc configuration)?\n\nThose who use a DI framework to wire together their components this would be a one liner config change.\n\n> Should that be based on trunk or the existing 4.1 branch? \n\n4.1 branch. \n\nOleg",
+            "date": "2009-08-06T14:17:34.546+0000",
+            "id": 18
+        },
+        {
+            "author": "James Abley",
+            "body": "Re-worked to use a new subclass of DefaultHttpClient.",
+            "date": "2009-09-02T21:53:09.363+0000",
+            "id": 19
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "James,\n\nWhat happened to the patch? It is no longer there. Did you delete it?\n\nI merged most of your changes from 4.1 branch to the trunk. I did not merge changes to the AbstractHttpClient class, though, as I hope they will not be necessary. Please work with the trunk from now on.\n\nCheers\n\nOleg",
+            "date": "2009-09-03T20:46:34.261+0000",
+            "id": 20
+        },
+        {
+            "author": "James Abley",
+            "body": "Not sure about this patch. \n\ngenerated via  svn diff > some/file, but I'm not sure that it applies cleanly.\n\n$ svn --version\nsvn, version 1.5.4 (r33841)\n   compiled Aug  7 2009, 01:44:11\n\nThe operations are simple -\n# 3 moves,\n# fix up the imports\n# add a new class.\n# Add new test and cleanup in an existing class\n\nIf it won't apply to trunk, I'll re-submit.",
+            "date": "2009-09-13T06:00:40.030+0000",
+            "id": 21
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Hi James\n\nMany thanks for contributing the patch. I committed it to the SVN trunk. Please review / double-check. I think we are almost t here. There is still a few outstanding tasks, though, that must be tackled before we could close the issue as resolved. \n\n(1) All TODOs need to be looked into. I would also consider splitting ContentEncodingProcessor into two separate interceptors. \n(2) A new section on content encoding needs to be added to the tutorial.\n\nOleg",
+            "date": "2009-09-13T08:39:57.343+0000",
+            "id": 22
+        },
+        {
+            "author": "James Abley",
+            "body": "Hi Oleg,\n\nGood to hear; I should be able to take a look later today unless Real Work rears its head again. Could you elaborate as to why you feel ContentEncodingProcessor should be split out?\n\nJames",
+            "date": "2009-09-13T11:11:57.640+0000",
+            "id": 23
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "> Could you elaborate as to why you feel ContentEncodingProcessor should be split out? \n\nI _personally_ prefer fine-grained interceptors, one per unit of work or a header type. For instance, one may want to remove the request interceptor that generates Accept-Encoding headers while still keeping the Content-Encoding response interceptor in the protocol chain.\n\nOleg",
+            "date": "2009-09-13T13:13:30.797+0000",
+            "id": 24
+        },
+        {
+            "author": "James Abley",
+            "body": "TODOs I've found relate to adding support for compress Content-Encoding [1]. I've never encountered a server that uses this? \n\nThe request / response interceptors currently set a flag in the context to show whether the response should be processed. Should that aspect be retained if I split them out?\n\nAlso, should ClientContext be a class rather than an interface? It just contains constants, rather than defining any sort of abstraction.\n\n[1] http://www.w3.org/Protocols/rfc2616/rfc2616-sec3.html#sec3.5",
+            "date": "2009-09-14T10:40:22.800+0000",
+            "id": 25
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "> TODOs I've found relate to adding support for compress Content-Encoding\n\nIf you think compress is completely useless, we still have to make sure HttpClient reacts intelligently when encounters compress coded content, for instance by throwing an exception\n\n> The request / response interceptors currently set a flag in the context to show whether the response should be processed. \n> Should that aspect be retained if I split them out?\n\nI _personally_ do not think the flag is necessary anymore, but I do not want to impose a particular way of doing things onto you\n\n> Also, should ClientContext be a class rather than an interface? It just contains constants, rather than defining any sort of abstraction.\n\nRoland (who is no longer involved in the project) had a tendency to prefer interfaces over classes for defining constants, mainly because of support for multiple inheritance. Now it is too late.\n\nOleg",
+            "date": "2009-09-14T13:44:20.843+0000",
+            "id": 26
+        },
+        {
+            "author": "Sebb",
+            "body": "Re: constants - one approach I've used is to define the constants in an interface, but also create a class that implements the interface.\n\nAlso, in Java 1.5 one can use import static from the constant class.\n\nI think constants in interfaces are bad, unless the constant is inherently associated with the methods in the interface.",
+            "date": "2009-09-14T14:53:58.336+0000",
+            "id": 27
+        },
+        {
+            "author": "James Abley",
+            "body": "split out request and response interceptor\n\nRemove TODOs - not going to implement compress support unless sufficient demand / server with market share.",
+            "date": "2009-09-14T22:24:25.941+0000",
+            "id": 28
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "James,\nResponseContentEncoding seems missing in the changeset. Could you please add that file to the patch?\n\nOleg",
+            "date": "2009-09-16T12:24:57.314+0000",
+            "id": 29
+        },
+        {
+            "author": "James Abley",
+            "body": "Resubmit with the missing file",
+            "date": "2009-09-16T12:45:26.084+0000",
+            "id": 30
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "James,\n\nThere is a copyright notice in one of the files, which makes the patch incompatible with the ASL. I cannot commit the patch as it. Please resubmit the patch without the copyright notice is you agree to this code being made available under ASLv2 license agreement. I am sorry but we have to picky about licensing stuff. \n\n* ----------------------------------------------------------------------------\n* (c) Mobile IQ Ltd 2009. All Rights Reserved.\n* ----------------------------------------------------------------------------\n \nOleg",
+            "date": "2009-09-17T12:43:37.756+0000",
+            "id": 31
+        },
+        {
+            "author": "James Abley",
+            "body": "My bad, sorry. That's my default template for Eclipse falling through the cracks.",
+            "date": "2009-09-17T13:46:25.262+0000",
+            "id": 32
+        },
+        {
+            "author": "James Abley",
+            "body": "Fixed the wrong license / copyright text",
+            "date": "2009-09-17T14:04:40.531+0000",
+            "id": 33
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Patch checked in. Many thanks for contributing it, James. Would you also be willing to contribute a section on content coding to the HttpClient tutorial?\n\nOleg",
+            "date": "2009-09-18T11:02:51.647+0000",
+            "id": 34
+        },
+        {
+            "author": "James Abley",
+            "body": "Hi Oleg,\n\nI've started writing the tutorial patch. My DocBook is pretty poor though. Do you know how to set up <olink/>? I was trying to link the the section on protocol interceptors, but can't get it working.\n\nCheers,\n\nJames",
+            "date": "2009-09-21T20:42:09.900+0000",
+            "id": 35
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "I hardly qualify as DocBook expert either. I usually use Spring documentation as a reference [1]. Do not worry about stuff like that at the moment. Concentrate on writing the content. We can deal with formatting issues later.\n\nCheers\n\nOleg\n\n[1] https://src.springframework.org/svn/spring-framework/trunk/spring-framework-reference/src/",
+            "date": "2009-09-22T08:42:47.569+0000",
+            "id": 36
+        },
+        {
+            "author": "James Abley",
+            "body": "Initial draft for DocBook tutorial, after recovering last week's hard drive failure",
+            "date": "2009-10-01T12:30:55.196+0000",
+            "id": 37
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Patch checked in with some minor tweaks. \n\nI think the issue can now be closed as resolved.\n\nOleg",
+            "date": "2009-10-06T12:22:51.632+0000",
+            "id": 38
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "This issue has to be revisited. Presently GzipDecompressingEntity and DeflateDecompressingEntity classes do not override the#writeTo() method which causes the original uncompressed content to be written out to the output stream. \n\nJames, would you be willing to look into it? \n\nOleg",
+            "date": "2009-10-26T16:19:54.584+0000",
+            "id": 39
+        },
+        {
+            "author": "James Abley",
+            "body": "Will do. Sorry, on holiday last week and just catching up.",
+            "date": "2009-11-03T19:53:16.973+0000",
+            "id": 40
+        },
+        {
+            "author": "James Abley",
+            "body": "Overrides HttpEntity.writeTo(OutputStream) for the new decompressing code.",
+            "date": "2009-11-03T20:54:27.089+0000",
+            "id": 41
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Patch checked in. Many thanks, James\n\nOleg",
+            "date": "2009-11-04T19:26:24.499+0000",
+            "id": 42
+        }
+    ],
+    "component": "HttpClient (classic)",
+    "description": "I would like to see HttpClient features brought up to parity with other libraries, both in Java and other languages. c.f. Python's httplib2 (not yet in the standard library, but many would like to see it in there). That library transparently handles gzip and compress content codings.\n\nThis issue is to capture possible solutions to providing this sort of innate functionality in HttpClient, so that users aren't required to know RFC2616 intimately. The HttpClient library should do the right thing and use the network in the most efficient manner possible.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "HTTPCLIENT-834",
+    "issuetypeClassified": "RFE",
+    "issuetypeTracker": "RFE",
+    "priority": "Major",
+    "product": "HTTPCLIENT",
+    "project": "HTTPCLIENT",
+    "summary": "Transparent Content Coding support",
+    "systemSpecification": true,
+    "version": "4.0 Beta 2"
+}

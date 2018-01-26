@@ -1,0 +1,59 @@
+{
+    "comments": [
+        {
+            "author": "Stefan Guggisberg",
+            "body": "> With the patch applied the time to transiently create 1000 nodes with 4 properties each drops from 1485 ms to 422 ms.\n\nexcellent! :)\n\n+1 for the patch",
+            "date": "2006-12-21T15:09:46.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "Applied the patch in revision: 492235",
+            "date": "2007-01-03T17:43:36.047+0000",
+            "id": 1
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "There are more situations where the persistence manager is called unnecessarily. While the previously attached patch improves the situation when items are transiently added there are still many unnecessary calls to persistence manager and the access manager when changes are saved.\n\n- As a convenience the methods ItemImpl.validateTransientItems() retrieves item instances based on item states even though all required information is also present in the item state. Retrieving an item instance will always check for access rights which is not necessary in this method. The same applies to ItemImpl.initVersionHistories() and ItemImpl.persistTransientItems().\n- The EventStateCollection contains redundant calls to the item state manager for added items.\n\nAttached patch solves this issue. Please review.",
+            "date": "2007-01-04T10:18:48.847+0000",
+            "id": 2
+        },
+        {
+            "author": "Martijn Hendriks",
+            "body": "The methods \"getItemState\" and \"hasItemState\" in the SharedItemStateManager try to resolve the given ItemId through three sources. Is there a particular reason for the order? If not, would it then not be good to swap the second and third check (first check the virtual providers as this is all in memory if I understand correctly, and then the non-virtual internal storage that might invoke the persistence manager)?",
+            "date": "2007-02-22T08:21:51.641+0000",
+            "id": 3
+        },
+        {
+            "author": "Stefan Guggisberg",
+            "body": "+1 for JCR-689-r492483.patch \n\ncheers\nstefan",
+            "date": "2007-02-22T08:38:28.294+0000",
+            "id": 4
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "Committed second patch in revision: 518986",
+            "date": "2007-03-16T14:36:05.906+0000",
+            "id": 5
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "Martijn wrote:\n> The methods \"getItemState\" and \"hasItemState\" in the SharedItemStateManager try to resolve the given\n> ItemId through three sources. Is there a particular reason for the order? If not, would it then not be good\n> to swap the second and third check (first check the virtual providers as this is all in memory if I understand\n> correctly, and then the non-virtual internal storage that might invoke the persistence manager)?\n\nSome virtual providers are in memory, but not the one that provides the version items. The implementation kind of assumes that the majority of item accesses are items from the workspace and that version items are accessed less frequently.",
+            "date": "2007-03-16T14:40:34.649+0000",
+            "id": 6
+        }
+    ],
+    "component": "jackrabbit-core",
+    "description": "In some situations the PersistenceManager is called even though it is not necessary.\n\nE.g. when new items are created the method NodeImpl.getOrCreateProperty() will always check if there is an already existing property state. If the node is new the call will always go down the full item state stack and ask the PersistenceManager if it knows the property id. This is unnessessary because there will never exist properties in the persistence manager for a new node that has not been saved yet.\n\nI propose to add a check to the method to see if  the node is new and does not yet have a property with the given name. In that case the property can be created without further checks.\n\nWith the patch applied the time to transiently create 1000 nodes with 4 properties each drops from 1485 ms to 422 ms.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "JCR-689",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Minor",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "Minimize calls to PersistenceManager",
+    "systemSpecification": true,
+    "version": "0.9, 1.0, 1.0.1, 1.1, 1.1.1"
+}

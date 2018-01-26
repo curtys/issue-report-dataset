@@ -1,0 +1,83 @@
+{
+    "comments": [
+        {
+            "author": "Jeff Dever",
+            "body": "We get:\nSet-Cookie: _mysite=503386284,1027653678,1027912845,1027912705,0; path=/;\nexpires=Tue, 29-Jul-2003 08:37:05 GMT, cata=11; path=/,\nASPSESSIONIDGGGQQXEU=IOFDDAGAHNAFLJNLBNMHJKCN; path=/\n\nWe send:\nCookie: $Version=0; _mysite=503386284; 1027653678=null; 1027912845=null;\n1027912705=null; 0=null; $Path=/; cata=11; $Path=/; ASP\n\nSo it looks like we are spliting the Cookie value based on ',' and finding bogus\ncookie pairs.  I had a look at the spec.  It is pretty clear that ',' is a\ntspecial character that is not permitted: the value is supposed to be a token or\na quoted string.\n\nTherefore what we are dealing with here is a requirement for a non-standard\nextension to how HttpClient parses cookies.\n",
+            "date": "2002-07-29T11:03:57.000+0000",
+            "id": 0
+        },
+        {
+            "author": "oleg.kalnichevski@bearingpoint.com",
+            "body": "The trouble-making cookie violates  RFC  2109  in several ways\n\nAccording to the RFC 2109 comma is used as a cookie separator. \n\n==== RFC  2109 : Quote =================================\n\n4.2.2  Set-Cookie Syntax4.2.2 \n\n   set-cookie      =       \"Set-Cookie:\" cookies\n   cookies         =       1#cookie\n   cookie          =       NAME \"=\" VALUE *(\";\" cookie-av)\n   NAME            =       attr\n   VALUE           =       value\n   cookie-av       =       \"Comment\" \"=\" value\n                   |       \"Domain\" \"=\" value\n                   |       \"Max-Age\" \"=\" value\n                   |       \"Path\" \"=\" value\n                   |       \"Secure\"\n                   |       \"Version\" \"=\" 1*DIGIT   \n\n   Informally, the Set-Cookie response header comprises the token Set-\n   Cookie:, followed by a comma-separated list of one or more cookies.\n   ...\n==== End of Quote ===================================\n\nCookies conforming to the RFC 2019 should use double quotes around value\nelements in order to avoid ambiguity during parsing \n\n==== RFC 2109 : Quote =================================\n4.1  Syntax:  General\n\n   The two state management headers, Set-Cookie and Cookie, have common\n   syntactic properties involving attribute-value pairs.  The following\n   grammar uses the notation, and tokens DIGIT (decimal digits) and\n   token (informally, a sequence of non-special, non-white space\n   characters) from the HTTP/1.1 specification [RFC 2068] to describe\n   their syntax.\n\n   av-pairs        =       av-pair *(\";\" av-pair)\n   av-pair         =       attr [\"=\" value]        ; optional value\n   attr            =       token\n   value           =       word\n   word            =       token | quoted-string\n==== End of Quote ===================================\n\n==== RFC 2068: Quote =================================\n   Many HTTP/1.1 header field values consist of words separated by LWS\n   or special characters. These special characters MUST be in a quoted\n   string to be used within a parameter value.\n\n          token          = 1*<any CHAR except CTLs or tspecials>\n\n          tspecials      = \"(\" | \")\" | \"<\" | \">\" | \"@\"\n                         | \",\" | \";\" | \":\" | \"\\\" | <\">\n                         | \"/\" | \"[\" | \"]\" | \"?\" | \"=\"\n                         | \"{\" | \"}\" | SP | HT\n==== End of Quote ===================================\n\n\nThe cookie would be a valid one if processed according to the Netscape Cookie\nDraft specification, tough. We can think of improving our Netscape Draft\ncompliant cookie parser to correctly deal with such cookies. I do not deem such\nimprovement terribly important. \n",
+            "date": "2003-01-23T01:06:12.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "*** HTTPCLIENT-212 has been marked as a duplicate of this bug. ***",
+            "date": "2003-05-19T18:54:42.000+0000",
+            "id": 2
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Created an attachment (id=7363)\nNetscape spec patch (take 1)\n",
+            "date": "2003-07-18T15:10:11.000+0000",
+            "id": 3
+        },
+        {
+            "author": "Michael Becke",
+            "body": "I have not looked into the code too closely, but do we have a test case?\n\nMike",
+            "date": "2003-07-18T19:48:29.000+0000",
+            "id": 4
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Fair enough. I will provide a test case shortly\n\nOleg",
+            "date": "2003-07-18T20:11:26.000+0000",
+            "id": 5
+        },
+        {
+            "author": "Laura Werner",
+            "body": "Looks good, though I haven't had a chance to run it yet (my up-to-date system is\nat home).  One suggestion: add a comment or two describing the non-default\nbehavior of this method such as comma handling, and maybe an @see that points to\nthe relevant part of the Netscape cookie spec, assuming they actually documented\nthis.",
+            "date": "2003-07-19T01:48:52.000+0000",
+            "id": 6
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Created an attachment (id=7381)\nNetscape spec patch (take 2)\n",
+            "date": "2003-07-19T04:53:01.000+0000",
+            "id": 7
+        },
+        {
+            "author": "Laura Werner",
+            "body": "Nice comment! :-)",
+            "date": "2003-07-19T05:33:19.000+0000",
+            "id": 8
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Looks good to me.\n\nMike",
+            "date": "2003-07-19T05:36:50.000+0000",
+            "id": 9
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Patch committed.\n\nOleg",
+            "date": "2003-07-19T15:50:14.000+0000",
+            "id": 10
+        }
+    ],
+    "component": "HttpClient (classic)",
+    "description": "This version extracts the \"Set-Cookie\" statementes of the following\nHTTP response headers incorrectly.\n\nThe HTTP response is sent when executing GET method on --->\n\"http://my.taishinbank.com.tw/netbank/nbslogin.asp?\nsubFunID=https://my.taishinbank.com.tw/netbank/AccountQuery/QAccbyID.asp\"\n\nAfter the HttpClient extracts Set-Cookie from the response, it generates a wrong\ncookie statement---->\n\n  [INFO] wire - ->> \"Cookie: $Version=0; _mysite=520163500; 1027657033=null; \n   1027787539=null; 0=null; $Path=/; cata=11; $Path=/;   \n   ASPSESSIONIDGGGQQXEU=ADLCDAGAJLKEBJEKBOMMAMOB; \n   $Path=/\"\n\n, where it shall \nbe \"_mysite=520163500,1027657033,1027787539,1027787539,0;\" ,but \nnot \"_mysite=520163500; 1027657033=null; 1027787539=null; 0=null;\"\n \n\nThank you",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "HTTPCLIENT-92",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Minor",
+    "product": "HTTPCLIENT",
+    "project": "HTTPCLIENT",
+    "summary": "Cookies with ',' in the value string is not parsed correctly in some cases",
+    "systemSpecification": true,
+    "version": "2.0 Alpha 1"
+}

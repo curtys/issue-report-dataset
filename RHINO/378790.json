@@ -1,0 +1,101 @@
+{
+    "comments": [
+        {
+            "author": "bjervis@google.com",
+            "body": "Created attachment 262804\nA patch that implements much of 'strict mode'\n\nThis defines two new FEATURE's: FEATURE_STRICT_MODE, which implements most of strict mode.  FEATURE_STRICT_VARS already implements one of the checks (and is separate from the new FEATURE_STRICT_MJODE, so technically you have to set them both to get the full effect).  There is also a FEATURE_WARNING_AS_ERROR that will cause warnings to be treated as errors in all cases.\n\nThere is a new command line flag for the Shell: -fatal_warnings to enable FEATURE_WARNING_AS_ERROR.  Also -strict now enables FEATURE_STRICT_MODE as well.\n\nNote that FEATURE_WARNING_AS_ERROR will cause warnings to be treated as errors even if you do not enable warnings (with, for example, the -w flag on the Shell).\n\nThe parts of strict mode that are not implemented are: \n\n1. Some of the deprecated stuff was never supported by Rhino to begin with, so nothing was done to deprecate non-supported things.\n2. For the return-without-value warnings, the code to check for whether a function falls through the bottom without a return statement is incomplete.  SpiderMonkey and Rhino have very different representations for switches and catch clauses than does Rhino.  I copied the SpiderMonkey checking code and patched up the differences for everything but those cases.  Thus, some switch statements (those with a default case, for example) that might otherwise warn about falling through will not warn.  Similarly with try/catches that have no finally clause.  The code for checking the individual catch clauses is missing.",
+            "date": "20070425T21:44:47",
+            "id": 0
+        },
+        {
+            "author": "inonit@inonit.com",
+            "body": "Hi Bob.  I was just going through the old E-mails about this earlier today, interestingly enough.  I've been thinking about refactoring the Context \"features\" into a separate class.  \n\nThis was inspired by the E4X implementation factory stuff, which doesn't neatly map onto a true-false model.  Strict mode maps better but it would make sense to have various aggregations that could be handled as a single object.  In another bug (I forget which offhand) there's a discussion about making the property mapping logic pluggable.  The code would not only get pretty ugly, the FEATURE_XXX motif doesn't cover well anything where there are more than two (or a potentially open-ended) number of options.\n\nI know you've just been through this code, and just through doing some implementation based on it.  What are your thoughts?  Backward compatibility would be pretty easy to maintain, in that any Context/ContextFactory that overrode the current feature provision method would end up using a hidden Features implementation that delegated to that method, but everybody else could start implementing the new method.  But if I were to do this, it might at this point make sense to do it now -- before this patch is applied and adds even more features.\n\nThoughts?",
+            "date": "20070426T00:08:39",
+            "id": 1
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "Bob, I reviewed your patch and had some changes that I made, all relatively \nminor. I attached the changes. \n\nI haven't yet looked at the more complex parts of the code in detail.\n\nDavid, I'm just now seeing your post and I'll think about that.\n",
+            "date": "20070426T02:05:56",
+            "id": 2
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "Created attachment 262834\nstrictMode2.patch",
+            "date": "20070426T02:07:29",
+            "id": 3
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "David, \n\nWhere is the E4X implementation factory so I can take a look? ",
+            "date": "20070501T12:15:54",
+            "id": 4
+        },
+        {
+            "author": "inonit@inonit.com",
+            "body": "It's in Context and ContextFactory; see getE4xImplementationFactory in both of those (supplying a default implementation in ContextFactory).\n\nIt introduces a couple of problems with the current layout (and one can think of analogous ones for analogous situations).\n\nFirst, someone can set FEATURE_E4X to true, but then fail to provide an E4X implementation, or vice-versa.  Especially in the former case, this means we can't trust FEATURE_E4X in our code (and you'll find in the initStandardObjects stuff that we in fact don't).  In the latter case, at least there's a sensible treatment (if FEATURE_E4X is false despite the presence of a factory, just don't use E4X).\n\nSecond, there are presently two implementations of E4X but there is at least some indication there may be a third floating around somewhere (some discussion on the newsgroup or in Bugzilla, I forget where, about how to compile without E4X because someone was using a hack to get their own in the classpath) and the intention is to allow people to plug in their own implementations.  Thus, there is no easy binary way to specify the desired implementation factory as a series of boolean features.",
+            "date": "20070501T12:31:08",
+            "id": 5
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "Since we've moved far afield from a discussion of implementing strict mode, I'm going to move my followup questions to an email thread. \n\n",
+            "date": "20070501T14:09:05",
+            "id": 6
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "Checked in Bob's partial implementation of strict mode while we discuss the feature feature :-)\n\nChecking in src/org/mozilla/javascript/CompilerEnvirons.java;\n/cvsroot/mozilla/js/rhino/src/org/mozilla/javascript/CompilerEnvirons.java,v  <--  CompilerEnvirons.java\nnew revision: 1.16; previous revision: 1.15\ndone\nChecking in src/org/mozilla/javascript/Context.java;\n/cvsroot/mozilla/js/rhino/src/org/mozilla/javascript/Context.java,v  <--  Context.java\nnew revision: 1.255; previous revision: 1.254\ndone\nChecking in src/org/mozilla/javascript/IRFactory.java;\n/cvsroot/mozilla/js/rhino/src/org/mozilla/javascript/IRFactory.java,v  <--  IRFactory.java\nnew revision: 1.104; previous revision: 1.103\ndone\nChecking in src/org/mozilla/javascript/Node.java;\n/cvsroot/mozilla/js/rhino/src/org/mozilla/javascript/Node.java,v  <--  Node.java\nnew revision: 1.55; previous revision: 1.54\ndone\nChecking in src/org/mozilla/javascript/Parser.java;\n/cvsroot/mozilla/js/rhino/src/org/mozilla/javascript/Parser.java,v  <--  Parser.java\nnew revision: 1.111; previous revision: 1.110\ndone\nChecking in src/org/mozilla/javascript/ScriptOrFnNode.java;\n/cvsroot/mozilla/js/rhino/src/org/mozilla/javascript/ScriptOrFnNode.java,v  <-- ScriptOrFnNode.java\nnew revision: 1.21; previous revision: 1.20\ndone\nChecking in src/org/mozilla/javascript/ScriptRuntime.java;\n/cvsroot/mozilla/js/rhino/src/org/mozilla/javascript/ScriptRuntime.java,v  <--  ScriptRuntime.java\nnew revision: 1.261; previous revision: 1.260\ndone\nChecking in src/org/mozilla/javascript/regexp/NativeRegExp.java;\n/cvsroot/mozilla/js/rhino/src/org/mozilla/javascript/regexp/NativeRegExp.java,v <--  NativeRegExp.java\nnew revision: 1.101; previous revision: 1.100\ndone\nChecking in src/org/mozilla/javascript/regexp/RegExpImpl.java;\n/cvsroot/mozilla/js/rhino/src/org/mozilla/javascript/regexp/RegExpImpl.java,v  <--  RegExpImpl.java\nnew revision: 1.35; previous revision: 1.34\ndone\nChecking in src/org/mozilla/javascript/resources/Messages.properties;\n/cvsroot/mozilla/js/rhino/src/org/mozilla/javascript/resources/Messages.properties,v  <--  Messages.properties\nnew revision: 1.69; previous revision: 1.68\ndone\nChecking in toolsrc/org/mozilla/javascript/tools/shell/Main.java;\n/cvsroot/mozilla/js/rhino/toolsrc/org/mozilla/javascript/tools/shell/Main.java,v  <--  Main.java\nnew revision: 1.70; previous revision: 1.69\ndone\nChecking in toolsrc/org/mozilla/javascript/tools/shell/ShellContextFactory.java;\n/cvsroot/mozilla/js/rhino/toolsrc/org/mozilla/javascript/tools/shell/ShellContextFactory.java,v  <--  ShellContextFactory.java\nnew revision: 1.10; previous revision: 1.9\ndone\n",
+            "date": "20070501T14:12:52",
+            "id": 7
+        },
+        {
+            "author": "lehni@gmx.net",
+            "body": "Since I updated my local Rhino from CVS I get these errors:\n\njava.lang.IllegalArgumentException: 11\n\tat org.mozilla.javascript.ContextFactory.hasFeature(ContextFactory.java:284)\n\tat org.mozilla.javascript.Context.hasFeature(Context.java:2142)\n\tat org.mozilla.javascript.CompilerEnvirons.initFromContext(CompilerEnvirons.java:72)\n\tat org.mozilla.javascript.Context.compileImpl(Context.java:2301)\n\tat org.mozilla.javascript.Context.compileReader(Context.java:1309)\n\tat org.mozilla.javascript.Context.compileReader(Context.java:1281)\n\tat org.mozilla.javascript.Context.evaluateReader(Context.java:1223)\n\t...\n\nIt turns out that CompilerEnvirons.initFromContext asks for both FEATURE_STRICT_MODE and FEATURE_WARNING_AS_ERROR, but ContextFactory.hasFeature does not return a value for these and throws an IllegalArgumentException instead.\n\nI am not sure if this is the right place to report this, or if I should open a new bug.\n\nThe patch is simple:\n\nIndex: ContextFactory.java\n===================================================================\nRCS file: /cvsroot/mozilla/js/rhino/src/org/mozilla/javascript/ContextFactory.java,v\nretrieving revision 1.24\ndiff -r1.24 ContextFactory.java\n278a279,281\n> \n>           case Context.FEATURE_STRICT_MODE:\n>               return false;\n279a283,285\n>           case Context.FEATURE_WARNING_AS_ERROR:\n>               return false;\n> \n",
+            "date": "20070511T17:47:59",
+            "id": 8
+        },
+        {
+            "author": "szegedia@freemail.hu",
+            "body": "I committed the patch.",
+            "date": "20070515T17:29:37",
+            "id": 9
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "Reassign to Roshan to finish up the strict mode work.",
+            "date": "20070519T01:09:25",
+            "id": 10
+        },
+        {
+            "author": "roshanj@google.com",
+            "body": "Created attachment 265858\nPath for no return value feature\n\nThe patch adds the missing features of Strict Mode to the code that is currently in the repository. This patch adds the check for final-return-value on javascript functions.\n\nI have added cases that handle try-catch blocks and switch statements over Bob's previous patch.\n\nRoshan",
+            "date": "20070523T23:30:32",
+            "id": 11
+        },
+        {
+            "author": "roshanj@google.com",
+            "body": "Created attachment 266826\nUpdated patch for return checks\n\nThis patch should address most of the requirements for return value checks for strict mode. \n\njs> function contrived(x) {\n  while ( x < 10) {\n    if ( x < 5) {\n      return;\n    }\n    x = x + 1;\n  }\n \nif (x == 100)\n  return x;\n else\n   return x + 1;\n}\njs: warning: \"<stdin>\", line 23: return statement is inconsistent with previous usage\njs:   return x;\njs: ..........^\njs: warning: \"<stdin>\", line 26: function contrived does not always return a value\njs: }\njs: ^\n\nThere are two possible warnings per function:\n 1) The first inconsistent return statement of a function is flagged. Subsequent returns are not flagged. (I can flag all the subsequent returns if you choose)\n 2) Overall if the function can have an error if there is any reachable return statement with a value and the function can end in some way (by a return or by dropping off the end) without a value.\n\nBoth warnings can be issued independent of each other:\n\njs> function contrived(x) {\n  while(true) {\n    if (x > 10)\n      return;\n    x = x + 1\n  }\n  return 1;\n}\njs: warning: \"<stdin>\", line 15: return statement is inconsistent with previous usage\njs:   return 1;\njs: ..........^\n\nThe second warning is not issued here because the reachability analysis sees that the while loop will never break.\n\nHere is the other case:\n\njs> function (x) {\n  if (x < 10)\n    return 1;\n}\njs: warning: \"<stdin>\", line 16: anonymous function does not always return a value\njs: }",
+            "date": "20070531T23:53:48",
+            "id": 12
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "Committed Roshan's changes with some modifications. I also updated some other\nstrict mode checks:\n\nChecking in src/org/mozilla/javascript/Node.java;\n/cvsroot/mozilla/js/rhino/src/org/mozilla/javascript/Node.java,v  <--  Node.java\nnew revision: 1.56; previous revision: 1.55\ndone\nChecking in src/org/mozilla/javascript/Parser.java;\n/cvsroot/mozilla/js/rhino/src/org/mozilla/javascript/Parser.java,v  <--  Parser.java\nnew revision: 1.112; previous revision: 1.111\ndone\nChecking in src/org/mozilla/javascript/ScriptRuntime.java;\n/cvsroot/mozilla/js/rhino/src/org/mozilla/javascript/ScriptRuntime.java,v  <--  ScriptRuntime.java\nnew revision: 1.262; previous revision: 1.261\ndone\nChecking in src/org/mozilla/javascript/resources/Messages.properties;\n/cvsroot/mozilla/js/rhino/src/org/mozilla/javascript/resources/Messages.properties,v  <--  Messages.properties\nnew revision: 1.70; previous revision: 1.69\ndone\nChecking in toolsrc/org/mozilla/javascript/tools/resources/Messages.properties;\n/cvsroot/mozilla/js/rhino/toolsrc/org/mozilla/javascript/tools/resources/Messages.properties,v  <--  Messages.properties\nnew revision: 1.26; previous revision: 1.25\ndone\nChecking in toolsrc/org/mozilla/javascript/tools/shell/Main.java;\n/cvsroot/mozilla/js/rhino/toolsrc/org/mozilla/javascript/tools/shell/Main.java,v  <--  Main.java\nnew revision: 1.71; previous revision: 1.70\ndone\n",
+            "date": "20070604T13:29:00",
+            "id": 13
+        }
+    ],
+    "component": "Core",
+    "description": "User-Agent:       Mozilla/5.0 (X11; U; Linux i686; en-US; rv:1.8.1) Gecko/20061010 Firefox/2.0\nBuild Identifier: \n\nRhino should support JS 1.5 strict mode as an option.  (Patch on its way).\n\nReproducible: Always\n\nSteps to Reproduce:\n1.\n2.\n3.\n\n\n\nThis is a new feature request that affects a bunch of specific cases.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "378790",
+    "issuetypeClassified": "RFE",
+    "issuetypeTracker": "RFE",
+    "priority": "-- enhancement",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "Add JS 1.5 strict mode.",
+    "systemSpecification": false,
+    "version": "other"
+}

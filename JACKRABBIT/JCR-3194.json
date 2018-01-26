@@ -1,0 +1,41 @@
+{
+    "comments": [
+        {
+            "author": "Stefan Guggisberg",
+            "body": "only happens with log level set to DEBUG.\n\n",
+            "date": "2012-01-03T16:48:05.071+0000",
+            "id": 0
+        },
+        {
+            "author": "Stefan Guggisberg",
+            "body": "this is a regression of JCR-3098",
+            "date": "2012-01-03T16:48:45.823+0000",
+            "id": 1
+        },
+        {
+            "author": "Stefan Guggisberg",
+            "body": "fixed in svn r1226863.",
+            "date": "2012-01-03T16:58:12.651+0000",
+            "id": 2
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Merged to the 2.4 branch in revision 1232474.",
+            "date": "2012-01-17T16:52:41.166+0000",
+            "id": 3
+        }
+    ],
+    "component": "",
+    "description": "Using the test code below, I was able to produce this stack:\n\njava.util.ConcurrentModificationException\n\tat java.util.WeakHashMap$HashIterator.nextEntry(WeakHashMap.java:762)\n\tat java.util.WeakHashMap$KeyIterator.next(WeakHashMap.java:795)\n\tat org.apache.jackrabbit.core.cache.CacheManager.logCacheStats(CacheManager.java:164)\n\tat org.apache.jackrabbit.core.cache.CacheManager.cacheAccessed(CacheManager.java:137)\n\tat org.apache.jackrabbit.core.cache.AbstractCache.recordCacheAccess(AbstractCache.java:122)\n\tat org.apache.jackrabbit.core.cache.ConcurrentCache.get(ConcurrentCache.java:122)\n\tat org.apache.jackrabbit.core.state.MLRUItemStateCache.retrieve(MLRUItemStateCache.java:71)\n\tat org.apache.jackrabbit.core.state.ItemStateReferenceCache.retrieve(ItemStateReferenceCache.java:139)\n\tat org.apache.jackrabbit.core.state.SharedItemStateManager.getNonVirtualItemState(SharedItemStateManager.java:1716)\n\tat org.apache.jackrabbit.core.state.SharedItemStateManager.getItemState(SharedItemStateManager.java:268)\n\tat org.apache.jackrabbit.core.state.LocalItemStateManager.getNodeState(LocalItemStateManager.java:110)\n\tat org.apache.jackrabbit.core.state.LocalItemStateManager.getItemState(LocalItemStateManager.java:175)\n\tat org.apache.jackrabbit.core.state.XAItemStateManager.getItemState(XAItemStateManager.java:260)\n\tat org.apache.jackrabbit.core.state.SessionItemStateManager.getItemState(SessionItemStateManager.java:161)\n\tat org.apache.jackrabbit.core.ItemManager.getItemData(ItemManager.java:382)\n\tat org.apache.jackrabbit.core.ItemManager.getItem(ItemManager.java:328)\n\tat org.apache.jackrabbit.core.ItemManager.getItem(ItemManager.java:622)\n\tat org.apache.jackrabbit.core.ItemManager.getRootNode(ItemManager.java:531)\n\tat org.apache.jackrabbit.core.SessionImpl.getRootNode(SessionImpl.java:760)\n\tat test.JackrabbitTest$1.run(JackrabbitTest.java:37)\n\tat java.util.concurrent.ThreadPoolExecutor$Worker.runTask(ThreadPoolExecutor.java:886)\n\tat java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:908)\n\tat java.lang.Thread.run(Thread.java:662)\n\n-------------------------\n\npackage test;\n\nimport java.io.File;\nimport java.util.concurrent.ExecutorService;\nimport java.util.concurrent.Executors;\nimport java.util.concurrent.TimeUnit;\nimport java.util.concurrent.atomic.AtomicBoolean;\nimport java.util.concurrent.atomic.AtomicInteger;\n\nimport javax.jcr.Repository;\nimport javax.jcr.RepositoryException;\nimport javax.jcr.Session;\nimport javax.jcr.SimpleCredentials;\n\nimport org.apache.jackrabbit.core.TransientRepository;\n\npublic class JackrabbitTest {\n\n public static void main(final String[] args) throws Exception {\n   File dir = File.createTempFile(\"jackrabbit-test\", \"\");\n   dir.delete();\n   dir.mkdir();\n   System.out.println(\"created temporary directory: \" +\n       dir.getAbsolutePath());\n   dir.deleteOnExit();\n\n   final Repository jcrRepo = new TransientRepository(dir);\n   final AtomicBoolean passed = new AtomicBoolean(true);\n   final AtomicInteger counter = new AtomicInteger(0);\n   ExecutorService executor = Executors.newFixedThreadPool(50);\n   Runnable runnable = new Runnable() {\n\n     @Override\n     public void run() {\n       try {\n         Session session = jcrRepo.login(\n             new SimpleCredentials(\"admin\",\n                 \"admin\".toCharArray()));\n         session.getRootNode().addNode(\"n\" +\n                 counter.getAndIncrement()); //unique name\n         session.save();\n         session.logout();\n       } catch (RepositoryException e) {\n         e.printStackTrace();\n         passed.set(false);\n       }\n     }\n\n   };\n   System.out.println(\"Running threads\");\n   for (int i = 0; i<  500; i++) {\n     executor.execute(runnable);\n   }\n   executor.shutdown(); //Disable new tasks from being submitted\n   if (!executor.awaitTermination(120, TimeUnit.SECONDS)) {\n     System.err.println(\"timeout\");\n     System.exit(1);\n   }\n   if (!passed.get()) {\n     System.err.println(\"one or more threads got an exception\");\n     System.exit(1);\n   } else {\n     System.out.println(\"all threads ran with no exceptions\");\n     System.exit(0);\n   }\n\n }\n\n}\n",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "JCR-3194",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "ConcurrentModificationException in CacheManager.",
+    "systemSpecification": true,
+    "version": "2.3.4"
+}

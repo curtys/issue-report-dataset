@@ -1,0 +1,65 @@
+{
+    "comments": [
+        {
+            "author": "Jukka Zitting",
+            "body": "Attached is a possible patch for fixing this.\n\nThe patch modifies NodeTypeDef.getSupertypes() to return nt:base for all primary types with no explicitly set supertypes. This should cover not only CND, but all tools and code that work on node types.",
+            "date": "2006-07-01T14:21:01.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Stefan Guggisberg",
+            "body": "+1 for the proposed patch, thanks.",
+            "date": "2006-07-03T19:41:35.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Tobias Bocanegra",
+            "body": "i have concerns:\n- the static equals method might be very expensive\n- don't call equals(getSupertypes(), other.getSupertypes()), this is bad practice. rather call: \n  NodeTypeDef.equals(getSupertypes(), other.getSupertypes()). \n\nare you sure this covers all cases correctly? if so, the nt:base errors in nodetype registry should be removed. i would prefer a proper nt:base check and automatic addition in the registry.\n",
+            "date": "2006-07-03T21:33:50.000+0000",
+            "id": 2
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Tobias:\n> - the static equals method might be very expensive\n\nOnly if the supertype arrays are large, not too likely in my mind. In any case also the existing supertype equality checks are expensive on large sets.\n\n> - don't call equals(getSupertypes(), other.getSupertypes()), this is bad practice. rather call:\n>  NodeTypeDef.equals(getSupertypes(), other.getSupertypes()).\n\nGood point, thanks.\n\n> are you sure this covers all cases correctly? if so, the nt:base errors in nodetype registry should be removed.\n> i would prefer a proper nt:base check and automatic addition in the registry.\n\nPretty much, yes. I first started with changing the nodetype registry, but it felt more natural to change NodeTypeDef. I'll make an alternative patch for just the nodetype registry for comparison.\n",
+            "date": "2006-07-03T21:53:04.000+0000",
+            "id": 3
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Attached a patch (jackrabbit-ntr.r41878.patch) for fixing this by changing just NodeTypeRegistry.\n\nThis is a bit problematic as the validateNodeTypeDef() method needs to modify the given NodeTypeDef to avoid having to add special case code all around the node type access code.",
+            "date": "2006-07-03T23:14:55.000+0000",
+            "id": 4
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Attached an updated version (jackrabbit-ntd.r418787.patch) of the original NodeTypeDef patch.\n\nThis patch streamlines the internal storage of the specified supertypes and removes a number of special cases that no longer apply (getSupertypes() never returns null, no need to explicitly add nt:base if not specified).\n\nAlthough this approach touches more code than just modifying the NodeTypeRegistry, this is IMO much cleaner from a design perspective (no need to modify the NodeTypeDef once it's been parsed, and better encapsulation of the default inheritance rule).",
+            "date": "2006-07-03T23:22:31.000+0000",
+            "id": 5
+        },
+        {
+            "author": "Stefan Guggisberg",
+            "body": "Comment by Jukka Zitting \n> Attached an updated version (jackrabbit-ntd.r418787.patch) of the original NodeTypeDef patch. \n\n+1 for this patch",
+            "date": "2006-07-03T23:31:26.000+0000",
+            "id": 6
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Patch applied in revision 423074.",
+            "date": "2006-07-18T12:39:36.000+0000",
+            "id": 7
+        }
+    ],
+    "component": "nodetype",
+    "description": "when tying to register a (primary) nodetype that does not extend from nt:base the following error is\nthrown:\n\n\"all primary node types except nt:base itself must be (directly or indirectly) derived from nt:base\"\n\nsince the registry is able to detect this error, it would be easy to auto-subtype all nodetypes from nt:base. imo it's pointless to explzitely add the nt:base to every supperclass set. as an analogy, you don't need to 'extend from java.lang.Object' explicitely - the compiler does that automatically for your.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "JCR-433",
+    "issuetypeClassified": "RFE",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Minor",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "NodeTypeRegistry could auto-subtype from nt:base",
+    "systemSpecification": true,
+    "version": "0.9, 1.0, 1.0.1"
+}

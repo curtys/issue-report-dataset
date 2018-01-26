@@ -1,0 +1,41 @@
+{
+    "comments": [
+        {
+            "author": "Robert Muir",
+            "body": "I'm gonna slowly iterate on cleaning this up on the branch for \nlucene-3661 (branches/lucene3661: i recreated it), in case anyone \nwants to jump in and help or test out some ideas.\n",
+            "date": "2012-01-29T12:23:01.153+0000",
+            "id": 0
+        },
+        {
+            "author": "Robert Muir",
+            "body": "Attached is a patch showing the differences between branch and trunk.\n\n* separateFiles() is removed, codecs calculate all of files() themselves.\n* shared (compound) doc store stuff is almost totally underneath Lucene3xCodec. (with one exception, see below)\n* indexing code doesn't violate abstractions of the code by reaching into the different components of files(), except indexwriter.copySegmentAsIs (and only for preflex, only in the case of shared doc stores).\n* lucene3x/lucene4x stored fields implementation is split, so that lucene3x can handle shared docstores itself.\n* codec.files is consistent about directory, in fact it doesnt take directory at all, as its unnecessary.\n* hairy code from segmentcorereaders for compound shared docstores is removed, and only in the 3.x impls.\n\nI think this is ready to go, and a lot easier to see whats happening with files(). \n\nIn my opinion a good future issue here would be to add a heuristic to TieredMP to more aggressively target 3.x segments (at least if they have shared docstores). It could do evil things like check File.length or whatever it wants as part of its heuristic, but only for preflexcodec.",
+            "date": "2012-01-30T18:04:36.629+0000",
+            "id": 1
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "+1, this is a nice cleanup!  SegmentInfo.files is awesome now :)",
+            "date": "2012-01-30T18:45:14.188+0000",
+            "id": 2
+        },
+        {
+            "author": "Robert Muir",
+            "body": "I'll commit this cleanup and help merge to the uschindler branch :)",
+            "date": "2012-01-30T21:04:14.773+0000",
+            "id": 3
+        }
+    ],
+    "component": "",
+    "description": "Since norms and deletes were moved under Codec (LUCENE-3606, LUCENE-3661),\nwe never really properly addressed the issue of how Codec.files() should work,\nconsidering these files are always stored outside of CFS.\n\nLUCENE-3606 added a hack, LUCENE-3661 cleaned up the hack a little bit more,\nbut its still a hack.\n\nCurrently the logic in SegmentInfo.files() is:\n{code}\nclearCache()\n\nif (compoundFile) {\n  // don't call Codec.files(), hardcoded CFS extensions, etc\n} else {\n  Codec.files()\n}\n\n// always add files stored outside CFS regardless of CFS setting\nCodec.separateFiles()\n\nif (sharedDocStores) {\n  // hardcoded shared doc store extensions, etc\n}\n{code}\n\nAlso various codec methods take a Directory parameter, but its inconsistent\nwhat this Directory is in the case of CFS: for some parts of the index its\nthe CFS directory, for others (deletes, separate norms) its not.\n\nI wonder if instead we could restructure this so that SegmentInfo.files() logic is:\n{code}\nclearCache()\nCodec.files()\n{code}\n\nand so that Codec is instead responsible.\n\ninstead Codec.files logic by default would do the if (compoundFile) thing, and\nLucene3x codec itself would only have the if (sharedDocStores) thing, and any\npart of the codec that wants to put stuff always outside of CFS (e.g. Lucene3x separate norms, deletes) \ncould just use SegmentInfo.dir. Directory parameters in the case of CFS would always\nconsistently be the CFSDirectory.\n\nI haven't totally tested if this will work but there is definitely some cleanups \nwe can do either way, and I think it would be a good step to try to clean this up\nand simplify it.\n",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-3728",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Major",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "better handling of files inside/outside CFS by codec",
+    "systemSpecification": true,
+    "version": ""
+}

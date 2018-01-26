@@ -1,0 +1,47 @@
+{
+    "comments": [
+        {
+            "author": "Jukka Zitting",
+            "body": "Fixed in revision 1178251.",
+            "date": "2011-10-02T21:01:04.022+0000",
+            "id": 0
+        },
+        {
+            "author": "Danilo Ghirardelli",
+            "body": "It seems that every call to the \"reallyExec\" method have a 0 as the value passed for maxRows. This means that the setFetchSize hint is always disable, and I think this will re-open JCR-2832.\n",
+            "date": "2011-10-04T08:38:41.439+0000",
+            "id": 1
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Good catch about the maxRows == 0 case. I fixed that in revision 1178892.",
+            "date": "2011-10-04T18:31:21.263+0000",
+            "id": 2
+        },
+        {
+            "author": "Danilo Ghirardelli",
+            "body": "I'm sorry, I wasn't clear. I was not asking for further patch. Please take a look at JCR-2892.\nLong story short, both this issue and JCR-2892 (and I suppose a few more) are caused by the explicit value of fetchSize, introduced in JCR-2832 for a postgreSql problem. If you don't set that value at all, the driver will choose the best default and both this issue and JCR-2892 would be immediately solved, but the value was arbitrarily forced to that 10000, which may be good for postgresql but not for other databases.\nPossible final solutions are either to make the fetchSize configurable as a parameter in the xml, or to have a few ConnectionHelpers that sets the fetchSize depending on the db (or better, setting it for postgresql and not for any other db), or to try a smaller value (10?) that should be good (although non optimal) for all the databases.",
+            "date": "2011-10-04T21:22:49.868+0000",
+            "id": 3
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Merged to the 2.2 branch in revision 1202178.",
+            "date": "2011-11-15T13:24:22.678+0000",
+            "id": 4
+        }
+    ],
+    "component": "",
+    "description": "I get the following exception from the PersistenceManagerIteratorTest on Windows:\n\norg.apache.jackrabbit.core.state.ItemStateException: getAllNodeIds failed.\n        at org.apache.jackrabbit.core.persistence.pool.BundleDbPersistenceManager.getAllNodeIds(BundleDbPersistenceManager.java:1043)\n        at org.apache.jackrabbit.core.data.PersistenceManagerIteratorTest.testGetAllNodeIds(PersistenceManagerIteratorTest.java:106)\nCaused by: java.sql.SQLException: Invalid parameter value '10'000' for Statement.setFetchSize(int rows).\n        at org.apache.derby.impl.jdbc.SQLExceptionFactory40.getSQLException(Unknown Source)\n        at org.apache.derby.impl.jdbc.Util.newEmbedSQLException(Unknown Source)\n        at org.apache.derby.impl.jdbc.Util.newEmbedSQLException(Unknown Source)\n        at org.apache.derby.impl.jdbc.Util.generateCsSQLException(Unknown Source)\n        at org.apache.derby.impl.jdbc.EmbedConnection.newSQLException(Unknown Source)\n        at org.apache.derby.impl.jdbc.ConnectionChild.newSQLException(Unknown Source)\n        at org.apache.derby.impl.jdbc.EmbedStatement.setFetchSize(Unknown Source)\n        at org.apache.commons.dbcp.DelegatingStatement.setFetchSize(DelegatingStatement.java:279)\n        at org.apache.commons.dbcp.DelegatingStatement.setFetchSize(DelegatingStatement.java:279)\n        at org.apache.jackrabbit.core.util.db.ConnectionHelper.reallyExec(ConnectionHelper.java:372)\n        at org.apache.jackrabbit.core.util.db.ConnectionHelper$3.call(ConnectionHelper.java:353)\n        at org.apache.jackrabbit.core.util.db.ConnectionHelper$3.call(ConnectionHelper.java:349)\n        at org.apache.jackrabbit.core.util.db.ConnectionHelper$RetryManager.doTry(ConnectionHelper.java:472)\n        at org.apache.jackrabbit.core.util.db.ConnectionHelper.exec(ConnectionHelper.java:349)\n        at org.apache.jackrabbit.core.persistence.pool.BundleDbPersistenceManager.getAllNodeIds(BundleDbPersistenceManager.java:1020)\n\nIt's caused by the following code in ConnectionHelper when 0 < maxRows < 10000:\n\n            stmt.setMaxRows(maxRows);\n            stmt.setFetchSize(10000);\n\nA simple fix would be:\n\n\n            stmt.setMaxRows(maxRows);\n            stmt.setFetchSize(Math.min(10000, maxRows));\n",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "JCR-3090",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Minor",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "setFetchSize() fails in getAllNodeIds()",
+    "systemSpecification": true,
+    "version": ""
+}

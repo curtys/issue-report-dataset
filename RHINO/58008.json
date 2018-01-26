@@ -1,0 +1,83 @@
+{
+    "comments": [
+        {
+            "author": "pschwartau@meer.net",
+            "body": "Confirming with Rhino built on WinNT 2000-10-25. Here are the ECMA sections:\n\n\n15.9.5.3 Date.prototype.toDateString ( )\nThis function returns a string value. The contents of the string are \nimplementation-dependent, but are intended to represent the \u201cdate\u201d portion \nof the Date in the current time zone in a convenient, human-readable form.\n\n15.9.5.4 Date.prototype.toTimeString ( )\nThis function returns a string value. The contents of the string are \nimplementation-dependent, but are intended to represent the \u201ctime\u201d portion \nof the Date in the current time zone in a convenient, human-readable form.\n\n15.9.5.6 Date.prototype.toLocaleDateString ( )\nThis function returns a string value. The contents of the string are \nimplementation-dependent, but are intended to represent the \u201cdate\u201d portion \nof the Date in the current time zone in a convenient, human-readable form \nthatcorresponds to the conventions of the host environment\u2019s current locale.\n\nNOTE The first parameter to this function is likely to be used in a future \nversion of this standard; it is recommended that implementations do not use \nthis parameter position for anything else.\n\n15.9.5.7 Date.prototype.toLocaleTimeString ( )\nThis function returns a string value. The contents of the string are \nimplementation-dependent, but are intended to represent the \u201ctime\u201d portion \nof the Date in the current time zone in a convenient, human-readable form that\ncorresponds to the conventions of the host environment\u2019s current locale.\n\nNOTE The first parameter to this function is likely to be used in a future \nversion of this standard; it is recommended that implementations do not use \nthis parameter position for anything else.\n",
+            "date": "20001026T04:36:47",
+            "id": 0
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "The spec just says that it is basically implementation defined.\n\nSo for a Date d with \n  d.toString() == \"Thu Oct 26 11:10:05 GMT-0400 (EDT) 2000\" \nshould we have \n  d.toDateString() == \"Thu Oct 26 2000\"\nand \n  d.toTimeString() == \"11:10:05 GMT-0400 (EDT)\"\nand similarly for toLocaleDateString and toLocaleTimeString?",
+            "date": "20001026T15:13:39",
+            "id": 1
+        },
+        {
+            "author": "david@oreilly.com",
+            "body": "I hate to say this, but I'd like it if the implementation-dependent behavior\nof Rhino and Spidermonkey just happened to match whatever it is that\nJScript does, assuming Microsoft has implemented these functions in IE 5.5\n(I don't have a copy, or I'd check on this myself.)\n\nAlso, my intuition is that it is not useful to include the timezone in\nthe output of toTimeString().  Since the method explicitly returns a time in the\ncurrent time zone, I'd leave out the specification of the time zone.",
+            "date": "20001026T17:52:51",
+            "id": 2
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "Here you go, Mike...",
+            "date": "20001027T00:48:59",
+            "id": 3
+        },
+        {
+            "author": "waldemar@acm.org",
+            "body": "The intent of the committee was that toDateString and toTimeString together \nshould provide the same information as toString.  The descriptions state \"in the \ncurrent time zone\" because the description of toString states \"in the current \ntime zone\" to distinguish the output from that of toUTCString.  The output of \ntoString must include the time zone for two reasons:\n\n1.  The standard requires Date.parse to round-trip (15.9.4.2) both toString and \ntoUTCString-generated strings.\n2.  Times close to the fall time change from daylight savings time to standard \ntime cannot be represented without using the time zone.\n\nAs such, toTimeString should include the time zone as well.\n",
+            "date": "20001027T01:10:51",
+            "id": 4
+        },
+        {
+            "author": "mike+mozilla@meer.net",
+            "body": "Created attachment 18481\nadd missing date functions to Rhino; restructure date formatter initialization",
+            "date": "20001101T21:32:09",
+            "id": 5
+        },
+        {
+            "author": "mike+mozilla@meer.net",
+            "body": "For this (or similar) script\nd =new Date();\n\nprint(\n'\\ntoString: ' + d.toString() +\n'\\ntoGMTString: ' + d.toGMTString() +\n'\\ntoLocaleString: ' + d.toLocaleString() +\n'\\ntoLocaleDateString: ' + d.toLocaleDateString() +\n'\\ntoLocaleTimeString: ' + d.toLocaleTimeString() +\n'\\ntoDateString: ' + d.toDateString() +\n'\\ntoTimeString: ' + d.toTimeString())\n\n\nie output:\n\ntoString: Tue Oct 31 16:26:23 PST 2000\ntoGMTString: Wed, 1 Nov 2000 00:26:23 UTC\ntoLocaleString: Tuesday, October 31, 2000 4:26:23 PM\ntoLocaleDateString: Tuesday, October 31, 2000\ntoLocaleTimeString: 4:26:23 PM\ntoDateString: Tue Oct 31 2000\ntoTimeString: 16:26:23 PST \n\n\nmonkey output:\n\ntoString: Tue Oct 31 09:41:40 GMT-0800 (PST) 2000\ntoGMTString: Tue, 31 Oct 2000 17:41:40 GMT\ntoLocaleString: Tue Oct 31 09:41:40 2000\ntoLocaleDateString: 10/31/00\ntoLocaleTimeString: 09:41:40\ntoDateString: undefined  // Tue Oct 31 2000\ntoTimeString: undefined  // 09:41:40 GMT-0800 (PST)\n\n\nrhino output:\n\ntoString: Wed Nov 01 06:19:24 GMT-0800 (PST) 2000\ntoGMTString: Wed, 01 Nov 2000 14:19:24 GMT\ntoLocaleString: November 1, 2000 6:19:24 AM PST\ntoLocaleDateString: November 1, 2000\ntoLocaleTimeString: 6:19:24 AM PST\ntoDateString: Wed Nov 01 2000\ntoTimeString: 06:19:24 GMT-0800 (PST)\n\n\nLocale output is all over the map, but toDateString and toTimeString parallels\nthe toString format.  We add GMT-0800 (which ie lacks) to ensure parsability in\nthe absence of cross-platform tables for decoding time zone names.\n\nReview?  Is init-on-demand for the Date formatters OK with threading?",
+            "date": "20001101T21:36:22",
+            "id": 6
+        },
+        {
+            "author": "mike+mozilla@meer.net",
+            "body": "Created attachment 18635\nadd missing date apis",
+            "date": "20001103T10:07:37",
+            "id": 7
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "The proposed patches look good as far as I can tell. Could you commit them?",
+            "date": "20001103T14:57:33",
+            "id": 8
+        },
+        {
+            "author": "mike+mozilla@meer.net",
+            "body": "Fixes checked in.  Also removed unused isFinite function.",
+            "date": "20001103T21:30:02",
+            "id": 9
+        },
+        {
+            "author": "pschwartau@meer.net",
+            "body": "Testcases added to JS test suite for ECMA3 sections 15.9.5.3 to 15.9.5.7: \n\n\n           js/tests/ecma_3/Date/15.9.5.3.js - 15.9.5.7.js\n\n\nVerified  on Linux and WinNT -",
+            "date": "20001230T00:35:50",
+            "id": 10
+        }
+    ],
+    "component": "Core",
+    "description": "The latest rhinoTip, \"rhino15R2pre\" does not implement four Date methods:\n\ntoDateString(), toTimeString(), toLocaleDateString() and toLocaleTimeString().\n\nSee ECMA v3 spec, sections 15.9.5.3 to 15.9.5.7\n\nNote that this bug also exists in Spidermonkey.  See bug #58007.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "58008",
+    "issuetypeClassified": "OTHER",
+    "issuetypeTracker": "BUG",
+    "priority": "P3 normal",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "ECMA Conformance: missing Date.to[Locale](Date|Time)String() functions",
+    "systemSpecification": false,
+    "version": "other"
+}

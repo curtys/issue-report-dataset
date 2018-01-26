@@ -1,0 +1,137 @@
+{
+    "comments": [
+        {
+            "author": "Ortwin Gl\u00fcck",
+            "body": "-------- Original Message --------\nSubject: RE: isHttp11 and HTTP/1.0 servers\nDate: Wed, 15 Jan 2003 10:00:20 -0800\nFrom: Dennis Cook <dennis@bevocal.com>\nReply-To: Commons HttpClient Project <commons-httpclient-dev@jakarta.apache.org>\nTo: 'Commons HttpClient Project'\t <commons-httpclient-dev@jakarta.apache.org>\n\nI don't understand why the version should be associated with the HTTPCLient\nclass.  I thought that the version was appropriate to a connection to a\nspecfic host:port.  So if you have a pool of connections would it not be\npossible that the version on each connection could be different?\n\nDennis Cook\nBeVocal, Inc.\ntel:  650-641-1424\nfax: 650-210-9275",
+            "date": "2003-01-16T16:24:37.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Created an attachment (id=11377)\nPatch (take 1)\n",
+            "date": "2004-04-29T23:47:06.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Changelog:\n* HttpConnectionParams changed to include HTTP protocol version\n* HttpConnection keeps track of supported HTTP protocol\n* HttpMethodBase uses lesser of two values: reguested HTTP version (specified\nwith the HttpMethodParams) and supported HTTP version (specified with the\nHttpConnectionParams)\n\nLet me know what you think\n\nOleg",
+            "date": "2004-04-29T23:53:19.000+0000",
+            "id": 2
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "I just realized that this is a pretty serious flaw in my patch. Fix coming in a\nmoment.\n\nOleg",
+            "date": "2004-04-30T00:12:12.000+0000",
+            "id": 3
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Created an attachment (id=11378)\nPatch (take 2)\n",
+            "date": "2004-04-30T00:12:50.000+0000",
+            "id": 4
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Hi Oleg,\n\nI haven't looked at this thoroughly yet, but I have two initial comments:\n\n - Should we be saving the HTTP version in connection's params?  More than one connection can share \nthe same params.  Also, to this point we have only been storing configuration values in the various \nparams objects.  This change would add state to the params.\n - Could we switch HttpVersion to implement Comparable instead of greater() and less()?\n\nMike",
+            "date": "2004-04-30T10:06:00.000+0000",
+            "id": 5
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "I am afraid I have to call back the patch, as there's a fundamental flaw in it.\nConsider the following scenario: \n* HttpConnection version is undefined (newly allocated connection)\n* The user executes a request using HTTP/1.0 (for whatever reason)\n* The connection will be marked as supporting HTTP/1.0 only\n* All consecutive requests on this connection will be forced to use HTTP/1.0\neven though the connection may be perfectly capable of HTTP/1.1 or above\n\nI currently do not see a satisfactory solution to this problem with this\napproach. I have to think of something completely different. Bright ideas how to\nsolve the problem of allowing for HttpConnection parameterization without giving\nthe end user the direct access to the connection itself are welcome. I'll\nhappily step aside\n\nOleg",
+            "date": "2004-04-30T15:55:54.000+0000",
+            "id": 6
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "> Should we be saving the HTTP version in connection's params?\nMike,\nWe have requests to support HTTP version parameterization on a per connection\nbasis, which I also find quite reasonable. Where would you see the version saved?\n\n> Could we switch HttpVersion to implement Comparable?\nWe could and we should ;-) My oversight.\n\nOleg",
+            "date": "2004-04-30T16:03:43.000+0000",
+            "id": 7
+        },
+        {
+            "author": "Michael Becke",
+            "body": "> We have requests to support HTTP version parameterization on a per connection\n> basis, which I also find quite reasonable. Where would you see the version saved?\n\nI agree that the request seems reasonable.  My concern is how we implement it.  \n\nAs you mention in your previous message a viable solution to this problem is not readily apparent.  \nHere are the problems that we need to solve, as I see it:\n\n - We need somewhere to store the version supported by a connection.  My preference would be to add \na property to the connection itself.\n - We need a way to determine what versions a connection supports.  As you have mentioned, just \nbecause a connection is used for HTTP 1.0 does not mean that it can't also be used for HTTP 1.1.  I see \ntwo options here.  1) Assume a connection can be used for all HTTP versions, unless a particular \nversion is rejected.  Defaults to accept all.  2) The first use of a connection defines the version it can be \nused for.  \n - A connection's version is determined outside of the HttpConnection class.  We must rely on the \nHttpMethod to set the supported version on the connection.  This is not a major issue as we have \ncontrol over the HttpMethodBase, but it's a little nasty.\n\nI will do some brainstorming and see if I can come up with any new ideas.\n\nMike",
+            "date": "2004-04-30T19:58:38.000+0000",
+            "id": 8
+        },
+        {
+            "author": "Roland Weber",
+            "body": "Hi Guys,\n\nI haven't followed this closely, but are you sure you are still on\nthe right track? There's not much point in specifying an HTTP version\nfor a connection. When it's in use, it is too late. When it's closed,\nthere is no telling to which host it will be used next, so why would\nyou want to specify the HTTP version.\nThe comment of Dennis Cook, added by Ortwin, does mention connections.\nBut that's from a user view: \"connection to a particular host and port\"\nFor us developers, that would translate to specifying the HTTP version\nwith the HostConfiguration. Or so it seems to me.\n\ncheers,\n  Roland",
+            "date": "2004-04-30T20:23:11.000+0000",
+            "id": 9
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Roland, this is certainly a different angle from which the problem can be\napproached. I have been entertaining the idea of HttpParam-enabling\nHostConfiguration lately while thinking about better proxy configuration\nmanagement. If we had HttpVersion defined at the host level, this might well\nsolve the problem.\n\nOleg",
+            "date": "2004-04-30T20:33:14.000+0000",
+            "id": 10
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Created an attachment (id=11401)\nPatch (take 3)\n",
+            "date": "2004-05-02T17:50:44.000+0000",
+            "id": 11
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Folks,\nI am far from being happy with this patch, but after much inner struggle with\nmyself, this is what I found to be a compromise I was prepared to live with. All\nthe alternative solutions I looked at were difficult without a substantial\nrefactoring of several core classes which I thought would be excessive at this\npoint. \n\nchangelog:\n* HTTP protocol version can be defined with HostConfiguration\n* HttpMethodDirector chooses the protocol version of the HostConfiguration (when\navailable) if the protocol version has not been explicitly defined at the\nHttpMethod level\n\nLet me know what you think\n\nOleg",
+            "date": "2004-05-02T18:04:09.000+0000",
+            "id": 12
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Hi Oleg,\n\nI agree this is not a sexy solution, but I think it's a good one.  I have a few suggestions.\n\n - HttpMethodBase.getActualVersion() should just return null instead of throwing an exception I think.  \nThe actualVersion (effectiveVerson perhaps) is in an undefined state (null) until the method is executed, \nbut I don't think accessing it should be considered an error\n - HostConfiguration.*Version() should probably be synchronized.\n - We should add some more Javadocs to HostConfiguration.*Version() to indicate that it's used as the \ndefault version for communicating with the host, but that it can be overidden by setting the version on \nthe method's params.\n\nThanks for persevering on this one.  It has proven to be more difficult that I think we previously would \nhave guessed. \n\nMike",
+            "date": "2004-05-03T03:00:32.000+0000",
+            "id": 13
+        },
+        {
+            "author": "Roland Weber",
+            "body": "Hi Oleg,\n\nwhile you're at it, do you want to include \"strict mode\" in the\nHostConfiguration as well? It's used in the same way as HttpVersion:\nto adjust the style of the generated HTTP requests. But I don't\nknow how much effort it is to add and evaluate that flag there.\n\ncheers,\n  Roland",
+            "date": "2004-05-03T15:00:56.000+0000",
+            "id": 14
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Folks,\nI guess I figured something that may address all the concerns that have been\nexpressed so far. Check the new patch out. The solution (keeping my fingers\ncrossed) turned out to be quite trivial. Once again the new preference\narchitecture saved the day.\n\nThe only problem I see is that HttpClient is getting more and more heavy-weight\nin terms of creating excessive amount of garbage. GC optimization should be\ndefinitely a top priority for the 4.0\n\nLet me know what you think\n\nOleg",
+            "date": "2004-05-03T21:14:58.000+0000",
+            "id": 15
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Created an attachment (id=11416)\nPatch (take 4)\n",
+            "date": "2004-05-03T21:15:31.000+0000",
+            "id": 16
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Hi Oleg,\n\nThis looks pretty good.  My only suggestion would be to change HostParams to just extend \nDefaultHttpParams, unless you have particular plans for using it in other ways.\n\nMike",
+            "date": "2004-05-08T08:09:33.000+0000",
+            "id": 17
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "I changed HostParams to just extend DefaultHttpParams as suggested by Mike and\ncommitted the patch (take 4).\n\nI'll close the bug report as soon as I have a few test cases added\n\nOleg",
+            "date": "2004-05-08T17:15:55.000+0000",
+            "id": 18
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Test cases provided.\n\nOleg",
+            "date": "2004-05-09T19:18:50.000+0000",
+            "id": 19
+        }
+    ],
+    "component": "HttpClient (classic)",
+    "description": "-----Original Message-----\nFrom: Kalnichevski, Oleg [mailto:oleg.kalnichevski@bearingpoint.com] \nSent: Wednesday, January 15, 2003 8:24 AM\nTo: Commons HttpClient Project\nCc: Rob Owen\nSubject: RE: isHttp11 and HTTP/1.0 servers \n\nRob\nYou are basically right hands down. It does make sense for the HTTP version \nflag to have HttpClient scope. We should address this shortcoming as a part of \nthe post-2.0-release redesign\n\nFeel free to file a bug report to make sure the issue does not go forgotten\n\nhttp://nagoya.apache.org/bugzilla/enter_bug.cgi?product=Commons\n\nMany thanks for bring it up\n\nCheers\n\nOleg\n\n-----Original Message-----\nFrom: Rob Owen [mailto:Rob.Owen@sas.com]\nSent: Monday, January 13, 2003 18:31\nTo: Commons HttpClient Project\nSubject: isHttp11 and HTTP/1.0 servers \n\n\nThe boolean variable http11 is set on a method by method basis. For PutMethod, \ndecisions (eg. Expect: 100-continue request header) are made prior to \ndetermining the value for Http11 (chicken and egg problem) and so the default \n(true) is used to produce the request. An HTTP/1.0 server hangs waiting for \nthe extra data on the PUT method body. \n\nFor applications that are using HttpClient (ie. they do not manipulate the \nHTTP methods directly and cannot be expected to set the value of Http11 for \neach method instance), shouldn't http11 have HttpClient scope ? This would \nallow an interaction (eg. OPTIONS) to set http11 and all methods thereafter \nwould use this setting?\n  \n------\nRob Owen\nSAS Institute Inc.\nemail: Rob.Owen@sas.com",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "HTTPCLIENT-139",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "HTTPCLIENT",
+    "project": "HTTPCLIENT",
+    "summary": "isHttp11 should have HttpClient scope",
+    "systemSpecification": false,
+    "version": "2.0 Alpha 1"
+}

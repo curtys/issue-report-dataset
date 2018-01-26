@@ -1,0 +1,65 @@
+{
+    "comments": [
+        {
+            "author": "Ortwin Gl\u00fcck",
+            "body": "We will not deprecate the old method. If the content length is known, there is no problem calling them.",
+            "date": "2006-12-01T09:17:17.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Ortwin Gl\u00fcck",
+            "body": "Proposed patch incl. test cases.",
+            "date": "2006-12-01T09:37:58.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Odi,\n\nIn those cases when the content length is not known (because chunk or identity transfer encoding is being used, for insyance) I think it would be more efficient to use  ByteArrayOutputStream instead of pre-allocating the maxLen of bytes. Consider the situation where maxLen is rather largish (say several MB) and chunk coded-content is just a couple of KB.\n\nOleg",
+            "date": "2006-12-01T09:57:14.000+0000",
+            "id": 2
+        },
+        {
+            "author": "Ortwin Gl\u00fcck",
+            "body": "True. What about the initial size of the ByteArrayOutputStream? By default it's 32 bytes. This means lots of copying and object allocations when the content is large. I guess this makes the method unsuitable for high-performance / low-footprint applications. But those applications are better off using getResponseBodyAsStream() anyway. It's just a convenience method after all.",
+            "date": "2006-12-01T10:18:27.000+0000",
+            "id": 3
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "We should apply the same logic as in #getResponseBody method at the very least for the consistency sake:\n\nByteArrayOutputStream outstream = new ByteArrayOutputStream(\n  contentLength > 0 ? (int) contentLength : DEFAULT_INITIAL_BUFFER_SIZE);\n\nOtherwise +1 to commit\n\nOleg",
+            "date": "2006-12-01T10:30:20.000+0000",
+            "id": 4
+        },
+        {
+            "author": "Ortwin Gl\u00fcck",
+            "body": "Patch committed with improvement suggested by Oleg.",
+            "date": "2006-12-01T11:29:55.000+0000",
+            "id": 5
+        },
+        {
+            "author": "Stepan Koltsov",
+            "body": "Thank you for resolving this issue.\n\nHowever why not add similar\n\nbyte[] getResponseBody(long limit)\n\n?",
+            "date": "2006-12-01T12:06:47.000+0000",
+            "id": 6
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Odi,\n\nIt would also be very nice to have this method ported to HttpCore\n\nhttp://svn.apache.org/repos/asf/jakarta/httpcomponents/httpcore/trunk/module-main/src/main/java/org/apache/http/util/EntityUtils.java \n\nOleg",
+            "date": "2006-12-01T12:17:06.000+0000",
+            "id": 7
+        }
+    ],
+    "component": "",
+    "description": "Currently HttpMethodBase.getResponseBodyAsString() prints warning in log, and suggests using getResponseStream(). However getResponseBodyAsString() is extremely useful (as it is easy to use). So my wish is to have method\n\ngetResponseBodyAsString(long limit)\n\nthat should throw HttpException if response size exceeds specified limit.\n\nSame things with getResponseBody(long limit) .\n\nOriginal methods should be deprecated because of danger, explained in javadoc.",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "HTTPCLIENT-610",
+    "issuetypeClassified": "RFE",
+    "issuetypeTracker": "",
+    "priority": "Trivial",
+    "product": "HTTPCLIENT",
+    "project": "HTTPCLIENT",
+    "summary": "HttpMethodBase.getResponseBodyAsString(long limit)",
+    "systemSpecification": true,
+    "version": "3.1 Alpha 1"
+}

@@ -1,0 +1,53 @@
+{
+    "comments": [
+        {
+            "author": "mguillemot@yahoo.fr",
+            "body": "Created attachment 403997\nPatch with unit test and fix",
+            "date": "20091001T09:33:42",
+            "id": 0
+        },
+        {
+            "author": "szegedia@freemail.hu",
+            "body": "This looks quite valid to me, but I'm wondering since when should \"TC39 ES3.1 Draft of 9-Feb-2009, 8.12.4, step 2\" be Rhino's default behavior. It's an ECMAScript 5 behaviour, so when Rhino runs with lower VERSION_1_x setting, it should actually be disabled by default, should it not? (Question aimed at Norris and maybe Rapha).\n\nWhich brings me to the point of what's the VERSION_x value we'll use for ECMAScript 5 in Rhino 1.7R2? Since it's correlated to JavaScript 2.0, I guess we should introduce VERSION_2_0 and actually have such ECMAScript 5 behaviors that aren't compatible with earlier JS only be enabled when VERSION_2_0 is in effect. \n\nI'll accept this patch as-is for now, but I'd even be more permissive than it is now (having the feature default to \"false\") and I'd in fact have it default to true when engine is run with earlier VERSION_1_x values.",
+            "date": "20091023T10:19:53",
+            "id": 1
+        },
+        {
+            "author": "szegedia@freemail.hu",
+            "body": "Committing patch in current version:\n\ncvs ci -m \"Fix for Bug 519933 - Add option to allow setting... read only properties\" -l \"/Rhino/src/org/mozilla/javascript/Context.java\" \"/Rhino/src/org/mozilla/javascript/ScriptableObject.java\" \"/Rhino/src/org/mozilla/javascript/ContextFactory.java\"\n    Checking in src/org/mozilla/javascript/ScriptableObject.java;\n    /cvsroot/mozilla/js/rhino/src/org/mozilla/javascript/ScriptableObject.java,v  <--  ScriptableObject.java\n    new revision: 1.160; previous revision: 1.159\n    done\n    Checking in src/org/mozilla/javascript/Context.java;\n    /cvsroot/mozilla/js/rhino/src/org/mozilla/javascript/Context.java,v  <--  Context.java\n    new revision: 1.280; previous revision: 1.279\n    done\n    Checking in src/org/mozilla/javascript/ContextFactory.java;\n    /cvsroot/mozilla/js/rhino/src/org/mozilla/javascript/ContextFactory.java,v  <--  ContextFactory.java\n    new revision: 1.35; previous revision: 1.34\n    done\nok (took 0:04.367)",
+            "date": "20091023T10:23:15",
+            "id": 2
+        },
+        {
+            "author": "szegedia@freemail.hu",
+            "body": "From an e-mail with Norris:\n\nSee bug https://bugzilla.mozilla.org/show_bug.cgi?id=523846 \"Assignments to a property that has a getter but not a setter should only throw a TypeError in strict mode\". This bug is filed against SpiderMonkey, but applies to Rhino as well as you point out. So for this particular issue, we will change default behavior to be compatible with previous JavaScript and ECMAScript versions.\n\nThis seems to imply that we don't need a new FEATURE_WRITE_READONLY_PROPERTIES, but rather should scope this behaviour to FEATURE_STRICT_MODE.",
+            "date": "20091023T13:53:33",
+            "id": 3
+        },
+        {
+            "author": "szegedia@freemail.hu",
+            "body": "Reworked it; removed FEATURE_WRITE_READONLY_PROPERTIES and instead the new ES5 functionality is only enabled when FEATURE_STRICT_MODE is set to true.\n\ncvs ci -m \"Different Fix for Bug 519933 - only throw TypeError when FEATURE_STRICT_MODE is set\" -l \"/Rhino/src/org/mozilla/javascript/Context.java\" \"/Rhino/src/org/mozilla/javascript/ScriptableObject.java\" \"/Rhino/testsrc/org/mozilla/javascript/tests/WriteReadOnlyPropertyTest.java\" \"/Rhino/src/org/mozilla/javascript/ContextFactory.java\"\n    Checking in src/org/mozilla/javascript/ScriptableObject.java;\n    /cvsroot/mozilla/js/rhino/src/org/mozilla/javascript/ScriptableObject.java,v  <--  ScriptableObject.java\n    new revision: 1.161; previous revision: 1.160\n    done\n    Checking in src/org/mozilla/javascript/Context.java;\n    /cvsroot/mozilla/js/rhino/src/org/mozilla/javascript/Context.java,v  <--  Context.java\n    new revision: 1.281; previous revision: 1.280\n    done\n    Checking in src/org/mozilla/javascript/ContextFactory.java;\n    /cvsroot/mozilla/js/rhino/src/org/mozilla/javascript/ContextFactory.java,v  <--  ContextFactory.java\n    new revision: 1.36; previous revision: 1.35\n    done\n    RCS file: /cvsroot/mozilla/js/rhino/testsrc/org/mozilla/javascript/tests/WriteReadOnlyPropertyTest.java,v\n    done\n    Checking in testsrc/org/mozilla/javascript/tests/WriteReadOnlyPropertyTest.java;\n    /cvsroot/mozilla/js/rhino/testsrc/org/mozilla/javascript/tests/WriteReadOnlyPropertyTest.java,v  <--  WriteReadOnlyPropertyTest.java\n    initial revision: 1.1\n    done\nok (took 0:07.409)",
+            "date": "20091023T15:29:43",
+            "id": 4
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "I changed the behavior of the current Rhino HEAD slightly; it was modifying the value when there was a getter but no setter. I've changed it to be compatible with SpiderMonkey and ES5 where it will not change the value of the property.",
+            "date": "20091127T20:36:58",
+            "id": 5
+        }
+    ],
+    "component": "Core",
+    "description": "User-Agent:       Mozilla/5.0 (X11; U; Linux i686; en-US; rv:1.9.0.14) Gecko/2009090216 Ubuntu/9.04 (jaunty) Firefox/3.0.14\nBuild Identifier: \n\nProperties defined as read only (with only a GetterSlot) could be set without problem until Rhino 1.7R2 and we used this feature in HtmlUnit.\n\nSince 1.7R2 an exception is thrown in such a case what breaks our code. Attached patch adds a new Context feature allowing to have this \"feature\" again\n\nReproducible: Always",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "519933",
+    "issuetypeClassified": "RFE",
+    "issuetypeTracker": "BUG",
+    "priority": "-- normal",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "Add option to allow setting... read only properties",
+    "systemSpecification": true,
+    "version": "other"
+}

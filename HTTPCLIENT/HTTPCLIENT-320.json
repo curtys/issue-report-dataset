@@ -1,0 +1,65 @@
+{
+    "comments": [
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Petri,\nI do not quite see how the allegedly offending change may be causing this problem\n\nhttp://cvs.apache.org/viewcvs.cgi/jakarta-commons/httpclient/src/java/org/apache/commons/httpclient/HttpClient.java?r1=1.76.2.2&r2=1.76.2.3&diff_format=h&only_with_tag=HTTPCLIENT_2_0_BRANCH\n\nTrue, in 2.0-final connection.setSoTimeout() is called before the\nconnection.isOpen() check. However in both 2.0rc3 & 2.0-final the call occurs\nBEFORE the socket is actually open. I do not quite see how it would be possible\nfor a socket closed IOException to be thrown with 2.0-final but not with\n2.0-rc3. Am I missing something?\n\nWhat kind of JDK are you using? I suspect that this problem can well be JDK\nspecific, as I always thought that it was okay to call setSoTimeout() on a\nclosed socket.\n\nAnyhow, in case of HttpClient#executeMethod the call to\nconnection.setSoTimeout() does seem misplaced. The method should be called only\nafter the connection is open.\n\n\n\n",
+            "date": "2004-02-26T17:17:18.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Ok, I think I got it. With the present sequence of calls HttpClient attempts to\nset the socket timeout before the stale connection check is done. In the RC3\nthat was not that case. \n\nA patch to follow shortly\n\nOleg",
+            "date": "2004-02-26T17:20:29.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Created an attachment (id=10565)\nPatch (take 1)\n",
+            "date": "2004-02-26T17:30:51.000+0000",
+            "id": 2
+        },
+        {
+            "author": "Petri Virkkula",
+            "body": "The patch 1 solves the immediate symptons of the problems in HttpClient class. \nHowever, I would add the socket stale check to HttpConnection class itself. \nWith the current fix you need always call HttpConnection#isOpen before calling \nany of these methods:\n\nHttpConnection#setSoTimeout\nHttpConnection#getSoTimeout\nHttpConnection#setSendBufferSize\nHttpConnection#getSendBufferSize\n\n",
+            "date": "2004-02-26T18:35:08.000+0000",
+            "id": 3
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Petri,\nThere's a catch. The stale connection check can be VERY, VERY taxing in terms of\nperformance for relatively small payload request/response pairs. I really would\nlike to see it used very sparingly. \n\nWhat JDK are you using, BTW?\n\nOleg",
+            "date": "2004-02-26T19:04:50.000+0000",
+            "id": 4
+        },
+        {
+            "author": "Petri Virkkula",
+            "body": "Oleg,\n\nI am using Sun's J2SE 1.4.1_01\n\nBR, Petri\n",
+            "date": "2004-02-26T19:49:30.000+0000",
+            "id": 5
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Petri,\nWe have had quite a few reports of all sorts of stale connection check related\nproblems with early releases of Sun's JDK 1.4.1. If it is an option consider\nupgrading to 1.4.2 or latest service release of JDK 1.4.1 (1.4.1.7 as of writing)\n\nI still believe that it _should_ be okay to call setSoTimeout on a closed socket.\n\nCheers,\nOleg",
+            "date": "2004-02-26T21:05:13.000+0000",
+            "id": 6
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Patch committed to the 2.0 branch. \n\nOleg",
+            "date": "2004-03-09T00:34:52.000+0000",
+            "id": 7
+        }
+    ],
+    "component": "HttpClient (classic)",
+    "description": "HttpClient.java was modified in version 2.0 Final in method executeMethod().\nThe call to connection.setSoTimeout() used to be in RC3 after the call to\nconnection.isOpen(), but in the final version the call happens before the call \nto isOpen(). The result of the change is that the setSoTimeout() call could \nthrow IOException because of closed socket.\n\nI would fix the problem by adding to HttpConnection.setSoTimeout() (and to \nother similar methods in HttpConnection) an explicit check (a call to isOpen\n()) whether the socket is closed as the existence of socket object does not \nguarantee it. I.e the following code:\n\n    public void setSoTimeout(int timeout)\n        throws SocketException, IllegalStateException {\n        LOG.debug(\"HttpConnection.setSoTimeout(\" + timeout + \")\");\n        soTimeout = timeout;\n        if (socket != null) {\n            socket.setSoTimeout(timeout);\n        }\n    }\n\nwould be changed to\n\n    public void setSoTimeout(int timeout)\n        throws SocketException, IllegalStateException {\n        LOG.debug(\"HttpConnection.setSoTimeout(\" + timeout + \")\");\n        soTimeout = timeout;\n        if (isOpen()) {\n            socket.setSoTimeout(timeout);\n        }\n    }",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "HTTPCLIENT-320",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "HTTPCLIENT",
+    "project": "HTTPCLIENT",
+    "summary": "\"Socket Closed\" IOException thrown by HttpConnection",
+    "systemSpecification": true,
+    "version": "2.0 Final"
+}

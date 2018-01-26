@@ -1,0 +1,125 @@
+{
+    "comments": [
+        {
+            "author": "S\u00e9bastien Launay",
+            "body": "I agree that using old release of libraries can be painful in an application when you do not have access to separate classloader mechanism (like in OSGI) and you use additional libraries with conflicting dependencies.\n\nI think that upgrading runtime transitive dependencies can be done in the 2.0 development branch as this is a major version upgrade from 1.x.\n\nSo I proposed the following patch for:\n- migrating slf4j dependency from 1.5.3 to 1.5.8\n- migrating commons-collections dependency from 3.1 to 3.2.1 with deprecation modifications [1]\n  this implies a new dependency on commons-beanutils for jackrabbit-core (test) and jackrabbit-webapp\n- migrating commons-beanutils (previously not used but defined in jackrabbit-parent) from 1.7.0 to 1.8.2\n- migrating jetty dependencies from 6.1.14 to 6.1.22\n- migrating xerces dependencies from 2.8.1 to 2.9.0\n- removing unused parent dependencies (commons-digester, commons-lang)\n- remove duplicates servlet-api and jsp-api dependencies\n\nWith this patch applied to trunk build with tests is successful (I just disable the AdministratorTest#testAdminNodeCollidingWithRandomNode test case).\n\nI believe we can also upgrade from commons-httpclient 3.0 to HttpClient 4.0 on jackrabbit-spi2dav with a few modifications.\n\nFor Derby, i agree that upgrading is not safe and must be reviewed by a PersistenceManager expert ;).\n\n[1] http://commons.apache.org/collections/api-release/org/apache/commons/collections/BeanMap.html\n",
+            "date": "2009-11-18T08:59:15.788+0000",
+            "id": 0
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "Upgrading Derby should be no problem. Jackrabbit doesn't need any special features.",
+            "date": "2009-11-18T10:04:26.012+0000",
+            "id": 1
+        },
+        {
+            "author": "Attila Kir\u00e1ly",
+            "body": "Nice to see this progressing!\n\nI would also like to add one that I forgot last time: H2 db. It seems it is not listed as dependency in the poms but it is needed by the o.a.j.core.persistence.bundle.H2PersistenceManager. It would be nice to add it to the dependencies (maybe marked as optional) with the most recent stable version (currently 1.2.23).\n\nThis also needs some expert checking that the upgrade is safe with the PersistenceManager.\n",
+            "date": "2009-11-18T10:13:41.921+0000",
+            "id": 2
+        },
+        {
+            "author": "angela",
+            "body": "> I believe we can also upgrade from commons-httpclient 3.0 to HttpClient 4.0 on jackrabbit-spi2dav with a few modifications.\n\n-1 for changing this dependency.\n\ni don't have any time left to run after problems that might be introduced by 'few modifications' or changed behavior or unknown bugs of the\nhttpclient 4.0... and i'm pretty confident that this would cause problems here and there. after all HttpClient 4.0 was just released a couple of\nmonth ago (August 17, 2009).",
+            "date": "2009-11-18T10:19:04.224+0000",
+            "id": 3
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "httpclient: Agreed with Angela, the 3.0 -> 4.0 upgrade is a non-trivial change that should be handled as a separate task.\n\nbeanutils: AFAIK we only use BeanMap in two places anymore. Instead of the new dependency, I'd rather use a copy of the BeanMap class or refactor the reference away.\n",
+            "date": "2009-11-18T10:31:25.465+0000",
+            "id": 4
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "> H2 ... needed by the o.a.j.core.persistence.bundle.H2PersistenceManager.\n\nIt is not required to add H2 as a dependency. Specially, the version is not needed.\nIf your application uses H2, you can still add it there.\n",
+            "date": "2009-11-18T11:11:54.580+0000",
+            "id": 5
+        },
+        {
+            "author": "Attila Kir\u00e1ly",
+            "body": "> It is not required to add H2 as a dependency. Specially, the version is not needed.\n> If your application uses H2, you can still add it there. \n\nOkay. Could you add a note somewhere in the documentation or on the site about the H2 version that was tested with H2PersistenceManager? Currently this information is not available.",
+            "date": "2009-11-18T11:51:04.141+0000",
+            "id": 6
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "> the H2 version that was tested with H2PersistenceManager\n\nYou can use any version of H2 :-) The features required by Jackrabbit (by the H2PersistenceManager) are very basic. I'm not aware of a combination that doesn't work.\n",
+            "date": "2009-11-18T14:31:12.882+0000",
+            "id": 7
+        },
+        {
+            "author": "S\u00e9bastien Launay",
+            "body": "New proposed patch with:\n- migrating slf4j dependency from 1.5.3 to 1.5.8\n- migrating commons-collections dependency from 3.1 to 3.2.1 and keeping the 2 classes using deprecated BeanMap [1]\n- migrating jetty dependencies from 6.1.14 to 6.1.22\n- migrating xerces dependencies from 2.8.1 to 2.9.0\n- migrating derby dependencies from 10.2.1.6 to 10.5.3.0_1 (10.5.3.0 has a buggy pom.xml)\n- removing unused parent dependencies (commons-beanutils, commons-digester, commons-lang, derbynet, derbyclient)\n- remove duplicates servlet-api and jsp-api dependencies\n\nAgain with this patch applied to trunk build with tests is successful (minus the AdministratorTest#testAdminNodeCollidingWithRandomNode test case). \n\n> httpclient: Agreed with Angela, the 3.0 -> 4.0 upgrade is a non-trivial change that should be handled as a separate task.\n\nI did not realized that this dependency is critical, it's just that from my experience httpclient is one of these libs that tends to be pulled by another third party lib and often with conflicted versions ;).\n\n> beanutils: AFAIK we only use BeanMap in two places anymore. Instead of the new dependency, I'd rather use a copy of the BeanMap class or refactor the reference away.\n\nI think we can keep using the deprecated BeanMap till migrating to future common-collections 4.0.\nMoreover one of the two places is for one of the jackrabbit-core test cases.\n\nI am not very familiar with maven (more of an Ivy guy ;)) but FWIU the derby dependency is mandatory for jackrabbit-core even if there is no java import of any Derby class (the same apply for H2 or any *PM with a JDBC driver).\nBut when a user pull jackrabbit from maven he must exclude derby if he does not want it (rather than explicitly pulling the JR derby dependency like with Ivy configuration [1]).\nI think that Derby and H2 are pretty much on the same level in jackrabbit-core.\nThis is not the case for jackrabbit-webapp or jackrabbit-standalone where we explicitly want to use a DerbyPM.\n\nAre there specific reasons for this maven configuration? (maybe a thread on the dev list is more appropriate for such discussion)\n\n[1] http://ant.apache.org/ivy/history/latest-milestone/ivyfile/conf.html",
+            "date": "2009-11-18T14:36:15.871+0000",
+            "id": 8
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "Derby is the default persistence manager, so it is required when using Jackrabbit out-of-the-box.\nI'm not completely sure, but I think for Jackrabbit core the Derby dependency could be <scope>test</scope>.\n\nH2 (and MySQL, PostgreSQL,... any database or JDBC driver) are not needed at all\n(not used for testing and not used as the default database).",
+            "date": "2009-11-18T15:38:57.813+0000",
+            "id": 9
+        },
+        {
+            "author": "Attila Kir\u00e1ly",
+            "body": "These are typical optional dependencies. Maven has support for it [1]. Defining a dependency as optional in jackrabbit would mean that it will not be pulled unless it is explicitely specified by the jackrabbit user project.\n\n[1]: http://maven.apache.org/guides/introduction/introduction-to-optional-and-excludes-dependencies.html",
+            "date": "2009-11-19T11:42:49.018+0000",
+            "id": 10
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "As far as I understand Maven (and I'm definitely not an expert), \"optional dependencies\" mean dependencies that are needed to compile the project, but not necessarily needed at runtime. You don't need any JDBC driver to compile Jackrabbit core (not even Derby). You only need Derby (the default persistence manager) when running the tests.",
+            "date": "2009-11-23T14:24:18.604+0000",
+            "id": 11
+        },
+        {
+            "author": "Lutz Horn",
+            "body": "I'd very much prefer httpclient 4.0 to be used. For development of new applications it makes no sense to use 3.x. After all: \"Commons HttpClient 3.x codeline is nearing the end of life. All users of Commons HttpClient 3.x are strongly encouraged to upgrade to HttpClient 4.0.\"",
+            "date": "2009-11-24T13:08:42.634+0000",
+            "id": 12
+        },
+        {
+            "author": "S\u00e9bastien Launay",
+            "body": "After reading the source code, I indeed found that derby is required by the default repository.xml configuration (new TransientRepository()).\n\nTherefore this dependency cannot be optional (needed both for test and runtime) and the only solution is to explicitly exclude derby when depending jackrabbit-core.\n\nAny objections/concerns with the latest patch?",
+            "date": "2009-11-24T13:09:25.629+0000",
+            "id": 13
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "No objections for the patch.\n\nAbout Derby: Derby is not required to compile Jackrabbit. It is required when running the tests (that's why I wrote <scope>test</scope>). And it is used as the default persistence manager, so jackrabbit-standalone (?) should include Derby. However, Derby is not required at runtime if you configure a different persistence manager. In the long term, I believe the Derby dependency within jackrabbit-core should be <scope>test</scope> and not anything else. Short term, it doesn't really matter.",
+            "date": "2009-11-24T13:22:06.582+0000",
+            "id": 14
+        },
+        {
+            "author": "S\u00e9bastien Launay",
+            "body": "> I'd very much prefer httpclient 4.0 to be used.\n\nI just created JCR-2406 feel free to provide a patch tested against multiple WebDAV clients.\n\n> About Derby.\n\nI agree that this dependency is needed only at runtime and only if it is used in a PersistenceManager/DataStore.\nBut removing it or rendering it optional implies a non working use of new TransientRepository() with jackrabbit-core (and also by transitivity jackrabbit-webapp/standalone).\n\nMaybe the solution is to remove the default repository.xml (only for testing purpose) and force the user to specify one.\nBut this leads to a more difficult first approach of Jackrabbit (first hops).",
+            "date": "2009-11-24T13:46:33.284+0000",
+            "id": 15
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "You are right, TransientRepository needs it, so let's keep the Derby dependency.",
+            "date": "2009-11-24T14:35:48.179+0000",
+            "id": 16
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Seems like we are in an agreement, so I committed S\u00e9bastien's patch. Resolving as Fixed.",
+            "date": "2009-11-25T17:38:00.571+0000",
+            "id": 17
+        }
+    ],
+    "component": "",
+    "description": "Some of the dependencies used by the 2.0-beta1 could be upgraded:\ncommons-collections from 3.1 to 3.2.1\nslf4j from 1.5.3 to 1.5.8\nderby from 10.2.1.6 to 10.5.3.0\n\nNot sure about derby but the other two seems to be just drop in replacements for their older verisons.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "JCR-2389",
+    "issuetypeClassified": "OTHER",
+    "issuetypeTracker": "OTHER",
+    "priority": "Minor",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "Update dependency versions for commons-collections, slf4j and derby",
+    "systemSpecification": true,
+    "version": "2.0-beta1"
+}

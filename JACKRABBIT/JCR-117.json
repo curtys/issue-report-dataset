@@ -1,0 +1,59 @@
+{
+    "comments": [
+        {
+            "author": "Jukka Zitting",
+            "body": "Updated the correct test output for the first two test runs. (fixing a copy-paste mistake)",
+            "date": "2005-04-27T17:35:38.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "That is strange. Works fine on my machine.\n\nWhen I run the tests, the sequence of test suites is:\n\n    [junit] Running org.apache.jackrabbit.core.config.TestAll\n    [junit] Tests run: 2, Failures: 0, Errors: 0, Time elapsed: 0.591 sec\n    [junit] Running org.apache.jackrabbit.core.nodetype.xml.TestAll\n    [junit] Tests run: 32, Failures: 0, Errors: 0, Time elapsed: 0.851 sec\n    [junit] Running org.apache.jackrabbit.core.observation.TestAll\n    [junit] Tests run: 1, Failures: 0, Errors: 0, Time elapsed: 2.614 sec\n    [junit] Running org.apache.jackrabbit.core.query.TestAll\n    [junit] Tests run: 63, Failures: 0, Errors: 0, Time elapsed: 3.576 sec\n    [junit] Running org.apache.jackrabbit.core.state.TestAll\n    [junit] Tests run: 3, Failures: 0, Errors: 0, Time elapsed: 0.852 sec\n    [junit] Running org.apache.jackrabbit.core.TestAll\n    [junit] Tests run: 13, Failures: 0, Errors: 0, Time elapsed: 1.072 sec\n    [junit] Running org.apache.jackrabbit.init.TestAll\n    [junit] Tests run: 4, Failures: 0, Errors: 0, Time elapsed: 1.442 sec\n    [junit] Running org.apache.jackrabbit.test.api.lock.TestAll\n    [junit] Tests run: 19, Failures: 0, Errors: 0, Time elapsed: 1.983 sec\n    [junit] Running org.apache.jackrabbit.test.api.nodetype.TestAll\n    [junit] Tests run: 99, Failures: 0, Errors: 0, Time elapsed: 1.743 sec\n    [junit] Running org.apache.jackrabbit.test.api.observation.TestAll\n    [junit] Tests run: 40, Failures: 0, Errors: 0, Time elapsed: 6.711 sec\n    [junit] Running org.apache.jackrabbit.test.api.query.TestAll\n    [junit] Tests run: 77, Failures: 0, Errors: 0, Time elapsed: 3.195 sec\n    [junit] Running org.apache.jackrabbit.test.api.TestAll\n\n.... more tests ....\n\nIn order to successfully run the read-only test cases, the o.a.j.init.TestAll test suite must run before any o.a.j.test.api tests are run.\n\nMaybe this is an platform specific issue, as we do not explicitly specify the sequence. Can you please check the sequence of test suites on your checkout?",
+            "date": "2005-05-09T23:45:47.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "My full test output from a fresh svn checkout is:\n\ntest:test:\n    [junit] Running org.apache.jackrabbit.test.api.query.TestAll\n    [junit] Tests run: 77, Failures: 30, Errors: 0, Time elapsed: 5,776 sec\n    [junit] [ERROR] TEST org.apache.jackrabbit.test.api.query.TestAll FAILED\n    [junit] Running org.apache.jackrabbit.test.api.nodetype.TestAll\n    [junit] Tests run: 99, Failures: 0, Errors: 0, Time elapsed: 2,702 sec\n    [junit] Running org.apache.jackrabbit.test.api.version.TestAll\n    [junit] Tests run: 214, Failures: 0, Errors: 0, Time elapsed: 58,748 sec\n    [junit] Running org.apache.jackrabbit.test.api.util.TestAll\n    [junit] Tests run: 0, Failures: 0, Errors: 0, Time elapsed: 0,457 sec\n    [junit] Running org.apache.jackrabbit.test.api.lock.TestAll\n    [junit] Tests run: 19, Failures: 0, Errors: 0, Time elapsed: 4,136 sec\n    [junit] Running org.apache.jackrabbit.test.api.observation.TestAll\n    [junit] Tests run: 40, Failures: 0, Errors: 0, Time elapsed: 9 sec\n    [junit] Running org.apache.jackrabbit.test.api.TestAll\n    [junit] Tests run: 583, Failures: 184, Errors: 0, Time elapsed: 30,213 sec\n    [junit] [ERROR] TEST org.apache.jackrabbit.test.api.TestAll FAILED\n    [junit] Running org.apache.jackrabbit.init.TestAll\n    [junit] Tests run: 4, Failures: 0, Errors: 0, Time elapsed: 3,529 sec\n    [junit] Running org.apache.jackrabbit.core.query.TestAll\n    [junit] Tests run: 63, Failures: 0, Errors: 0, Time elapsed: 7,55 sec\n    [junit] Running org.apache.jackrabbit.core.nodetype.xml.TestAll\n    [junit] Tests run: 32, Failures: 0, Errors: 0, Time elapsed: 1,551 sec\n    [junit] Running org.apache.jackrabbit.core.state.TestAll\n    [junit] Tests run: 3, Failures: 0, Errors: 0, Time elapsed: 2,681 sec\n    [junit] Running org.apache.jackrabbit.core.config.TestAll\n    [junit] Tests run: 2, Failures: 0, Errors: 0, Time elapsed: 0,801 sec\n    [junit] Running org.apache.jackrabbit.core.observation.TestAll\n    [junit] Tests run: 1, Failures: 0, Errors: 0, Time elapsed: 3,123 sec\n    [junit] Running org.apache.jackrabbit.core.TestAll\n    [junit] Tests run: 13, Failures: 0, Errors: 0, Time elapsed: 3,236 sec\n\nProduced using Maven 1.0.2 on JDK 1.4.2 on Linux (Fedora Core 3).\n\nI'll see if I can trace where the order of the test cases is determined.",
+            "date": "2005-05-10T01:01:41.000+0000",
+            "id": 2
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "It seems that the Maven test:test goal is implemented using the Ant JUnit task with a FileSet containing all files that match the unitTest includes defined in project.xml.\n\nI'm not an expert on how Ant FileSets work under the hood, but I believe that the order of the unit tests is determined either by a HashSet somewhere along the line or the order in which the underlying filesystem returns the file names.\n\nBased on the fact that your test cases seem to be executed in alphabetical order, I'd suspect that the problem is in the underlying filesystem (on Linux you need to specifically sort file names if you want them ordered).\n\nI'll check if I could instruct Maven to process the tests in some specific order.",
+            "date": "2005-05-10T01:18:08.000+0000",
+            "id": 3
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "No hope. Even specifying the test cases one by one in unitTest/includes does not help.\n\nWould it be possible to refactor the initialization code so that either all API tests check for initialization in setUp() or a separate Maven test:test preGoal performs the initialization before any of the test cases are run?",
+            "date": "2005-05-10T01:34:56.000+0000",
+            "id": 4
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "Moved init test cases to a preGoal.\n\nFixed in svn revision: 210145",
+            "date": "2005-07-12T00:23:50.000+0000",
+            "id": 5
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Brilliant, thanks a lot for the simple and effective fix!",
+            "date": "2005-07-12T02:41:51.000+0000",
+            "id": 6
+        }
+    ],
+    "component": "test",
+    "description": "It seems that some test cases in o.a.j.test.api.query and o.a.j.test.api do not properly initialized the test repository before running tests against it. The repository gets initialized by other test cases, and later runs of the troublesome tests report no errors.\n\nThus the problem appears right after a fresh checkout and a tree cleanup. The command sequence below illustrates this problem. The error messages reported by the initial test runs are \"Workspace does not contain test data at: /testdata/query\" and \"Workspace does not contain test data at: /testdata\".\n\nI tried tracing the cause of this problem, but couldn't find it easily as I'm not yet too familiar with the test setup.\n\n$ svn co\n$ maven test\n\n    [junit] Running org.apache.jackrabbit.test.api.query.TestAll\n    [junit] Tests run: 77, Failures: 30, Errors: 0, Time elapsed: 5,333 sec\n    [junit] [ERROR] TEST org.apache.jackrabbit.test.api.query.TestAll FAILED\n    [junit] Running org.apache.jackrabbit.test.api.TestAll\n    [junit] Tests run: 534, Failures: 181, Errors: 0, Time elapsed: 16,105 sec\n    [junit] [ERROR] TEST org.apache.jackrabbit.test.api.TestAll FAILED\n\n$ maven test\n\n    [junit] Running org.apache.jackrabbit.test.api.query.TestAll\n    [junit] Tests run: 77, Failures: 0, Errors: 0, Time elapsed: 5,887 sec\n    [junit] Running org.apache.jackrabbit.test.api.TestAll\n    [junit] Tests run: 534, Failures: 0, Errors: 0, Time elapsed: 18,427 sec\n\n$ maven clean\n$ maven test\n\n    [junit] Running org.apache.jackrabbit.test.api.query.TestAll\n    [junit] Tests run: 77, Failures: 30, Errors: 0, Time elapsed: 13,185 sec\n    [junit] [ERROR] TEST org.apache.jackrabbit.test.api.query.TestAll FAILED\n    [junit] Running org.apache.jackrabbit.test.api.TestAll\n    [junit] Tests run: 534, Failures: 181, Errors: 0, Time elapsed: 40,42 sec\n    [junit] [ERROR] TEST org.apache.jackrabbit.test.api.TestAll FAILED\n\n$ maven test\n\n    [junit] Running org.apache.jackrabbit.test.api.query.TestAll\n    [junit] Tests run: 77, Failures: 0, Errors: 0, Time elapsed: 5,942 sec\n    [junit] Running org.apache.jackrabbit.test.api.TestAll\n    [junit] Tests run: 534, Failures: 0, Errors: 0, Time elapsed: 17,797 sec\n",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "JCR-117",
+    "issuetypeClassified": "OTHER",
+    "issuetypeTracker": "OTHER",
+    "priority": "Minor",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "Test cases not fully initialized at first run",
+    "systemSpecification": true,
+    "version": ""
+}

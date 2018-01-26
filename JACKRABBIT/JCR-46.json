@@ -1,0 +1,53 @@
+{
+    "comments": [
+        {
+            "author": "Jukka Zitting",
+            "body": "Fixed the issue title",
+            "date": "2005-02-13T17:12:16.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Background and solution from my earlier message to jacrabbit-dev:\n\n<summary>\nPlace xalan.jar in $MAVEN_HOME/lib/endorsed to build the latest (since \n2004-12-22) Jackrabbit sources with JDK 1.5.\n</summary>\n\nBelow is a description of the details of the problem. I hope someone\nfinds this useful.\n\nI ran into the same problem as Oliver Kiessler after updating my source\ntree. I'd like to keep using JDK 1.5, so I first traced the problem to\nthe following lines in maven.xml (line breaks added for clarity):\n\n<!-- The following is a hack to get xslt work with maven\n      (See: http://maven.apache.org/faq.html#BadXSLT ) -->\n${systemScope.setProperty(\n      'javax.xml.transform.TransformerFactory',\n      'org.apache.xalan.processor.TransformerFactoryImpl')}\n\nThe JavaCC grammar in src/grammar/xpath makes heavy use of XSLT, and the\nfollowing ant:xslt entries in maven.xml handle the transformations:\n\n       <ant:xslt style=\"src/grammar/xpath/strip.xsl\"\n              in=\"src/grammar/xpath/xpath-grammar.xml\"\n              out=\"src/grammar/xpath/stripped-xpath-grammar.xml\"\n              force=\"yes\">\n       </ant:xslt>\n       <ant:xslt style=\"src/grammar/xpath/jjtree-jackrabbit.xsl\"\n              in=\"src/grammar/xpath/stripped-xpath-grammar.xml\"\n              out=\"src/grammar/xpath/XPath.jjt\"\n              force=\"yes\">\n       </ant:xslt>\n\nThe systemScope.setProperty() hack is needed to make the ant:xslt task\nwork properly with Maven (see [1]). However, as mentioned in the\ncomments of the associated bug entry [2], this hack doesn't work with\nJDK 1.5 that uses the new Xalan XSLTC compiler at\ncom.sum.org.apache.xalan.internal.xsltc.trax.TransformerFactoryImpl.\n\nUnfortunately the problem could not be solved by simply changing the\nsystemScope.setProperty() line because the XSLTC version bundled with\nJDK 1.5 has problems with named templates (probably bug [3]). Instead of\nthe \"provider not found\" errors from ant:xslt, I now received\nNoSuchMethodError exceptions from XSLTC.\n\nAs an alternative solution, I then downloaded the normal Xalan binaries\nand placed xalan.jar in $MAVEN_HOME/lib/endorsed. I was then able to run\nmaven jar without problems. Note that the library needs to be placed in\nlib/endorsed instead of just lib to make the Xalan classes visible for\nthe ant:xslt task.\n\nAlthough this solution is a bit of a hack, I don't think a better one is\npossible until either the Maven problem gets solved or the JDK XSLTC\ngets fixed.\n\nBR,\n\nJukka Zitting\n\n[1] http://maven.apache.org/faq.html#BadXSLT\n[2] http://jira.codehaus.org/secure/ViewIssue.jspa?key=MAVEN-156\n[3] http://issues.apache.org/jira/browse/XALANJ-1994\n",
+            "date": "2005-02-13T17:13:49.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Added a note about the workaround in README.txt. Committed in revision 153614.",
+            "date": "2005-02-13T17:30:12.000+0000",
+            "id": 2
+        },
+        {
+            "author": "Gavin Carothers",
+            "body": "also need to install serializer.jar from Xalan",
+            "date": "2005-09-15T04:27:30.000+0000",
+            "id": 3
+        },
+        {
+            "author": "leila Rizkallah",
+            "body": "Hello Jukka (and all dear users),\n\nUnfortunately I still have the problem you've described above.\n\nWhat do u mean exactly by \"download the normal Xalan binaries\"?!\nThat's what I've done from: http://mirror1.zic-network.ch/apache/xml/xalan-j/binaries/\n\nI also placed xalan.jar in $MAVEN_HOME/lib/endorsed, as well as serializer.jar\n\nAny other advices to get rid of this annoying error?\n\nThanks a lot in advance,\nBR.\nLe\u00efla\n\nP.S: Here's the output I got\n\nDEPRECATED: the default goal should be specified in the <build> section of proje\nct.xml instead of maven.xml\nbuild:start:\n\njava:prepare-filesystem:\nRunning post goal: java:prepare-filesystem\njackrabbit:generate-xpath-parser:\n\n\n\n            [xslt] Processing C:\\MasterProject\\jackrabbit\\src\\main\\javacc\\xpath\\\nxpath-grammar.xml to C:\\MasterProject\\jackrabbit\\target\\generated-src\\main\\javac\nc\\stripped-xpath-grammar.xml\n    [xslt] Loading stylesheet C:\\MasterProject\\jackrabbit\\src\\main\\javacc\\xpath\\\nstrip.xsl\n\nBUILD FAILED\nFile...... C:\\MasterProject\\jackrabbit\\maven.xml\nElement... ant:xslt\nLine...... 142\nColumn.... 25\nProvider org.apache.xalan.processor.TransformerFactoryImpl not found\nTotal time   : 10 seconds\nFinished at  : Sunday, November 13, 2005 9:19:08 PM CET\n",
+            "date": "2005-11-14T05:35:39.000+0000",
+            "id": 4
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Are you using the Maven 1.1 beta? In that case you should place the xalan.jar and serializer.jar files in the lib/endorsed directory of the JRE (usually $JAVA_HOME/jre/lib/endorsed when you have the full JDK installed).",
+            "date": "2005-11-14T05:41:44.000+0000",
+            "id": 5
+        }
+    ],
+    "component": "maven",
+    "description": "\"maven jar\" fails with the following error message on a fresh Jackrabbit source tree:\n\nBUILD FAILED\nFile...... /home/hukka/tmp/jackrabbit/maven.xml\nElement... ant:xslt\nLine...... 146\nColumn.... 25\nProvider org.apache.xalan.processor.TransformerFactoryImpl not found\nTotal time: 4 seconds\nFinished at: Sun Feb 13 10:09:03 EET 2005\n",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "JCR-46",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "Provider org.apache.xalan.processor.TransformerFactoryImpl not found",
+    "systemSpecification": true,
+    "version": ""
+}

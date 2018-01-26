@@ -1,0 +1,77 @@
+{
+    "comments": [
+        {
+            "author": null,
+            "body": "Created attachment 17486\nA diff file incorporating proposed changes.",
+            "date": "20060122T20:28:24",
+            "id": 0
+        },
+        {
+            "author": null,
+            "body": "(In reply to comment #0)\n\nOk, lets see if I can get myself fired here ;-).\n\n> This patch adds additional entries to the catalina.policy file. Specifically:\n> The catalina.base/shared directory is added and given equal permissions to\n> catalina.home/common\n\nIf it works for you, fine.  Change it in your copy.  However, in general \n${catalina.base}/shared will consist of untrusted code, so I don't think it's \na good idea to trust it in the default policy file (which, by design, tries to \nbe as strict as possible).\n\n> java.io.tmpdir is now readable.\n\nDon't see the need.  If you depend on this, your app is non-portable since \nthere is no requirement that javax.servlet.context.tempdir has any relation to \njava.io.tmpdir.  In fact, a servlet container is perfectly free to set \njava.io.tmpdir to /dev/null if it wants.\n\n> javax.servlet.context.tempdir is now readable. I think to be compliant with \nthe\n> spec, this must be allowed.\n\nThis is a request attribute, not a System attribute.  This does nothing.\n\n> Directory specified by java.io.tmpdir (which is what tomcat points\n> javax.servlet.context.tempdir to) is now read, write, delete. Again, I think \nthe\n> spec requires this.\n\nWould need to research this one.  Like pretty much everybody else, I don't \nspend enough time testing with SM.\n",
+            "date": "20060221T03:24:07",
+            "id": 1
+        },
+        {
+            "author": null,
+            "body": "Making java.io.tmpdir writable is fixing an implementation specific issue. The\nspec says that the container MUST make temporary working directories available.\n\nThe IMPLEMENTATION that tomcat uses is to set javax.servlet.context.tempdir to\njava.io.tempdir\n\n\nSo, my making that writable fixes an implementation specific issue for\ntomcat. I'll say it again in case I wasn't clear.\n\n1)\tThe spec says javax.servlet.context.tempdir must be a working\ndirectory\n2)\tTOMCAT sets that value to the value of java.io.tmpdir\n\nTHEREFORE\n\nFOR THE TOMCAT IMPLEMENTATION\n\njava.io.tmpdir MUST BE WRITABLE.\n",
+            "date": "20060221T18:51:20",
+            "id": 2
+        },
+        {
+            "author": null,
+            "body": "I was wrong. tempdir is not defined in terms of java.io.tmpdir. I apologize to\nBill whom I said was wrong and wrote an inflamatory and ill-advised message to.",
+            "date": "20060221T23:02:26",
+            "id": 3
+        },
+        {
+            "author": null,
+            "body": "Created attachment 17767\nSimple JSP page to exibit the bug\n\nYes, you have a legitimate bug here. It is true that\njavax.servlet.context.tempdir is not writable with the default catalina.policy\nsettings (in violation of the spec) when running with a SM.",
+            "date": "20060222T05:51:07",
+            "id": 4
+        },
+        {
+            "author": null,
+            "body": "So Bill and George, if I understand the result of your debate correctly, the\nfollowing lines from George's patch should be added to the default policy file:\n\npermission java.util.PropertyPermission \"java.io.tmpdir\", \"read\";        \npermission java.util.PropertyPermission \"javax.servlet.context.tempdir\", \"read\";\t\npermission java.io.FilePermission \"${java.io.tmpdir}${file.separator}-\", \"read,\nwrite, delete\";\n\nIs that right?\n",
+            "date": "20061224T18:06:05",
+            "id": 5
+        },
+        {
+            "author": null,
+            "body": "Not quite.\n\nThe javax.servlet.context.tempdir is a context attribute rather than a system property. There is a complication that the name of the work directory varies per context and is not know when the policy file is parsed.\n\nIn trunk, 6.0.x and 5.5.x the WebappLoader sets the necessary permissions when it is started. However, the JasperLoader gets its permissions from the JspRuntimeContext that only gave a read permission for those files.\n\nI have patched trunk to give JasperLoader read/write and proposed the fix for 6.0.x and 5.5.x",
+            "date": "20090619T06:06:24",
+            "id": 6
+        },
+        {
+            "author": null,
+            "body": "Update status",
+            "date": "20090619T06:06:51",
+            "id": 7
+        },
+        {
+            "author": null,
+            "body": "This has been fixed in 6.0.x and will be included in 6.0.21 onwards.",
+            "date": "20090624T12:36:03",
+            "id": 8
+        },
+        {
+            "author": null,
+            "body": "This has been fixed in 5.5.x and will be included in 5.5.28 onwards",
+            "date": "20090705T16:09:11",
+            "id": 9
+        }
+    ],
+    "component": "Catalina",
+    "description": "This patch adds additional entries to the catalina.policy file. Specifically:\n\nThe catalina.base/shared directory is added and given equal permissions to\ncatalina.home/common\n\njava.io.tmpdir is now readable.\njavax.servlet.context.tempdir is now readable. I think to be compliant with the\nspec, this must be allowed.\n\nDirectory specified by java.io.tmpdir (which is what tomcat points\njavax.servlet.context.tempdir to) is now read, write, delete. Again, I think the\nspec requires this.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "38352",
+    "issuetypeClassified": "RFE",
+    "issuetypeTracker": "BUG",
+    "priority": "P2 normal",
+    "product": "Tomcat 5",
+    "project": "TOMCAT",
+    "summary": "Additional Entries for Default catalina.policy file.",
+    "systemSpecification": true,
+    "version": "5.5.14"
+}

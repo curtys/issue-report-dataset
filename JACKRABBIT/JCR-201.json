@@ -1,0 +1,41 @@
+{
+    "comments": [
+        {
+            "author": "Edgar Poce",
+            "body": "> BerkeleyDBPersistenceManager initialization fails if the directory configured \n> doesn't exist (this doesn't happen with other PMs). \n\nwhich configured directory? The path to /[repo home]/workspaces is created on repository startup, see RepositoryConfig.init(), and the workspace folder creation is resolved in RepositoryConfig.createWorkspaceConfig().\n\nSo, the PM should be able to create a /[repo home]/workspaces/[workspace name]/db folder safely. Am I missing something? Could you provide details about how to reproduce the error?",
+            "date": "2005-08-28T15:35:57.000+0000",
+            "id": 0
+        },
+        {
+            "author": "fabrizio giustina",
+            "body": "This is the configuration for versioning I was using with ObjectPersistenceManager:\n\n    <Versioning rootPath=\"${rep.home}/version\">\n        <FileSystem class=\"org.apache.jackrabbit.core.fs.local.LocalFileSystem\">\n            <param name=\"path\" value=\"${rep.home}/workspaces/version\" />\n        </FileSystem>\n        <PersistenceManager class=\"org.apache.jackrabbit.core.state.obj.ObjectPersistenceManager\" />\n    </Versioning>\n\nthe \"version\" directory doesn't exists, but it's created by the PM at startup.\nThe same configuration, changing only the PM to BerkeleyDBPersistenceManager:\n    \n    <Versioning rootPath=\"${rep.home}/version\">\n        <FileSystem class=\"org.apache.jackrabbit.core.fs.local.LocalFileSystem\">\n            <param name=\"path\" value=\"${rep.home}/workspaces/version\" />\n        </FileSystem>\n        <PersistenceManager class=\"org.apache.jackrabbit.core.state.bdb.BerkeleyDBPersistenceManager\" />\n    </Versioning>\n    \nThis time the \"version\" directory is not created (the PM tries to create a \"db\" dir inside it and ignores the failure) and bdb throw an exception during initialization\n\n",
+            "date": "2005-08-29T01:05:03.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Edgar Poce",
+            "body": "Fixed as suggested, thanks fabrizio.",
+            "date": "2005-08-29T02:12:25.000+0000",
+            "id": 2
+        },
+        {
+            "author": "Stefan Guggisberg",
+            "body": "closing resolved issue",
+            "date": "2005-11-11T01:48:44.000+0000",
+            "id": 3
+        }
+    ],
+    "component": "",
+    "description": "BerkeleyDBPersistenceManager initialization fails if the directory configured doesn't exist (this doesn't happen with other PMs).\nThis can easily be fixed in the persistence manager, by making it create all the directories in the path (actually it only creates the last -db- directory).\n\nThe trivial patch is to replace envDir.mkdir() to envDir.mkdirs() (note the final \"s\") at BerkeleyDBPersistenceManager  line 73:\n        if (!envDir.exists())\n            envDir.mkdir();\nshould be:\n        if (!envDir.exists())\n            envDir.mkdirs();\n\n(I am not submitting any svn diff since the manual fix sounds so trivial, it's easier to change it manually)\n",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "JCR-201",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Minor",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "[contrib-bdb] initialization fails if directory doesn't exist",
+    "systemSpecification": false,
+    "version": "1.0"
+}

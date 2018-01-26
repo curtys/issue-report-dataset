@@ -1,0 +1,47 @@
+{
+    "comments": [
+        {
+            "author": "Michael D\u00fcrig",
+            "body": "To fix this I propose to cache the NodeId and/or path per NodeEntry. On certain operations (like move, further operation to be identified) the cache needs to be invalidated. To avoid having to invalidate the cache of each entry in the sub tree rooted at a specific item, I propose that cache validity checks are deferred as much as possible (i.e. until getWorkspaceId() is called). The cache for an entry is valid, if neither of its parents nor itself are marked as invalid . If the cache for an entry is determined to be invalid, its path is recalculated thereby clearing any invalid cache marker on the path to the root. Note that when a marker of an entry is cleared, all child entries of that entry need to be marked (with the exception of the child entry which path is being recalculated). ",
+            "date": "2009-07-16T14:13:59.146+0000",
+            "id": 0
+        },
+        {
+            "author": "Michael D\u00fcrig",
+            "body": "I just checked the effect of an alternative approach: call site caching of IdFactory calls. \n\npublic NodeId getId() throws InvalidItemStateException, RepositoryException {\n    IdFactory idFactory = getIdFactory();\n    PathFactory pathFactory = getPathFactory();\n    IdCache idCache = getIdCache();\n\n    if (uniqueID != null) {\n        NodeId nodeId = idCache.get(uniqueID);\n        if (nodeId == null) {\n            nodeId = idFactory.createNodeId(uniqueID);\n            idCache.put(uniqueID, nodeId);\n        }\n        return nodeId;\n    }\n    else if (parent == null) { // root\n        NodeId nodeId = idCache.get(\"ROOT\");  \n        if (nodeId == null) {\n            nodeId = idFactory.createNodeId((String) null, pathFactory.getRootPath());\n            idCache.put(\"ROOT\", nodeId);  \n        }\n        return nodeId;\n    }\n    else {\n        NodeId parentId = parent.getId();\n        Name name = getName();\n        int index = getIndex();\n        NodeId nodeId = idCache.get(parentId, name, index);\n        if (nodeId == null) {\n            Path path = pathFactory.create(name, index);\n            nodeId = idFactory.createNodeId(parentId, path);\n            idCache.put(parentId, name, index, nodeId);\n        }\n        return nodeId;\n    }\n}\n\nMy profiling shows, that there is nothing much to be gained from this. This is in line with an earlier observation, that looking up ItemIds from a hash map comes with about the same cost as creating new itemIds. The main contribution coming from the equals and hashCode methods from the various classes involved when comparing ItemIds. \n\n\n",
+            "date": "2009-07-24T12:13:07.460+0000",
+            "id": 1
+        },
+        {
+            "author": "Michael D\u00fcrig",
+            "body": "Another alternative approach (due to Angela): Instead of constructing the ids from the parent  id and the name (which is quite expensive), traverse up to either root or a uuid and collect the respective path elements. The use the root or the uuid respectively and the collected path elements to construct the id.",
+            "date": "2009-08-06T10:49:26.352+0000",
+            "id": 2
+        },
+        {
+            "author": "Michael D\u00fcrig",
+            "body": "Proposed patch implementing the approach from my last comment. While this shouldn't have any negative performance impact on flat hierarchies, it shows an overall (*) performance gain up to 20% on deep hierarchies. \n\n(*) Session.getItem() on a deep hierarchy. ",
+            "date": "2009-08-06T10:55:11.985+0000",
+            "id": 3
+        },
+        {
+            "author": "Michael D\u00fcrig",
+            "body": "Applied path in revision 803164",
+            "date": "2009-08-11T15:32:31.151+0000",
+            "id": 4
+        }
+    ],
+    "component": "jackrabbit-jcr2spi",
+    "description": "NodeEntryImpl.getWorkspaceId() calculates its path on each call by calling itself recursively. Further each call to getWorkspaceId() results in various calls to the path and item factories which might be somewhat expensive by themselves. \n\nIn my test scenario I have a RepositoryService.getItemInfos() call returning ~1000 items. Processing these items results in about 2700000 (!) calls to getWorkspaceId(). Profiler data shows, that 98% of the time to process the 1000 items is spent in getWorkspaceId()  and related calls. ",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "JCR-2218",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Major",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "NodeEntryImpl.getWorkspaceId() very inefficient ",
+    "systemSpecification": true,
+    "version": ""
+}

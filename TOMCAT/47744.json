@@ -1,0 +1,59 @@
+{
+    "comments": [
+        {
+            "author": null,
+            "body": "Created attachment 24171\nPatch for this issue.",
+            "date": "20090826T11:02:48",
+            "id": 0
+        },
+        {
+            "author": null,
+            "body": "I should add, this was observed with a 64-bit Linux server JVM.  Sun has dispatched a bug to investigate whether this is a JVM/JRE problem or not.",
+            "date": "20090903T07:10:35",
+            "id": 1
+        },
+        {
+            "author": null,
+            "body": "I'm not a big fan of trying to work around JVM bugs, but this patch looks like it is OK (once the missing synchronizing is added).  Synchronizing will add a small hit, but this part of the code is well off the critical path.",
+            "date": "20091025T16:56:54",
+            "id": 2
+        },
+        {
+            "author": null,
+            "body": "(In reply to comment #3)\n> I'm not a big fan of trying to work around JVM bugs, but this patch looks like\n> it is OK (once the missing synchronizing is added).  Synchronizing will add a\n> small hit, but this part of the code is well off the critical path.\n\nYes, I agree with everything you said, except Sun has closed and concluded it is *not* a problem with the VM: http://bugs.sun.com/bugdatabase/view_bug.do?bug_id=6877740 \n\nA bit after posting this I revised my local copy of the patch to add synchronization - should I repost the patch to include it?",
+            "date": "20091026T09:33:27",
+            "id": 3
+        },
+        {
+            "author": null,
+            "body": "Thanks for the report and the patch. I have applied a modified patch to trunk and proposed it for 6.0.x and 5.5.x.",
+            "date": "20091214T06:58:30",
+            "id": 4
+        },
+        {
+            "author": null,
+            "body": "Patch has been applied to trunk and will be included in 6.0.21 onwards.",
+            "date": "20091221T03:13:54",
+            "id": 5
+        },
+        {
+            "author": null,
+            "body": "Patch was applied to 5.5 and will be in 5.5.29 onwards. Thank you.",
+            "date": "20100127T01:20:44",
+            "id": 6
+        }
+    ],
+    "component": "Connector:Coyote",
+    "description": "Created attachment 24170\nThe zip described in the main bug. Contains test client, JSP for the server, and patch.\n\nWhen using SSL + the java security manager, Tomcat leaks memory when servlets\naccess cert path/cipher as request properties.  When the servlet/JSP asks for\nthese properties and they are not in the request, they are loaded via the\nJSSESupport class.\n\nThe offending method calculates the key size and attempts to cache this in the\nSSLSession.  Without the security manager, this is fine.  When the security\nmanager runs, however, the AccessControlContext is different every time. \nRetrieving from the cache will always return null, and putting into the\nSSLSession's cache leaks memory.  This part is probably a JVM bug and not\nTomcat's fault, but Tomcat is exercising it nonetheless.\n\nPopular web service tools (such as Apache CXF) retrieve cert properties from\nthe request for every invocation.  Depending on the policy file, the leak may\nbe relatively slow, requiring 100s of thousands or millions of requests; or it\ncould be fast (in our case), requiring only ~40k to crash an instance of Tomcat\nlimited to 1 gig of memory.\n\nA note here.  The SSLSession can be collected once it is not in use, so the\nmemory leak isn't permanent.  If you turn down the SSLSession timeout and wait\nat least that amount of time in between using a specific session, you might\nnever see this bug.  You have to continuously use the same session *and* trip\nJSSESession into attempting to get the keysize.  In our particular case, we\nhave long-connected clients that stream information to us, so it is only taking\nis 10-20 minutes before we are being affected negatively by this.\n\nI have attached a zip containing:\n- A test client\n- A script (.bat, sorry guys, but easily adapted) to run the test client\n- A .jsp that trips the JSSESupport to call the affected method.\n- The simplest possible policy file, to demonstrate it's not a policy file\nissue.\nAlso attached: a patch that fixes this issue. (It's in the zip for good\nmeasure.)\n\nI recommend setting the invocation count to at least 100,000 or so on the test\nclient.  Use jconsole or a similar tool attached to tomcat to monitor the\nmemory use.  You should notice that after the test, a large chunk of memory is\nnot able to be returned by the garbage collector.  If you apply the patch,\nupdate tomcat-coyote.jar, and re-run the load test, you will notice that memory\nconsumption stays low and you can immediately return to the baseline.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "47744",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "P2 major",
+    "product": "Tomcat 5",
+    "project": "TOMCAT",
+    "summary": "Memory leak when using SSL + Java security manager",
+    "systemSpecification": true,
+    "version": "5.5.28"
+}

@@ -1,0 +1,47 @@
+{
+    "comments": [
+        {
+            "author": "Shai Erera",
+            "body": "Patch (against trunk) adds perfObjects Map<String, Object> with matching set/get methods.",
+            "date": "2011-12-11T07:08:59.399+0000",
+            "id": 0
+        },
+        {
+            "author": "Shai Erera",
+            "body": "I wonder if we should have this Map require Closeable so that we can close the objects on PerfRunData.close(). I think, since Closeable is so lightweight, even if an object has nothing to do there, it's not a big deal implementing an empty close()?",
+            "date": "2011-12-11T13:46:50.399+0000",
+            "id": 1
+        },
+        {
+            "author": "Doron Cohen",
+            "body": "Patch looks good.\n\nbq. I do not propose to move IR/IW/TR/TW etc. into that map. If however people think that we should, I can do that as well.\n\nI rather keep these ones explicit as they are now.\n\nbq. I wonder if we should have this Map require Closeable so that we can close the objects on PerfRunData.close()\n\nClosing would be convenient, but I think requiring to pass Closeable is too restrictive? \nInstead, you could add something like this to close():\n\n{code}\nfor (Object o : perfObjects.values()) {\n  if (o instanceof Closeable) {\n    IOUtils.close((Closeable) o);\n  }\n}\n{code}\n\nThis is done only once at the end, so \"instanceof\" is not a perf issue here.\nIf we close like this, we also need to document it at setPerfObject().\n\nI think, BTW, that PFD.close() is not called by the Benchmark, it has to be explicitly invoked by the user.",
+            "date": "2011-12-19T12:02:05.980+0000",
+            "id": 2
+        },
+        {
+            "author": "Shai Erera",
+            "body": "Thanks Doron. I ended up implementing as you propose, but first collecting all Closeables into an ArrayList and then calling IOUtils.close() .. it simplifies the code (i.e., in your example, I'd need to try-catch IOE and throw the first one that I've encountered, but still iterate on all).\n\nI'll commit this to trunk and 3x.",
+            "date": "2011-12-19T15:24:29.519+0000",
+            "id": 3
+        },
+        {
+            "author": "Shai Erera",
+            "body": "Committed revision 1220795, 1220799.",
+            "date": "2011-12-19T15:31:09.702+0000",
+            "id": 4
+        }
+    ],
+    "component": "modules/benchmark",
+    "description": "PerfRunData is used as the intermediary objects between PerfRunTasks. Just like we can set IndexReader/Writer on it, it will be good if it allows setting other arbitrary objects that are e.g. created by one task and used by another.\n\nA recent example is the enhancement to the benchmark package following the addition of the facet module. We had to add TaxoReader/Writer.\n\nThe proposal is to add a HashMap<String, Object> that custom PerfTasks can set()/get(). I do not propose to move IR/IW/TR/TW etc. into that map. If however people think that we should, I can do that as well.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-3635",
+    "issuetypeClassified": "RFE",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Minor",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "Allow setting arbitrary objects on PerfRunData",
+    "systemSpecification": true,
+    "version": ""
+}

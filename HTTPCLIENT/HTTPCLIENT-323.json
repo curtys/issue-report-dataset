@@ -1,0 +1,65 @@
+{
+    "comments": [
+        {
+            "author": "Sven",
+            "body": "The available()-Methode should return the amout of data which can be read()\nwithout blocking. That is _not_ the whole content-length, but the amount of data\nthat is available in HttpClient's internal buffers.",
+            "date": "2004-03-02T22:26:56.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "George,\nI do not think we should violate standard Java API even in such a subtle manner.\nThe purpose of InputStream#available() method is different and we should not get\ntoo creative about Java API. As to HttpMethodBase#getResponseContentLength()\nbeing protected, there is really no particular reason. I think we can safely\nmake the method public. Objections, anyone?\n\nOleg",
+            "date": "2004-03-09T03:44:00.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Created an attachment (id=10708)\nPatch\n",
+            "date": "2004-03-09T03:44:26.000+0000",
+            "id": 2
+        },
+        {
+            "author": "George Armhold",
+            "body": "> I do not think we should violate standard Java API even in such a\n> subtle manner.  The purpose of InputStream#available() method is\n> different and we should not get too creative about Java API.\n\nI agree that the available() method is not documented to mean \"length\nof stream\", however even Java's own ProgressMonitorInputStream uses it\nthis way.  Gosling wrote that class, and in it he sets size =\navailable().  If available() only returns the amount of data currently\nbuffered, the ProgressMonitor does nothing useful.  I guess it would\nhave been nice if the InputStream base class had a \"length()\" method\nas well.  \n\nAnyway, I can implement the behavior by writing an extension class, so\nno need for you to violate the API in HttpClient.  Feel free to close\nthis enhancement request, and thanks for your consideration.",
+            "date": "2004-03-09T05:16:25.000+0000",
+            "id": 3
+        },
+        {
+            "author": "Michael Becke",
+            "body": "I agree with Oleg.  Making available() return the content length, though useful, would be pretty non-\nstandard.  Making getResponseContentLength() public is the way to go.\n\nMike",
+            "date": "2004-03-09T08:27:47.000+0000",
+            "id": 4
+        },
+        {
+            "author": "Ortwin Gl\u00fcck",
+            "body": "George,\n\nEven Gossling can write sub-optimal code. We all know there is some very bad\ncode in the Java Standard API :-) InputStream::available() is clearly documented\nas \"Returns the number of bytes that can be read (or skipped over) from this\ninput stream without blocking by the next caller of a method for this input\nstream.\" Not following this contract is one bad thing. The user relying on us to\nfollow a different contract than the original method is even worse.\nAlso the nature of a stream allows for an infinite stream of data. I guess that\nthis was the reason that the Java API provides no way of figuring out the length\nof a stream. And it is the same reason for us to provide this completely\noptional piece of information with a supplementary method called\ngetResponseContentLength(). It can even return -1 if the content length is unknown.",
+            "date": "2004-03-09T16:51:31.000+0000",
+            "id": 5
+        },
+        {
+            "author": "George Armhold",
+            "body": "> And it is the same reason for us to provide this completely optional\n> piece of information with a supplementary method called\n> getResponseContentLength(). It can even return -1 if the content\n> length is unknown.\n\nIf that method could be made public, that would be great, thanks!\n",
+            "date": "2004-03-09T17:36:55.000+0000",
+            "id": 6
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Patch applied to the CVS HEAD\n\nOleg",
+            "date": "2004-03-09T22:02:57.000+0000",
+            "id": 7
+        }
+    ],
+    "component": "HttpClient (classic)",
+    "description": "It would be nice if the InputStream returned from\nGetMethod.getResponseBodyAsStream() could override the available()\nmethod to return the content-length of the requested URL.  This would\nmake things like ProgressMonitorInputStream useful for monitoring the\nprogress of a download.  Here is a code snippet:\n\n\n/**\n * supply a hard-coded value for available() method.\n */\nclass FixedInputStream extends FilterInputStream {\n  private int contentLength;\n\n  public FixedInputStream(InputStream is,\n              int contentLength) {\n    super(is);\n    this.contentLength = contentLength;\n  }\n\n  public int available() throws IOException {\n    return contentLength;\n  }\n} \n\n\n\nAlso, somewhat related to this request, could\nGetMethod.getResponseContentLength() must be made public?  Is there a\ngood reason for it to be protected?  I had to extend GetMethod and\nimplement a public getResponseContentLength() in order to feed that\nvalue to my FixedInputStream.\n\nThanks for your time.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "HTTPCLIENT-323",
+    "issuetypeClassified": "RFE",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Minor",
+    "product": "HTTPCLIENT",
+    "project": "HTTPCLIENT",
+    "summary": "GetMethod.getResponseBodyAsStream() .available() could return content-length",
+    "systemSpecification": true,
+    "version": "2.0 Final"
+}

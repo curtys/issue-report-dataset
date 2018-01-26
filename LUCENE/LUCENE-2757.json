@@ -1,0 +1,89 @@
+{
+    "comments": [
+        {
+            "author": "Uwe Schindler",
+            "body": "Here is the current state of my work. It contains the spans patch in modified form. This first step changes the class structure to have more abstract classes and generics. At the end I will move the abstract classes and their implementations to @lucene.internal classes.\n\nMTQ will still have all rewrite modes as final constants (except span), but implementations will go away.\n\nFor backwards compatibility i would keep empty subclasses of the 3.0 classes that were public (like the autorewrite) like the empty TermAttributeImpl skeleton.",
+            "date": "2010-11-12T22:01:03.556+0000",
+            "id": 0
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "I will go to bed now, here more fixes (BQ max clause count in ParallelArraysCollector, wrong superclass for TopTermsRewrite).\n\nWill work on factoring out rewrite modes tomorrow!",
+            "date": "2010-11-12T22:34:23.410+0000",
+            "id": 1
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Here the complete heavy refactoring. All tests in core and contrib pass, javadocs build fine:\n\n- Some trivial implementations of rewrite methods stay in MTQ itsself\n- All rewrite constants stay in MTQ\n- Span Rewrites are in the span wrapper class only. To be type safe, the span rewrites have a super class and the wrapper class only accepts this superclass as rewrite method. The SpanRewriteMethod also uses covariant return types to be type-safe.\n- SpanRewrites and wrapper class got missing equals/hashCode",
+            "date": "2010-11-13T16:54:26.438+0000",
+            "id": 2
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Backporting will be funny, but doable. Because lots of code is now separated from the enum handling, we only have to really backport the two methods TopTermsRewrite and ScoringRewrite and their superclass. Spans and contrib stays unchanged and can be simply merged.",
+            "date": "2010-11-13T17:45:01.093+0000",
+            "id": 3
+        },
+        {
+            "author": "Robert Muir",
+            "body": "+1, this is really needed... its difficult to navigate MultiTermQuery and this will make a huge difference.",
+            "date": "2010-11-14T22:04:55.742+0000",
+            "id": 4
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "I will commit this soon and then do backporting!",
+            "date": "2010-11-14T22:36:07.411+0000",
+            "id": 5
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Committed trunk revision: 1035096\n\nNow backporting...",
+            "date": "2010-11-14T23:15:17.263+0000",
+            "id": 6
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Here the merge patch for 3.x\n\nThe merge had a difficulty:\n- MTQ has no fixed field name (as in 3.x MTQ can even rewrite to a query with terms from different fields). So SpanQuery.getField() cannot simply be delegated in the wrapper. A hack was added that uses reflection to find the field name from the wrapped MTQ.\n\nThe other parts were straightforward:\n- merge patch, for MTQ conflict choose \"overwrite with their's\", keep a backup of old MTQ\n- copypaste all code from old MTQ rewrite modes to the new separate file with rewrite modes.\n- remove docFreq parameter from collect() method.",
+            "date": "2010-11-15T01:13:52.751+0000",
+            "id": 7
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Committed 3.x revision: 1035118",
+            "date": "2010-11-15T01:39:24.809+0000",
+            "id": 8
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Here is a fix for a \"nocommit\" in trunk's code. I did not mark it as nocommit, but it was one. Now the hacky instanceof check if boolean max clauses must be checked was removed and the whole thing done like in the TopTermRewrite.\n\nThere is also an optimization, that the max clause count is only checked, when an entry is really added to the BytesRefHash.\n\nWill commit now.",
+            "date": "2010-11-15T08:21:39.241+0000",
+            "id": 9
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Committed cleanup in trunk revision: 1035173",
+            "date": "2010-11-15T08:23:42.619+0000",
+            "id": 10
+        },
+        {
+            "author": "Grant Ingersoll",
+            "body": "Bulk close for 3.1",
+            "date": "2011-03-30T15:50:16.646+0000",
+            "id": 11
+        }
+    ],
+    "component": "",
+    "description": "Policeman work :-) - as usual",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-2757",
+    "issuetypeClassified": "REFACTORING",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Minor",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "Refactor RewriteMethods out of MultiTermQuery",
+    "systemSpecification": true,
+    "version": "3.1, 4.0-ALPHA"
+}

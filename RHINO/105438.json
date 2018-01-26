@@ -1,0 +1,71 @@
+{
+    "comments": [
+        {
+            "author": "pschwartau@meer.net",
+            "body": "Note bug 50447 against SpiderMonkey may be of interest. The fix there\nwas to add new properties to Error objects: 'fileName' and 'lineNumber'.\n(I don't know if added to Error.prototype or to Error objects themselves.)\n\nAt any rate, there is a testcase for it now:\n\n       mozilla/js/tests/js1_5/Exceptions/regress-50447.js\n\nI added this to rhino-n.tests skip list, since these new properties\nare non-ECMA extensions. If Rhino decides to implement them, we could\nuse this testcase in Rhino, too -\n",
+            "date": "20011018T19:08:48",
+            "id": 0
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "I just checked in a fix.",
+            "date": "20011030T13:21:17",
+            "id": 1
+        },
+        {
+            "author": "pschwartau@meer.net",
+            "body": "Trying to verify this. If I launch the Rhino shell and load a file\ninteractively, I do see a \"file name\" and line number:\n\n[] java org.mozilla.javascript.tools.shell.Main\njs> load('../../tests/test/test/bug.js')\njs: \"<stdin>\", line 1: uncaught JavaScript exception: SyntaxError:\n                       Invalid assignment left-hand side. (<stdin>; line 1)\n\n\nBut if I load the file via the option -f, I don't get the same info:\n\n[] java org.mozilla.javascript.tools.shell.Main -f ../../tests/test/test/bug.js\njs: uncaught JavaScript exception: SyntaxError: \n                                   Invalid assignment left-hand side.\n\n\nShould we reopen this bug for consideration of this case?\nOr is it just a problem with the shell and not Rhino proper?  ",
+            "date": "20011031T03:00:49",
+            "id": 2
+        },
+        {
+            "author": "pschwartau@meer.net",
+            "body": "I guess I'll take the plunge and reopen. This is SpiderMonkey in the same\ntwo situations:\n\nINTERACTIVE LOADING\n[] ./js\njs> load('../../tests/test/test/bug.js')\n../../tests/test/test/bug.js:34: SyntaxError: invalid assignment left-hand side:\n../../tests/test/test/bug.js:34: 1 = 2;\n../../tests/test/test/bug.js:34: ..^\n\nLOADING VIA -f OPTION\n[] ./js -f ../../tests/test/test/bug.js\n../../tests/test/test/bug.js:34: invalid assignment left-hand side:\n../../tests/test/test/bug.js:34: 1 = 2;\n../../tests/test/test/bug.js:34: ..^\n../../tests/test/test/bug.js:34: SyntaxError: invalid assignment left-hand side:\n../../tests/test/test/bug.js:34: 1 = 2;\n../../tests/test/test/bug.js:34: ..^\n",
+            "date": "20011031T03:04:02",
+            "id": 3
+        },
+        {
+            "author": "morten@nvg.org",
+            "body": "Created attachment 87785\nDefaultErrorReporter show line numbers on errors\n\nI keep getting syntax errors with no line numbers as well.\n\nThat happens when I use Context.compileReader(..) to compile the script. The\nDefaultErrorReporter will throw an exception with only the message and not the\nline it happened on.\n\nIt is of course easy to workaround using your own error reporter, but I've\nattached a patch to add on the line and source name so the DefaultErrorReporter\ngives the similar output as EcmaError if that is wanted.",
+            "date": "20020615T13:10:01",
+            "id": 4
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "Thanks for the patch--I regresion tested and committed it. ",
+            "date": "20020617T00:58:04",
+            "id": 5
+        },
+        {
+            "author": "pschwartau@meer.net",
+            "body": "Marking Verified Fixed.\n\nHere is the effect of the fix, as I load bad syntax in Rhino;\nfirst interactively via load(), then via the file option -f.\nThe file I'm loading has a deliberate error |1=2| on line 1:\n\n\n-----------------------   BEFORE THE FIX  -------------------------------\n\n[ ] java org.mozilla.javascript.tools.shell.Main\nRhino 1.5 release 4 0000 00 00 (in progress)\njs> load('../../tests/BAD.js')\njs: \"<stdin>\", line 6: uncaught JavaScript exception:\nSyntaxError: Invalid assignment left-hand side. (<stdin>; line 6)\n\n\n[ ] java org.mozilla.javascript.tools.shell.Main  -f ../../tests/BAD.js\njs: uncaught JavaScript exception:\nSyntaxError: Invalid assignment left-hand side.\n\n\n\n-----------------------   AFTER THE FIX  -------------------------------\n\n[ ] java org.mozilla.javascript.tools.shell.Main\nRhino 1.5 release 4 0000 00 00 (in progress)\njs> load('../../tests/BAD.js')\n\njs: \"D:\\JS_trunk\\mozilla\\js\\tests\\BAD.js\",line 1:\nuncaught JavaScript exception: SyntaxError: Invalid assignment left-hand side. \n(D:\\JS_trunk\\mozilla\\js\\tests\\BAD.js; line 1)\njs: 1=2;\njs: ...^\n\n\n[ ] java org.mozilla.javascript.tools.shell.Main  -f ../../tests/BAD.js\njs: \"D:\\JS_trunk\\mozilla\\js\\tests\\BAD.js\", line 1:\nuncaught JavaScript exception: SyntaxError: Invalid assignment left-hand side. \n(D:\\JS_trunk\\mozilla\\js\\tests\\BAD.js; line 1)\njs: 1=2;\njs: ...^\n",
+            "date": "20020617T18:03:19",
+            "id": 6
+        },
+        {
+            "author": "pschwartau@meer.net",
+            "body": "NOTE: in my data above, I formatted the last two lines by hand\nto look like this:\n\njs: 1=2;\njs: ...^\n\n\nIn actuality, they were reported like this:\n\njs: 1=2;\n\n\njs: ...^\n\n\nQUESTION: do we want these two line feeds between the error and the caret? ",
+            "date": "20020617T18:07:39",
+            "id": 7
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Targeting as resolved against 1.5R4",
+            "date": "20040213T12:15:58",
+            "id": 8
+        }
+    ],
+    "component": "Core",
+    "description": "I'm using IBM's Bean Scripting Framework 2.2 for loading Rhino's js.jar 1.5, for \nevaluating Javascript files. However if a Syntax error occurs in the Javascript, \nthe sourceName and line number of the error is not displayed. \nThe following is the StackTrace I get:\n\nSyntaxError: missing ; before statement\n        at org.mozilla.javascript.NativeGlobal.constructError(NativeGlobal.java:\n498)\n        at org.mozilla.javascript.TokenStream.reportSyntaxError(TokenStream.java\n:1356)\n        at org.mozilla.javascript.Parser.reportError(Parser.java:76)\n        at org.mozilla.javascript.Parser.wellTerminated(Parser.java:307)\n        at org.mozilla.javascript.Parser.statementHelper(Parser.java:790)\n        at org.mozilla.javascript.Parser.statement(Parser.java:337)\n        at org.mozilla.javascript.Parser.parseFunctionBody(Parser.java:180)\n        at org.mozilla.javascript.Parser.function(Parser.java:245)\n        at org.mozilla.javascript.Parser.parse(Parser.java:122)\n        at org.mozilla.javascript.Context.compile(Context.java:1834)\n        at org.mozilla.javascript.Context.compile(Context.java:1782)\n        at org.mozilla.javascript.Context.compileReader(Context.java:822)\n        at org.mozilla.javascript.Context.evaluateReader(Context.java:738)\n        at org.mozilla.javascript.Context.evaluateString(Context.java:705)\n        at com.ibm.bsf.engines.javascript.JavaScriptEngine.eval(JavaScriptEngine\n.java:83)\n        at com.ibm.bsf.util.BSFEngineImpl.exec(BSFEngineImpl.java:106)\n\nI found that this can be partially fixed in file EcmaError.java, method \ntoString() line 86, by returning the line number and the columnNumber along with \nthe errorMessage, even when the sourceName is null.\n\nREPLACE:\nreturn errorObject.toString();\nWITH\nreturn errorObject.toString() + \"( line \" + lineNumber + \" column \" + \ncolumnNumber + \")\" ; \n\nPlease fix this problem as it is very essential to know the line number of the \nerror. \nAlso, the sourceName is null in this case. Why ?",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "105438",
+    "issuetypeClassified": "OTHER",
+    "issuetypeTracker": "BUG",
+    "priority": "-- major",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "SourceName and lineNumbers of syntax errors in Javascript files not dispalyed.",
+    "systemSpecification": true,
+    "version": "other"
+}

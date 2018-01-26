@@ -1,0 +1,143 @@
+{
+    "comments": [
+        {
+            "author": "C\u00e9drik LIME",
+            "body": "(UTF-8 encoding)",
+            "date": "2009-10-29T17:03:05.785+0000",
+            "id": 0
+        },
+        {
+            "author": "Robert Muir",
+            "body": "C\u00e9drik, is it possible to provide a patch without the formatting changes?\n\nI am having trouble seeing the changes you made to ASCIIFoldingFilter.\n\nbtw, I think ISOLatin1AccentFilter only stays around for back compat to support old indexes, in my opinion we should not modify it for this reason.",
+            "date": "2009-10-29T17:07:01.006+0000",
+            "id": 1
+        },
+        {
+            "author": "C\u00e9drik LIME",
+            "body": "Robert,\n\nAll I did is refactor the big switch(c) into its own method:\n  public static final int foldToASCII(char c, char[] output, int outputPos)\nand change the caller (public void foldToASCII(char[] input, int length)) accordingly.\n\nI can submit a patch without formatting changes, but that means the source won't be nicely indented...\nPlease advise.\n\nAs for the ISOLatin1AccentFilter patch, it really is to enable us to remove a workaround for an issue we had with some special (yet frequent) chars. Feel free to ignore it should you think this part is not relevant.",
+            "date": "2009-10-29T17:36:17.284+0000",
+            "id": 2
+        },
+        {
+            "author": "Robert Muir",
+            "body": "C\u00e9drik, in my opinion, it would be easier to see the patch without the formatting changes if possible.\n\nEven if there is bad indentation currently, I think this should be corrected in a separate patch.\n",
+            "date": "2009-10-29T18:02:35.080+0000",
+            "id": 3
+        },
+        {
+            "author": "C\u00e9drik LIME",
+            "body": "Here are the patches (UTF-8 encoding), 1 per filter.\nI have removed the formatting on the switch(c) in ASCIIFoldingFilter for easier review.",
+            "date": "2009-10-29T18:34:06.322+0000",
+            "id": 4
+        },
+        {
+            "author": "Robert Muir",
+            "body": "C\u00e9drik,\n\nI think adding the idea of adding a public static method for folding is OK. but I think it should essentially do what foldToAscii does, not operate on a single 'char'.\n\nwe should avoid single 'char' as parameter arguments, instead it should work on the entire char[] I think ?",
+            "date": "2009-10-29T18:43:17.890+0000",
+            "id": 5
+        },
+        {
+            "author": "C\u00e9drik LIME",
+            "body": "Indeed, and that was my primary (internal) patch.\nBut then you loose the shared \"output\" buffer between incrementToken() calls, and you end up creating char[]'s like there is no tomorrow, which may be a performance regression.\n\nWhat I can do is /add/ a static method that operates on a char[], for convenient external use.\nWhat do you think?",
+            "date": "2009-10-29T18:55:16.227+0000",
+            "id": 6
+        },
+        {
+            "author": "Robert Muir",
+            "body": "C\u00e9drik, why would you create char[]'s like there is no tomorrow if you add a static method that operates on char[], for external use, but also use this within the incrementToken(), passing the tokenBuffer as an argument?",
+            "date": "2009-10-29T19:07:10.803+0000",
+            "id": 7
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "We cannot apply the patch to ISOLatin1Filter, as it would break indexes already using it. Because of that we migrated to ASCIIFoldingFilter and kept ISOLatin1Filter alive. So we should leave it as it is.\n\nTo the buffer problem: For easy external use we could also provide a expert API that works like the current public foldToASCII method, which is memory efficient. But may also provide String/StringBuilder converters for external use. Internal it cannot be better as it currently is :-)",
+            "date": "2009-10-29T19:13:02.496+0000",
+            "id": 8
+        },
+        {
+            "author": "C\u00e9drik LIME",
+            "body": "Uwe,\n\nISOLatin1AccentFilter was already modified in Lucene 2.4: see LUCENE-1351\n\nAs for ASCIIFoldingFilter, I will take a second shot at an expert API next week. Stay tuned!",
+            "date": "2009-10-29T19:40:25.877+0000",
+            "id": 9
+        },
+        {
+            "author": "Robert Muir",
+            "body": "bq. ISOLatin1AccentFilter was already modified in Lucene 2.4: see LUCENE-1351\n\nthat's interesting, so if someone has a < Lucene 2.4 index built with this filter, its currently not compatible... \nI guess no one has complained but there could be some conditional logic based on Version to support those indexes...",
+            "date": "2009-10-29T19:49:33.007+0000",
+            "id": 10
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "I would leave ISOLatin1AccentFilter as it is. No version logic for already deprecated classes, they are deprecated, so no support any more. Normally we would have removed it in 3.0, it is really only be there to support old indexes, so no new features. If until now, nobody complained, we do not need to care. Maybe the modifications were so special, that only some of the term in such indexes were affected and nobody realized that difference.",
+            "date": "2009-10-29T20:24:05.947+0000",
+            "id": 11
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "I think those changes to ISOLatin1AccentFilter predated our Version logic... I agree that had Version been around we probably should have used it.",
+            "date": "2009-10-29T20:27:43.880+0000",
+            "id": 12
+        },
+        {
+            "author": "C\u00e9drik LIME",
+            "body": "As suggested by Robert, here is a new version of the ASCIIFoldingFilter patch which exposes the folding logic.\nI have added 2 convenience methods that can operate on a char[] and on a CharSequence.",
+            "date": "2009-11-03T09:53:36.217+0000",
+            "id": 13
+        },
+        {
+            "author": "Robert Muir",
+            "body": "C\u00e9drik, thanks!\n\nat a glance this looks good to me... can look at it more thoroughly later, i am heading out of town.",
+            "date": "2009-11-03T11:03:23.314+0000",
+            "id": 14
+        },
+        {
+            "author": "Mark Miller",
+            "body": "For this type of stuff \"no one has complained\" doesn't mean much - thats why these changes are so insidious - they are easy not to notice - docs just disappear, and users likely don't know they ever existed. For some apps this is absolutely disastrous.\n\nWe prob should have been more careful with 1351 and more careful in the future.",
+            "date": "2009-12-06T21:36:02.359+0000",
+            "id": 15
+        },
+        {
+            "author": "C\u00e9drik LIME",
+            "body": "Robert, any news on this patch? Can we get it applied for Lucene 3.1?",
+            "date": "2010-03-10T11:53:07.672+0000",
+            "id": 16
+        },
+        {
+            "author": "Robert Muir",
+            "body": "C\u00e9drik: i brought the patch up to date, but modified it slightly.\n\nThe reasoning is, I would prefer if we just expose one method in this case.\n",
+            "date": "2010-03-10T12:55:14.552+0000",
+            "id": 17
+        },
+        {
+            "author": "C\u00e9drik LIME",
+            "body": "Robert: I liked the dual approach (fold 1 {{char}} / a {{char[]}}) as it offered maximum flexibility (folding a String didn't incur a systematic copy of the input as {{toCharArray()}} does, I could use {{charAt()}} in a loop).\nNevertheless, I will be happy with a single method if this is your preferred approach.\n\nI have updated your patch slightly to model the API after {{System.arraycopy()}}, which makes it a bit more flexible and easier to use:\n* added offset for output\n* shuffled the arguments order to mimic {{System.arraycopy()}}\n* updated JavaDoc",
+            "date": "2010-03-10T15:19:26.110+0000",
+            "id": 18
+        },
+        {
+            "author": "Robert Muir",
+            "body": "Thanks C\u00e9drik, I like your latest change.\n\nMy primary reasoning for minimizing the API is because each exposed \nmethod has some cost to us (backwards compatibility).\n\nI think if someone wants to fold a String they can still work with this API,\ne.g. use a char[1] container, and not even bother if charAt() < 0x7F, etc.\n\nIn general I guess i am less concerned about this as the Lucene API \ndoesn't use String.\n\nI will commit in a day or two if no one objects.\n",
+            "date": "2010-03-10T15:29:43.738+0000",
+            "id": 19
+        },
+        {
+            "author": "Robert Muir",
+            "body": "Committed revision 922277.\n\nThanks C\u00e9drik!",
+            "date": "2010-03-12T14:35:09.501+0000",
+            "id": 20
+        }
+    ],
+    "component": "modules/analysis",
+    "description": "This patch adds a couple of non-ascii chars to ISOLatin1AccentFilter (namely: left & right single quotation marks, en dash, em dash) which we very frequently encounter in our projects. I know that this class is now deprecated; this improvement is for legacy code that hasn't migrated yet.\n\nIt also enables easy access to the ascii folding technique use in ASCIIFoldingFilter for potential re-use in non-Lucene-related code.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-2015",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Minor",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "ASCIIFoldingFilter: expose folding logic + small improvements to ISOLatin1AccentFilter",
+    "systemSpecification": true,
+    "version": ""
+}

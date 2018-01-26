@@ -1,0 +1,53 @@
+{
+    "comments": [
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Fixed in SVN trunk. \n\nBen, could you please review / test the new API?\n\nOleg",
+            "date": "2009-11-24T20:45:40.575+0000",
+            "id": 0
+        },
+        {
+            "author": "Ben Perkins",
+            "body": "Thanks Oleg.  Yes, I will take a look.",
+            "date": "2009-11-25T02:15:06.536+0000",
+            "id": 1
+        },
+        {
+            "author": "Ben Perkins",
+            "body": "Oleg,\n\nI finally got a chance to test the new RedirectStrategy interface.  It does give me the flexibility I need, but there's an implementation issue relating to entity enclosing methods like PUT and POST.\n\nIn DefaultRequestDirector.handleResponse (currently line 1008), the code does this:\n\n            RequestWrapper wrapper = new RequestWrapper(redirect);\n            wrapper.setParams(params);\n\nBut in HttpRequestExecutor.doSendRequest (currently line 213), the code has this check:\n\n        if (request instanceof HttpEntityEnclosingRequest) {\n\nBecause a RequestWrapper is not an HttpEntityEnclosingRequest, we'll never enter this on a redirect.  And if we don't enter this, we'll never emit the entity body.  This means that even though I can use the new interfaces to cause the client to follow a POST redirect with a POST, I can't get the payload to be sent when the redirect is followed.  \n\nIt appears that if handleResponse created an EntityEnclosingRequestWrapper when the redirect object is a PUT or POST, it would solve this problem.\n\nThoughts?\n\nThanks again.\nBen",
+            "date": "2009-12-04T21:39:06.968+0000",
+            "id": 2
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "It is an unfortunate oversight on my part. The fix is basically a one liner but it will have until 4.1 alpha2\n\nOleg",
+            "date": "2009-12-10T10:41:50.803+0000",
+            "id": 3
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Fixed in SVN trunk. Please re-test\n\nOleg",
+            "date": "2009-12-11T18:39:38.250+0000",
+            "id": 4
+        },
+        {
+            "author": "Ben Perkins",
+            "body": "Synced the trunk; rebuilt; retested.  It works for me now. Thanks Oleg.\n\n- Ben",
+            "date": "2009-12-11T19:49:13.913+0000",
+            "id": 5
+        }
+    ],
+    "component": "HttpClient (classic)",
+    "description": "The existing RedirectHandler interface provides the ability influence which situations cause redirects, but gives you no control over the content of the redirect itself.  For example, if you want the client follow the redirect of a POST request with a POST request to the new location, you can't do it.  DefaultRequestDirector decides what method will be used on the redirect request and as of the most recent patch, it's always either a HEAD or a GET.\n\nOne option for resolving this might be extending the RedirectHandler interface to be a factory for creating the redirect request object.  The the DefaultRequestDirector could then be changed to ask the RedirectHandler to create the appropriate request for the situation.\n\nThanks,\nBen",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "HTTPCLIENT-862",
+    "issuetypeClassified": "RFE",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Major",
+    "product": "HTTPCLIENT",
+    "project": "HTTPCLIENT",
+    "summary": "Extend the client's redirect handling interface to allow control of the content of the redirect",
+    "systemSpecification": true,
+    "version": "4.0 Beta 2, 4.1 Alpha1"
+}

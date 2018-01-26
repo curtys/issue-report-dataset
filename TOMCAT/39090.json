@@ -1,0 +1,59 @@
+{
+    "comments": [
+        {
+            "author": null,
+            "body": "Created attachment 17960\nProfiler Memory Leak Graph",
+            "date": "20060323T21:52:59",
+            "id": 0
+        },
+        {
+            "author": null,
+            "body": "Hmm.  It looks like the clear() and reset() methods (the latter calls clear())\nset the log references to null.  What would you suggest?  An explicit finalizer\nthat calls clear() or reset() ?",
+            "date": "20060413T19:42:58",
+            "id": 1
+        },
+        {
+            "author": null,
+            "body": "It seems like the code is pretty stable there. I'd suggest that the logger be\nremoved all together along with all log.info() and log.debug() statements in\nthat class. That should take care of it completely.\n\nKyrill\n\n(In reply to comment #2)\n> Hmm.  It looks like the clear() and reset() methods (the latter calls clear())\n> set the log references to null.  What would you suggest?  An explicit finalizer\n> that calls clear() or reset() ?",
+            "date": "20060414T01:49:02",
+            "id": 2
+        },
+        {
+            "author": null,
+            "body": "*** Bug 39631 has been marked as a duplicate of this bug. ***",
+            "date": "20060619T13:34:12",
+            "id": 3
+        },
+        {
+            "author": null,
+            "body": "I had exactly the same problem as described in bug #39090 when starting Tomcat\n5.5.17:\n\njava.lang.NullPointerException\n   at org.apache.log4j.Category.isEnabledFor(Category.java:757)\n   at\norg.apache.commons.logging.impl.Log4JLogger.isTraceEnabled(Log4JLogger.java:327)\n\nAfter replacing commons-logging.jar (1.1) with an older version (1.0.4), the\nproblem was gone. Before that I replaced log4j-1.2.13 with 1.2.8, but I still\nhad the problem.\n\nThis problem, in particular, does not seem to be related to Tomcat.",
+            "date": "20060905T12:58:37",
+            "id": 4
+        },
+        {
+            "author": null,
+            "body": "This bug was listed as against 5.5.9 although the OP stated it was seen in 5.5.15.\n\nYoav's comment is dated after Remy's fix for 5.5.16\n(http://marc.theaimsgroup.com/?l=tomcat-dev&m=114078110310583&w=2) was committed\nhence his question regarding what else could/should be done since I am assuming\nhe was looking at SVN.\n\nI have tested repeatedly reloading a web application and I cannot create this\nmemory leak (confirmed by analysing with YourKit). I am therefore resolving this\nas fixed.\n\nComment 5 does not appear to be related to this issue. If this is still an\nissue, a new bug report should be created.",
+            "date": "20061119T19:37:43",
+            "id": 5
+        },
+        {
+            "author": null,
+            "body": "*** Bug 40679 has been marked as a duplicate of this bug. ***",
+            "date": "20061119T19:39:27",
+            "id": 6
+        }
+    ],
+    "component": "Catalina",
+    "description": "I am running Tomcat 5.5.15 on the latest J2SE 1.6 Mustang build 74. \n\norg.apache.tomcat.util.digester.Digester maintains references to commons-logging\nlog that gets loaded by WebappClassloader. See attached.\n\nThus, applications that put commons-logging.jar and log4.jar in their\nWEB-INF/lib will not be GC'ed on reloads, undeploys, and stops. This is a severe\nmemory leak for developer's using Tomcat for development.\n\nPlease see the attachment from the YourKit Profiler that confirms this finding.\n\nNote: it appears the last place in Tomcat's source code where this error occurs.\nOnce this is fixed, Tomcat will be fully \"developer-friendly\". :-)",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "39090",
+    "issuetypeClassified": "OTHER",
+    "issuetypeTracker": "BUG",
+    "priority": "P2 major",
+    "product": "Tomcat 5",
+    "project": "TOMCAT",
+    "summary": "Memory Leak: Tomcat files keep references to classes loaded by WebappClassLoader",
+    "systemSpecification": true,
+    "version": "5.5.9"
+}

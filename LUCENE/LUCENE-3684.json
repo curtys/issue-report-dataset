@@ -1,0 +1,65 @@
+{
+    "comments": [
+        {
+            "author": "Michael McCandless",
+            "body": "\nInitial patch:\n\n  * Adds needsPositions/needsOffsets to TermsEnum.d&pEnum().\n\n  * Cuts over all term vectors impls/usages to the new API.\n\n  * Fixed one codec (SimpleText!) to be able to store offsets in the\n    postings; added initial test to cover this.\n\nIt's an early patch... I still need to fix the other codecs to index\noffsets.\n",
+            "date": "2012-01-10T01:28:01.919+0000",
+            "id": 0
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "+1 this is awesome. seems we really need PositionIterators too :)",
+            "date": "2012-01-10T08:24:48.136+0000",
+            "id": 1
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "New patch; I changed it so you only pass \"needsOffets\" bool when pulling D&PEnum.  I think it's ready!",
+            "date": "2012-01-14T11:33:23.695+0000",
+            "id": 2
+        },
+        {
+            "author": "Robert Muir",
+            "body": "I agree, this patch looks good. I think we just need two assertEquals() in TestDuelingCodecs for the future.\n\nI agree about checkIndex, we shouldnt check anything about the offsets. The user could store something crazy\nin the offsets if they want.\n\nFor checkindex, long term i think we should really consider adding a (slow, not by default) option to verify \nthe term vectors against the postings. we could at least turn it on in tests..., but thats another separate issue.",
+            "date": "2012-01-14T19:16:25.717+0000",
+            "id": 3
+        },
+        {
+            "author": "Robert Muir",
+            "body": "Actually: just looking at FieldInfos i think i found another annoyance, we have this assertion everywhere (not just that class either):\n{noformat}\n assert this.indexOptions == IndexOptions.DOCS_AND_FREQS_AND_POSITIONS || !this.storePayloads;\n{noformat}\n\nBut i think this is wrong, we must use compareTo >= 0?",
+            "date": "2012-01-14T19:20:40.415+0000",
+            "id": 4
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "do we really need {code}static final int FORMAT_CURRENT = FORMAT_OFFSETS_IN_POSTINGS;{code} I mean the FORMAT_FLEX was introduced with flexible indexing and since we didn't release since then I think its confusing. We already changed this format since flex (ie. DocValues) without adding a new format. In LUCENE-3687 I separated the 3x and 4.0 format and removed all the previous formats from 4.0 I think this code should start with a min3xFormat-1.\n\n\n",
+            "date": "2012-01-14T20:24:46.365+0000",
+            "id": 5
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "bq. I think we just need two assertEquals() in TestDuelingCodecs for the future.\n\nGood -- I added that, it found a bug in SimpleText (only codec that can index offsets currently...) and I fixed that.\n\n{quote}\nFor checkindex, long term i think we should really consider adding a (slow, not by default) option to verify \nthe term vectors against the postings. we could at least turn it on in tests..., but thats another separate issue.\n{quote}\n\nI added that, in one direction (for each TV it seeks the Terms/Docs/AndPositionsEnum to verify everything is the same)... and it uncovered a sneaky bug in Lucene3x codec (not present in 3.x) where we were failing to make a deep copy of the Term before using it as a key in the terms cache... I fixed it.\n\nbq. But i think this is wrong, we must use compareTo >= 0?\n\nRight -- I fixed several places that were still doing == or !=.  I left ones in non-SimpleText codecs -- they are still OK since they refuse to index offsets.\n\nbq. I think this code should start with a min3xFormat-1.\n\nAhh right!  I removed that and just kept FORMAT_FLEX.\n\nThanks for the reviews Robert and Simon!",
+            "date": "2012-01-14T23:06:09.159+0000",
+            "id": 6
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "New patch w/ above feedback incorporated...",
+            "date": "2012-01-14T23:19:48.083+0000",
+            "id": 7
+        }
+    ],
+    "component": "",
+    "description": "I think should explore making start/end offsets a first-class attr in the\npostings APIs, and fixing the indexer to index them into postings.\n\nThis will make term vector access cleaner (we now have to jump through\nhoops w/ non-first-class offset attr).  It can also enable efficient\nhighlighting without term vectors / reanalyzing, if the app indexes\noffsets into the postings.\n",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-3684",
+    "issuetypeClassified": "RFE",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Major",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "Add offsets to postings (D&PEnum)",
+    "systemSpecification": true,
+    "version": ""
+}

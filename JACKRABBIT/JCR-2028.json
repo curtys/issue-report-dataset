@@ -1,0 +1,71 @@
+{
+    "comments": [
+        {
+            "author": "angela",
+            "body": "Initial proposal for the identifier-based path attempting to incorporate that extension into the general path handling used with both jackrabbit-core and jsr2spi. Main goal was to avoid spreading identifier-path handling through the core/jcr2spi code but instead having it localized in a single place.\n\nThis implies from my point of view the following if we want to stick with the current path handling:\n\n- Normalization of identifier-based paths is defined to be its replacement by a root-based\n  absolute path, which depends on an Session that is able to resolve id to path.\n  Since the Path object we are having is uncoupled from any Session, normalization of\n  identifier-based paths must occur before the Path object is created.\n\n- PATH values on the other hand need to preserve there standard from as entered.\n  Immediate normalization to the an absolute path consisting of qualified name segments is \n  not desired (not allowed). Which means that the internal representation of the jcr path \n  must be able to deal with identifier-segments.\n\nThis lead to the following changes:\n\n- Path may consist of a single IdentifierElement\n- Path has additional method 'denotesIdentifier'\n- Path.Element can be created from an identifier (which currently is String) and gets a\n  method to determine if a given element is an identifier-element.\n  The validation of the id (same as with jcr name) is left to the parser.\n\n- PathParser is extended to handle identifier-based paths upon demand:\n  > validation of the format without requirement that the normalization would succeed.\n  > normalization that requires that a Node exists with that identifier.\n- Introduction of a IdentifierResolver: \n  Used to convert identifier-based paths to a normalized path and validate the validity \n  of an identifier during parsing.\n- PathResolver: additional method getQPath(String jcrPath, boolean normalizeIdentifier)\n  that allows to trigger normalization of identifiers before creating the path objects.\n  the existing method without the flag by default resolves identifier-based path or throws if\n  no IdentifierResolver present (i.e. identifier-based not supported -> path syntax invalid)\n\n- The changes required to make core/jcr2spi properly deal with identifier-based paths\n  where ever normalization is required (API calls except for values generation) seemed \n  to be straight forward (and very limited)... (not included in the patches).\n\nStill I came accross of the following issues, which I didn't address yet, since i wanted\nto get some input regarding the overall approach before digging into the details here.\n\nIssues:\n\n- In order to properly validate the format of PATH values the ValueFactory will have a\n  dependency to the implementation that defines the format of the identifiers.\n  This was straight forward with the ValueFactory present in spi-commons and thus with\n  jcr2spi that consistently uses the ValueFactory defined on the Session object.\n\n- In jackrabbit-core the session's valuefactory is rarely used. Instead instance\n  of the jcr-commons ValueFactory are used, which is neither enabled to standardize\n  expanded name-segments nor able to deal with identifiers.\n\n- In the InternalValue the Value objects are even created directly without make use of \n  any ValueFactory... this seems to cause troubles in contrast to jcr2spi where all\n  jcr and internal values are handled/created by the factories exposed by the Session.\n\nNotes about the identifier path elements:\n\n- I first thought about forcing the identifier-element be constructed from an ItemID \n  instead of a simple String, but dropped that again... for simplicity of the initial proposal...\n  and because I wasn't totally convinced if it would be any beneficial.\n\nThe tests included in the 3rd attachement are just for completeness (TCK) and to have them saved away. Failing at the moment due to missing functionality in core/jcr2spi.\n\nangela\n",
+            "date": "2009-04-03T17:20:06.767+0000",
+            "id": 0
+        },
+        {
+            "author": "angela",
+            "body": "Value handling in jackrabbit-core:\n\nI spent some time with the issues listed above and came to the conclusion that we should take a similar approach\nas in jcr2spi: Instead of using the commons ValueFactory and creating the Value objects manually in the InternalValue,\nthe jackrabbit-core should have it's own ValueFactory implementation that creates value objects directly based on the InternalValue. With some minor effort this could be based on code already present in spi-commons (ValueFactoryQImpl, QValueValue created by Julian some time ago), which would be beneficial for the conversion from JCR-value to InternalValue and vice versa... those are already used within jackrabbit-core query-row somewhere.\n\nI will prepare a patch and upload it here as soon as possible.\n\n\n",
+            "date": "2009-04-17T17:37:01.941+0000",
+            "id": 1
+        },
+        {
+            "author": "angela",
+            "body": "Patch for jackrabbit-core containing the following modifications:\n\n- Session implements the IdentifierResolver interface in order to be able to deal\n  with identifier based paths properly.\n\n- ValueFactory implementation (new) that always creates jcr-values wrapping an InternalValue\n- consistently use this factory instead of jcr-commons valuefactory (except for those classes\n  that do not have any relation to a Session).\n- InternalValue implements QValue\n- InternalValueFactory (new) is the QValueFactory used within the jcr ValueFactory\n- InternalValue.getJCRValue which used to create the JCR value instances directly has been \n  deprecated and refactored to use the valuefactory.\n\n- the ValueFactoryQImpl and QValueFactory used within RowIteratorImpl are replaced\n  by the ValueFactory exposed by the Session. The former code is only used as fallback.\n\n- changes to the Path interface lead to a couple of changes in catch statements.\n\n\n",
+            "date": "2009-05-07T06:50:37.351+0000",
+            "id": 2
+        },
+        {
+            "author": "angela",
+            "body": "changes to jcr2spi and the spi implementations",
+            "date": "2009-05-07T06:51:33.972+0000",
+            "id": 3
+        },
+        {
+            "author": "angela",
+            "body": "patch for SPI, SPI-commons and JCR-commons replacing the previous patches for SPI and SPI-commons.",
+            "date": "2009-05-07T06:52:50.519+0000",
+            "id": 4
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "Hi,\n\nA few remarks about JCR-2028_core.patch\n\n  try {\n    addPathValue(doc, fieldName, value.getPath());\n  } catch (RepositoryException e) {\n    // will never occur\n  }\n\nThis is very dangerous. Maybe the implementation of addPathValue change, and the method sometimes does throw an exception. What about converting the RepositoryException to a RuntimeException instead?\n\n+        if (value == null) {\n+            throw new IllegalArgumentException(\"null value\");\n+        }\n         if (USE_DATA_STORE) {\n             return new InternalValue(BLOBInResource.getInstance(value));\n         }\n\nI would prefer a NullPointerException in that case. Could this be simplified, for example using a method 'checkNull'? Or moved the check to the constructor to avoid copy&paste?\n\n-        val = new Long(value);\n-        type = PropertyType.LONG;\n+        super(new Long(value));\n\nNow that we can use Java 1.5, we should use Long.valueOf(...) because it has a cache.\n\nDid you overload equals without overloading hashCode? That's dangerous, it might break hash tables.\n",
+            "date": "2009-05-07T07:50:40.100+0000",
+            "id": 5
+        },
+        {
+            "author": "angela",
+            "body": "hi tom, thanks for the quick feedback. i'll address the issues you listed above as discussed and check whether the datastore tests that are not executed by default are passing... i will keep you informed.",
+            "date": "2009-05-07T08:56:47.584+0000",
+            "id": 6
+        },
+        {
+            "author": "angela",
+            "body": "I committed the changes including the those addressing thomas' feedback at rev. r772659.\n\nModifications:\n-----------------------------------------------------------------------------------------------------------------------------------------------------------\n- Implementation for the identifier-based JCR Path (see above)\n- Adjusting the value handling in jackrabbit-core in order to allow for expanded names in Name and Path values as\n  well as for Identifier-based path values (see above for a short discussion of the problem)\n- some trivial javadoc fixes (not related to the changes made)\n\nregarding thomas' remarks:\n\na) catching RepositoryException in the BundleBinding: rethrown as IOException as some of the other prop type\n    already did instead of ignoring\nb) handling attempt to create InternalValue from null: check moved to the various constructors as discussed\n    and adjusted the QValue tests accordingly... not yet changed to NullPointerException.\nc) usage of Long.valueOf done in InternalValue and where ever I happen to see it while looking at the diffs and the\n    other QValues. similarly treated the doubles.\nd) equals/hashCode: fixed\n\nTesting\n-----------------------------------------------------------------------------------------------------------------------------------------------------------\njackrabbit-jcr-test\n- added 2 test classes NameTest and PathTest that cover the basics of the various variants of jcr names and jcr paths\n- TODO: add more (sophisticated) tests\n\njackrabbit-core\n- jackrabbit-core tests including api test pass with datastore enabled and disabled\n- i added some initial tests for InternalValue and the corresponding factory\n\njackrabbit-spi2jcr\n- the api test for path handling still fail for Node.getIdentifier() is not yet implemented.\n\njackrabbit-spi\n- added QValueTest\n\njackrabbit-spi-commons\n- added test for ValueFormat. currently only a single test regarding the changes made. this was: path values\n  are never meant to be normalized before being stored in the content.\n- added various tests for the changes made to Path, PathFactory, PathParser and PathResolver for the handling\n  of identifier based path\n\nTODO:\n-----------------------------------------------------------------------------------------------------------------------------------------------------------\n\n- PathParser stills needs some trivial adjustments as the list of illegal characters in JCR names changed (marked with\n  TODO in the code)\n- added a couple of TODOs where I saw room for improvement or wasn't sure.\n\nUp to now InternalValue's behaviour was not covered by test cases. Therefore the changes made may introduce bugs that were not detected by the existing tests... (though i obviously tried to avoid that ;-).\n\nFor this reason and due the remaining TODOs, I will keep this issue open...",
+            "date": "2009-05-07T15:00:55.811+0000",
+            "id": 7
+        },
+        {
+            "author": "angela",
+            "body": "rev. 779624 resolved TODO regarding illegal character handling",
+            "date": "2009-05-28T15:22:47.337+0000",
+            "id": 8
+        }
+    ],
+    "component": "JCR 2.0",
+    "description": "with jsr 283 the jcr path is defined to consist of a combination of the following segments\n\n\u2022\ta name segment, (J, I), where J is a JCR name and I is an integer index (I \u2265 1).\n\u2022\tan identifier segment, U, where U is a JCR identifier.\n\u2022\tthe root segment.\n\u2022\tthe self segment.\n\u2022\tthe parent segment.\n\n-> the name segment can be in extended or qualified form -> see issue JCR-1712\n-> the identifier segment is new for jsr283 and always identifies a node (-> see new method Node.getIdentifier())\n\nNon-standard parts always need to be standardized. Any of the following makes a path non-standard:\n- expanded name segments\n- trailing /\n- index [1]\n\nIdentifier-segments\n- get resolved upon being passed to any API calls that take path to an existing Node\n- don't get resolved when being used to create a PATH value object.\n\nExcept for PATH values, all jcr paths returned by the API are normalized and standard, thus never identifier-based.\n\nPATH values in contrast:\n- must be converted to standard form\n- must NOT be normalized. i.e. redundant segments and identifiers must be preserved.\n",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "JCR-2028",
+    "issuetypeClassified": "RFE",
+    "issuetypeTracker": "",
+    "priority": "Major",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "JSR 283: JCR Path",
+    "systemSpecification": true,
+    "version": ""
+}

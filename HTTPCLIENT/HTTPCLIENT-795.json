@@ -1,0 +1,35 @@
+{
+    "comments": [
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Michael, could you please re-test against HttpClient 4.0-beta1 and see if the problem still persists?\n\nOleg",
+            "date": "2008-09-09T12:03:14.552+0000",
+            "id": 0
+        },
+        {
+            "author": "Michael Andersen",
+            "body": "Aah. Sorry, should have done that first. The problem appears resolved. \n\nThanks\nMichael",
+            "date": "2008-09-09T12:18:36.992+0000",
+            "id": 1
+        },
+        {
+            "author": "Michael Andersen",
+            "body": "The issue described was resolved in version 4.0 Beta 1",
+            "date": "2008-09-09T12:19:19.951+0000",
+            "id": 2
+        }
+    ],
+    "component": "HttpClient (classic)",
+    "description": "I am not sure if this time-related behaviour is intentional or not (I have only been using this library for a few weeks) , but even if a timeout is to be expected, the exception thrown ought to indicate that there is a time component involved. \"org.apache.http.ProtocolException: Content-Length header already present\" is incredibly misleading. \n\nA simple-ish compileable program to reproduce the bug is as follows:\n\nimport java.nio.charset.Charset;\nimport org.apache.http.HttpResponse;\nimport org.apache.http.client.methods.HttpPost;\nimport org.apache.http.client.params.ClientPNames;\nimport org.apache.http.client.params.CookiePolicy;\nimport org.apache.http.entity.mime.MultipartEntity;\nimport org.apache.http.entity.mime.content.StringBody;\nimport org.apache.http.impl.client.DefaultHttpClient;\npublic class Simple {\n    static public void main(String [] args)\n    {\n        try\n        {\n            DefaultHttpClient client = new DefaultHttpClient();\n            client.getParams().setParameter(\n                        ClientPNames.COOKIE_POLICY, CookiePolicy.BROWSER_COMPATIBILITY);\n            MultipartEntity entity;\n            StringBody stringBody;\n            HttpPost post;\n            HttpResponse response;\n            entity = new MultipartEntity();\n            stringBody = new StringBody(\"field contents\",Charset.forName(\"ISO-8859-1\"));\n            entity.addPart(\"field\", stringBody);  \n            post = new HttpPost(\"http://localhost/simple.php\");\n            post.setEntity(entity); \n            response = client.execute(post);\n            \n            //The exception does not occur if the content is not consumed\n            response.getEntity().consumeContent();\n            System.out.println(\"First post done\");\n            \n            //The exception does not occur if the time interval between the requests is too short\n            Thread.sleep(15000);\n            \n            //The exception naturally doesn't occur if a new HttpClient is created\n            //client = new DefaultHttpClient();\n\n            entity = new MultipartEntity();\n            stringBody = new StringBody(\"field contents\",Charset.forName(\"ISO-8859-1\"));\n            entity.addPart(\"field\", stringBody);  \n\n            post = new HttpPost(\"http://localhost/simple.php\");\n            post.setEntity(entity); \n            response = client.execute(post); //Will throw the following:\n            /*\n                org.apache.http.ProtocolException: Content-Length header already present\n                at org.apache.http.protocol.RequestContent.process(RequestContent.java:70)\n                at org.apache.http.protocol.BasicHttpProcessor.process(BasicHttpProcessor.java:290)\n                at org.apache.http.protocol.HttpRequestExecutor.preProcess(HttpRequestExecutor.java:160)\n                at org.apache.http.impl.client.DefaultClientRequestDirector.execute(DefaultClientRequestDirector.java:356)\n                at org.apache.http.impl.client.AbstractHttpClient.execute(AbstractHttpClient.java:501)\n                at org.apache.http.impl.client.AbstractHttpClient.execute(AbstractHttpClient.java:456)\n                at org.apache.http.impl.client.AbstractHttpClient.execute(AbstractHttpClient.java:422)\n                at test.Simple.main(Simple.java:57)\n             */ \n            System.out.println(\"Second post done\");\n        }\n        catch(Exception e)\n        {\n            System.out.println(e);\n            e.printStackTrace();\n        }\n    }    \n}",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "HTTPCLIENT-795",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "HTTPCLIENT",
+    "project": "HTTPCLIENT",
+    "summary": "If there is more than 15 seconds between HttpClient.execute() calls using a MultipartEntity, a ProtocolException is thrown complaining about the Content-Length header already being present.",
+    "systemSpecification": true,
+    "version": "4.0 Alpha 4"
+}

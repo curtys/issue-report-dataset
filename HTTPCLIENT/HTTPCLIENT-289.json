@@ -1,0 +1,101 @@
+{
+    "comments": [
+        {
+            "author": "Eric Johnson",
+            "body": "Created an attachment (id=8862)\ntest case and code change.\n",
+            "date": "2003-11-01T07:28:17.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Eric Johnson",
+            "body": "I'm not entirely satisfied with my previous patch, as it _should_ be possible\nfor the ReferenceQueueThread to detect that it is no longer needed, and exit on\nits own.  It strikes me that that approach would actually require two rounds of\ngc to actually collect the thread - one to indicate to the ReferenceQueueThread\nthat the manager had been gc'd, and one to gc the thread itself.  Absent that\nkind of logic, I've put an explicit \"shutdown\" call on the connection manager.\n\nYou can see the bug in action if you comment out the line in\nTestHttpConnectionManager.testDroppedThread() that reads: \"mthcm.shutdown();\",\nthen run the test cases.\n",
+            "date": "2003-11-01T07:34:05.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Created an attachment (id=8870)\nPatch 2\n",
+            "date": "2003-11-02T07:00:00.000+0000",
+            "id": 2
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Attached above is a different take on this problem.  Instead of worrying about manually killing the \nreference thread, I just made it so there is only one thread.  Please try it out and let me know what \nyou think.\n\nMike",
+            "date": "2003-11-02T07:02:34.000+0000",
+            "id": 3
+        },
+        {
+            "author": "Eric Johnson",
+            "body": "Mike,\n\nAlas, due to craziness in my schedule, I'll not have a chance to look at this\nmore closely until late Monday or Tuesday at the earliest.  One suggestion,\nthough, is that I'd like to see a test case.  The test case could wrap each of\nthe connection manager, and possibly the HostConfiguration with a WeakReference,\nand then after forcing a gc, make sure that the references are null.  That the\nMultiThreadedHttpConnectionManager was never garbage collected was our first\nindication that something was awry....\n\nMy patch that put a name on the ReferenceQueueThread.  I did that so that it is\neasier to identify (and, for the most part, ignore) in a debugger.  I'm hoping\nany change to fix this bug will include that.\n\nI like the idea of a single monitor thread!  Thanks for looking at this.",
+            "date": "2003-11-03T07:34:50.000+0000",
+            "id": 4
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Created an attachment (id=8910)\nPatch 3\n",
+            "date": "2003-11-04T21:33:25.000+0000",
+            "id": 5
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Hi Eric,\n\nExcellent suggestions.  This latest patch adds a thread name and a test.\n\nMike",
+            "date": "2003-11-04T21:34:30.000+0000",
+            "id": 6
+        },
+        {
+            "author": "Eric Johnson",
+            "body": "I inspected the code carefully, and didn't see any issues, so I'm happy with the\nsecond patch that Mike submitted.  Hopefully neither of us missed anything!\n\nOn a slightly unrelated note, it occurs to me that the logic of\nMultiThreadedHttpConnectionManager.removeReferenceToConnection() would be a lot\nsimpler if the HttpConnection could optionally provide a weak reference to\nitself, so that the \"remove\" process was a simple get on the weakref to the\nconnection.  Mind you, if clients are using \"releaseConnection\" properly, the\nperformance difference would be miniscule, but might matter slightly more with\nmany instances of the connection manager.  Too many ideas, too little time....\n\n\nWhatever - I don't know as the above change is useful, it was just a thought\nthat occurred to me.",
+            "date": "2003-11-05T00:40:57.000+0000",
+            "id": 7
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Created an attachment (id=9047)\nPatch 4\n",
+            "date": "2003-11-11T11:18:06.000+0000",
+            "id": 8
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Hi Eric,\n\nYes, I agree that it could be a potential performance problem.  Here is another attempt at this one.  \nPlease let me know what you think.\n\nThanks,\n\nMike",
+            "date": "2003-11-11T11:19:56.000+0000",
+            "id": 9
+        },
+        {
+            "author": "Eric Johnson",
+            "body": "Cool.",
+            "date": "2003-11-11T22:52:16.000+0000",
+            "id": 10
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Any more thoughts on this one, or should I apply?\n\nMike",
+            "date": "2003-11-12T08:27:07.000+0000",
+            "id": 11
+        },
+        {
+            "author": "Michael Becke",
+            "body": "If there are no more comments on this one I'll apply it in the morning.\n\nMike",
+            "date": "2003-11-18T09:42:17.000+0000",
+            "id": 12
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Patch applied to 2.0 and HEAD.\n\nMike",
+            "date": "2003-11-19T08:43:35.000+0000",
+            "id": 13
+        }
+    ],
+    "component": "HttpClient (classic)",
+    "description": "One of my colleagues was invoking HttpClient by way of a loop something like this:\n\nfor (int i = 0; i < 300; i++) {\n    GetMethod method = new\nGetMethod(\"http://cvs.apache.org/viewcvs/jakarta-commons/httpclient/\");\n    try {\n        HttpClient httpClient = new HttpClient(new\nMultiThreadedHttpConnectionManager());\n        httpClient.executeMethod(method);\n        byte[] bytes = method.getResponseBody();\n    } finally {\n        // always release the connection after we're done\n        method.releaseConnection();\n    }\n}\n\nHe's in the process of revising his code so that he doesn't do this loop, which\nother developers might point out as a non-optimal use, but along the way, he\ndiscovered that the daemon thread that the MultiThreadedHttpConnectionManager\nmakes does not get garbage collected.  Of course, the connection manager itself\nis also never gc'd.  While I think we can avoid this problem in our code, in the\nmore general case, clients may not actually be able to control the number of\nMultiThreadedConnectionManagers they create, which could eventually cause\nproblems.  This makes me think the problem is deserving of a patch.\n\nWe found this problem with 2.0rc2, although presumably it also exists with the\nCVS HEAD.\n\nPatch to follow.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "HTTPCLIENT-289",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "HTTPCLIENT",
+    "project": "HTTPCLIENT",
+    "summary": "MultiThreadedHttpConnectionManager daemon Thread never GC'd",
+    "systemSpecification": true,
+    "version": "2.0 Milestone 2"
+}

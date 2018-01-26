@@ -1,0 +1,119 @@
+{
+    "comments": [
+        {
+            "author": "L\u00f3r\u00e1nt Pint\u00e9r",
+            "body": "The issue is also present in Jackrabbit 1.5.0.",
+            "date": "2009-01-25T21:44:02.543+0000",
+            "id": 0
+        },
+        {
+            "author": "Gr\u00e9gory Joseph",
+            "body": "We encounter a similar issue when using JR 1.5 with JBoss - namespaces are declared twice in the first node.",
+            "date": "2009-02-12T17:40:27.145+0000",
+            "id": 1
+        },
+        {
+            "author": "Gr\u00e9gory Joseph",
+            "body": "JBoss 4.2.2 and 5.0.0 have a {{xalan.jar}} in their {{lib/endorsed}} folder. Removing it solved the problem for me.",
+            "date": "2009-02-12T20:20:10.629+0000",
+            "id": 2
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Can you find out what version of Xalan the xalan.jar library you had was?",
+            "date": "2009-02-13T11:10:08.744+0000",
+            "id": 3
+        },
+        {
+            "author": "Gr\u00e9gory Joseph",
+            "body": "Here's the manifest file. So that looks like 2.7.0. This is the one shipped with jboss 4.2.2, and the one with jboss 5.0.0 only differs by the jboss-specific entries in this.",
+            "date": "2009-02-13T12:44:38.855+0000",
+            "id": 4
+        },
+        {
+            "author": "fabrizio giustina",
+            "body": "I saw the same problem with duplicate namespaces when running an application under WAS 6.1 (jackrabbit 1.5.0-1.5.2).\nThe webapp was bundling xalan 2.1.0 and xerces 2.8.1. Removing xalan causes the webapp to break in this case, so I can't confirm if the removal can fix the export problem. With jackrabbit 1.4.6 everything works fine.\n",
+            "date": "2009-02-14T16:53:22.660+0000",
+            "id": 5
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "This is a pretty tricky issue.\n\nThe reason why Jackrabbit adds those extra xmlns attributes is that at least the default XML serializer in Sun Java 1.4 does not include xmlns settings in the serialized XML stream without those attributes (even if the correct startPrefixMapping() calls are made and the namespaces used in the exported elements). Unfortunately it seems like some serializers will add their own xmns attributes regardless of whether they already exist for an element, causing duplicate namespace declarations to occur.\n\nWe could (and should) use the new SerializingContentHandler class also for the XML export methods (curiously that seems to be the only XML serialization case where we *don't* yet use the new class) to automatically add the extra xmlns attributes only when they really are needed. This would solve the problem of duplicate xmlns attributes.\n\nHowever, many XML serializers that do output the needed xmlns attributes, only do so for namespaces that are actually referenced in the serialized elements. This is troublesome for JCR, where XML exports are always required to contain *all* registered namespaces even when the exported subtree doesn't reference them. I consider this a flaw in the JCR spec, but we still need to honor this requirement and make sure that all the xmlns attributes are included in the serialized output.\n\nI guess we need to extend the SerializingContentHnalder even more to detect the case when it needs to inject xmlns attributes only for unused namespaces.",
+            "date": "2009-02-15T09:55:27.792+0000",
+            "id": 6
+        },
+        {
+            "author": "Julian Reschke",
+            "body": "Just one thought: we should be careful with adding these workarounds; they make things even harder to analyze, and they may negatively affect performance when the checks are run for each and every serialization\n\n",
+            "date": "2009-02-15T10:21:19.872+0000",
+            "id": 7
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Yeah, as an alternative I'm considering just implementing the XML serialization directly without having to deal with the complexities of the JAXP libraries. We could copy the serialization code from Xerces or Xalan to get existing and tested code for this while avoiding the full dependency.",
+            "date": "2009-02-15T10:29:25.936+0000",
+            "id": 8
+        },
+        {
+            "author": "fabrizio giustina",
+            "body": "Just a question: what has been changed in the xml serialization code after 1.4.x and why? The change was related to the problem with the java 1.4 serializer you cited above (if so, is there a jira for that)?\nExport in 1.4 seems to work fine in these situations, maybe rollbacking to the old code can be an option...\n\n",
+            "date": "2009-02-15T15:57:42.380+0000",
+            "id": 9
+        },
+        {
+            "author": "Julian Reschke",
+            "body": "I think this was while resolving JCR-1767 (an issue that only surfaced when a DOM was serialized).",
+            "date": "2009-02-15T20:01:47.402+0000",
+            "id": 10
+        },
+        {
+            "author": "Francois Masurel",
+            "body": "What is the workaround for this annoying bug as we rely a lot in our application on content import/export ?  Thanx for your help.",
+            "date": "2009-02-19T08:24:11.100+0000",
+            "id": 11
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "The workaround is to look for and remove the Xalan jar from the repository classpath. The export works fine with the built-in JAXP libraries in all JDKs we've tested, but it looks like other TransformerFactory implementations (like the one in the Xalan versions reported here) break the export.\n\nI'm still not sure how to best resolve this. I'm inclined to either revert back to the 1.4 code (with the potential of introducing other regressions) or going with a custom XML serializer that doesn't depend on any JAXP libraries (which would be a notable new block of potentially buggy code).",
+            "date": "2009-02-19T10:10:07.484+0000",
+            "id": 12
+        },
+        {
+            "author": "Francois Masurel",
+            "body": "Thanx a lot, that did it for me.  I also had to delete some xml-apis.jar and xmlParsers.jar from the classpath.",
+            "date": "2009-02-19T12:55:05.720+0000",
+            "id": 13
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "I resolved this by replacing the JAXP serialization code with a custom XML serializer over whose behaviour we have full control. The custom serializer and related classes were added in revision 746602 and in revision 746603 I modified the JCR XML exports to use this new serializer.\n\nNote that to keep things simple the new serializer is designed to only work with a fairly constrained stream of SAX events. This is OK for the XML exports we generate, but not necessarily for things like the DOM to SAX conversions used by the webdav component. Thus I've only modified the JCR XML exports to use the new serializer and kept other XML serializations based on the existing SerializingContentHandler class. \n\nMerged to the 1.5 branch in revision 746604.",
+            "date": "2009-02-22T00:33:38.290+0000",
+            "id": 14
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "To summarize the effect of the selected fix:\n\n* The SAX event stream sent to a given ContentHandler instance remains the same as before. Most notably the events will consist of both startPrefixMapping calls for all namespaces *and* explicit xmlns attributes for those same namespaces. This behaviour is expected by the current TCK and is similar to what you'd get from a SAXParser with the http://xml.org/sax/features/namespace-prefixes feature enabled.\n\n* The above means that code that uses a ContentHandler instead of an OutputStream to capture the XML export will need to be aware of this.\n\n* On the other hand, the OutputStream exports are now guaranteed *not* to produce duplicate xmlns attributes regardless of what JAXP libraries are in the classpath.",
+            "date": "2009-02-22T17:14:46.182+0000",
+            "id": 15
+        },
+        {
+            "author": "Gr\u00e9gory Joseph",
+            "body": "Thanks, as far as I can tell, this fixed our issues ! :)",
+            "date": "2009-02-24T16:00:57.845+0000",
+            "id": 16
+        }
+    ],
+    "component": "jackrabbit-jcr-commons, xml",
+    "description": "When I try to export some nodes with ExportDocumentView I get a DOMException with Jackrabbit 1.5.2. Version 1.4.6 works fine. Xerces version was 2.8.1.\n\nCode:\n\nDocument document = documentBuilder.newDocument();\nElement exportElement = (Element) document.appendChild(document.createElement(\"Export\"));\nResult result = new DOMResult(exportElement);\nTransformerHandler transformerHandler = saxTransformerFactory.newTransformerHandler();\ntransformerHandler.setResult(result);\nsession.exportDocumentView(workflowNode.getPath(), transformerHandler, true, false);\n\nException:\n\norg.w3c.dom.DOMException: NAMESPACE_ERR: An attempt is made to create or change an object in a way which is incorrect with regard to namespaces.\n\tat org.apache.xerces.dom.CoreDocumentImpl.checkDOMNSErr(Unknown Source)\n\tat org.apache.xerces.dom.AttrNSImpl.setName(Unknown Source)\n\tat org.apache.xerces.dom.AttrNSImpl.<init>(Unknown Source)\n\tat org.apache.xerces.dom.CoreDocumentImpl.createAttributeNS(Unknown Source)\n\tat org.apache.xerces.dom.ElementImpl.setAttributeNS(Unknown Source)\n\tat com.sun.org.apache.xalan.internal.xsltc.trax.SAX2DOM.startElement(SAX2DOM.java:194)\n\tat com.sun.org.apache.xml.internal.serializer.ToXMLSAXHandler.closeStartTag(ToXMLSAXHandler.java:204)\n\tat com.sun.org.apache.xml.internal.serializer.ToSAXHandler.flushPending(ToSAXHandler.java:277)\n\tat com.sun.org.apache.xml.internal.serializer.ToXMLSAXHandler.startElement(ToXMLSAXHandler.java:646)\n\tat com.sun.org.apache.xalan.internal.xsltc.trax.TransformerHandlerImpl.startElement(TransformerHandlerImpl.java:263)\n\tat org.apache.jackrabbit.commons.xml.Exporter.startElement(Exporter.java:438)\n\tat org.apache.jackrabbit.commons.xml.DocumentViewExporter.exportNode(DocumentViewExporter.java:76)\n\tat org.apache.jackrabbit.commons.xml.Exporter.exportNode(Exporter.java:298)\n\tat org.apache.jackrabbit.commons.xml.Exporter.exportNodes(Exporter.java:214)\n\tat org.apache.jackrabbit.commons.xml.DocumentViewExporter.exportNode(DocumentViewExporter.java:77)\n\tat org.apache.jackrabbit.commons.xml.Exporter.exportNode(Exporter.java:295)\n\tat org.apache.jackrabbit.commons.xml.Exporter.export(Exporter.java:144)\n\tat org.apache.jackrabbit.commons.AbstractSession.export(AbstractSession.java:461)\n\tat org.apache.jackrabbit.commons.AbstractSession.exportDocumentView(AbstractSession.java:241)",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "JCR-1952",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "DOMException: NAMESPACE_ERR thrown when exporting document view",
+    "systemSpecification": true,
+    "version": "1.5.2"
+}

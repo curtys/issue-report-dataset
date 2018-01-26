@@ -1,0 +1,125 @@
+{
+    "comments": [
+        {
+            "author": "Michael McCandless",
+            "body": "Patch, making SegmentReader fully read-only; it's much simpler now!  I\ncutover to simple ctors (3 of them, depending on how the core/del docs\nare set) instead of static get methods.\n\nI removed clone() from all IR impls and made final IR.clone() that throws\nUOE.  Cloning no longer makes sense since all IRs are read-only...\n\nI pushed all \"pending deletes\" tracking inside IW, and changed the\nreaderPool to store a map of SegmentInfo to the \"state\" that IW needs\nto track for each segment (open reader for searching, open reader for\nmerging, live docs and pending delete count).\n\nI think it's ready...\n",
+            "date": "2011-12-19T11:45:36.500+0000",
+            "id": 0
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Why not remove the Cloneable interface from IndexReader and remove clone alltogether. Then user gets compile error.",
+            "date": "2011-12-19T11:49:25.098+0000",
+            "id": 1
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "bq. Why not remove the Cloneable interface from IndexReader and remove clone alltogether. Then user gets compile error.\n\nAhh, right!  I'll do that.",
+            "date": "2011-12-19T13:38:18.418+0000",
+            "id": 2
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Patch looks nice.\n\nOne more thing: In my opinion, the whole synchronized stuff in SegmentCoreReaders can be removed (see LUCENE-3653) - all is final now, why synchronize? So LUCENE-3653 is a non-issue, when this is committed. Same applies to IR/DR/... - almost all synchronized methods can go away. And decRef, too, as it's already guarded by AtomicRef\n\nAnd in my opinion incRef/decRef on IndexReaders is useless, too (or almost useless, except segmentreaders). As Shai said before, code like SearcherManager should reCount externaly with a separate interface/helperclass (that refcounts and on decRef to 0, it calls Closeable.close - so helper can work on any Closeable). But we should remove that in separate issue.",
+            "date": "2011-12-19T13:57:26.422+0000",
+            "id": 3
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "I get a clone error in TestIndexReaderClone. There s also still a strange verbosity:\n\n{noformat}\n[junit] COMPUTE TEST METHODS: org.apache.lucene.util.LuceneTestCaseRunner@27f649df\n{noformat}",
+            "date": "2011-12-19T14:29:10.508+0000",
+            "id": 4
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Hmm I meant to \"svn rm TestIndexReaderClone.java\".\n\nOh I'll remove that silly sop.\n\nYou're right -- we don't need any sync in SegmentCoreReaders now!  It's entirely final (also SegmentReader)... I'll remove.\n\n{quote}\nAnd in my opinion incRef/decRef on IndexReaders is useless, too (or almost useless, except segmentreaders). As Shai said before, code like SearcherManager should reCount externaly with a separate interface/helperclass (that refcounts and on decRef to 0, it calls Closeable.close - so helper can work on any Closeable). But we should remove that in separate issue.\n{quote}\n\nWe should explore that... it's tricky.",
+            "date": "2011-12-19T15:43:46.550+0000",
+            "id": 5
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "New patch with Uwe's suggestions.. I think it's ready!",
+            "date": "2011-12-19T18:51:53.119+0000",
+            "id": 6
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Looks good! I think thats a good improvement!\n\nOne very small thing, can also be fixed later, no need for new patch: SegmentReader.toString() creates a StringBuilder, appends *one* String to it and returns it with toString() :-) Maybe simply retun the SegmentInfo.toString(...) result...",
+            "date": "2011-12-19T19:03:17.475+0000",
+            "id": 7
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Oh that's silly... I'll fix before committing.",
+            "date": "2011-12-19T19:07:13.010+0000",
+            "id": 8
+        },
+        {
+            "author": "Robert Muir",
+            "body": "+1\n\nI think we should look at moving deletes to codec after you commit.",
+            "date": "2011-12-19T19:12:17.271+0000",
+            "id": 9
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Hi,\nI committed some small cleanups and dead code removal after Clover analysis this morning.\n\nOne thing: we have thread locals for TermVectorsReader and StoredFieldsReader. Would it make sense to use one for DocValues, too? What do you think Simon?",
+            "date": "2011-12-21T09:09:46.635+0000",
+            "id": 10
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "bq. One thing: we have thread locals for TermVectorsReader and StoredFieldsReader. Would it make sense to use one for DocValues, too? What do you think Simon?\nI don't see a need for this. The source is cached in the DocValues instance and DocValues instances can be shared across thread. \n",
+            "date": "2011-12-21T09:42:30.742+0000",
+            "id": 11
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "bq. The source is cached in the DocValues instance and DocValues instances can be shared across thread.\n\nThanks, I just wanted to make sure that there is no synchronization on DocValues. A customer of mine had huge improvements with loading stored fields since this is in Lucene.",
+            "date": "2011-12-21T09:51:46.854+0000",
+            "id": 12
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "This patch also moves the threadlocals to SegmentCoreReaders, as they can be reused on reopen/nrt readers. Also improve ensureOpen() checks to guard everything without duplicating checks.",
+            "date": "2011-12-21T11:06:30.318+0000",
+            "id": 13
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Heavy committed at revision: 1221677",
+            "date": "2011-12-21T11:08:47.999+0000",
+            "id": 14
+        },
+        {
+            "author": "Aliaksandr Zhuhrou",
+            "body": "Guys, is it possible in a current implementation to update the doc values fields without re-indexing a whole document? ",
+            "date": "2012-03-08T13:55:50.669+0000",
+            "id": 15
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "bq. Guys, is it possible in a current implementation to update the doc values fields without re-indexing a whole document?\n\nNot yet, though LUCENE-3837 is exploring how to update postings (not doc values though) for one field in a doc...",
+            "date": "2012-03-11T13:16:29.977+0000",
+            "id": 16
+        },
+        {
+            "author": "Aliaksandr Zhuhrou",
+            "body": "Yes. I thought on something like that. I see that lucene enforces a write-once policy (as I understand this needed to support a transactional behaviour). So I think  we may use some conbination of approach for the LUCENE-3837 and a current segment system where any updates after commit go to the a new file like we do with segments. And when the docValues will be read to a memory we will fetch all files and values in a file with higher generation will override values with same docIds.\nOf course it increases even more the total amount of files. And not sure yet how to express this updates on level of the IndexWriter api. ",
+            "date": "2012-03-14T22:13:19.628+0000",
+            "id": 17
+        }
+    ],
+    "component": "core/index",
+    "description": "After LUCENE-3606 is finished, there are some TODOs:\n\nSegmentReader still contains (package-private) all delete logic including crazy copyOnWrite for validDocs Bits. It would be good, if SegmentReader itsself could be read-only like all other IndexReaders.\n\nThere are two possibilities to do this:\n# the simple one: Subclass SegmentReader and make a RWSegmentReader that is only used by IndexWriter/BufferedDeletes/... DirectoryReader will only use the read-only SegmentReader. This would move all TODOs to a separate class. It's reopen/clone method would always create a RO-SegmentReader (for NRT).\n# Remove all write and commit stuff from SegmentReader completely and move it to IndexWriter's readerPool (it must be in readerPool as deletions need a not-changing view on an index snapshot).\n\nUnfortunately the code is so complicated and I have no real experience in those internals of IndexWriter so I did not want to do it with LUCENE-3606, I just separated the code in SegmentReader and marked with TODO. Maybe Mike McCandless can help :-)",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-3631",
+    "issuetypeClassified": "RFE",
+    "issuetypeTracker": "OTHER",
+    "priority": "Major",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "Remove write access from SegmentReader and possibly move to separate class or IndexWriter/BufferedDeletes/...",
+    "systemSpecification": true,
+    "version": "4.0-ALPHA"
+}

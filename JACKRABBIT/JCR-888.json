@@ -1,0 +1,185 @@
+{
+    "comments": [
+        {
+            "author": "Stefan Guggisberg",
+            "body": "i tested with the FirstHop sample found here: http://jackrabbit.apache.org/doc/hops/FirstHop.java\n\ni was unable to reproduce the issue. \n\ncould you please attach the soruce code of your FirstHops class?",
+            "date": "2007-04-26T11:57:31.093+0000",
+            "id": 0
+        },
+        {
+            "author": "Dave Erickson",
+            "body": "Thanks for the quick response.  I found out that the issue was due to a custom JRE.  When I used the default 1.4.2 and 5.0 JRE's from Sun, there is no longer an issue.  I will close this ticket.",
+            "date": "2007-04-26T13:33:50.632+0000",
+            "id": 1
+        },
+        {
+            "author": "Dave Erickson",
+            "body": "This does not occur when the default 1.4.2_11 and 5.0 JRE's are used.  It was only happening when using a custom JRE",
+            "date": "2007-04-26T13:35:00.340+0000",
+            "id": 2
+        },
+        {
+            "author": "Rohnny Moland",
+            "body": "I assume that Dave got this exception when using the ibm vm. Is that right, Dave?\n\nWe have the same problem when we try to deploy jackrabbit to websphere application server with ibm vm. The problem is that ibm and sun have different interpretations of what a properties file can contain. With sun vm it is legal to have an empty key, but with ibm vm this is not allowed. When jackrabbit tries to load the ns_reg.properties and ns_idx.properties files from disk, the ibm vm fails with the exception over because if contains something like \"=1\". See org.apache.jackrabbit.NamespaceRegistryImpl.load(). The easy fix is just to add the empty name space to the map after loading the properties file, which is included in a patch. \n\nI hope this can be included in the next version of jackrabbit-core.\n",
+            "date": "2008-04-01T19:25:40.525+0000",
+            "id": 3
+        },
+        {
+            "author": "Dave Erickson",
+            "body": "Hi,\n\nYes, it was the IBM JVM that was causing the problem.  I was actually \nusing jackrabbit inside Lotus Expeditor.  The solution was to switch out \nthe JVM for the SUN one.\n\nDave Erickson\nSr. IT Specialist\nSoftware Services for Lotus\nIBM Software Group\nCell: 858-472-3293\nEmail: dave_erickson@us.ibm.com\n\n\n\n\nFrom:\n\"Rohnny Moland (JIRA)\" <jira@apache.org>\nTo:\ndave_erickson@us.ibm.com\nDate:\n04/01/2008 12:34 PM\nSubject:\n[jira] Commented: (JCR-888) javax.jcr.NamespaceException: : is not a \nregistered namespace uri\n\n\n\n\n    [ \nhttps://issues.apache.org/jira/browse/JCR-888?page=com.atlassian.jira.plugin.system.issuetabpanels:comment-tabpanel&focusedCommentId=12584266#action_12584266 \n] \n\nRohnny Moland commented on JCR-888:\n-----------------------------------\n\nI assume that Dave got this exception when using the ibm vm. Is that \nright, Dave?\n\nWe have the same problem when we try to deploy jackrabbit to websphere \napplication server with ibm vm. The problem is that ibm and sun have \ndifferent interpretations of what a properties file can contain. With sun \nvm it is legal to have an empty key, but with ibm vm this is not allowed. \nWhen jackrabbit tries to load the ns_reg.properties and ns_idx.properties \nfiles from disk, the ibm vm fails with the exception over because if \ncontains something like \"=1\". See \norg.apache.jackrabbit.NamespaceRegistryImpl.load(). The easy fix is just \nto add the empty name space to the map after loading the properties file, \nwhich is included in a patch. \n\nI hope this can be included in the next version of jackrabbit-core.\n\n\ncreated successfully the first time it is run.  Subsequent attempts to \nlogin result in a javax.jcr.NamespaceException.\nregistered namespace uri.\norg.apache.jackrabbit.core.NamespaceRegistryImpl.getPrefix(NamespaceRegistryImpl.java:538)\norg.apache.jackrabbit.core.nodetype.NodeTypeRegistry.checkNamespace(NodeTypeRegistry.java:1292)\norg.apache.jackrabbit.core.nodetype.NodeTypeRegistry.validateNodeTypeDef(NodeTypeRegistry.java:1415)\norg.apache.jackrabbit.core.nodetype.NodeTypeRegistry.internalRegister(NodeTypeRegistry.java:1221)\norg.apache.jackrabbit.core.nodetype.NodeTypeRegistry.<init>(NodeTypeRegistry.java:671)\norg.apache.jackrabbit.core.nodetype.NodeTypeRegistry.create(NodeTypeRegistry.java:118)\norg.apache.jackrabbit.core.RepositoryImpl.createNodeTypeRegistry(RepositoryImpl.java:571)\norg.apache.jackrabbit.core.RepositoryImpl.<init>(RepositoryImpl.java:262)\norg.apache.jackrabbit.core.RepositoryImpl.create(RepositoryImpl.java:584)\norg.apache.jackrabbit.core.TransientRepository$2.getRepository(TransientRepository.java:245)\norg.apache.jackrabbit.core.TransientRepository.startRepository(TransientRepository.java:265)\norg.apache.jackrabbit.core.TransientRepository.login(TransientRepository.java:333)\norg.apache.jackrabbit.core.TransientRepository.login(TransientRepository.java:388)\n\n-- \nThis message is automatically generated by JIRA.\n-\nYou can reply to this email to add a comment to the issue online.\n\n\n\n",
+            "date": "2008-04-02T16:15:25.373+0000",
+            "id": 4
+        },
+        {
+            "author": "Stefan Guggisberg",
+            "body": "reopening issue...\n\nRohnny, \nthanks for sharing this valuable information and providing a patch!\n\nunfortunately i don't have an ibm jvm at hand and therefore can't test it.\nis this ibm issue (handling of empty strings in java.util.Properties) documented\nanywhere? i couldn't find any related information.\n\nthe fix will probably be slightly more complicated than the one you proposing.\nthe index file handling needs to be reviewed as well. if e.g. an index value n\nis assigned to the empty uri this information must not be lost on restart since\nthe index value might be referenced by a persisted item state.",
+            "date": "2008-04-03T10:31:37.121+0000",
+            "id": 5
+        },
+        {
+            "author": "Rohnny Moland",
+            "body": "Sorry for late reply.\n\nI have not found any documentation for it. Mainly it is just a different interpretation about what a properties file can contain. The easy fix would be to just remove serializing of properties with empty key. If you serialize the word \"empty\" as the property key and then load the property it will work. \n\nThe IBM JVM is free to download here:\nhttp://www.ibm.com/developerworks/java/jdk/index.html\n\nIf you want to reproduce it, create a properties file with an empty key, load up the properties file and print the properties to the screen. I have only tried to reproduce the issue in ibm java 6, but I assume it has always been like that. \n",
+            "date": "2008-04-11T06:54:13.181+0000",
+            "id": 6
+        },
+        {
+            "author": "Rohnny Moland",
+            "body": "I looked at the jackrabbit code now, and it seems like the only other class you need to change is org.apache.jackrabbit.core.query.lucene.FileBasedNamespaceMappings.java, right? I havent created a patch, but you have to change the load and store methods. If the namespace prefix is empty, you need to substitute it with some string value for the empty ns string during load/store.\n",
+            "date": "2008-04-13T19:48:28.280+0000",
+            "id": 7
+        },
+        {
+            "author": "Ludo Cuypers",
+            "body": "We have a similar problem: We are currently setting up an environment to test the porting of an existing Linux application from a Linux/SUN/X86 platform to a SUSE release 10 SLES z/Linux. This application uses the APACHE / JACKRABBIT content repository. At start-up we receive following messages: (see ATT lepus_jackrabbit20090120.log) . \nThe IBM  JVM (JVM - version jvmxz6460-20081105_25433)  is installed on a S390x z/Linux 2.6.16.54-0.2.10-default with APACHE TOMCAT 5.5.20 and jackrabbit core-1.4.5/ \n\n20/01/2009 13:48:50,557 ERROR org.apache.jackrabbit.core.RepositoryImpl  - failed to start Repository: : is not a registered namespace uri.\njavax.jcr.NamespaceException: : is not a registered namespace uri.\n\tat org.apache.jackrabbit.core.NamespaceRegistryImpl.getPrefix(NamespaceRegistryImpl.java:441)\n\tat org.apache.jackrabbit.core.nodetype.NodeTypeRegistry.checkNamespace(NodeTypeRegistry.java:1368)\n\tat org.apache.jackrabbit.core.nodetype.NodeTypeRegistry.validateNodeTypeDef(NodeTypeRegistry.java:1491)\n\tat org.apache.jackrabbit.core.nodetype.NodeTypeRegistry.internalRegister(NodeTypeRegistry.java:1297)\n\tat org.apache.jackrabbit.core.nodetype.NodeTypeRegistry.<init>(NodeTypeRegistry.java:758)\n\tat org.apache.jackrabbit.core.nodetype.NodeTypeRegistry.create(NodeTypeRegistry.java:120)\n\tat org.apache.jackrabbit.core.RepositoryImpl.createNodeTypeRegistry(RepositoryImpl.java:605)\n\tat org.apache.jackrabbit.core.RepositoryImpl.<init>(RepositoryImpl.java:282)\n\tat org.apache.jackrabbit.core.RepositoryImpl.create(RepositoryImpl.java:618)\n\tat org.springmodules.jcr.jackrabbit.RepositoryFactoryBean.createRepository(RepositoryFactoryBean.java:57)\n\tat org.springmodules.jcr.RepositoryFactoryBean.afterPropertiesSet(RepositoryFactoryBean.java:57)\n\tat org.springframework.beans.factory.support.AbstractAutowireCapableBeanFactory.invokeInitMethods(AbstractAutowireCapableBeanFactory.java:1368)\n\tat org.springframework.beans.factory.support.AbstractAutowireCapableBeanFactory.initializeBean(AbstractAutowireCapableBeanFactory.java:1334)\n\tat org.springframework.beans.factory.support.AbstractAutowireCapableBeanFactory.doCreateBean(AbstractAutowireCapableBeanFactory.java:473)\n\tat org.springframework.beans.factory.support.AbstractAutowireCapableBeanFactory$1.run(AbstractAutowireCapableBeanFactory.java:409)\n\tat java.security.AccessController.doPrivileged(AccessController.java:224)\n\tat org.springframework.beans.factory.support.AbstractAutowireCapableBeanFactory.createBean(AbstractAutowireCapableBeanFactory.java:380)\n\tat org.springframework.beans.factory.support.AbstractBeanFactory$1.getObject(AbstractBeanFactory.java:264)\n\tat org.springframework.beans.factory.support.DefaultSingletonBeanRegistry.getSingleton(DefaultSingletonBeanRegistry.java:221)\n\tat org.springframework.beans.factory.support.AbstractBeanFactory.doGetBean(AbstractBeanFactory.java:261)\n\tat org.springframework.beans.factory.support.AbstractBeanFactory.getBean(AbstractBeanFactory.java:185)\n\tat org.springframework.beans.factory.support.AbstractBeanFactory.getBean(AbstractBeanFactory.java:164)\n\tat org.springframework.beans.factory.support.DefaultListableBeanFactory.preInstantiateSingletons(DefaultListableBeanFactory.java:423)\n\tat org.springframework.context.support.AbstractApplicationContext.finishBeanFactoryInitialization(AbstractApplicationContext.java:729)\n\tat org.springframework.context.support.AbstractApplicationContext.refresh(AbstractApplicationContext.java:381)\n\tat org.springframework.context.support.ClassPathXmlApplicationContext.<init>(ClassPathXmlApplicationContext.java:139)\n\tat org.springframework.context.support.ClassPathXmlApplicationContext.<init>(ClassPathXmlApplicationContext.java:93)\n\tat be.cipal.business.spring.SpringConfigurator.getApplicationContext(SpringConfigurator.java:43)\n\tat be.cipal.lepus.business.SpringConfiguratorApplication.getApplicationContext(SpringConfiguratorApplication.java:38)\n\tat be.cipal.lepus.web.plugin.ApplicationInit.init(ApplicationInit.java:76)\n\tat org.apache.struts.action.ActionServlet.initModulePlugIns(ActionServlet.java:871)\n\tat org.apache.struts.action.ActionServlet.init(ActionServlet.java:359)\n\tat javax.servlet.GenericServlet.init(GenericServlet.java:211)\n\tat org.apache.catalina.core.StandardWrapper.loadServlet(StandardWrapper.java:1105)\n\tat org.apache.catalina.core.StandardWrapper.load(StandardWrapper.java:932)\n\tat org.apache.catalina.core.StandardContext.loadOnStartup(StandardContext.java:3951)\n\tat org.apache.catalina.core.StandardContext.start(StandardContext.java:4225)\n\tat org.apache.catalina.core.ContainerBase.addChildInternal(ContainerBase.java:759)\n\tat org.apache.catalina.core.ContainerBase.addChild(ContainerBase.java:739)\n\tat org.apache.catalina.core.StandardHost.addChild(StandardHost.java:524)\n\tat org.apache.catalina.startup.HostConfig.deployWAR(HostConfig.java:809)\n\tat org.apache.catalina.startup.HostConfig.deployWARs(HostConfig.java:698)\n\tat org.apache.catalina.startup.HostConfig.deployApps(HostConfig.java:472)\n\tat org.apache.catalina.startup.HostConfig.start(HostConfig.java:1122)\n\tat org.apache.catalina.startup.HostConfig.lifecycleEvent(HostConfig.java:310)\n\tat org.apache.catalina.util.LifecycleSupport.fireLifecycleEvent(LifecycleSupport.java:119)\n\tat org.apache.catalina.core.ContainerBase.start(ContainerBase.java:1021)\n\tat org.apache.catalina.core.StandardHost.start(StandardHost.java:718)\n\tat org.apache.catalina.core.ContainerBase.start(ContainerBase.java:1013)\n\tat org.apache.catalina.core.StandardEngine.start(StandardEngine.java:442)\n\tat org.apache.catalina.core.StandardService.start(StandardService.java:450)\n\tat org.apache.catalina.core.StandardServer.start(StandardServer.java:709)\n\tat org.apache.catalina.startup.Catalina.start(Catalina.java:551)\n\tat sun.reflect.NativeMethodAccessorImpl.invoke0(Native Method)\n\tat sun.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:45)\n\tat sun.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:37)\n\tat java.lang.reflect.Method.invoke(Method.java:599)\n\tat org.apache.catalina.startup.Bootstrap.start(Bootstrap.java:294)\n\tat org.apache.catalina.startup.Bootstrap.main(Bootstrap.java:432)",
+            "date": "2009-02-16T12:33:40.371+0000",
+            "id": 8
+        },
+        {
+            "author": "Paul Slattery",
+            "body": "Hi , \nI am also experiencing this issue indirectly by a project that uses the JackRabbit library.\nI'm sorry , but I don't accept that the solution to this is to change JDK. We are currently using IBM SDK on Z linux and this is not an option for us.\n I have made an attempt to fix this in the code , but one unit test is still failing.\nAlso , can someone please explain why these property files have null entry keys ? It seems to be a strange and non-semantic approach to achieve this configuration.\n\nPaul\n",
+            "date": "2009-04-06T15:22:26.470+0000",
+            "id": 9
+        },
+        {
+            "author": "Paul Slattery",
+            "body": "Here is my attempt to fix this issue attached.\nThe associated patch did not seem to work for me. As stated one unit test is still failing. (see below)\nUnfortunately I do not have enough time to look further into this issue , perhaps this may be a starting point for someone else.\n\nPaul\n\n----------\n\n-------------------------------------------------------\n T E S T S\n-------------------------------------------------------\nRunning org.apache.jackrabbit.core.util.TestAll\nTests run: 3, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.827 sec\nRunning org.apache.jackrabbit.core.nodetype.compact.TestAll\nTests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 1.186 sec\nRunning org.apache.jackrabbit.core.xml.TestAll\nTests run: 2, Failures: 0, Errors: 1, Skipped: 0, Time elapsed: 22.015 sec <<< FAILURE!\nRunning org.apache.jackrabbit.core.query.TestAll\nTests run: 113, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 31.075 sec\nRunning org.apache.jackrabbit.core.observation.TestAll\nTests run: 10, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 1.155 sec\nRunning org.apache.jackrabbit.core.config.TestAll\nTests run: 9, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 1.577 sec\nRunning org.apache.jackrabbit.core.nodetype.xml.TestAll\nTests run: 34, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.547 sec\nRunning org.apache.jackrabbit.core.TestAll\nTests run: 34, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 2.811 sec\nRunning org.apache.jackrabbit.core.state.TestAll\nTests run: 11, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 3.622 sec\nRunning org.apache.jackrabbit.core.data.TestAll\njavax.jcr.NamespaceException: nt: is not a registered namespace uri.\n        at org.apache.jackrabbit.core.NamespaceRegistryImpl.getPrefix(NamespaceRegistryImpl.java:538)\n        at org.apache.jackrabbit.core.LocalNamespaceMappings.getPrefix(LocalNamespaceMappings.java:193)\n        at org.apache.jackrabbit.core.xml.ImportHandler.startDocument(ImportHandler.java:121)\n        at org.apache.jackrabbit.commons.DefaultContentHandler.startDocument(DefaultContentHandler.java:199)\n        at org.apache.xerces.parsers.AbstractSAXParser.startDocument(Unknown Source)\n        at org.apache.xerces.impl.dtd.XMLDTDValidator.startDocument(Unknown Source)\n        at org.apache.xerces.impl.XMLDocumentScannerImpl.startEntity(Unknown Source)\n        at org.apache.xerces.impl.XMLVersionDetector.startDocumentParsing(Unknown Source)\n        at org.apache.xerces.parsers.XML11Configuration.parse(Unknown Source)\n        at org.apache.xerces.parsers.XML11Configuration.parse(Unknown Source)\n        at org.apache.xerces.parsers.XMLParser.parse(Unknown Source)\n        at org.apache.xerces.parsers.AbstractSAXParser.parse(Unknown Source)\n        at org.apache.xerces.jaxp.SAXParserImpl$JAXPSAXParser.parse(Unknown Source)\n        at org.apache.xerces.jaxp.SAXParserImpl.parse(Unknown Source)\n        at org.apache.jackrabbit.commons.DefaultContentHandler.parse(DefaultContentHandler.java:82)\n        at org.apache.jackrabbit.commons.AbstractSession.importXML(AbstractSession.java:125)\n        at org.apache.jackrabbit.core.data.ExportImportTest.doTestExportImportBinary(ExportImportTest.java:64)\n        at org.apache.jackrabbit.core.data.ExportImportTest.testExportImportBinary(ExportImportTest.java:39)\n        at sun.reflect.NativeMethodAccessorImpl.invoke0(Native Method)\n        at sun.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:39)\n        at sun.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:25)\n        at java.lang.reflect.Method.invoke(Method.java:585)\n        at junit.framework.TestCase.runTest(TestCase.java:154)\n        at junit.framework.TestCase.runBare(TestCase.java:127)\n        at junit.framework.TestResult$1.protect(TestResult.java:106)\n        at junit.framework.TestResult.runProtected(TestResult.java:124)\n        at junit.framework.TestResult.run(TestResult.java:109)\n        at junit.framework.TestCase.run(TestCase.java:118)\n        at org.apache.jackrabbit.test.AbstractJCRTest.run(AbstractJCRTest.java:406)\n        at junit.framework.TestSuite.runTest(TestSuite.java:208)\n        at junit.framework.TestSuite.run(TestSuite.java:203)\n        at junit.framework.TestSuite.runTest(TestSuite.java:208)\n        at junit.framework.TestSuite.run(TestSuite.java:203)\n        at sun.reflect.NativeMethodAccessorImpl.invoke0(Native Method)\n        at sun.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:39)\n        at sun.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:25)\n        at java.lang.reflect.Method.invoke(Method.java:585)\n        at org.apache.maven.surefire.junit.JUnitTestSet.execute(JUnitTestSet.java:213)\n        at org.apache.maven.surefire.suite.AbstractDirectoryTestSuite.executeTestSet(AbstractDirectoryTestSuite.java:140)\n        at org.apache.maven.surefire.suite.AbstractDirectoryTestSuite.execute(AbstractDirectoryTestSuite.java:127)\n        at org.apache.maven.surefire.Surefire.run(Surefire.java:177)\n        at sun.reflect.NativeMethodAccessorImpl.invoke0(Native Method)\n        at sun.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:39)\n        at sun.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:25)\n        at java.lang.reflect.Method.invoke(Method.java:585)\n        at org.apache.maven.surefire.booter.SurefireBooter.runSuitesInProcess(SurefireBooter.java:345)\n        at org.apache.maven.surefire.booter.SurefireBooter.main(SurefireBooter.java:1009)\nTests run: 11, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 7.855 sec <<< FAILURE!\n\nResults :\n\nFailed tests:\n  testExportImportBinary(org.apache.jackrabbit.core.data.ExportImportTest)\n\nTests in error:\n  testTwoMixins(org.apache.jackrabbit.core.xml.DocumentViewTest)\n\nTests run: 229, Failures: 1, Errors: 1, Skipped: 0\n\n[INFO] ------------------------------------------------------------------------\n[ERROR] BUILD FAILURE\n[INFO] ------------------------------------------------------------------------\n[INFO] There are test failures.\n\nPlease refer to C:\\AdminFolder\\jackrabbit149\\jackrabbit-core-1.4.9\\target\\surefire-reports for the individual test results.\n[INFO] ------------------------------------------------------------------------\n[INFO] For more information, run Maven with the -e switch\n[INFO] ------------------------------------------------------------------------\n[INFO] Total time: 1 minute 43 seconds\n[INFO] Finished at: Mon Apr 06 16:41:39 BST 2009\n[INFO] Final Memory: 16M/39M\n[INFO] ------------------------------------------------------------------------",
+            "date": "2009-04-06T15:42:44.527+0000",
+            "id": 10
+        },
+        {
+            "author": "Stefan Guggisberg",
+            "body": "> Also , can someone please explain why these property files have null entry keys ? It seems to be a strange and non-semantic approach to achieve this configuration.\n\nit's not about null value keys, it's about empty string keys. namespace mappings are maintained in a HashMap (prefix->uri). \n\nplease see the JCR 1.0 specification, 4.5 Namespaces.  JCR has a notion of a default namespace (emtpy uri), which is \nreferenced through the empty prefix (\"\").",
+            "date": "2009-04-06T15:48:13.239+0000",
+            "id": 11
+        },
+        {
+            "author": "Paul Slattery",
+            "body": "> please see the JCR 1.0 specification, 4.5 Namespaces. JCR has a notion of a default namespace (emtpy uri), which is\nreferenced through the empty prefix (\"\").\n\nI still fail to see how this is in any way descriptive without tracing through the code.\nCould it not be given a key value default_ns or something else ?",
+            "date": "2009-04-06T16:04:19.136+0000",
+            "id": 12
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "I don't think anyone is opposed to changing the key as it causes a clear problem on the IBM JVM.\n\nHowever, a change must pass all tests and be compatible with existing Jackrabbit installations before it can be accepted in Jackrabbit trunk.\n",
+            "date": "2009-04-06T16:16:47.583+0000",
+            "id": 13
+        },
+        {
+            "author": "Chris Schmidt",
+            "body": "Some additional information that may help here.  This issue seems to only occur with IBM's 1.6 JDK.  We used JackRabbit on AIX with JDK 1.5 and never encountered this issue.  It wasn't until we tried upgrading to 1.6 that the issue occurred.\n\nIBM released an update to 1.6 a few months ago.  I'll be testing the new service pack this week to see if it resolves the problem.  If not I'll be working on a resolution since it is blocking us from deploying 1.6.  Based on earlier comments, only org.apache.jackrabbit.core.query.lucene.FileBasedNamespaceMappings.java need to change in addition to NamespaceRegistryImpl.java?",
+            "date": "2009-04-27T17:03:37.473+0000",
+            "id": 14
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "AFAICS FileBasedNamespaceMappings does not use an empty key. It stores an index internal prefix to known namespace uris, where the internal prefixes are simply enumerated with an integer (even the empty namespace).",
+            "date": "2009-04-29T08:09:42.489+0000",
+            "id": 15
+        },
+        {
+            "author": "Stefan Guggisberg",
+            "body": "in general a fix will have to make sure that the internal mapping of \nns uri to integer is not affected, see  my previous comment [1]. \n\nns uri's are internally assigned integer values. those integer values\nare persisted in place of the ns uri for space efficiency. any change \nin this assignment logic might break backwards compatibility.\n\nyou might want to search for references/implementations of \no.a.j.core.util.StringIndex.\n\n\n[1] https://issues.apache.org/jira/browse/JCR-888?focusedCommentId=12585041",
+            "date": "2009-04-29T10:12:00.797+0000",
+            "id": 16
+        },
+        {
+            "author": "Chris Schmidt",
+            "body": "I've had a chance to do a bit more work on this.  There is one case that I'm not certain will keep the indexing value unfortunately.  If a deployment of JackRabbit has already created the property files and it is loaded into the IBM 1.6 JRE, the default namespace will not be found.  The only way I can think of fixing this case is if there is some mechanism to go into the filesystem and modify the property files prior to getting loaded in the Property file.\n\nI have a small patch that converts the empty string into a long-ish name when persisting to a property file.  That shouldn't collide with existing URI/Prefixes, but I put the value into the restricted prefixes/uris just in case.  The conversion is done for both the index values and the prefix/uri mapping.  I've tested against a brand new deployment of JackRabbit under AIX and an existing deployment that originally exhibited the issue prior to the patch. \n\nI still haven't gotten the latest version of IBMs 1.6 JDK installed on AIX to test with.  It is possible that this problem is fixed in SR4.",
+            "date": "2009-04-29T14:10:09.047+0000",
+            "id": 17
+        },
+        {
+            "author": "Chris Schmidt",
+            "body": "Patch that converts the default prefix/uri into a different value when persisting into a property file.  Restores to the default value when loading from the same property file.",
+            "date": "2009-04-29T14:11:39.996+0000",
+            "id": 18
+        },
+        {
+            "author": "Kristin Obermyer",
+            "body": "Would it be possible to include this patch in the next dot release (1.5.7)?  Here at Oracle Primavera we have customers that use WebSphere 7 and are unable to use the workaround of switching to a different JRE.  We analyzed the option of building the patch ourselves, and determined it would be best to receive an official patch from the Jackrabbit team.  Thank you for your consideration.    ",
+            "date": "2009-06-25T14:11:06.461+0000",
+            "id": 19
+        },
+        {
+            "author": "Rob Owen",
+            "body": "This problem was reported to IBM (PMR 52846 756 000) and they will have a fix. \n\n> From IBM Support Tuesday, June 23, 2009:\n> RE:  PMR 52846 756 000 - problem with WAS 7.0.0.3 SDK and property files\n> JDK development team has worked on this problem and opened an APAR#IZ53551 to fix this defect. \n> JDK team has arrived at testfix. I've tested the fix and the fix has resolved the issue. \n> The fix will be published in JDK SR6.\n> IBM BPTSE Developer Services.\n",
+            "date": "2009-06-29T12:47:35.436+0000",
+            "id": 20
+        },
+        {
+            "author": "Ludo Cuypers",
+            "body": "I installed IBM's JRE 1.6 SR5, but it returns the same result. What 's\nthe easiest way to incorporate the Jackrabbit fix into my environment?\nRegards... \n\nMet vriendelijke groeten,\nLudo\n-----------------------------------------------------------------\nLudo Cuypers           CIPAL     -     Cipalstraat 1,   B2440 Geel\ne-mail : lcu@cipal.be\nTel. : 014/57.62.11              -              Tel.Direct :\n014/57.63.85\n-----------------------------------------------------------------\n\n-----Oorspronkelijk bericht-----\nVan: Jukka Zitting (JIRA) [mailto:jira@apache.org] \nVerzonden: woensdag 8 juli 2009 12:48\nAan: CUYPERS Ludo\nOnderwerp: [jira] Updated: (JCR-888) javax.jcr.NamespaceException: : is\nnot a registered namespace uri\n\n\n     [\nhttps://issues.apache.org/jira/browse/JCR-888?page=com.atlassian.jira.pl\nugin.system.issuetabpanels:all-tabpanel ]\n\nJukka Zitting updated JCR-888:\n------------------------------\n\n    Status: Patch Available  (was: Reopened)\n\nNamespaceRegistryImpl.java.patch\nis created successfully the first time it is run.  Subsequent attempts\nto login result in a javax.jcr.NamespaceException.\nregistered namespace uri.\norg.apache.jackrabbit.core.NamespaceRegistryImpl.getPrefix(NamespaceRegi\nstryImpl.java:538)\norg.apache.jackrabbit.core.nodetype.NodeTypeRegistry.checkNamespace(Node\nTypeRegistry.java:1292)\norg.apache.jackrabbit.core.nodetype.NodeTypeRegistry.validateNodeTypeDef\n(NodeTypeRegistry.java:1415)\norg.apache.jackrabbit.core.nodetype.NodeTypeRegistry.internalRegister(No\ndeTypeRegistry.java:1221)\norg.apache.jackrabbit.core.nodetype.NodeTypeRegistry.<init>(NodeTypeRegi\nstry.java:671)\norg.apache.jackrabbit.core.nodetype.NodeTypeRegistry.create(NodeTypeRegi\nstry.java:118)\norg.apache.jackrabbit.core.RepositoryImpl.createNodeTypeRegistry(Reposit\noryImpl.java:571)\norg.apache.jackrabbit.core.RepositoryImpl.<init>(RepositoryImpl.java:262\n)\norg.apache.jackrabbit.core.RepositoryImpl.create(RepositoryImpl.java:584\n)\norg.apache.jackrabbit.core.TransientRepository$2.getRepository(Transient\nRepository.java:245)\norg.apache.jackrabbit.core.TransientRepository.startRepository(Transient\nRepository.java:265)\norg.apache.jackrabbit.core.TransientRepository.login(TransientRepository\n.java:333)\norg.apache.jackrabbit.core.TransientRepository.login(TransientRepository\n.java:388)\n\n-- \nThis message is automatically generated by JIRA.\n-\nYou can reply to this email to add a comment to the issue online.\n\n",
+            "date": "2009-08-07T12:57:18.295+0000",
+            "id": 21
+        },
+        {
+            "author": "Ludo Cuypers",
+            "body": "I recently installed IBM's Java 1.6 SR6, which solved the problem.\nRegards\nLudo",
+            "date": "2009-11-27T07:41:19.661+0000",
+            "id": 22
+        },
+        {
+            "author": "Stefan Guggisberg",
+            "body": "> I recently installed IBM's Java 1.6 SR6, which solved the problem. \n\ngood to know, thanks for sharing this!\n\ncheers\nstefan",
+            "date": "2009-11-27T09:08:52.679+0000",
+            "id": 23
+        },
+        {
+            "author": "Ken W",
+            "body": "Hi all,\n\nwill this issue be included in any future jackrabbit releases?  We encountered this issue installing Guvnor5 on IBM WAS 7.0.0.7.  I believe this version of WAS is shipped with IBM JV 1.6 SR2 which has this problem.  Really need this resolved because we can't switch to a different JRE.\n\n\nRegards,\n\nKen",
+            "date": "2010-02-10T05:39:27.096+0000",
+            "id": 24
+        },
+        {
+            "author": "Ludo Cuypers",
+            "body": "Ik ben afwezig op 9 februari. \nVoor dringende zaken kan je terecht bij Linda Verachtert (LV@cipal.be)  of Dirk Van Royen (DVR@cipal.be) .  \n",
+            "date": "2010-02-10T05:52:34.445+0000",
+            "id": 25
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Fixed in  revision 950680 using a somewhat simpler approach that also takes care of backwards compatibility with earlier repository versions.",
+            "date": "2010-06-02T17:36:08.461+0000",
+            "id": 26
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Merged to the 2.1 branch in revision 999905.",
+            "date": "2010-09-22T12:23:30.427+0000",
+            "id": 27
+        }
+    ],
+    "component": "jackrabbit-core",
+    "description": "Using the first hops with both versions 1.2.3 and 1.3, the repository is created successfully the first time it is run.  Subsequent attempts to login result in a javax.jcr.NamespaceException.\n\n\nDEBUG - Initializing transient repository\nINFO - Starting repository...\nINFO - LocalFileSystem initialized at path repository\\repository\nException in thread \"main\" javax.jcr.NamespaceException: : is not a registered namespace uri.\n\tat org.apache.jackrabbit.core.NamespaceRegistryImpl.getPrefix(NamespaceRegistryImpl.java:538)\n\tat org.apache.jackrabbit.core.nodetype.NodeTypeRegistry.checkNamespace(NodeTypeRegistry.java:1292)\n\tat org.apache.jackrabbit.core.nodetype.NodeTypeRegistry.validateNodeTypeDef(NodeTypeRegistry.java:1415)\n\tat org.apache.jackrabbit.core.nodetype.NodeTypeRegistry.internalRegister(NodeTypeRegistry.java:1221)\n\tat org.apache.jackrabbit.core.nodetype.NodeTypeRegistry.<init>(NodeTypeRegistry.java:671)\n\tat org.apache.jackrabbit.core.nodetype.NodeTypeRegistry.create(NodeTypeRegistry.java:118)\n\tat org.apache.jackrabbit.core.RepositoryImpl.createNodeTypeRegistry(RepositoryImpl.java:571)\n\tat org.apache.jackrabbit.core.RepositoryImpl.<init>(RepositoryImpl.java:262)\n\tat org.apache.jackrabbit.core.RepositoryImpl.create(RepositoryImpl.java:584)\n\tat org.apache.jackrabbit.core.TransientRepository$2.getRepository(TransientRepository.java:245)\n\tat org.apache.jackrabbit.core.TransientRepository.startRepository(TransientRepository.java:265)\n\tat org.apache.jackrabbit.core.TransientRepository.login(TransientRepository.java:333)\n\tat org.apache.jackrabbit.core.TransientRepository.login(TransientRepository.java:388)\n\tat testing.FirstHops.main(FirstHops.java:24)",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "JCR-888",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "javax.jcr.NamespaceException: : is not a registered namespace uri",
+    "systemSpecification": true,
+    "version": "1.2.3, 1.3"
+}

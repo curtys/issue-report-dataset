@@ -1,0 +1,35 @@
+{
+    "comments": [
+        {
+            "author": "Roman Puchkovskiy",
+            "body": "Attaching proposed patch. This just uses ResourceException(String, Throwable) constructor. Not sure, is this correct, please review.",
+            "date": "2008-05-14T06:39:51.427+0000",
+            "id": 0
+        },
+        {
+            "author": "Claus K\u00f6ll",
+            "body": "I have prefered to check it in the JCARepositoryHandle to be backward compatible with ResourceException\nCommited in Rev 779040",
+            "date": "2009-05-27T07:40:06.517+0000",
+            "id": 1
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Merged to the 1.x branch in  revision 789706.",
+            "date": "2009-06-30T14:34:08.651+0000",
+            "id": 2
+        }
+    ],
+    "component": "jackrabbit-jca",
+    "description": "Call sequence:\n  JCARepositoryHandle.login(Credentials, String)      // (here non-existent workspace is specified for login)\n    JCARepositoryHandle.login(JCAConnectionRequestInfo)\n      ConnectionManager.allocateConnection(ManagedConnectionFactory, ConnectionRequestInfo)\n        ...\n          JCAManagedConnection.openSession(JCAConnectionRequestInfo)\n            Repository.login(Credentials, String)        // here NoSuchWorkspaceException is thrown, catched by JCAManagedConnection.openSession(JCAConnectionRequestInfo), _set as linkedException_ to ResourceException, which is thrown\n        ...\n     Here (in JCARepositoryHandle.login(JCAConnectionRequestInfo)) ResourceException is caught, its _cause_ is retreived, and, if cause is NoSuchWorkspaceException, it's thrown, else another exception is thrown.\n\nNote, that when exception occures on lower level, it's wrapped in ResourceException using setLinkedException(), but on upper level it's unwrapped using getCause(). But cause is not set by anyone, it's null, so NoSuchWorkspaceException is never thrown here.\n\nSuggested fix is to use same mechanism on both ends: either change wrapping mechanism to exception chaining (new ResourceException(msg, cause)), or unwrap using ResourceException.getLinkedException().",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "JCR-1597",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "JCARepositoryHandle.login(...) methods never throw NoSuchWorkspaceException",
+    "systemSpecification": true,
+    "version": "1.4"
+}

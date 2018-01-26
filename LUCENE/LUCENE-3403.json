@@ -1,0 +1,53 @@
+{
+    "comments": [
+        {
+            "author": "Shai Erera",
+            "body": "Patch adds 3 test cases to TestTermVectors. If you don't apply the fix to IndexWriter, the tests which call addIndexes fail.\n\nIt also moves the setHasVectors call after merger.merge() in IndexWriter.\n\nBTW, if you omit the optimize() call and the fix to IW, the tests pass.",
+            "date": "2011-08-26T06:48:31.401+0000",
+            "id": 0
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "good catch Shai, Does this happen on 4.0 too? I don't think we have setHasVectors there anymore. I am just wondering since you put 4.0 as a fix version.",
+            "date": "2011-08-26T07:45:30.584+0000",
+            "id": 1
+        },
+        {
+            "author": "Shai Erera",
+            "body": "You're right, it does not happen on trunk. I still want to commit the test cases to trunk too, so that we've got that covered there as well. Therefore I think I should keep the 4.0 fix version?\n\nThe problem is that SegmentMerger receives its FieldInfos from DocumentsWriter, and it knows whether to set hasVector according to what it receives. When you addDoc, DW has FieldInfos, but when you only addIndexes, DW doesn't.\n\nIn fact, the field infos are read only on IW open ... so even if I addIndexes(), commit(), addIndexes(), the field infos would still be missing. A workaround I see for now is to addIndexes(), close(), new IW(), continue with addIndexes() or optimize(). Which is ugly but it's a workaround until we release a new version. I'll try that.\n\nIf it's ok, I'll commit the fix to 3x and the tests-only to trunk.",
+            "date": "2011-08-26T10:59:47.918+0000",
+            "id": 2
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "bq.You're right, it does not happen on trunk. I still want to commit the test cases to trunk too, so that we've got that covered there as well. Therefore I think I should keep the 4.0 fix version?\n\ndon't get me wrong I was just double checking because 4.0 was not in the affected version. I don't wanna miss such a trap. :)\n\nbq. The problem is that SegmentMerger receives its FieldInfos from DocumentsWriter, and it knows whether to set hasVector according to what it receives. When you addDoc, DW has FieldInfos, but when you only addIndexes, DW doesn't.\n\nmaybe we should adopt what trunk does, checking all the FI if one of the stores vectors unless you FIs is readonly?\n\nbq. If it's ok, I'll commit the fix to 3x and the tests-only to trunk.\n\n+1 tests are great!\n\n",
+            "date": "2011-08-26T11:15:21.272+0000",
+            "id": 3
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Phew nice catch Shai!\n",
+            "date": "2011-08-26T12:37:24.927+0000",
+            "id": 4
+        },
+        {
+            "author": "Shai Erera",
+            "body": "Committed revision 1162300 (3x).\nCommitted revision 1162301 (trunk -- tests only).",
+            "date": "2011-08-27T06:23:11.127+0000",
+            "id": 5
+        }
+    ],
+    "component": "core/index",
+    "description": "I encountered a problem with addIndexes where term vectors disappeared following optimize(). I wrote a simple test case which demonstrates the problem. The bug appears with both addIndexes() versions, but does not appear if addDocument is called twice, committing changes in between.\n\nI think I tracked the problem down to IndexWriter.mergeMiddle() -- it sets term vectors before merger.merge() was called. In the addDocs case, merger.fieldInfos is already populated, while in the addIndexes case it is empty, hence fieldInfos.hasVectors returns false.\n\nwill post a patch shortly.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-3403",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Blocker",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "Term vectors missing after addIndexes + optimize",
+    "systemSpecification": true,
+    "version": "3.3"
+}

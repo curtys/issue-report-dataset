@@ -1,0 +1,107 @@
+{
+    "comments": [
+        {
+            "author": "Mark Lassau",
+            "body": "The following methods would potentially suffer contention as well depending on usage patterns of the particular app:\n* stringToTime()\n* dateToString()\n* timeToString()\n",
+            "date": "2008-12-01T03:37:33.803+0000",
+            "id": 0
+        },
+        {
+            "author": "Mark Lassau",
+            "body": "[SimpleDateFormat javadoc|http://java.sun.com/javase/6/docs/api/java/text/SimpleDateFormat.html]:\n\n{quote}\nDate formats are not synchronized.\nIt is recommended to create separate format instances for each thread.\nIf multiple threads access a format concurrently, it must be synchronized externally.\n{quote}\n",
+            "date": "2008-12-01T03:42:04.181+0000",
+            "id": 1
+        },
+        {
+            "author": "Daniel Naber",
+            "body": "Could you try changing the code to create a new object every time and then run your load test again? We original did that but it was slower, at least according to this commit comment from two years ago:\n\n\"Don't re-create SimpleDateFormat objects, use static ones instead. Gives about a 2x performance increase in a micro benchmark.\"\n",
+            "date": "2008-12-01T18:29:10.173+0000",
+            "id": 2
+        },
+        {
+            "author": "Doug Cutting",
+            "body": "ThreadLocal?",
+            "date": "2008-12-01T23:04:15.425+0000",
+            "id": 3
+        },
+        {
+            "author": "Mark Lassau",
+            "body": "My original thought was ThreadLocal, but I tend to try and avoid these where possible.\n\nI wanted to test the speed on creating a new Calendar (rather than SimpleDateFormat) for each request, but was worried about the instantiation overhead.\nDaniel's comment above reinforces this concern to some extent, so we'll have to wait and compare benchmarks.",
+            "date": "2008-12-02T00:00:58.370+0000",
+            "id": 4
+        },
+        {
+            "author": "robert engels",
+            "body": "If you review the source for SimpleDateFormat you will see that it internally performs some synchronization during initialization anyway (uses some Hashtables), and  also that the initialization cost is pretty high (lots of code), so a static sync'd copy is probably best.\n\nOutside of that, the ThreadLocal is the way to go.\n\nMy tests shows that the instantiation time is 2x longer than the typical parse time.\n\n",
+            "date": "2008-12-02T00:43:30.253+0000",
+            "id": 5
+        },
+        {
+            "author": "robert engels",
+            "body": "The last comment was tested using Java 5.\n\nIt is my understanding that in Java 6, synchronization has become even cheaper - although object creation is cheaper as well - although 99% of the instantiation time of SimpleDateFormat is in the init code, not the object creation.\n\nI know there has been a lot of discussion of the \"problems\" with ThreadLocals... I've been a part of most of them :) - but for these very small objects, the typical ThreadLocal memory issues don't really apply.\n\n",
+            "date": "2008-12-02T00:47:57.072+0000",
+            "id": 6
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "I agree: ThreadLocal, despite its problems, is probably the best solution here.  The memory cost ought to be tiny.\n\nWe could also use CloseableThreadLocal (which works around the problems of ThreadLocal), and then allow DateTools to be instantiated, and add a close() method to it (vs the all-static methods we have today).  This way the application could close the DateTools instance and reliably free up the tiny amount of memory used.",
+            "date": "2008-12-02T11:26:01.031+0000",
+            "id": 7
+        },
+        {
+            "author": "Mark Lassau",
+            "body": "An update for anyone interested:\n\nThe test run that showed this contention suffered even worse contention in another component of our application.\nSince we have fixed that component, we have no longer observed contention in DateTools.stringToDate(). \n\nFor that reason, this issue is not now considered a priority for us.",
+            "date": "2009-02-16T01:14:56.370+0000",
+            "id": 8
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Removing 2.9 target.",
+            "date": "2009-03-18T16:58:33.436+0000",
+            "id": 9
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "This is not longer highest priority, but the fix using ThreadLocal without close seems to be the best possibility. We use this in our local applications, too when we have a pool of DateFormats. I will take care on applying this patch.\n\nIn general, this NumericRangeQuery and NumericField should be used when dates should be indexed.",
+            "date": "2011-01-25T21:32:16.478+0000",
+            "id": 10
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Here the patch, using one ThreadLocal statically.\n\n(theoretically this class still contains a non-enum which shold in reality an enum. We can change this later or deprecate this class at all)\n\nI will commit tomorrow to trunk and 3.x",
+            "date": "2011-01-25T21:52:33.954+0000",
+            "id": 11
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Better patch with also the stupid enum declared as enum. Now the constant lookup should even faster (in table-switch statement).\n\nWill commit soon.",
+            "date": "2011-01-25T22:19:27.758+0000",
+            "id": 12
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Committed trunk revision: 1063493\nCommitted 3.x revision: 1063494",
+            "date": "2011-01-25T22:30:21.104+0000",
+            "id": 13
+        },
+        {
+            "author": "Grant Ingersoll",
+            "body": "Bulk close for 3.1",
+            "date": "2011-03-30T15:50:31.645+0000",
+            "id": 14
+        }
+    ],
+    "component": "core/search",
+    "description": "Load testing our application (the JIRA Issue Tracker) has shown that threads spend a lot of time blocked in DateTools.stringToDate().\n\nThe stringToDate() method uses a singleton SimpleDateFormat object to parse the dates.\nEach call to SimpleDateFormat.parse() is *synchronized* because SimpleDateFormat is not thread safe.\n\n",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-1472",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Minor",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "DateTools.stringToDate() can cause lock contention under load",
+    "systemSpecification": true,
+    "version": "2.3.2"
+}

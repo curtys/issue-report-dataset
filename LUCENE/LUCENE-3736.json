@@ -1,0 +1,287 @@
+{
+    "comments": [
+        {
+            "author": "Uwe Schindler",
+            "body": "Here just my cleanup work in ParallelReader, nothing new. It's as before, only \"bugs\" (missing open checks) fixed and code violations (synthetic accessors, final fields).\n\nThe next step will be to remove the add() methods, as IndexReaders should not be changed after create.\n\nWill work more tomorrow.\n\nThe plan is:\n- Move all subreaders to ctor (builder-like API. First build reader-set, then call build)\n- Rename ParallelReader to ParallelAtomicReader\n- Add a ParallelCompositeReader with same builder API, but taking any CompositeReader-set and checks them that they are aligned (docStarts identical). The subreaders are ParallelAtomicReaders.",
+            "date": "2012-02-01T23:51:38.669+0000",
+            "id": 0
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Attached is a patch implementing the above proposal using the builder pattern. The builder pattern (sorry Robert), is the only nice setup that allows to set properties like ignroing stored fields on the parallel readers, but make the built reader unmodifiable!",
+            "date": "2012-02-05T23:57:49.572+0000",
+            "id": 1
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "There are som test todos: The tests for parallel readers are very simplistic and have only 2 documents (which is especially stupid for composite readers to test them). We should raise number of documents.",
+            "date": "2012-02-06T00:01:02.261+0000",
+            "id": 2
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "New patch with javadocs and imporved tests (to check all builder setting).\n\nI will commit this later!",
+            "date": "2012-02-06T18:39:06.143+0000",
+            "id": 3
+        },
+        {
+            "author": "Robert Muir",
+            "body": "{quote}\nThe builder pattern (sorry Robert), is the only nice setup that allows to set properties like ignroing stored fields on the parallel readers, but make the built reader unmodifiable!\n{quote}\n\nI think its probably appropriate here, I think immutability for an indexreader subclass is worth the pain :)\n\nBut maybe we don't need it to return itself on add()? I don't think building parallelreaders is like building\nStrings, I think it can just return void for add()... (I can't think().of().a().situation().where().this() would help code readability)",
+            "date": "2012-02-06T19:13:45.079+0000",
+            "id": 4
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "bq. But maybe we don't need it to return itself on add()? \n\n+1, I would prefer that add() return void.\n\nOtherwise the patch looks great!",
+            "date": "2012-02-06T19:16:21.199+0000",
+            "id": 5
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "If you look at the test cases, the code is much less verbose and better readable.\n\nThe good thing of the builder pattern (remember the class is actually called \"Builder\") is that nobody is required to use it). But I prefer to chain calls so I want to have the opportunity to do that.\n\nReturning void of itsself is no difference in bytecode or performance, it just adds a possibility. And everybody expects that when he sees a class named \"Builder\" with a method build().\n\nI().dont().want().to().start().fights().here().again(), but this time I will not change the patch that forces me to use another pattern i dont like. Code without chaining here looks horrible.\n\nJust\nrewrite\nthe\ntest\n,\nyou\nhave\nto\ndeclare\nan\nadditional\nvariable\nwith\na\nvery\nverbose\nname\n.\n\nIf somebody wants to change this, he can do this in another issue called \"remove all builders from Lucene\", but then please also rename the methods away from build() and rename the classes.",
+            "date": "2012-02-06T19:43:12.210+0000",
+            "id": 6
+        },
+        {
+            "author": "Robert Muir",
+            "body": "Uwe, its not a big deal to me really... just a suggestion.\n\nso +1 to commit, thanks for cleaning up ParallelReader :)",
+            "date": "2012-02-06T19:45:35.789+0000",
+            "id": 7
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Committed trunk revision: 1241470\n\nCHANGES and MIGRATE will be added in parent issue.",
+            "date": "2012-02-07T14:26:22.093+0000",
+            "id": 8
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "bq. If you look at the test cases, the code is much less verbose and better readable.\n\nWell, you separated each method call onto a separate line, so, it'd\nlook basically the same without chaining?  If only all chained API\nconsumers followed your approach...\n\nTo be clear: what I dislike about chaining is it creates ambiguity\nin how you write the code that consumes our APIs.\nYou().can().do().this().  Or, you().\ncan().\ndo().\nthis().  Or maybe you().can().\ndo().this().\n\nAmbiguity is very bad, especially in open-source dev: it invites\nbikeshed wars, harming communities by dividing them, spending precious\ntime debating what from the outside would seem like trivial\ndifferences.\n\nbq. If somebody wants to change this, he can do this in another issue called \"remove all builders from Lucene\"\n\nThe first API I would fix is IndexWriterConfig; its setters should not\nbe chainable, because now we get code like this:\n\n{noformat}\nIndexWriter writer = new IndexWriter(dir, newIndexWriterConfig( TEST_VERSION_CURRENT, new MockAnalyzer(random)).setMaxBufferedDocs(2).setMergePolicy(newLogMergePolicy()));\n{noformat}\n\nCode is already hard enough to read... we should not make it even\nharder by enabling big hard-to-read compound expressions like this.\n\nThis phenomenon is [unfortunately] human nature, and also well outside\nof software development; see\nhttp://en.wikipedia.org/wiki/Parkinson's_Law_of_Triviality ... the\nless important the ambiguity the more brutal the bike shed wars will\nbe.  You see this also in Theodor Geisel (\"Dr Seuss\")'s delightful\nSneetches (the stars on their stomachs), his Butter Battle Book (which\nside to butter the bread on), which end of the egg to crack (the\nLilliputians in Gulliver's Travels), etc.  It's not an uncommon\nproblem :)\n\nBattles over code styling is a great example of this phenomenon, and\nfortunately we long ago adopted a standard for Lucene so we don't\nargue (much!) about code style.  There is one way and there is no\n(little!) ambiguity left.\n\nSo I don't want to add any more chainable methods in Lucene.  It\ncreates an unnecessary ambiguity and I don't like where that will lead\nus.  We should reduce ambiguity whenever we can: there should\ngenerally be one obvious way to do something.\n",
+            "date": "2012-02-07T14:56:38.923+0000",
+            "id": 9
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Another question: do we even need a ParallelCompositeReader?  Can't we\nhave only the Builder, and that returns a MultiReader?\n",
+            "date": "2012-02-07T15:12:27.059+0000",
+            "id": 10
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Reopening to address the chained APIs...",
+            "date": "2012-02-07T15:21:33.100+0000",
+            "id": 11
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "bq. Another question: do we even need a ParallelCompositeReader? Can't we\nhave only the Builder, and that returns a MultiReader?\n\nThe problem why we need ParallelCompositeReader is that the refCounting and close logic is different. MultiReader will close/refcount its childs, but the ParallelCompositeReader must close/refcount the parallel sub readers. If you return a simple MultiReader, all tests fail, because something is closing the subreaders of the original parallel Composite/DirectoryReaders (as they are closed by the wrappers), but the original CompositeReaders stay open.\n\nIf the parallel readers are DirectoryReaders it goes very bad, as the wrapped SegmentReaders are closed...\n\nThe change does the following: It returns a BaseMultiReader of ParallelAtomicReaders that wrap e.g. the SegmentReaders of a DirectoryReader. On close it decRefs or closes the original wrapped DirectoryReader, but does not touch the subreaders. In contrast, a normal MultiReader would close/decRef the inner ParallelAtomicReaders, which itsself cose the SegmentReaders they wrap. The DirectoryReaders would still be open.",
+            "date": "2012-02-07T15:22:09.743+0000",
+            "id": 12
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Patch, removing the chained APIs; I'd like to commit this soon, if there are no objections.  Otherwise I think we should revert the first commit and continue iterating on this issue until we reach agreement.",
+            "date": "2012-02-07T15:24:41.316+0000",
+            "id": 13
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Please keep the chained APIs, otherwise please also change all toString() methods in whole Lucene to no longer chain and rename all classes to no longer be called Builder with build() as method. If you keep the class names and disallow chaing you break the pattern and that will confuse people more.\n\nFor me the issue is closed as I disagree, somebody else can do this :(",
+            "date": "2012-02-07T15:25:32.244+0000",
+            "id": 14
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "bq. Patch, removing the chained APIs\n\nI disagree!",
+            "date": "2012-02-07T15:25:52.414+0000",
+            "id": 15
+        },
+        {
+            "author": "Robert Muir",
+            "body": "As i stated earlier on the issue, I agree technically with the builder here, for these reasons:\n* its not like Document/Field where we worry about making tons of objects in indexing\n* as far as immutable objects for IndexReader subclasses, thats a no-brainer from my perspective.\n* we need lots of checks that the 'structure' is the same to support per-segment search.\n\nSo the only remaining issue is the style... yes I don't personally like chaining, but I gave my\n+1 to the patch, because I thought Uwe's argument was reasonable (its true its not enforced),\nand because I don't think its worth arguing over for such an expert API (there are bigger wins\nwhen it comes to cleaning up our APIs).\n\nPersonally I am glad to Uwe for all this work, we wanted to fix these issues in ParallelReader \nfor a long time (LUCENE-2766). It needed a policeman to do this, for all the checks to be correct,\nand good javadocs explaining how to make the composite case work.\n\nSo maybe we should just open a separate issue for the style? I just feel we would lose so much\nif we went back to what we had before this change, I'd really prefer it not be backed out for\nthat reason.\n\n\n\n",
+            "date": "2012-02-07T15:41:57.874+0000",
+            "id": 16
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "I think the changes here are awesome too -- ParallelReader has been\nbadly unloved for a long time, so I'm very happy we are improving it\nhere.\n\nBut I don't think we need to have chained APIs to achieve that good\nprogress.  Chained APIS are dangerous.  We added chained APIs in\nIndexWriterConfig and I think that was a mistake... it gave us lots of\nnot-so-readable code.  We shouldn't encourage that and we shouldn't\nadd more.\n",
+            "date": "2012-02-07T15:56:58.452+0000",
+            "id": 17
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "OK I opened LUCENE-3756 to address the chained APIs in IndexWriterConfig.",
+            "date": "2012-02-07T16:00:44.395+0000",
+            "id": 18
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "If somebody wants to commit the changes, do it. I want to be out of that, as I don't want to be responsible when somebody opens an issue that says \"Builder pattern without chaining is broken\" (which it is). Do what you want but keep me away from it!\n\nJust a suggestion:\n- As noted before, a Builder class with a build() method without chaining violates the pattern, so please rename it!\n\nI unassigned from this issue and will take care of some minor AtomicReaderContext changes (to remove one more utility method from ReaderUtil thats useless, if the API would implement what Javadocs say - I am talking about leaves()).",
+            "date": "2012-02-07T16:07:00.843+0000",
+            "id": 19
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "As a comment came up on IRC:\n\n{quote}\n[17:21]\tmikemccand: well... we could also remove the builder\n[17:22]\tmikemccand: PR is expert\n{quote}\n\nIndexReaders are now unmodifiable and I was able to make numDocs, maxDocs,... all final, so reverting the removal of ParallelReader.add() is not an option. I think Robert and I agree here, the old code was too risky - we should fix all of Lucene 4's API to remove not immutable classes where possible.\n\nWe can also move Parallel*Reader to contrib, its very special and seldom used :-) The test in facet module is not really needed (I was about to remove it already).\n\n",
+            "date": "2012-02-07T16:59:23.277+0000",
+            "id": 20
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Mike: Here the updated patch for Lucene trunk, as reverse merging of the revert is impossible :(\n\nIt was not a good idea to revert before Steven's change...",
+            "date": "2012-02-07T23:34:48.241+0000",
+            "id": 21
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Thanks Uwe, I'll start from there and iterate...",
+            "date": "2012-02-08T16:06:27.811+0000",
+            "id": 22
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "OK, I started from Uwe's last patch (thanks!) and then replaced the Builder\nconstruction API with straight (normal) constructors.\n\nThis way each PR can be created just like MultiReader for the common\ncase:\n\n{noformat}\n  new ParallelAtomicReader(ir1, ir2)\n{noformat}\n\nFor the expert case you pass in separate arrays for the \"normal\"\nreaders and the \"stored fields\" readers (and boolean for the\n\"closeSubReaders\").  That means the app must create the arrays, but I\nthink that's fine (Paralel*Reader is already expert, and that ctor is\nextra-expert).\n\nEverything else is the same: we now have ParallelAtomicReader and\nParallelCompositReader, it does all the checking to make sure the passed\nin atomic/composite readers are \"congruent\", etc..\n",
+            "date": "2012-02-08T23:56:48.912+0000",
+            "id": 23
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Hi Mike,\n\nI attached a new patch with some obsolete code removed: At the times of the builder, to detect errors early, the subreader checks were also not only inspecting the composite subs but also the leaves. As we now have no separation anymore between Builder.add() and the ctor that does the actual work, we can remove the leaves checks, as the recursive ctor will do the same checks, so its impossible to have different leaf structure.\nOne check could be added instead: currently only maxDocs of subs are compared, maybe also numDocs.... But also here the check is done by the invoked ctors for the wrapped subreaders already.\n\nOtherwise I am not happy with the telescopic ctor (sorry, builder looked better for the expert case - this is now unreadable).\n\nThe good thing is that we could add freedom so storedFieldsReaders can be completely separate. It would be easy to implement: closeSubReaders/parallelReaders arrays would need to be an union of both sets (currently only readers ctor param).\n\nI did not know that Collections.newSetFromMap() is already in 1.6. We should remove the util class MapBackedSet in trunk and replace all occurences by the same code like you did. I opened LUCENE-3764 for that.\n\nOne small thing for \"safety\": MultiReader currently clones the reader arrays to prevent external modification. Both ParallelReaders should do the same. The builder enforced that before as you had no access to the subs and the array was cloned on building (copy from ArrayList->array).",
+            "date": "2012-02-09T08:37:59.584+0000",
+            "id": 24
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "bq. I attached a new patch with some obsolete code removed\n\nThanks Uwe!\n\nbq. One check could be added instead: currently only maxDocs of subs are compared, maybe also numDocs.... But also here the check is done by the invoked ctors for the wrapped subreaders already.\n\nOK sounds like we can rely on the invoked ctors to catch this.\n\nbq. Otherwise I am not happy with the telescopic ctor (sorry, builder looked better for the expert case - this is now unreadable).\n\nWell, but the common case is simpler?  And, no longer an API break,\nbesides the name change.  Ie, you create the PAR/PCR like you do on\n3.x.  I think that's the right tradeoff (expert case can be more\nwork...).\n\nI also don't like the API inconsistency this would start (we don't use\nbuilders to create other IndexReaders).\n\nbq. The good thing is that we could add freedom so storedFieldsReaders can be completely separate. It would be easy to implement: closeSubReaders/parallelReaders arrays would need to be an union of both sets (currently only readers ctor param).\n\nTrue, actually this would be pretty simple now I think?\n\nbq. One small thing for \"safety\": MultiReader currently clones the reader arrays to prevent external modification. Both ParallelReaders should do the same. The builder enforced that before as you had no access to the subs and the array was cloned on building (copy from ArrayList->array).\n\nAhh, right.\n\nI started from your patch, added the array clones, and added the\nmissing javadocs... I didn't yet add allowing arbitrary\nstoredFieldsReaders but I think this wouldn't be so hard...\n",
+            "date": "2012-02-09T22:58:53.181+0000",
+            "id": 25
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Patch is incomplete? Maybe you forgot to svn add :-)",
+            "date": "2012-02-09T23:02:16.569+0000",
+            "id": 26
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "bq. Patch is incomplete? Maybe you forgot to svn add\n\nUgh, indeed, sorry.  Fixed!",
+            "date": "2012-02-09T23:13:39.322+0000",
+            "id": 27
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Thanks, looks fine. I will look tomorrow into a IdentityHashSet on all readers (storedReaders+readers) and use that for incRef/close. Thats the easiest.\n\nOne small improvement for shorter code:\n\nYou can add all entries from an array to a collection with:\n{code:java}\nfinal Set<CompositeReader> readersSet = Collections.newSetFromMap(new IdentityHashMap<CompositeReader,Boolean>());\nCollections.addAll(readersSet, readers);\n{code}\n(it's just shorter)",
+            "date": "2012-02-09T23:25:13.313+0000",
+            "id": 28
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Hi Mike,\n\nI found a bug in your implementation of the ParallelCompositeReader ctor, the test did not hit this as stupiditly the number of *vertical* segments was 2, but also the number of *parallel* subreaders! You simply got the validation (was before in the builder at the wrong place) iterate over the wrong set (vertical vs. parallel). I did it like for the atomic ones as a validate method.",
+            "date": "2012-02-10T09:42:57.560+0000",
+            "id": 29
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Patch that fixes the bugs in Mike's code and also allows decoupled stored fields readers:\n- moved the composite reader checks from the main builder loop (where it was wrongly placed) to a validate method acting only on the top-level readers\n- I improved the tests to have a different number of documents, subreaders and parallel readers\n- Current limitation is only that at least one \"searchable\" reader must be there, but there can be 0..infinite stored readers\n- toString() shows the unique set of parallel readers, unfortunately unsorted (as hashed set)\n- I added one more ctor PR(closeSubReaders, IR subs...), this makes code not separating stored fields readers look better, as closeSubReaders is not an expert option.\n\nMike, can I take the issue again and commit this? Thanks for the refactoring, but as we now allow separate stored fields and main readers, the missing builder is fine to me - grrrr",
+            "date": "2012-02-10T09:54:53.715+0000",
+            "id": 30
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Minor improvements:\n- remove compiler warning because of redundant cast\n- rename the reader IdentitySet to be consistent in both impls.\n\nI think it's ready to commit.",
+            "date": "2012-02-10T10:08:02.486+0000",
+            "id": 31
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Ooh, nice catch on that validation bug!\n\nYes, please feel free to take this one back.  Your last patch looks great; I like the new ctor.  +1 to commit.",
+            "date": "2012-02-10T10:39:15.272+0000",
+            "id": 32
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "A previous discussion on IRC with Mike:\n\nWe think that the numDocs checks are not needed and prevent advanced use cases. The whole ParallelReaders structure simply rely on maxDocs identical - not even hasDeletions need to be checked. It should simply be documented that Parallel*Reader takes the liveDocs/hasDeletions from the first reader and ignores livedocs of other readers. \n\nIn 3.x this was more an issue, but in trunk, where liveDocs are completely separated, there is no need to check numDocs.\n\nThe checking of numDocs is also no added safety, because 2 readers can have different liveDocs, but still same numDocs.",
+            "date": "2012-02-10T12:27:20.030+0000",
+            "id": 33
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "New patch without numDocs checks (added javadocs describing that the deletions are taken from first reader). Also improved the tests to handle empty indexes for both reader variants.\n\nI will commit this later!",
+            "date": "2012-02-10T17:01:44.175+0000",
+            "id": 34
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Looks great Uwe, thanks!  +1",
+            "date": "2012-02-10T17:09:30.559+0000",
+            "id": 35
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Committed trunk revision: 1242924\n\nThanks to all for reviewing!",
+            "date": "2012-02-10T21:13:40.260+0000",
+            "id": 36
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Here is a patch that improves test coverage and adds one more check to the composite parallel reader ctor:\nIf somebody has 2 parallel composite readers, while the first one has atomic subreaders but the other one has composite subreaders (but correct maxDocs), the ctor fails with ClassCastEx.\n\nI will commit this now as test improvement.",
+            "date": "2012-02-17T15:22:08.822+0000",
+            "id": 37
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Committed trunk revision: 1245605",
+            "date": "2012-02-17T15:24:05.071+0000",
+            "id": 38
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "I committed some minor code cleanups in revision: 1245897",
+            "date": "2012-02-18T09:57:46.885+0000",
+            "id": 39
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Robert also found some bugs in ParallelAtomicReader (in fact it was jenkins). Some fixes should be documented here.",
+            "date": "2012-02-21T15:37:41.576+0000",
+            "id": 40
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "This is a patch for ParallelAtomicReader (after the heavy commit of Robert, rev. 1291679), I found some other inconsistencies in some tests. One was already fixed (rev 1291753).\n\nThe new implementation builds the ParallelFields instance using the FieldsEnums of the parallel readers, which is much more correct than iterating FieldInfos and checking for indexed fields.\n\nThe fieldInfos and fieldToReaderMap is now only used for retrieving stored fields and other global information. Fields is now completely separate.",
+            "date": "2012-02-21T15:42:49.413+0000",
+            "id": 41
+        },
+        {
+            "author": "Robert Muir",
+            "body": "{quote}\n(after the heavy commit of Robert, rev. 1291679)\n{quote}\n\nHey, maybe only a medium-heavy commit: i did reply to the jenkins failure with a patch to the list before committing :)\n\n{quote}\nThe new implementation builds the ParallelFields instance using the FieldsEnums of the parallel readers, which is much more correct than iterating FieldInfos and checking for indexed fields.\n{quote}\n\n+1, when debugging i was a little confused not just about how it was built but where in the code... I think this is more intuitive!",
+            "date": "2012-02-21T15:47:35.800+0000",
+            "id": 42
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "More simplifications (especially cleaned up the test TestParallelTermEnum).\n\nAlso added a separate map for term vectors, to improve speed for large indexes with many fields.",
+            "date": "2012-02-21T16:09:06.988+0000",
+            "id": 43
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Committed trunk revision: 1291889",
+            "date": "2012-02-21T16:17:27.892+0000",
+            "id": 44
+        }
+    ],
+    "component": "core/index",
+    "description": "The plan is:\n- Move all subreaders to ctor (builder-like API. First build reader-set, then call build)\n- Rename ParallelReader to ParallelAtomicReader\n- Add a ParallelCompositeReader with same builder API, but taking any CompositeReader-set and checks them that they are aligned (docStarts identical). The subreaders are ParallelAtomicReaders.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-3736",
+    "issuetypeClassified": "RFE",
+    "issuetypeTracker": "",
+    "priority": "Major",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "ParallelReader is now atomic, rename to ParallelAtomicReader and also add a ParallelCompositeReader (that requires LogDocMergePolicy to have identical subreader structure)",
+    "systemSpecification": true,
+    "version": ""
+}

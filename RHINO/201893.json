@@ -1,0 +1,71 @@
+{
+    "comments": [
+        {
+            "author": "igor@mir2.org",
+            "body": "I think besides documentation it could be possible to do something with Rhino\ncode as well. If on the first failed method invocation code would search for a\npublic method in a class public super classes or interfaces which this method\noverrides, then the issue can be solved.",
+            "date": "20030413T22:29:39",
+            "id": 0
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 127127\nFix: after the first IllegalAccessException replace method by a better version if available.\n\nThe reason for performance problem is that the above\nNativeJavaMethod.retryIllegalAccessInvoke() does not cache the accessible\nmethod it found. Thus the idea is to replace on the first\nIllegalAccessException the original method in NativeJavaMethod.methods by its\naccessible version so the following invocations would not throw\nIllegalAccessException.\n\nIt would be simple to modify retryIllegalAccessInvoke if only  NativeJavaMethod\nused it, but the same problem presents with\nJavaMembers.BeanProperty.setter/getter and I would like not to repeat the same\ncode there twice. To resolve this, I replaced Method references in BeanProperty\nby references to NativeJavaMethod together with method indexes since previously\nBeanProperty was created from NativeJavaMethod in any case. \n\nIn this way single invoke utility in NativeJavaMethod would be sufficient and\nif a getter method is called both directly and through a property access, it\nwill be replaced only one time. In addition, it allowed not to call\nMethod.getPrametersInfo() on setter during its invocation since this\ninformation is already cached in NativeJavaMethod.",
+            "date": "20030706T20:26:53",
+            "id": 1
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Note for the above patch: it depends essentially on my chages to cache\nMethod.getParameterInfo() in NativeJavaMethod/NativeJavaConstructor that I put\nto CVS on 2003-07-06.",
+            "date": "20030706T20:35:20",
+            "id": 2
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 127619\nBetter approach: new class MemberBox to recover from IllegalArgumentException\n\nThe patch moved all logic to recover from IllegalArgumentException to new\nMemberBox class that wraps Method or Constructor instances. The class also\ncache results of getParameterTyps() and implements Serializable. The later\nallows to skip implementing read/writeObject when class previously contained\nMethod or Constructor instances which are replaced by MemeberBox wrappers.",
+            "date": "20030712T15:00:11",
+            "id": 3
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "I committed the patch. Steven does not have time to verify that now but perhaps\nlater he can test.",
+            "date": "20030715T20:51:22",
+            "id": 4
+        },
+        {
+            "author": "hannesw@gmail.com",
+            "body": "I think there are some problems with the patch you committed. I'm no longer able\nto invoke public methods on non-public classes. The error message I get is:\n\nTypeError: undefined is not a function.\n\nWhich may serve as clue, because it's not that we get a security exception when\ninvoking the method, the method is simply not there.\n\nAlso, when trying to invoke a public static method on a non-public class, I get\nthe following message:\n\norg.mozilla.javascript.EvaluatorException: Java class \"java.lang.Object\" has no\npublic instance field or method named \"foo\".\n\nShould I open a new bug for this, or will this one be reopened?",
+            "date": "20030731T11:13:52",
+            "id": 5
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Please open a new bug, since it is a different issue.",
+            "date": "20030731T12:15:56",
+            "id": 6
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "I openned the bug 214608 about the problem reported in the comments 6",
+            "date": "20030731T12:54:50",
+            "id": 7
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Targeting as resolved against 1.5R5",
+            "date": "20040213T11:42:42",
+            "id": 8
+        }
+    ],
+    "component": "Core",
+    "description": "Steven Beal wrote to me some time ago:\n\n-------- Original Message --------\nSubject: Rhino performance tip (FAQ recommendation)\nDate: Fri, 28 Feb 2003 10:20:34 -0800\nFrom: Steven Beal <steven.beal@peregrine.com>\nTo: \"Igor Bukanov (E-mail)\" <igor@icesoft.com>\n\nIgor,\n\nI was experiencing poor performance on the IBM virtual\nmachine (the one shipped with Websphere) and eventually\ntraced the problem to excessive throwing and catching\nof exceptions.  \n\nThe Sun VM  handles exceptions much more efficiently\nand thus does not suffer quite so much from exceptions\nbeing thrown and caught in quick succession, which is\nwhy I didn't notice the issue before.\n\nThis is not a bug in rhino, in fact the condition is\nproduced by a workaround for a Sun java bug\n\nhttp://developer.java.sun.com/developer/bugParade/bugs/4071593.html\n\nSee org.mozilla.javascript.NativeJavaMethod.retryIllegalAccessInvoke().\n\nThe pattern used here is the same as that shown in one of the\nannotations of the currently open incarnation of the same bug\n\nhttp://developer.java.sun.com/developer/bugParade/bugs/4071957.html\n\nThis bug is not limited to inner classes though.  It\nwill also manifest itself why trying to invoke via reflection\na method on a pkg. private class offered via an Interface.\n\nI place several references into the local scope created for\na request that are interface references to pkg. private classes\ncreated via an Abstract Factory pattern.  By making these\nclasses public I avoided the need for the bug workaround and\nimproved performance significantly (a necessary compromise).\n\nPerhaps some mention of this should be made in the FAQ since the\nperformance impact is significant (extremely so on the IBM VM).\nThe same problem would be seen when using Dynamic Proxies, \nand features of the Collection classes.  If you read through\nthe associated bug reports I'm sure you will find more cases.\n\nRegards,\n\n-Steve",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "201893",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "RFE",
+    "priority": "-- enhancement",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "Too slow invocation of reflected methods for package-private classes",
+    "systemSpecification": false,
+    "version": "other"
+}

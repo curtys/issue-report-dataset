@@ -1,0 +1,125 @@
+{
+    "comments": [
+        {
+            "author": null,
+            "body": "Created attachment 16329\nthe test case and config files",
+            "date": "20050907T12:42:15",
+            "id": 0
+        },
+        {
+            "author": null,
+            "body": "How about not filing a bug ? It should be evident sticky sessions are mandatory,\nor you're going to run into problems.",
+            "date": "20050907T12:48:54",
+            "id": 1
+        },
+        {
+            "author": null,
+            "body": "*** Bug 36542 has been marked as a duplicate of this bug. ***",
+            "date": "20050907T13:21:42",
+            "id": 2
+        },
+        {
+            "author": null,
+            "body": "I did some further testing, and my test case works as expected with tomcat 5.5.9\nwithout the cluster fix pack (Bug 34389) So you have a regression there, which\nshould be fixed. Anyway, this bug isn't INVALID, it's either a bug, or a\nWONTFIX, so I reopen it. But you should really fix that, since many load\nbalancers don't support tomcat's sticky sessions.",
+            "date": "20050909T10:48:34",
+            "id": 3
+        },
+        {
+            "author": null,
+            "body": "As Remy tell you, sticky session is mandatory that\ntomcat clustering works. Clustering is a fallback mechanism.\n\nPeter",
+            "date": "20050918T10:36:37",
+            "id": 4
+        },
+        {
+            "author": null,
+            "body": "I don't agree with that at all, sticky sessions is a great benefit, but pooled\nsynchronized cluster should be working.\n\nat least it was in the good ol' days :)\n\nPeter, do you know what changed in the \"cluster fix pack\" that made the synch\nnot work properly anymore?\n\nFilip",
+            "date": "20050919T23:57:48",
+            "id": 5
+        },
+        {
+            "author": null,
+            "body": "(In reply to comment #6)\n> I don't agree with that at all, sticky sessions is a great benefit, but pooled\n> synchronized cluster should be working.\n> \n> at least it was in the good ol' days :)\n\nNo, it never was: the request might be complete from a HTTP standpoint while the\nservlet is still running (= the client might send the next request, while the\nreplication hasn't been done yet). Besides, the spec requires that all\nconcurrent requests which belong to the same session be processed by the same host.\n\nNon sticky sessions is broken for many cases, period. I'll let you close this as\nINVALID again.",
+            "date": "20050920T00:11:37",
+            "id": 6
+        },
+        {
+            "author": null,
+            "body": ">No, it never was: the request might be complete from a HTTP standpoint while the\n>servlet is still running (= the client might send the next request, while the\n>replication hasn't been done yet).\n\nyes, this scenario has never been supported. that is correct.\nBut single thread client synchronization has always worked.\n\nChristoph, if the scenario that you have is a single client thread per session,\nthen let us know, otherwise we will close this bug.\n",
+            "date": "20050920T00:26:05",
+            "id": 7
+        },
+        {
+            "author": null,
+            "body": "(In reply to comment #8)\n> yes, this scenario has never been supported. that is correct.\n> But single thread client synchronization has always worked.\n\nYes, many webapps would work very well with this mode, while some others would not.\n\nFor this situation, taking several ms to replicate doesn't seem particularly\nbroken to me, although I suppose the 5.5.10 changelog is quite long.\n",
+            "date": "20050920T00:35:42",
+            "id": 8
+        },
+        {
+            "author": null,
+            "body": "(In reply to comment #9)\n> Christoph, if the scenario that you have is a single client thread per session,\n> then let us know, otherwise we will close this bug.\n\nMy Test Case above is actually quite simple. A single JMeter thread runs\nsubsequent requests on a cluster of 2 Tomcat servers. A jk load balancer without\nsticky sessions (for testing only) does the distribution. The jsp page just\nstores the hostname of the tomcat server in the session. No fancy\nmulti-threading or anything. TC 5.5.9 handles the situation correctly and\nreplicates the session before finishing the http request. 5.5.11 does not. So\npooled replication in definitely broken.\n\nPlease either fix it or document that it's broken. If you should choose not to\nfix it, pooled, synchronous and asynchronous replication modes are basically\nuseless and should be removed. \n\nThanks for pointing out that the servlet specs (SRV.7.7.2) state that \"Within an\napplication marked as distributable, all requests that are part of a session\nmust be handled by one Java Virtual Machine1 ( JVM ) at a time.\"  But in my\nopinion that means that when the requests are finished, the session state should\nalready be replicated on all other cluster members. A Session with a single 7\nchar String object seems to need about 20 ms to replicate in my setup. Busy\nservers with large Sessions may get into some hundreds of ms and this is a\nproblem for me.\n\nBye,\nChristoph",
+            "date": "20050920T19:36:47",
+            "id": 9
+        },
+        {
+            "author": null,
+            "body": "Its been a while since I ran my test cases, but I will do it again",
+            "date": "20050921T13:42:21",
+            "id": 10
+        },
+        {
+            "author": null,
+            "body": "The differenc between 5.5.9 and 5.5.11 is that waitForAck is on default false\nfor all sender modes. \nCan you check with this config:\n            <Sender\n                className=\"org.apache.catalina.cluster.tcp.ReplicationTransmitter\"\n                replicationMode=\"pooled\"\n                waitForAck=\"true\"\n                doTransmitterProcessingStats=\"true\"\n                doProcessingStats=\"true\"\n                doWaitAckStats=\"true\"\n                ackTimeout=\"15000\"/>\n\nthanks\nPeter",
+            "date": "20050923T17:37:40",
+            "id": 11
+        },
+        {
+            "author": null,
+            "body": "I would argue the ackTimeout=15000 should be an indicator that wait for ack =true,\ndo you really need two flags to say the same thing?\nTo simplify the implementation, I would use the following logic, and remove the\n\"waitForAck\" flag all together.\n\nackTimeout > 0 - wait for ack true, and time out set\nackTimeout = 0 - wait for ack false\nackTimeout = -1 - wait for ack true, no timeout",
+            "date": "20050930T23:56:45",
+            "id": 12
+        },
+        {
+            "author": null,
+            "body": "(In reply to comment #12)\n> The differenc between 5.5.9 and 5.5.11 is that waitForAck is on default false\n> for all sender modes. \n> Can you check with this config:\n<snip>\n\nThe waitForAck was my problem indeed. Thanks you very much for pointing out. \n\nBut now I'm a bit confused about the difference between pooled and\nfastasyncqueue cluster replication really is. The docs state \"synchronous\nreplication guarantees the session to be replicated before the request returns.\"\nBut obviousely waitForAck is the controlling setting. Isn't it best to just\nignore the waitForAck setting and have it set false for fastasyncqueue and true\nfor pooled? \n\nThe docs also state that \"Asynchronous replication, should be used if you have\nsticky sessions until fail over\", which implies that pooled should be used else.\nBut as this bug report turned out, sticky sessions are mandatory for correct\nclustering. Maybe you should change the docs accordingly (This should go into\nanother bug report imo, but my bug 36542 was resolved as duplicate)\n\nThanks, \nChristoph\n\n",
+            "date": "20051004T14:13:33",
+            "id": 13
+        },
+        {
+            "author": null,
+            "body": "synchronous: send each session change to other cluster members before returning\nresponse to client.\n\nasychronous: same as synchronous, but use mutiple sender connections (use any\none, that is not currently busy).\n\nfastasync: put session change message into local queue and then return response\nto client. A seperate thread waits for messages coming into the queue and then\nsend the messages to the other cluster members.\n\nwaitforack: when ending the message, wait for an ACK type answering message from\nthe other cluster members before proceeding (make sending the messages more\nreliable).\n\nIf one needs exact synchronization: synchronous are pooled mode with waitforack.\nApplication gets into trouble, when replication gets stuck.\n\nIf one can live with some latency between changes on the primary node and their\nreplication to the other nodes and on the other hand the cluster should\ninfluence application performance and stability only very little: use session\nstickyness in load balancers combined with fastasync and no waitforack.\n\nsynchronous/pooled without waitforack: lower latency for replication, although\nsynchronization is not exact.\n\nfastasync with waitforack: decoupling replication from request/response but\nensuring that replication is checked for success.\n\nYou are right, we should make the docs more precise. The features are yet very\nnew and as usual documentation takes a while.",
+            "date": "20051004T21:01:50",
+            "id": 14
+        },
+        {
+            "author": null,
+            "body": "Please (anyone involved in this issue) submit the doc enhancements you'd like to\nsee.  I'll be glad to quickly look at them and commit them for the next release.",
+            "date": "20051202T16:55:50",
+            "id": 15
+        },
+        {
+            "author": null,
+            "body": "Just marking as an enhancement.",
+            "date": "20061005T14:56:21",
+            "id": 16
+        },
+        {
+            "author": null,
+            "body": "Discussion show it is a user list question not a bug.\n",
+            "date": "20070814T01:23:52",
+            "id": 17
+        }
+    ],
+    "component": "Catalina:Cluster",
+    "description": "If I understand it correctly, the pooled replication should ensure the\navailability of the session on all cluster nodes as soon as the request is\nfinished. It doesn't seem to do that with the following test-case:\n\nThe attached simple webapp (clustertest.war) just prints the content of the\nsession entry \"host\" and then stores its hostname in that entry. \n\nThis webapp is installed on 2 tomcat 5.5.11's, tomcat1 and tomcat2, and mod_jk\nis used as a load balancer, sticky sessions are disabled. (Config files are\nattached).\n\nA JMeter 2.1 Test Plan is used to make requests. It repeatedly makes requests to\nthe webapp, waiting 20ms between the requests.\n\nExpected behaviour:\nThe first request yields null, and subsequent ones return tomcat1, then tomcat2,\ntomcat1, tomcat2 and so on. \n\nActual behaviour:\nSeveral requests return null, and the rest is not exactly alternating. \n\nIn this test case, it stabilized when waiting like 50ms between the requests,\nbut on other webapps with larger sessions, it needed a lot more time. This is\nquite serious since correctness is not ensured when not using sticky sessions.",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "36540",
+    "issuetypeClassified": "OTHER",
+    "issuetypeTracker": "RFE",
+    "priority": "P2 enhancement",
+    "product": "Tomcat 5",
+    "project": "TOMCAT",
+    "summary": "pooled cluster replication does not seem ensure synchronized replication in tomcat 5.5.11",
+    "systemSpecification": true,
+    "version": "5.5.11"
+}

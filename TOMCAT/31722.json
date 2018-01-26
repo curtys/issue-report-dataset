@@ -1,0 +1,29 @@
+{
+    "comments": [
+        {
+            "author": null,
+            "body": "Fixed now in the CVS.",
+            "date": "20041015T04:44:53",
+            "id": 0
+        },
+        {
+            "author": null,
+            "body": "Thanks Bill for fixing this for me. :)",
+            "date": "20041015T12:16:42",
+            "id": 1
+        }
+    ],
+    "component": "Connector:AJP",
+    "description": "Subject: Re: if( bodyMsg.getLen() <= 4 )\nDate: 10/14/04, 4:19 PM\nFrom: Kurt Miller <truk@apache.org>\nTo: Tim Suh\n\nHi Tim,\n\nFrom: Tim Suh\n> JkInputStream.java contains\n>\n> if( bodyMsg.getLen() <= 4 )\n>\n> which was fixed to\n>\n> if( bodyMsg.getLen() == 0 )\n>\n> but isn't this incorrect ? MsgAjp.java reset() contains len = 4.\n> How can getLen() ever become 0 ?\n\nThe line after reset calls receive:\n\n       int err = mc.getSource().receive(bodyMsg, mc);\n\nFor sockets this calls ChannelSocket.receive and it calls\nMsgAjp.processHeader() for bodyMsg. processHeader sets the\nlen to the length of the packet excluding the header. Unix Sockets\nwork the same way as ChannelSocket.\n\nHowever, for jni this calls ChannelJni.receive and it does\nnot call MsgAjp.processHeader() for bodyMsg. len is\nleft a 4 and if( bodyMsg.getLen() == 0 ) doesn't detect\nthe fact it should return at the point.\n\n> This is breaking jni POST by the way.\n\nI see why now (see above). I'm thinking MsgAjp.reset should\nset len = 0, but this needs a through review of all the uses of\nMsgAjp to see the impact. An alternative solution would be\nto add a method to MsgAjp that ChannelJni.receive could call\nthat sets len = 0.\n\n> Not sure if you are monitoring this email address so my message\n> above is very short. Let me know whether I need to report this to\n> bugzilla. Thanks\n\nYes, please do open a bugzilla report and copy this full email into\nit.\n\nThanks,\n-Kurt",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "31722",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "P3 blocker",
+    "product": "Tomcat 5",
+    "project": "TOMCAT",
+    "summary": "In JNI mode, POST is broken due to bodyMsg.getLen() == 0 not working properly",
+    "systemSpecification": false,
+    "version": "5.0.24"
+}

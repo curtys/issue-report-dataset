@@ -1,0 +1,71 @@
+{
+    "comments": [
+        {
+            "author": "Robert Muir",
+            "body": "patch, i added a test for this.",
+            "date": "2011-01-23T05:44:30.889+0000",
+            "id": 0
+        },
+        {
+            "author": "Doron Cohen",
+            "body": "+1 for fixing this inconsistent behavior.\nBTW also SpanWeight calls idfExplain() for same reason.\nPatch looks good, new test case passes with the fix and fails without it.\n\nA small thing that bothered me was that an explanation is created although the user did not call explain(), and in general explain() is considered slower, but it is called once per query, so it should not be a perf issue, and that's the case already for two other queries so anyhow this one (MFQ) should first be made consistent, which is done by this patch.\n\nIt is interesting that the implementation of a similar logic in SpanWeight is more compact:\n{code:title=SpanWeight: calls extractTerms()}\nterms=new HashSet<Term>();\nquery.extractTerms(terms);\nidfExp = similarity.idfExplain(terms, searcher);\n{code}\n\nBut doing the same in MFQ would change its logic, as it would consider each term only once. \nNot saying that the patch should change, just pointing out the difference in sum-of-square-weights computation between SpanWeight and MFQ.\nBoolean Query fore example, would iterate over its sub queries and sum theirs, and so, if it so happens that the same term appears in two descendant queries that term would contribute twice to the sum. In this sense, MFQ and BQ behave similarly, both differ from SpanQuery... well I guess this falls to the \"black magic\" area :)",
+            "date": "2011-01-23T13:32:55.868+0000",
+            "id": 1
+        },
+        {
+            "author": "Robert Muir",
+            "body": "{quote}\nA small thing that bothered me was that an explanation is created although the user did not call explain(), and in general explain() is considered slower, but it is called once per query, so it should not be a perf issue, and that's the case already for two other queries so anyhow this one (MFQ) should first be made consistent, which is done by this patch.\n{quote}\n\nWell, this IDFExplanation is confusing/tricky... so with a good implementation, its an abstract class so creating the \"Explanation\" does nothing really.\n\nInstead the explanation is calculated \"lazily\", only if you ask for it:\n{noformat}\n    /**\n     * This should be calculated lazily if possible.\n     * \n     * @return the explanation for the idf factor.\n     */\n    public abstract String explain();\n{noformat}\n\n{quote}\nNot saying that the patch should change, just pointing out the difference in sum-of-square-weights computation between SpanWeight and MFQ.\n{quote}\n\nI saw this and it bothered me a bit as well too. But I suppose its ok, given that the whole thing is only an approximation anyway right?\n(In a lot of more \"ordinary\" short queries, the # of unique terms will be similar to # of terms).\n\nAdditionally if this really bothered someone, they could work around it by putting all the terms into a HashSet in their IDF implementation to make\nPhraseQuery, MultiPhraseQuery work like SpanQuery.\n\nIn general, when I look at the SpanQueries I am frustrated with other scoring problems.\nFor example, I think that SpanScorer by default should be consistent with our other Queries.\nBut imagine a Simple SpanTermQuery, its tf() calculation is done like this:\n{noformat}\n   while (matches) {\n      int matchLength = spans.end() - spans.start();\n      freq += similarity.sloppyFreq(matchLength);\n   }\n   ...\n   similarity.tf(freq);\n{noformat}\n\nIn my opinion this is an off-by-one :)\nIn the current implementation, this produces slop of 1 for an exact SpanTermQuery.\nif instead it were spans.end() - spans.start() - 1, it would produce a slop of 0,\nyielding a sloppyFreq of 1 for each match, and would equate exactly with TermQuery.\n",
+            "date": "2011-01-23T14:29:46.038+0000",
+            "id": 2
+        },
+        {
+            "author": "Doron Cohen",
+            "body": "bq. In my opinion this is an off-by-one \nRight, it would return 0.5 vs 1.0 in TermQuery. \nPerhaps similar issue with SpanNearQuery.\n(I guess this may be taken care of in LUCENE-2878.)",
+            "date": "2011-01-23T15:01:30.795+0000",
+            "id": 3
+        },
+        {
+            "author": "Robert Muir",
+            "body": "Doron, i hacked up a quick patch with some ideas for a fix for this one... \nfrom looking at the scores, I think its actually fairly serious for SpanQuery users.\n\nI'll open a separate issue for this.\n",
+            "date": "2011-01-23T15:04:04.310+0000",
+            "id": 4
+        },
+        {
+            "author": "Doron Cohen",
+            "body": "ok great I'll have a look there...",
+            "date": "2011-01-23T15:18:26.397+0000",
+            "id": 5
+        },
+        {
+            "author": "Robert Muir",
+            "body": "Well its not a great solution really at all, and as you mention \nmaybe its best to take care of it in the context of LUCENE-2878,\nbut mainly I just didn't want us to forget about the problem.\n\nI'll move forward with this issue later today if there are no objections.",
+            "date": "2011-01-23T15:22:49.459+0000",
+            "id": 6
+        },
+        {
+            "author": "Robert Muir",
+            "body": "Committed revision 1062633 (trunk), 1062636 (branch_3x).\n\nIf we do another 3.0.x/2.9.x we can consider this one then.",
+            "date": "2011-01-24T03:53:27.580+0000",
+            "id": 7
+        },
+        {
+            "author": "Grant Ingersoll",
+            "body": "Bulk close for 3.1",
+            "date": "2011-03-30T15:49:56.401+0000",
+            "id": 8
+        }
+    ],
+    "component": "core/query/scoring",
+    "description": "MultiPhraseQuery is a generalized version of PhraseQuery, and computes IDF the same way by default (by summing across the terms).\n\nThe problem is it doesn't let the Similarity do this: PhraseQuery calls Similarity.idfExplain(Collection<Term> terms, IndexSearcher searcher),\nbut MultiPhraseQuery just sums itself, calling Similarity.idf(int, int) for each term.\n\n",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-2879",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "MultiPhraseQuery sums its own idf instead of Similarity.",
+    "systemSpecification": true,
+    "version": ""
+}

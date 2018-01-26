@@ -1,0 +1,35 @@
+{
+    "comments": [
+        {
+            "author": "Stefan Guggisberg",
+            "body": "> Any idea what I could do differently to workaround the issue?\n\nthis code is only executed when the current session doesn't \nhave read permission on root node.\n\nso either grant read access on root or call save() on the\n'dirty' node directly instead of calling session.save() or\nrootNode.Save().",
+            "date": "2010-11-06T14:01:07.588+0000",
+            "id": 0
+        },
+        {
+            "author": "Weston Bustraan",
+            "body": "Ok, I can fix the root node permissions.\n\nIn JCR 2.0, Node.save() is deprecated.",
+            "date": "2010-11-06T14:41:35.301+0000",
+            "id": 1
+        },
+        {
+            "author": "Stefan Guggisberg",
+            "body": "fixed in svn r1034395",
+            "date": "2010-11-12T13:27:38.961+0000",
+            "id": 2
+        }
+    ],
+    "component": "",
+    "description": "SessionItemStateManager.getIdOfRootTransientNodeState() is throwing a ConcurrentModificationException on line 607:\n\nHere's a snippet of the code:\n{code}\n                    for (NodeId id : candidateIds) {\n                        if (nodeId.equals(id) || hierMgr.isAncestor(id, nodeId)) {\n                            // already a candidate or a descendant thereof\n                            // => skip\n                            skip = true;\n                            break;\n                        }\n                        if (hierMgr.isAncestor(nodeId, id)) {\n                            // candidate is a descendant => remove\n                            candidateIds.remove(id);\n                        }\n                    }\n{code}\n\nCan't use Collection.remove(Object) in the middle of iterating. It should probably be changed to use Iterator.remove():\n{code}\n                    Iterator<NodeId> nodeIdItor = candidateIds.iterator();\n                    while (nodeIdItor.hasNext()) {\n                        NodeId id = nodeIdItor.next();\n                        if (nodeId.equals(id) || hierMgr.isAncestor(id, nodeId)) {\n                            // already a candidate or a descendant thereof\n                            // => skip\n                            skip = true;\n                            break;\n                        }\n                        if (hierMgr.isAncestor(nodeId, id)) {\n                            // candidate is a descendant => remove\n                            nodeIdItor.remove();\n                        }\n                    }\n{code}\n\nAny idea what I could do differently to workaround the issue?",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "JCR-2807",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "ConcurrentModificationException in SessionItemStateManager.getIdOfRootTransientNodeState()",
+    "systemSpecification": true,
+    "version": "2.1.2"
+}

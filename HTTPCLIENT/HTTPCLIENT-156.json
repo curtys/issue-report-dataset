@@ -1,0 +1,53 @@
+{
+    "comments": [
+        {
+            "author": "Jeff Dever",
+            "body": "Interesting.  Here is the response from the webserver (also attached for hexdump\npurposes):\n\nHTTP/1.1 404 The file was not found, even after searching on any extensions to\nthe file name.\n  The file does not exist or is read-protected.\nServer: Domino-Go-Webserver/4.6.2.8\nDate: Fri, 07 Feb 2003 01:53:34 GMT\nConnection: close\nAccept-Ranges: bytes\nContent-Type: text/html\nContent-Length: 7731\nLast-Modified: Fri, 07 Feb 2003 01:53:34 GMT\n\nThe server is doing somthing very nasty to the status line.  They appear to be\nusing a custom response phrase that is supposed to be displayed directly to the\nclient (which is OK).  As the response phrase is so long, apparently they\ndecided to break it by adding a '\\n' in the phrase, and then seem to be relying\non folded headers (by starting the next line with a blank) to keep it all\ntogether as one horrible Status-Line.\n\nBut folded headers do not apply to the status line.  The status line is not\nsupposed to contain any CR or LF characters.  Here is what RFC2616 has to say\nabout it:\n\n6.1 Status-Line\n\n   The first line of a Response message is the Status-Line, consisting\n   of the protocol version followed by a numeric status code and its\n   associated textual phrase, with each element separated by SP\n   characters. No CR or LF is allowed except in the final CRLF sequence.\n\n       Status-Line = HTTP-Version SP Status-Code SP Reason-Phrase CRLF\n\nClearly the Domino-Go-Webserver IBM is using is in violation of the RFC. \nHowever, we should update HttpClient to be more leinent in this case.  As adrian\npointed out, the same issue would occur if there was simply an empty header.",
+            "date": "2003-02-07T10:35:22.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Jeff Dever",
+            "body": "Created an attachment (id=4764)\nTCP dump of the response from the server.\n",
+            "date": "2003-02-07T10:36:17.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Jeff Dever",
+            "body": "Patch has been committed.  HttpConnection.java revision 1.41 contains the fix.\n\nPlease re-test, verify and close bug if possible.",
+            "date": "2003-02-08T09:35:43.000+0000",
+            "id": 2
+        },
+        {
+            "author": "Adrian Sutton",
+            "body": "I have retested and my test case which previously broke now works.  I've \nrequested that the original user also validate that the problem is fixed.",
+            "date": "2003-02-10T08:36:12.000+0000",
+            "id": 3
+        },
+        {
+            "author": "Adrian Sutton",
+            "body": "Ropening so the bug can be marked as fixed.",
+            "date": "2003-02-11T05:54:22.000+0000",
+            "id": 4
+        },
+        {
+            "author": "Adrian Sutton",
+            "body": "The IBM server has fixed the problem and are now in conformance with the HTTP \nprotocol specification, so no way of testing it... but looking at the fix it \ndoes the same as the temporary patch I applied, and it worked for me, so it \nshould be OK now.\n\nThanks\nEduardo",
+            "date": "2003-02-11T05:54:36.000+0000",
+            "id": 5
+        }
+    ],
+    "component": "HttpClient (classic)",
+    "description": "If a server returns a header with no name but with a value (ie: an invalid line in the headers), HttpClient throws a NullPointerException instead of just skipping that header line or perhaps treating it as a continuation of the previous header (need to consult the RFC to confirm this).\n\nProblem reported by Eduardo Francos on the commons-user list.\n\nA good test URL for this problem is:\n\nhttp://www.pc.ibm.com/us/accessories/monitors/p_allmodelos.html\n\nwhich should return a 404 error but throws the NullPointerException instead.",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "HTTPCLIENT-156",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "HTTPCLIENT",
+    "project": "HTTPCLIENT",
+    "summary": "NullPointerException thrown when invalid header encountered",
+    "systemSpecification": false,
+    "version": ""
+}

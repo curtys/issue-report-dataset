@@ -1,0 +1,53 @@
+{
+    "comments": [
+        {
+            "author": "Christoph Kiehl",
+            "body": "This patch introduces a few new classes for the handling of hits. In essence this patch does two things:\n\n1. It tries to use int arrays instead of BitSet to reduce memory consumption. If a BitSet is more efficient than an int array it switches to using a BitSet instance.\n2. The nameTestHits are only created lazily by wrapping the nameTestScorer in a Hits instance.\n3. The calculation if the index of a childnode is valid is only done if the corresponding hit is requested.\n\nIn our internal tests the query execution performance didn't suffer but is much better for ChildAxisQueries with a large number of matching child nodes.",
+            "date": "2007-07-30T15:56:14.821+0000",
+            "id": 0
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "How about an alternative implementation of using just a TreeSet of Integers instead of BitSets? A sparse set would scale with the number of query results instead of the size of the entire workspace.",
+            "date": "2007-08-08T12:12:40.593+0000",
+            "id": 1
+        },
+        {
+            "author": "Christoph Kiehl",
+            "body": "Well, according to various sources (http://martin.nobilitas.com/java/sizeof.html and http://www.javaworld.com/javaworld/javatips/jw-javatip130.html?page=2) an Integer instance needs 16 bytes. A native int needs 4 bytes. This is why I would prefer an array of ints (not even counting the TreeSet overhead which uses a TreeMap which wraps every Integer in an Entry instance).\nThe AdaptingHits class is only needed for corner cases where contextQuery result sets get really large. You could instead just use ArrayHits directly to resemble what a TreeSet would achieve just using less memory.\nBut I thought we could use those Hits classes in a few other places like DescendantSelfAxisQuery as well, where large contextQuery results are much more common.",
+            "date": "2007-08-08T22:43:18.126+0000",
+            "id": 2
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "Very nice work.\n\nCan you please add a copy right header to the new files? And then feel free to commit the changes.",
+            "date": "2007-08-14T11:45:30.100+0000",
+            "id": 3
+        },
+        {
+            "author": "Christoph Kiehl",
+            "body": "Added suggested patch with additional license headers in revision 566042",
+            "date": "2007-08-15T07:16:57.632+0000",
+            "id": 4
+        },
+        {
+            "author": "Christoph Kiehl",
+            "body": "Fixed a little bug in ChildAxisScorer.skipTo() in revision 572885 as suggested by Ard Schrijvers in http://www.nabble.com/AIOOBE-in-ChildAxisScorer-in-jackrabbit-trunk-tf4376105.html",
+            "date": "2007-09-05T06:38:37.786+0000",
+            "id": 5
+        }
+    ],
+    "component": "jackrabbit-core, query",
+    "description": "When doing ChildAxisQueries on large indexes the internal BitSet instance (hits) may consume a lot of memory because the BitSet is always as large as IndexReader.maxDoc(). In our case we had a query consisting of 7 ChildAxisQueries which combined to a total of 14MB. Since we have multiple users executing this query simultaneously this caused an out of memory error.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "JCR-1041",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Major",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "Avoid using BitSets in ChildAxisQuery to minimize memory usage",
+    "systemSpecification": true,
+    "version": ""
+}

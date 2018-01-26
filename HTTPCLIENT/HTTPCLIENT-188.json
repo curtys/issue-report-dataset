@@ -1,0 +1,101 @@
+{
+    "comments": [
+        {
+            "author": "Michael Becke",
+            "body": "Created an attachment (id=5859)\npatch 1\n",
+            "date": "2003-04-16T19:31:58.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Mike,\n\n- Overall it is a step in the right direction. You know I personally would like\nto see retry logic moved from HttpMethodBase to HttpClient, however, for the\ntime being the patch is a good interim solution \n\n- isRecoverableAfterReqest is apparently misspelled \n\n- I think 'isRecoverable*' flag should apply to writing the request as well as\nreading the response. There should be a way to disable all sorts of retries. For\ninstance, the user may want to assign a unique id to each and every request to\nthe server. Request auto-retry might mess this scheme up. We should also\ndifferentiate between request write recoverable exceptions & failure reading\nresponse exceptions in order to provide the users with a finer control over HTTP\ncommunication. For that end I'd want to see HttpRecoverableException sub-classed\ninto several specific types of recoverable exceptions\n\nAuto-retries in Sun's implementation of HTTP client was particularly awful. Some\nresponse reads timed out and were subsequently retried. As a result I had\nseveral hits on the server for the same request. That was my primary reason for\ndropping Sun's stuff and turning to HttpClient. I strongly believe we should not\nfall into the same trap here. \n\nOleg\n",
+            "date": "2003-04-17T19:34:06.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Eric Johnson",
+            "body": "I like Adrian Suttons recent suggestion for detecting whether the socket read\nwill fail after the write - Set the timeout on the socket to one ms, and try a\nread of a single byte before doing the write.  His psuedo code (although I\nchanged the catch clause after reading the SO_TIMEOUT docs):\n\nif (socketInputStream.available() == 0) {\n    try {\n        socket.setSoTimeout(1);\n        socketInputStream.read();\n        socket.setSoTimeout(oldValue);\n    } catch (InterruptedIOException e) {\n        // We're good to go!\n    } catch (IOException e) {\n        // Connection is half closed, request will fail.\n       throw new HttpRecoverableException(\"Argg!\");\n    }\n} else {\n     // There really shouldn't be data on the input stream before the request is\nsent.\n     // We probably should throw an exception in this case because the previous\nresponse\n     // wasn't fully read.\n}\n\nAdrian suggested using a wrapper around the socket input stream that does mark\nand reset, but I'd like to suggest the alternative of a PushbackInputStream\nwrapper, so if a byte did get read, it could be pushed back.  Perhaps we could\nadd a function to the HttpConnection called something like \"isConnectionStale()\"\nwhich would be called by processRequest() instead of calling \"isOpen()\".  The\nstale check could do the \"isOpen\" check, and attempt to read one byte as per above.\n\nWould this work?\n\nUnfortunately, I have not been able to reproduce the problem with recoverable\nexceptions here, so I cannot test the change.  I should have time to put\ntogether a patch some time today or tomorrow, if nobody else can pick it up, but\nI would still need someone else to test it.",
+            "date": "2003-04-17T20:02:09.000+0000",
+            "id": 2
+        },
+        {
+            "author": "Eric Johnson",
+            "body": "Created an attachment (id=5878)\nstale_conn.patch - does peek-ahead read on recycled connections\n",
+            "date": "2003-04-17T23:16:55.000+0000",
+            "id": 3
+        },
+        {
+            "author": "Eric Johnson",
+            "body": "Instead of mucking with the logic of HttpMethodBase.processRequest(), I put the\nisStale() check only in the connection managers if they are doling out an\nexisting open connection.  As I said before, I've not been able to cause the\nproblem to occur, and I'm wondering if someone else will test it.\n\nThanks.",
+            "date": "2003-04-17T23:19:29.000+0000",
+            "id": 4
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Very nice Eric.  This seems to have fixed the problem.  I ran a few tests and\nthings look good.  I refactored a little and added a some logging, but the core\n logic is the same. Patch to come soon.\n\nTo anyone who has been experiencing this problem, please try this patch out.  I\nthink this may be the one.\n\nAgain, nice work.\n\nMike",
+            "date": "2003-04-18T08:05:34.000+0000",
+            "id": 5
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Created an attachment (id=5886)\nEric's patch plus a little\n",
+            "date": "2003-04-18T08:08:28.000+0000",
+            "id": 6
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Created an attachment (id=5887)\nRetry handler\n",
+            "date": "2003-04-18T09:26:00.000+0000",
+            "id": 7
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Attached above is a redo of \"patch 1\". I think Eric's patch for detecting stale\nconnections is the ultimate fix for this bug.  The discussion however has also\nbrought up some issues with the current retry logic. As Oleg was pointing out,\nthe current retry implementation is quite rigid.  This patch hopes to fix this\nby extracting the retry logic to a new interface.  This change gives full\ncontrol over retrying to the user and still allows for the current functionality\nwith no modifications.  Please take a look when possible.\n\nMike",
+            "date": "2003-04-18T09:35:06.000+0000",
+            "id": 8
+        },
+        {
+            "author": "Aurelien Pernoud",
+            "body": "I'll try it today, but I have just a question (I might be wrong) :\nWhile debugging, I've seen that isOpen() is called really often for one \nrequest, and looking at the patch, it seems the test will try catch IOException \nevery time isOpen is called. Isn't it gonna affect performance ? Isn't it \npossible to check the stale of HttpConnection only once before the request ?\nAgain, I have to check what I say, but when I made a breakpoint on isOpen() \nmethod once, I went inside a lot of time.\nAnyway, a big thank you for this patch that I'm gonna try ASAP.",
+            "date": "2003-04-18T14:00:18.000+0000",
+            "id": 9
+        },
+        {
+            "author": "Aurelien Pernoud",
+            "body": "It woooooooooooooorks !!!!!!!!!!!!!! I had a test case here, and indeed, the \nisStale() method returned true, so the connection got closed on client side and \nthen httpclient opened a new one.\nThank you so much to everyone (Adrian for this idea, eric for first patch, and \nmike for always being active on response time).\nAnd forget about the isOpen() method being called multiple times, I just \nchecked, this is called only once/request.\nThis is just in time for my production release, It could'nt be better. Thanks \nthanks thanks",
+            "date": "2003-04-18T16:39:01.000+0000",
+            "id": 10
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Mike, you rock! Your retry handler is a beauty. Aur\u00e9lien is apparently happy too. \n\nI think you should go ahead with committing both patches. As soon as the patches\nland in the CVS code tree I suggest we call CVS commit freeze and hand matters\nover to Jandalf to take care of long promised BETA-1 release.\n\nOleg\n\nPS: Do I sound too impatient? ;-)",
+            "date": "2003-04-18T17:13:52.000+0000",
+            "id": 11
+        },
+        {
+            "author": "Aurelien Pernoud",
+            "body": "I haven't tested yet the retry handler but I'll give it a shot today, seems \ngood.",
+            "date": "2003-04-18T17:18:52.000+0000",
+            "id": 12
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Both patches have been applied.  Many thanks to Eric, Adrian, Aur\u00e9lien and Oleg\nfor working through this problem.  This has been a major problem for a while now\nand I think we finally have a good solution.\n\nOleg, I am also quite ready for a beta-1.  Hopefully it will come soon.  I think\nif we do not hear anything new by the end of the day we should call for a release.\n\nMike ",
+            "date": "2003-04-18T20:01:04.000+0000",
+            "id": 13
+        }
+    ],
+    "component": "HttpClient (classic)",
+    "description": "If a recoverable exception occurs after a request is written then the method is\nnot retried.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "HTTPCLIENT-188",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "HTTPCLIENT",
+    "project": "HTTPCLIENT",
+    "summary": "recoverable exceptions when reading are not retried",
+    "systemSpecification": true,
+    "version": "2.0 Alpha 3"
+}

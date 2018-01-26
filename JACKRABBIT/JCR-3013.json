@@ -1,0 +1,65 @@
+{
+    "comments": [
+        {
+            "author": "Michael Klenk",
+            "body": "possible fix",
+            "date": "2011-07-06T12:28:02.897+0000",
+            "id": 0
+        },
+        {
+            "author": "Michael Klenk",
+            "body": "possible patch for review.",
+            "date": "2011-07-06T12:30:40.751+0000",
+            "id": 1
+        },
+        {
+            "author": "Stefan Guggisberg",
+            "body": "fixed in svn revision 1143396.\n\nthanks for reporting this issue and providing a patch!\n\ni've chosen to normalize the return value of AbstractCache#getAccessCount() instead of the suggested fix.",
+            "date": "2011-07-06T13:18:04.367+0000",
+            "id": 2
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "Would it be more appropriate to change the accessCount in AbstractCache to an AtomicLong? This would be more in line with the signature of getAccessCount() which returns a long.",
+            "date": "2011-07-13T09:04:16.837+0000",
+            "id": 3
+        },
+        {
+            "author": "Stefan Guggisberg",
+            "body": "> Would it be more appropriate to change the accessCount in AbstractCache to an AtomicLong? This would be more in line with the signature of getAccessCount() which returns a long.\n\nwhile using AtomicLong would certainly reduce the probability that this problem occurs\nguarding against numeric overflow would IMO still be required. \n\n ",
+            "date": "2011-07-13T10:00:27.231+0000",
+            "id": 4
+        },
+        {
+            "author": "Jeroen Reijn",
+            "body": "How much work would it be to backport this to the 2.2 branch? Seems like an easy fix to me. We're having this exact same thing in our production.",
+            "date": "2011-08-09T11:51:48.746+0000",
+            "id": 5
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "There was still a slight chance of this problem occurring in the case that one thread was accessing an overflown access count with getAccessCount() right before the recordCacheAccess() method would have reset the counter. I fixed that in revision 1155431 by using Math.abs() in ConcurrentCache.shrinkIfNeeded(). I also switched the counter to an AtomicLong just to reduce the chance of other overflow issues popping up in the CacheManager class that also uses access counts. The long value would take about 300 years to overflow even if the cache was accessed once every nanosecond...\n\nI merged this and the earlier change to the 2.2 branch in revision 1155435 for inclusion in Jackrabbit 2.2.8.",
+            "date": "2011-08-09T17:05:43.487+0000",
+            "id": 6
+        },
+        {
+            "author": "Jeroen Reijn",
+            "body": "Thanks Jukka!",
+            "date": "2011-12-21T11:04:01.046+0000",
+            "id": 7
+        }
+    ],
+    "component": "jackrabbit-core",
+    "description": "ArrayIndexOutOfBoundsException after several days of uptime.\n\nI'm experiencing some strange ArrayIndexOutOfBoundsExceptions on\n accessing the jackrabbit ConcurrentCache in 2.2.5. in Line 241 during\n shrinkIfNeeded check.\n\n Caused by: java.lang.ArrayIndexOutOfBoundsException: -14\n        at\n org.apache.jackrabbit.core.cache.ConcurrentCache.shrinkIfNeeded(ConcurrentCache.java:241)\n\n\nI reviewed jackrabbit-code and I'm sure it's caused by that\n AtomicInteger for realizing accessCounter in AbstractCache, which will\n have become negative during increasing over the Integer.MAX_VALUE constant.\n\n         // Semi-random start index to prevent bias against the first\n segments\n         int start = (int) getAccessCount() % segments.length;\n         for (int i = start; isTooBig(); i = (i + 1) % segments.length) {\n             synchronized (segments[i]) {\n\n ___________________________\n\n Uncaught Throwable java.lang.ArrayIndexOutOfBoundsException: -7\n         at\n org.apache.jackrabbit.core.cache.ConcurrentCache.shrinkIfNeeded(ConcurrentCache.java:241)\n         at\n org.apache.jackrabbit.core.cache.ConcurrentCache.put(ConcurrentCache.java:176)\n         at\n org.apache.jackrabbit.core.persistence.bundle.AbstractBundlePersistenceManager.getBundle(AbstractBundlePersistenceManager.java:657)\n         at\n org.apache.jackrabbit.core.persistence.bundle.AbstractBundlePersistenceManager.load(AbstractBundlePersistenceManager.java:400)\n         at\n org.apache.jackrabbit.core.state.SharedItemStateManager.loadItemState(SharedItemStateManager.java:1819)\n         at\n org.apache.jackrabbit.core.state.SharedItemStateManager.getNonVirtualItemState(SharedItemStateManager.java:1739)\n         at\n org.apache.jackrabbit.core.state.SharedItemStateManager.getItemState(SharedItemStateManager.java:261)\n         at\n org.apache.jackrabbit.core.state.LocalItemStateManager.getNodeState(LocalItemStateManager.java:107)\n         at\n org.apache.jackrabbit.core.state.LocalItemStateManager.getItemState(LocalItemStateManager.java:172)\n         at\n org.apache.jackrabbit.core.state.XAItemStateManager.getItemState(XAItemStateManager.java:260)\n         at\n org.apache.jackrabbit.core.state.SessionItemStateManager.getItemState(SessionItemStateManager.java:161)\n         at\n org.apache.jackrabbit.core.ItemManager.getItemData(ItemManager.java:370)\n         at\n org.apache.jackrabbit.core.ItemManager.getItem(ItemManager.java:316)\n         at\n org.apache.jackrabbit.core.ItemManager.getItem(ItemManager.java:610)\n         at\n org.apache.jackrabbit.core.SessionImpl.getNodeById(SessionImpl.java:493)\n         at\n org.apache.jackrabbit.core.SessionImpl.getNodeByIdentifier(SessionImpl.java:1045)\n         at sun.reflect.GeneratedMethodAccessor31.invoke(Unknown Source)\n         at\n sun.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:25)\n         at java.lang.reflect.Method.invoke(Method.java:597)\n         at\n org.apache.sling.jcr.base.SessionProxyHandler$SessionProxyInvocationHandler.invoke(SessionProxyHandler.java:109)\n         at $Proxy2.getNodeByIdentifier(Unknown Source)\n         at\n de.dig.cms.frontend.servlet.helper.ResourceUtil.findResourceById(ResourceUtil.java:44)\n         at\n de.dig.cms.frontend.servlet.CMSContentEnrichServletFilter.doFilter(CMSContentEnrichServletFilter.java:194)\n         at\n org.apache.sling.engine.impl.filter.AbstractSlingFilterChain.doFilter(AbstractSlingFilterChain.java:60)\n         at\n de.dig.cms.frontend.servlet.CacheControlFilter.doFilter(CacheControlFilter.java:120)\n         at\n org.apache.sling.engine.impl.filter.AbstractSlingFilterChain.doFilter(AbstractSlingFilterChain.java:60)\n         at\n de.dig.cms.cache.impl.WallCacheServletFilter.processCacheableRequest(WallCacheServletFilter.java:244)\n         at\n de.dig.cms.cache.impl.WallCacheServletFilter.processCacheableRequestWithLatch(WallCacheServletFilter.java:185)\n         at\n de.dig.cms.cache.impl.WallCacheServletFilter.doFilter(WallCacheServletFilter.java:154)\n         at\n org.apache.sling.engine.impl.filter.AbstractSlingFilterChain.doFilter(AbstractSlingFilterChain.java:60)\n         at\n de.dig.cms.frontend.servletapi.CMSSlingHttpServletRequestFilter.doFilter(CMSSlingHttpServletRequestFilter.java:52)\n         at\n org.apache.sling.engine.impl.filter.AbstractSlingFilterChain.doFilter(AbstractSlingFilterChain.java:60)\n         at\n org.apache.sling.engine.impl.SlingMainServlet.service(SlingMainServlet.java:313)\n         at\n org.apache.sling.engine.impl.SlingMainServlet.service(SlingMainServlet.java:207)\n         at\n org.mortbay.jetty.servlet.ServletHolder.handle(ServletHolder.java:502)\n         at\n org.mortbay.jetty.servlet.ServletHandler.handle(ServletHandler.java:389)\n         at\n org.ops4j.pax.web.service.internal.HttpServiceServletHandler.handle(HttpServiceServletHandler.java:64)\n         at\n org.mortbay.jetty.servlet.SessionHandler.handle(SessionHandler.java:181)\n         at\n org.mortbay.jetty.handler.ContextHandler.handle(ContextHandler.java:765)\n         at\n org.ops4j.pax.web.service.internal.HttpServiceContext.handle(HttpServiceContext.java:111)\n         at\n org.ops4j.pax.web.service.internal.JettyServerHandlerCollection.handle(JettyServerHandlerCollection.java:64)\n         at\n org.mortbay.jetty.handler.HandlerWrapper.handle(HandlerWrapper.java:152)\n         at org.mortbay.jetty.Server.handle(Server.java:324)\n         at\n org.mortbay.jetty.HttpConnection.handleRequest(HttpConnection.java:535)\n         at\n org.mortbay.jetty.HttpConnection$RequestHandler.headerComplete(HttpConnection.java:865)\n         at org.mortbay.jetty.HttpParser.parseNext(HttpParser.java:539)\n         at org.mortbay.jetty.HttpParser.parseAvailable(HttpParser.java:212)\n         at org.mortbay.jetty.HttpConnection.handle(HttpConnection.java:404)\n         at\n org.mortbay.io.nio.SelectChannelEndPoint.run(SelectChannelEndPoint.java:409)\n         at\n org.mortbay.thread.QueuedThreadPool$PoolThread.run(QueuedThreadPool.java:520)",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "JCR-3013",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "ArrayIndexOutOfBoundsException: ConcurrentCache",
+    "systemSpecification": true,
+    "version": "2.2.5, 2.2.7"
+}

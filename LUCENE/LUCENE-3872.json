@@ -1,0 +1,59 @@
+{
+    "comments": [
+        {
+            "author": "Michael McCandless",
+            "body": "Patch w/ failing test showing how we silently lose indexed docs...",
+            "date": "2012-03-15T15:38:47.650+0000",
+            "id": 0
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Patch, I think it's ready.\n\nOne test was failing to call the commit() matching its prepareCommit()... I fixed it.",
+            "date": "2012-03-15T16:31:58.289+0000",
+            "id": 1
+        },
+        {
+            "author": "Robert Muir",
+            "body": "I don't have a better fix, but at the same time i feel you should be able to close() at any time,\n(such as when handling exceptions in your app), since we are a real closeable here.\n",
+            "date": "2012-03-15T16:53:12.620+0000",
+            "id": 2
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Well, we could also easily allow skipping the call to commit... in this case IW.close would detect the missing call to commit, call commit, and call commit again to save any changes done after the prepareCommit and before close.\n",
+            "date": "2012-03-15T17:08:47.355+0000",
+            "id": 3
+        },
+        {
+            "author": "Robert Muir",
+            "body": "{quote}\nin this case IW.close would detect the missing call to commit, call commit, and call commit again to save any changes done after the prepareCommit and before close.\n{quote}\n\nI think that would make it even more lenient and complicated and worse. I guess i feel close() should really be rollback(). But this is likely ridiculous to change.\nSo on second thought I think patch is good... if someone is handling exceptional cases like this they should be thinking about using rollback() anyway,\nand they have this option still.\n\nI wasn't really against the patch anyway, just whining. its definitely an improvement on the current behavior, let's do it.\n",
+            "date": "2012-03-15T17:36:33.813+0000",
+            "id": 4
+        },
+        {
+            "author": "Dawid Weiss",
+            "body": "bq. I guess i feel close() should really be rollback().\n\nYeah... I think this feeling of unease is fairly common -- see JDBC's Connection javadoc on close, for example: \"It is strongly recommended that an application explicitly commits or rolls back an active transaction prior to calling the close method. If the close method is called and there is an active transaction, the results are implementation-defined.\"",
+            "date": "2012-03-15T19:14:25.937+0000",
+            "id": 5
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Thanks Tim!",
+            "date": "2012-03-15T19:24:55.923+0000",
+            "id": 6
+        }
+    ],
+    "component": "",
+    "description": "You are supposed to call commit() after calling prepareCommit(), but... if you forget, and call close() after prepareCommit() without calling commit(), then any changes done after the prepareCommit() are silently lost (including adding/deleting docs, but also any completed merges).\n\nSpinoff from java-user thread \"lots of .cfs (compound files) in the index directory\" from Tim Bogaert.\n\nI think to fix this, IW.close should throw an IllegalStateException if prepareCommit() was called with no matching call to commit().",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-3872",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "Index changes are lost if you call prepareCommit() then close()",
+    "systemSpecification": true,
+    "version": ""
+}

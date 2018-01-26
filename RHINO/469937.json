@@ -1,0 +1,47 @@
+{
+    "comments": [
+        {
+            "author": "cam@mcc.id.au",
+            "body": "Created attachment 353354\nPatch for the bug\n\nThe bug is that lastAdded is not updated when the final slot of the ordered property linked list is removed due to it having wasDeleted == true.  If this happens, then when a property slot is created after this, it will be assigned to lastAdded.orderedNext inside accessSlot(), resulting in it not being reached when traversing the list starting from firstAdded the next time the properties are enumerated.\n\nThe patch updates getIds(boolean) to ensure lastAdded remains pointing to the last slot in the list.",
+            "date": "20081217T06:32:25",
+            "id": 0
+        },
+        {
+            "author": "cam@mcc.id.au",
+            "body": "Actually, disregard the stuff about the slot indexes in the first comment, that's a red herring.  The situation the bug occurs in is just:\n\n  * Start with an object that has at least one property and which hasn't had\n    its most recently added property (or properties) deleted\n  * Create a property p1\n  * Delete property p1\n  * Enumerate the object's properties\n  * Create property p2 (where p2 ! p1)\n\nThen p2 won't be enumerated.",
+            "date": "20081217T06:36:12",
+            "id": 1
+        },
+        {
+            "author": "szegedia@freemail.hu",
+            "body": "Committed to CVS HEAD; also added a unit test (confirmed that it failed before the patch and it passes after the patch).\n\ncvs ci -m \"Fix (and testcase) for Bug #469937 \"Properties without DontEnum are sometimes not enumerated\"\" -l \"/tests/ecma_3/Regress/regress-469937.js\"\n    RCS file: /cvsroot/mozilla/js/tests/ecma_3/Regress/regress-469937.js,v\n    done\n    Checking in ecma_3/Regress/regress-469937.js;\n    /cvsroot/mozilla/js/tests/ecma_3/Regress/regress-469937.js,v  <--  regress-469937.js\n    initial revision: 1.1\n    done\nok (took 0:11.235)\n***\n\n***\ncvs ci -m \"Fix (and testcase) for Bug #469937 \"Properties without DontEnum are sometimes not enumerated\"\" -l \"/Rhino/src/org/mozilla/javascript/ScriptableObject.java\"\n    Checking in src/org/mozilla/javascript/ScriptableObject.java;\n    /cvsroot/mozilla/js/rhino/src/org/mozilla/javascript/ScriptableObject.java,v  <--  ScriptableObject.java\n    new revision: 1.142; previous revision: 1.141\n    done\nok (took 0:05.722)\n***",
+            "date": "20081221T13:45:12",
+            "id": 2
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "Fix propagated to 1.7R2 release branch",
+            "date": "20081231T21:01:26",
+            "id": 3
+        },
+        {
+            "author": "bob@bclary.com",
+            "body": "http://hg.mozilla.org/tracemonkey/rev/6e8432d93d57",
+            "date": "20090320T05:09:44",
+            "id": 4
+        }
+    ],
+    "component": "Core",
+    "description": "User-Agent:       Mozilla/5.0 (X11; U; Linux i686; en-US; rv:1.9.2a1pre) Gecko/20081214 Minefield/3.2a1pre\nBuild Identifier: Rhino 1.7 release 3 PRERELEASE 2008 12 17\n\nCertain sequences of operations on an object can cause a property to be not placed in the ordered linked list of properties.  Specifically this happens when:\n\n  * A property p1 with slot index X is created\n  * A property p2 with slot index Y (where X != Y) is created\n  * Property p2 is deleted\n  * The object's properties are enumerated\n  * A property p3 with slot index Y is created\n\nAfter this, p3 is on the object, but won't be enumerated.\n\n\nReproducible: Always\n\nSteps to Reproduce:\nEvaluate the following script:\n\no = { }\no.PageLeft = 1\no.Rect2 = 6\ndelete o.Rect2\nfor (var p in o);\no.Rect3 = 7\nfound = false\nfor (var p in o) if (p == 'Rect3') found = true\njava.lang.System.out.println(\"found = \" + found)\n\nActual Results:  \nPrints out \"found = false\".\n\n\nExpected Results:  \nPrint out \"found = true\".",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "469937",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "-- normal",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "Properties without DontEnum are sometimes not enumerated",
+    "systemSpecification": false,
+    "version": "other"
+}

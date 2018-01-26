@@ -1,0 +1,53 @@
+{
+    "comments": [
+        {
+            "author": "Alex Deparvu",
+            "body": "hmm, it would appear that LUCENE-2458 [0] has something to do with this. \n(it treats the 1 word made out of 3 character sequence as a phrase of 3 words made of 1 char each).\n\nI'm not sure what is the best way forward. Upgrading lucene to 3.1 maybe?\nI don't think it's just a drop-in replacement, I tried and there are some errors on the repo startup.\n\nThis brings the question about the lucene version that JR is using, which seems to be really behind. We probably should try to update more often, but that is a different topic of discussion.\n\n\n[0] https://issues.apache.org/jira/browse/LUCENE-2458\n",
+            "date": "2011-09-19T17:24:41.347+0000",
+            "id": 0
+        },
+        {
+            "author": "Alex Deparvu",
+            "body": "this problem also affects excerpt generation for any quoted phrase search, not just japanese.\nNormally a quoted phrase should be considered as only one item when building the excerpt.\n\nNow, because of LUCENE-2458, a normal search using japanese turns into the equivalent of quoted search in let's say english.\nSo because the excerpt generator has issues dealing with phrases, then any japanese search would have each character of the search token highlighted, instead of just one highlight containing the whole word.\n\nThe patch should fix both the original issue, and highlighting for any quoted search.\nThe problem is there is one test failing and I'm not sure why :(\n\nThe failing test is ExcerptTest#testEncodeIllegalCharsNoHighlights, which apparently fails because there is more info on the node returned from the search than expected.\nThis should not happen, as I haven't touched that part of the code (node indexing), but sadly it does so I still need to investigate.\n\nI'd also welcome some feedback on the approach.",
+            "date": "2011-09-21T12:12:50.938+0000",
+            "id": 1
+        },
+        {
+            "author": "Julian Reschke",
+            "body": "ExcerptTest#testEncodeIllegalCharsNoHighlights fails because it switched from testing excerpt(text) to excerpt(.). \n\nOther than that the new tests look good. I know next to nothing about Lucene, but if the code fixes the new tests while not breaking anything old, then this should probably go in.\n\nThanks for taking over!",
+            "date": "2011-09-21T14:15:08.107+0000",
+            "id": 2
+        },
+        {
+            "author": "Alex Deparvu",
+            "body": "thanks Julian for going through the patch and identifying the problem. (as usual, it was me who broke the test ;)\n\nok, I added some more tests to the suite, tweaked a little bit more.\nIt turns out the previous patch did not preserve the token order for a phrase query, which is not good.\n\nSo now all the tests pass.\n\nI'll probably commit this soon, but I'll add v2 it here too, just to keep track. \n",
+            "date": "2011-09-21T14:24:28.638+0000",
+            "id": 3
+        },
+        {
+            "author": "Alex Deparvu",
+            "body": "fixed on trunk in revision #1173694 and #1173707.\nbackported to 2.2 in revision #1173706.\n\nI had to tweak the trunk code (rev #1173707) because there were some changes in the lucene api, and I wanted to have the same code on both trunk and the 2.2 branch.\n",
+            "date": "2011-09-21T15:26:02.616+0000",
+            "id": 4
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Merged to the 2.1 branch in revision 1174630 and to 2.0 in revision 1174642.",
+            "date": "2011-09-23T10:54:49.412+0000",
+            "id": 5
+        }
+    ],
+    "component": "jackrabbit-core",
+    "description": "The generated excerpt highlights single characters instead of full words. Test case (to be added to FullTextQueryTest):\n\n     public void testJapaneseAndHighlight() throws RepositoryException {\n        // http://translate.google.com/#auto|en|%E3%82%B3%E3%83%B3%E3%83%86%E3%83%B3%E3%83%88\n        String jContent = \"\\u30b3\\u30fe\\u30c6\\u30f3\\u30c8\";\n        // http://translate.google.com/#auto|en|%E3%83%86%E3%82%B9%E3%83%88\n        String jTest = \"\\u30c6\\u30b9\\u30c8\";\n        \n        String content = \"some text with japanese: \" + jContent\n                + \" ('content')\" + \" and \" + jTest + \" ('test').\";\n\n        // expected excerpt; note this may change if excerpt providers change\n        String expectedExcerpt = \"<div><span>some text with japanese: \" + jContent\n                + \" ('content') and <strong>\" + jTest\n                + \"</strong> ('test').</span></div>\";\n        \n        Node n = testRootNode.addNode(\"node1\");\n        n.setProperty(\"title\", content);\n        testRootNode.getSession().save();\n        \n        String xpath = \"/jcr:root\" + testRoot + \"/element(*, nt:unstructured)\"\n                + \"[jcr:contains(., '\" + jTest + \"')]/rep:excerpt(.)\";\n        Query q = superuser.getWorkspace().getQueryManager()\n                .createQuery(xpath, Query.XPATH);\n        \n        QueryResult qr = q.execute();\n        RowIterator it = qr.getRows();\n        int cnt = 0;\n        while (it.hasNext()) {\n            cnt++;\n            Row found = it.nextRow();\n            assertEquals(n.getPath(), found.getPath());\n            String excerpt = found.getValue(\"rep:excerpt(.)\").getString();\n            assertEquals(expectedExcerpt, excerpt);\n        }\n        \n        assertEquals(1, cnt);\n    }\n",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "JCR-3075",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Minor",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "incorrect HTML excerpt generation for queries on japanese text content ",
+    "systemSpecification": true,
+    "version": ""
+}

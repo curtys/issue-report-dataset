@@ -1,0 +1,53 @@
+{
+    "comments": [
+        {
+            "author": "Edgar Poce",
+            "body": "The proposed patch *OPTIONALLY* binds the jcr session handle to the active transaction. When the tx is committed the session handle will be closed. The transaction will fail if the session is closed inside a transaction.\n\nThe behaviour for CMT is different from the one described in the JCR specification (8.1.1), the logout call specifically.  \nThe logout should be permitted but it should be ignored when it's inside a transaction? feedback is welcome.\n\nCMT (container managed transactions):\n\tpublic void test() throws Exception {\n\t\tInitialContext ctx = new InitialContext() ;\n\t\tRepository repo = (Repository) ctx.lookup(\"java:jcr/local\") ;\n\t\tCredentials cred = new SimpleCredentials(\"ed\",new char[]{'e','d'}) ;\n\t\tSession s = repo.login(cred) ;\n\t\ts.getRootNode().addNode(\"node\") ;\n\t\ts.save();\n\t}\n\nBMT (bean managed transactions) behaves the same as before\n\tpublic void test() throws Exception {\n\t        utx.begin() ;\n\t\tInitialContext ctx = new InitialContext();\n\t\tRepository repo = (Repository) ctx.lookup(\"java:jcr/local\");\n\t\tCredentials cred = new SimpleCredentials(\"ed\", new char[] { 'e', 'd' });\n\t\tSession s = repo.login(cred);\n\t\ts.getRootNode().addNode(\"node\");\n\t\ts.save();\n\t\tutx.commit() ;\n\t\ts.logout() ;\n\t}",
+            "date": "2006-06-16T09:17:57.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Do you think this should be included in Jackrabbit 1.1? Some notes:\n\n1) TransactionBoundXAResource.java doesn't have the standard license header.\n\n2) Is this backwards compatible or were previous versions just unusable due to the reported issue? If no, should the default value of the configuration option be false, at least for now?",
+            "date": "2006-09-16T12:39:59.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Edgar Poce",
+            "body": "> Do you think this should be included in Jackrabbit 1.1?\nIn case there isn't a better patch I think it should. IMO a better patch should bind the xaresource lifecylcle to the tx only if the session was logged out inside the tx. I'll try to prepare the patch the next week, in case it's late for the release you are planning I think we should commit this patch as it is with the correct license header.\n\n> 1) TransactionBoundXAResource.java doesn't have the standard license header. \nIt wasn't intended to be commited as it is. \n\n> 2) Is this backwards compatible or were previous versions just unusable due to the reported \n> issue? \nIMO the previous versions were unusable in the context of container managed transactions.\n\n> If no, should the default value of the configuration option be false, at least for now?\nIt can be set to false if the client don't use it in container managed transactions.\n",
+            "date": "2006-09-16T18:51:01.000+0000",
+            "id": 2
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "OK, thanks. I'll apply the patch with the added license header for the release candidate tomorrow. If you have some modifications in mind, then it's still OK to commit those in next week before the release.",
+            "date": "2006-09-16T19:24:06.000+0000",
+            "id": 3
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Patch applied in revision 446971.",
+            "date": "2006-09-17T08:19:44.000+0000",
+            "id": 4
+        },
+        {
+            "author": "Jorge Rodr\u00edguez Pedrianes",
+            "body": "I think that the \"logout method\" (in JCASessionHandle) isn't totally  correct. I consider that we must check, before closing session, if this session is binded to a transaction. In this situation the session mustn't be closed: transaction  will close it.\n\n    public void logout() {\n    \tif (!mc.getManagedConnectionFactory().getBindSessionToTrasaction().booleanValue()) {\n    \t\tmc.closeHandle(this);\n    \t}\n    }\n\nFor example this is very important when we use spring, springmodules (jcr module) and jackrabbit because the springmodules library closes session when local transaction finishes. And if the session is closed by transaction a exception is throwed.\n\nThanks",
+            "date": "2006-10-04T15:48:11.000+0000",
+            "id": 5
+        }
+    ],
+    "component": "jackrabbit-jca",
+    "description": "Apparently the connector doesn't support CMT (container managed transactions). if the jcr session is closed inside a CMT the AS (application server) throws an exception on commit. And if the jcr session is leaved open, the AS commits the TX successfully but it causes a connection leak by leaving the session open.",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "JCR-463",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "Uncommitted changes or connection leak with Container Managed Transactions",
+    "systemSpecification": true,
+    "version": "1.0, 1.0.1"
+}

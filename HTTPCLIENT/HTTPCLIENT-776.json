@@ -1,0 +1,59 @@
+{
+    "comments": [
+        {
+            "author": "Sam Berlin",
+            "body": "The only possible way I can see the NPE happening is if the AbstractPoolEntry instance gets into open(HttpRoute, HttpContext, HttpParams), gets through to line 161: this.tracker = new RouteTracker(route) ... and then another thread calls calls resetTrackedRoute on the same AbstractPoolEntry before the open(..) thread continues to line 171.",
+            "date": "2008-05-20T15:55:39.072+0000",
+            "id": 0
+        },
+        {
+            "author": "Sam Berlin",
+            "body": "The NPE can happen if another thread calls AbortableHttpRequest.abort() while AbstractPoolEntry is in the process of opening.  \n\nThe abort flow is:\n HttpRequestBase.abort  -> ConnectionReleaseTrigger.abortConnection -> AbstractClientConnAdapter.abortConnection -> AbstractPooledConnAdapter.shutdown -> AbstractPoolEntry.resetTrackedRoute\n\nThe request flow can get into open() from another thread, leaving it open to tracker becoming null at any time.\n\n... not completely sure right now how to fix it.",
+            "date": "2008-05-20T16:53:28.933+0000",
+            "id": 1
+        },
+        {
+            "author": "Sam Berlin",
+            "body": "Attached is a testcase that reproduces the problem -- testAbortBeforeSocketCreate is throwing the NPE right now.  I'm really not positive how to fix it (but am still looking into it).   The basic problem is that you can abort the request before DefaultClientConnectionOperator creates the socket, which means that the socket isn't closed or marked as should-be-closed when the request is aborted.  This means that when after abort is called, openConnection still continues as normal & connects to the host, then it goes back to AbstractPoolEntry.open, where tracker is null & throws the NPE.\n\n(I'm not marking the attachment as intended for inclusion, because there's still some more testcases, and hopefully some fixes, that I want to write.)",
+            "date": "2008-05-20T19:15:26.975+0000",
+            "id": 2
+        },
+        {
+            "author": "Sam Berlin",
+            "body": "Looks like this change: http://fisheye6.cenqua.com/browse/httpcomponents/httpclient/trunk/module-client/src/main/java/org/apache/http/impl/conn/AbstractClientConnAdapter.java?ignore1=B&ignore2=b&r1=652020&r2=652945&u=3 caused it.  I think the change is a good one, but had the side effect of causing tracker to be nulled out, which exposes the problem.",
+            "date": "2008-05-20T20:45:22.511+0000",
+            "id": 3
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Since it's reproducible, we can surely fix it. If you do not come up with a fix, I'll look into it in the coming days.\n\nOleg",
+            "date": "2008-05-20T20:58:39.768+0000",
+            "id": 4
+        },
+        {
+            "author": "Sam Berlin",
+            "body": "The attached patch should fix the problems, plus adds a few new tests (two of which would have failed before).\n\nBasically I captured the 'shutdown' event in DefaultClientConnection and prevent opening(..) from completely succesfully if the connection was shutdown prior to an opening announcement.  Also in AbstractPoolEntry we check for 'tracker' becoming null and fail after the operator connects if tracker became null.  With respect to AbstractPoolEntry, it's not completely clear that a side effect of 'resetTrackedRoute' will prevent open(..) from completing, so I added it to the javadoc.  A better way would be renaming it to something like shutdownEntry().   It was previously called 'closing' (before resetTrackedRoute), meaning it was notification that something external was being shutdown... but it's kind of active itself, given that there's an open(..) method that can be aborted due to it.\n\n(I'd check this in, but haven't gotten any notifications about an account setup yet. Sorry!)",
+            "date": "2008-05-20T22:26:10.690+0000",
+            "id": 5
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Patch checked in. Many thanks, Sam\n\nI am sorry it has been taking so long to get your account set up. Only Erik can request a new account creation and he still appears off-line.\n\nOleg",
+            "date": "2008-05-21T17:33:08.897+0000",
+            "id": 6
+        }
+    ],
+    "component": "",
+    "description": "java.lang.NullPointerException\n    at org.apache.http.impl.conn.AbstractPoolEntry.open(AbstractPoolEntry.java:171)\n    at org.apache.http.impl.conn.AbstractPooledConnAdapter.open(AbstractPooledConnAdapter.java:119)\n    at org.apache.http.impl.client.DefaultClientRequestDirector.execute(DefaultClientRequestDirector.java:309)\n    at org.apache.http.impl.client.AbstractHttpClient.execute(AbstractHttpClient.java:501)\n    at org.apache.http.impl.client.AbstractHttpClient.execute(AbstractHttpClient.java:456)\n    at org.apache.http.impl.client.AbstractHttpClient.execute(AbstractHttpClient.java:422)\n    at com.limegroup.gnutella.http.DefaultHttpExecutor.performRequest(DefaultHttpExecutor.java:97)\n    at com.limegroup.gnutella.http.DefaultHttpExecutor.access$000(DefaultHttpExecutor.java:26)\n    at com.limegroup.gnutella.http.DefaultHttpExecutor$MultiRequestor.run(DefaultHttpExecutor.java:135)\n    at org.limewire.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1006)\n    at org.limewire.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:549)\n    at java.lang.Thread.run(Unknown Source)\n\nSeeing a lot of these against Alpha4.  Also seeing still the occassional IllegalStateException of:\n\njava.lang.IllegalStateException: Connection already open.\n    at org.apache.http.impl.conn.AbstractPoolEntry.open(AbstractPoolEntry.java:150)\n    at org.apache.http.impl.conn.AbstractPooledConnAdapter.open(AbstractPooledConnAdapter.java:119)\n    at org.apache.http.impl.client.DefaultClientRequestDirector.execute(DefaultClientRequestDirector.java:309)\n    at org.apache.http.impl.client.AbstractHttpClient.execute(AbstractHttpClient.java:501)\n    at org.apache.http.impl.client.AbstractHttpClient.execute(AbstractHttpClient.java:456)\n    at org.apache.http.impl.client.AbstractHttpClient.execute(AbstractHttpClient.java:422)\n    at com.limegroup.gnutella.http.DefaultHttpExecutor.performRequest(DefaultHttpExecutor.java:97)\n    at com.limegroup.gnutella.http.DefaultHttpExecutor.access$000(DefaultHttpExecutor.java:26)\n    at com.limegroup.gnutella.http.DefaultHttpExecutor$MultiRequestor.run(DefaultHttpExecutor.java:135)\n    at org.limewire.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1006)\n    at org.limewire.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:549)\n    at java.lang.Thread.run(Unknown Source)\n",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "HTTPCLIENT-776",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "HTTPCLIENT",
+    "project": "HTTPCLIENT",
+    "summary": "NPE w/ AbstractPoolEntry.open",
+    "systemSpecification": true,
+    "version": "4.0 Alpha 4"
+}

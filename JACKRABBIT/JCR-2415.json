@@ -1,0 +1,113 @@
+{
+    "comments": [
+        {
+            "author": "Kimmo Bj\u00f6rnsson",
+            "body": "Just a comment on recent developments regarding this issue.\n\nWith Hibernate 3.6 this is even more important now. Hibernate 3.6 does not work with older Hibernate Search.\nAnd new Hibernate Search can not work with Lucene 2.4.x\n\nSo everyone using Hibernate + Hibernate Search + Jackrabbit is now stuck upgrading until Jackrabbit supports newer Lucene (2.9.x is enough at the moment).\n\nThis is really urgent for us.\n",
+            "date": "2010-12-06T13:58:19.099+0000",
+            "id": 0
+        },
+        {
+            "author": "Kimmo Bj\u00f6rnsson",
+            "body": "No comment on this yet?\n\nAt the moment we run Jackrabbit and Hibernate in production on a big Swedish website. We encountered a bug in Hibernate 3.5.x that is fixed in 3.6.x. So we have to upgrade to 3.6.x. Getting urgent.\n\nHibernate Search 3.3 was just released supporting Lucene 3.0 as well. It's sad we can not run Jackrabbit and Hibernate Search 3.3 either.\n",
+            "date": "2010-12-20T10:56:22.980+0000",
+            "id": 1
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Anyone interested in working on this? I'd love to help out, but don't have the time to drive the effort.",
+            "date": "2011-01-05T17:03:14.855+0000",
+            "id": 2
+        },
+        {
+            "author": "Serge Huber",
+            "body": "I wish I could help out but it's not possible in the immediate future but I'm also very interested in this.",
+            "date": "2011-01-06T11:04:49.576+0000",
+            "id": 3
+        },
+        {
+            "author": "S\u00e9bastien Launay",
+            "body": "I have a working upgrade to Lucene 2.9.4 where code compiles and tests are running fine.\nI just created a topic branch for this in sandbox to ease review and do not break the trunk:\nhttp://svn.apache.org/viewvc/jackrabbit/sandbox/JCR-2415-lucene-3.0/\n\nHere is what I have done so far, but I am not confident so it will need a serious review :):\n- change dependency to use Lucene 2.9.4\n- remove most of the deprecated classes/methods\n- JR HitCollector => Lucene Collector => JR AbstractHitCollector\n- use new Scorer abstract class with new  boolean params scoreDocsInOrder and topScorer\n- use Version.LUCENE_24 for backward compatibility (JackrabbitQueryParser, JackrabbitAnalyzer, StandardAnalyzer, MoreLikeThis)\n- creating the directory in FSDirectoryManager (not done by Lucene anymore?)\n- use Java 5 generics when appropriate\n- use @SuppressWarnings annotation with \"unchecked\", \"serial\" and \"rawtypes\"\n\nWhat need to be done:\n- remove last deprecated classe/methods, that is convert SortComparatorSource/ScoreDocComparator implementation to FieldComparatorSource/FieldComparator\n- test integration with Lucene 3.0.3 to ensure compatibility with Lucene 3.0.x\n\nI think that sticking to 2.9.4 might be the best approach because:\n- users still using Lucene 2.4.x/2.9.x will have an easier integration that migrating Lucene 3.0.x\n- users wanting to use Lucene 3.0.x can force it it maven and have a working search in JR\n",
+            "date": "2011-01-19T16:52:38.886+0000",
+            "id": 4
+        },
+        {
+            "author": "Michael D\u00fcrig",
+            "body": "Coincidentally I did just about the same thing yesterday and it seems we arrived at more or less the same point independently. However, your work seems to be more mature than mine. \n\nIt would certainly be nice to get to the point where Lucene 3.0.x could be used. Therefore we need to get rid of SortComparatorSource/ScoreDocComparator which have been removed in Lucene 3. It doesn't seem to be a simple matter of switching to FieldComparatorSource/FieldComparator since these do not compose (i.e. for implementing upper/lower case sorting on top of an existing comparator). \n\nI just switched to your branch and will see what I can do.",
+            "date": "2011-01-20T18:02:28.390+0000",
+            "id": 5
+        },
+        {
+            "author": "Serge Huber",
+            "body": "Thanks for the work. \n\nDo you know how this change should affect query performance ? Should it improve, or will it degrade ?\n\nBest regards,\n  Serge Huber.",
+            "date": "2011-01-21T08:02:23.161+0000",
+            "id": 6
+        },
+        {
+            "author": "Michael D\u00fcrig",
+            "body": "Some proposed changes/fixes to S\u00e9bastien Launay's initial work",
+            "date": "2011-01-21T10:10:17.394+0000",
+            "id": 7
+        },
+        {
+            "author": "Michael D\u00fcrig",
+            "body": "DocIdSetIterator.patch: removing usages of deprecated methods from DocIdSetIterator",
+            "date": "2011-01-21T13:38:15.440+0000",
+            "id": 8
+        },
+        {
+            "author": "Michael D\u00fcrig",
+            "body": "cumulative patch: this patch includes changes from both previous patches (review.patch and DocIdSetIterator.patch). Furthermore it removes more deprecated API usage. \n\nWith this patch the remaining cases where deprecated API is used are all related to sorting (i.e. ScoreDocComparator, SortComaratorSource, SortComparator, TopFieldDocCollector). The respective locations are marked with // fixme lucene",
+            "date": "2011-01-21T15:46:34.734+0000",
+            "id": 9
+        },
+        {
+            "author": "S\u00e9bastien Launay",
+            "body": "> It would certainly be nice to get to the point where Lucene 3.0.x could be used. \n\nDefinitely, I'll see if I can find a way to keep the Adapter pattern and use String[Ord]ValComparator.\n\n> Some proposed changes/fixes\n\nIndeed from what I have seen these changes look complementary so do not hesitate to commit them, that's why I created a topic branch at first.\n\n> Do you know how this change should affect query performance ? Should it improve, or will it degrade ?\n\nI think performance will be better because the new Lucene classes are more complex in order to be more efficient (this is typically the case for FieldComparator [1] which render migration difficult).\nOne thing I'm sure is that the index size on disk will be larger because we no longer compress stored field larger than 16K.\nJukka's performance test suite will be handy to produce performance numbers before/after the migration.\n\n[1] http://lucene.apache.org/java/3_0_3/api/core/org/apache/lucene/search/FieldComparator.html",
+            "date": "2011-01-24T08:39:36.203+0000",
+            "id": 10
+        },
+        {
+            "author": "Michael D\u00fcrig",
+            "body": "Applied cumulative.patch with some minor cleanup at revision 1062799:\n\n- closing token stream\n- removed usage of deprecated methods of DocIdSetIterator\n- removed deprecated usage of Token class\n- eomved deprecated usage of StandardAnalyzer\n- various minor improvements",
+            "date": "2011-01-24T14:32:42.997+0000",
+            "id": 11
+        },
+        {
+            "author": "Michael D\u00fcrig",
+            "body": "Revision 1063730 upgrades Lucene to version 3.0.3. All test cases pass.\n",
+            "date": "2011-01-26T14:17:02.634+0000",
+            "id": 12
+        },
+        {
+            "author": "Michael D\u00fcrig",
+            "body": "Fixed at revision 1064058:\nMerge all from JCR-2415-lucene-3.0 at 1064038 (reintegration)",
+            "date": "2011-01-27T09:36:18.786+0000",
+            "id": 13
+        },
+        {
+            "author": "Brian Topping",
+            "body": "Any chance of deploying a SNAPSHOT?  ",
+            "date": "2011-04-24T23:52:16.327+0000",
+            "id": 14
+        },
+        {
+            "author": "S\u00e9bastien Launay",
+            "body": "You can find the snapshot build by Jenkins (https://builds.apache.org/hudson/job/Jackrabbit-trunk/) and uploaded here:\nhttps://repository.apache.org/\n\nYou can also build the project from the sources:\nhttp://jackrabbit.apache.org/building-jackrabbit.html",
+            "date": "2011-04-26T11:58:09.840+0000",
+            "id": 15
+        }
+    ],
+    "component": "query",
+    "description": "Lucene 3.0 was released on 2009/11/25. They migrated to Java 1.5 as Jackrabbit is doing with 2.0. Also they added some new optimizations. It would be nice if Jackrabbit could switch to the new lucene version too.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "JCR-2415",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Major",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "Update Lucene to 3.0",
+    "systemSpecification": true,
+    "version": "2.0-beta3"
+}

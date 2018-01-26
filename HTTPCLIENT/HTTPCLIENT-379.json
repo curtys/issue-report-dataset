@@ -1,0 +1,113 @@
+{
+    "comments": [
+        {
+            "author": "Ortwin Gl\u00fcck",
+            "body": "We strongly discourage users to use getResponseBodyAsString if the content is\nlarge. getResponseBodyAsString imposes buffering and copying the data in the VM\nwhich can easily exhaust the memory available to the VM. HttpClients should\navoid buffering the response by using getResponseBodyAsStream().\n\nMaybe we can log a warning message, if the content length is unknown or larger\nthan some megs and the user calls getResponseBodyAsString or getResponseBody.\nThe drawbacks of calling those methods and why to alternatives should be\ndocumented in the API.",
+            "date": "2004-09-15T22:41:34.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Alan,\nHttpMethod#getResponseBodyAsString is a convenience method. And as such it has\nnever been intended to handle large content. Any application specific concerns\n(large content, corrupt connect) should be dealt with at the application level,\nnot at the transport level.\n\nIf it's OK with you, I'll mark this report as INVALID\n\nOleg",
+            "date": "2004-09-15T23:02:59.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Alan Francis",
+            "body": "Hi Guys,\n\nI don't agree that the bug is invalid (of course thats up to you :-).  \n\nIf the method doesn't work for large responses, I'd expect to see Ortwin's\nsuggestions of a log message as described below and something in the\ndocumentation referring to the sun bug report and warning of undefined behaviour\nif the response is over 16Mb.  What would be safer (IMO) is fail-fast with some\nkind of ResponseTooLargeException (or something).\n\nAs for our specific situation, it's a safe bet our responses will be 5-20Mb and\nso I'll take the advice and go ahead and use the Stream method, if I happened to\nbe in a situation where I had no idea how big the response was before I tried to\nget it, it seems a little worrying that a perfectly reasonable-looking method\nmight fail at random intervals.\n\nAlan",
+            "date": "2004-09-16T16:51:20.000+0000",
+            "id": 2
+        },
+        {
+            "author": "Ortwin Gl\u00fcck",
+            "body": "Alan,\n\nThe method works perfectly for large responses. You have already discoverd that\nthe problem is inside Sun's VM implementation. If you use any other VM (Sun\n1.3.1, any IBM, any Blackdown) there is no bug. HttpClient is not broken.\nNothing to fix here.\n\nWe are not going to work around Sun's bugs at the HttpClient level as long as\nthere exists a simple workaround feasible for the user. e.g. using streams.\n\nI also don't like your idea of an ResponseTooLargeException. It is perfectly\nlegal, although not very intelligent, to use getResponseAsString for\nmultimegabyte responses.\n\nI guess that at least API Doc improvements should be made to that method. But\nthis has nothing to do with Sun's VM bug. It should rather push users towards\nusing streams instead of buffered responses. A warning message could further\nhelp developers but I find it completely optional. I will attach a patch for\nthat in a minute.\n\nOrtwin Gl\u00c3\u00bcck",
+            "date": "2004-09-16T18:57:08.000+0000",
+            "id": 3
+        },
+        {
+            "author": "Ortwin Gl\u00fcck",
+            "body": "Created an attachment (id=12749)\nPatch to 2.0 branch\n",
+            "date": "2004-09-16T19:12:22.000+0000",
+            "id": 4
+        },
+        {
+            "author": "Ortwin Gl\u00fcck",
+            "body": "Created an attachment (id=12750)\nPatch to HEAD\n",
+            "date": "2004-09-16T19:12:45.000+0000",
+            "id": 5
+        },
+        {
+            "author": "Ortwin Gl\u00fcck",
+            "body": "The attached patches add API Doc, a warning if the buffered content length is\nunknown or > 1 MB and an optimization of buffer allocation.",
+            "date": "2004-09-16T19:14:01.000+0000",
+            "id": 6
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Odi,\nare there any reasons for not using the new preferences API to parameterize\nBUFFER_WARN_TRIGGER_LIMIT?\n\nOleg ",
+            "date": "2004-09-16T21:05:14.000+0000",
+            "id": 7
+        },
+        {
+            "author": "Ortwin Gl\u00fcck",
+            "body": "Of course not Oleg. Just getting lazy theese days... :-)",
+            "date": "2004-09-16T21:10:12.000+0000",
+            "id": 8
+        },
+        {
+            "author": "Ortwin Gl\u00fcck",
+            "body": "Created an attachment (id=12754)\nPatch to HEAD, take 2\n",
+            "date": "2004-09-17T03:09:07.000+0000",
+            "id": 9
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Looks good to me\n\nOleg",
+            "date": "2004-09-17T03:22:52.000+0000",
+            "id": 10
+        },
+        {
+            "author": "Michael Becke",
+            "body": "*** HTTPCLIENT-367 has been marked as a duplicate of this bug. ***",
+            "date": "2004-09-17T09:12:10.000+0000",
+            "id": 11
+        },
+        {
+            "author": "Ortwin Gl\u00fcck",
+            "body": "Committed to 2.0 branch and HEAD.",
+            "date": "2004-09-17T15:03:14.000+0000",
+            "id": 12
+        },
+        {
+            "author": "Ortwin Gl\u00fcck",
+            "body": "Created an attachment (id=12829)\nDocuments the new parameter for 3.0 API\n",
+            "date": "2004-09-22T14:31:10.000+0000",
+            "id": 13
+        },
+        {
+            "author": "Alan Francis",
+            "body": "Thanks guys, I feel better :-)",
+            "date": "2004-09-22T16:08:02.000+0000",
+            "id": 14
+        },
+        {
+            "author": "Ortwin Gl\u00fcck",
+            "body": "Committed Documentation patch to HEAD.",
+            "date": "2004-09-23T00:26:58.000+0000",
+            "id": 15
+        }
+    ],
+    "component": "HttpClient (classic)",
+    "description": "ava.nio.BufferOverflowException\n        at java.nio.charset.CoderResult.throwException(CoderResult.java:259)\n        at java.lang.StringCoding$CharsetSD.decode(StringCoding.java:188)\n        at java.lang.StringCoding.decode(StringCoding.java:224)\n        at java.lang.String.<init>(String.java:320)\n        at\norg.apache.commons.httpclient.HttpConstants.getContentString(HttpConstants.java:199)\n        at\norg.apache.commons.httpclient.HttpConstants.getContentString(HttpConstants.java:233)\n        at\norg.apache.commons.httpclient.HttpMethodBase.getResponseBodyAsString(HttpMethodBase.java:735)\n\n\nThis seems to be caused by a known JVM bug:\nhttp://bugs.sun.com/bugdatabase/view_bug.do?bug_id=4949631\n\nStrings over 16Mb can cause the problem.   Some workarounds are listed, the\nessence being to split the string and call getBytes on each piece and reassemble\nwith a ByteBuffer.",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "HTTPCLIENT-379",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Critical",
+    "product": "HTTPCLIENT",
+    "project": "HTTPCLIENT",
+    "summary": "JVM bug 4949631 causes BufferOverflowException in HttpMethodBase.getResponseBodyAsString",
+    "systemSpecification": false,
+    "version": "2.0 Milestone 1"
+}

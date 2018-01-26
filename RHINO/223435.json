@@ -1,0 +1,59 @@
+{
+    "comments": [
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 133959\nImplementing first proposal\n\nPatch implements the first proposal: it automatically creates adapter objects\nwhen calling Java methods and when corresponding argument type is interface.",
+            "date": "20031023T19:00:53",
+            "id": 0
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 134210\nImplementing single-method interface to function map and disabling automatic wrapper creation.\n\n\nAutomatic creation of wrapper objects is dangerous feature since the wrapper\nobject is not available to JS so if one would register a listener through:\n\nvar listener = {\n    windowClosing : function() {\n\tjava.lang.System.exit(0);\n    }\n};\n\nframe.addWindowListener(listener);\n\nthen \n \nframe.removeWindowListener(listener);\n\nwould not work since a new wrapper for the listener object would be created.\n\nThe proper implementation should somehow store the wrapper so it would be\nreused and frame.removeWindowListener(listener) would work. Under JDK 1.2\nWeakHash can be used to store the mapping but it would make dependence on JDK\n1.2 too heavy when MS JVM still should be accounted for. (In fact, I know one\ncase when Rhino is used with JDK 1.1.8 for Solaris since later JDK needs to\nmuch memory...) \n\nFor single-method interface to function map such implementation is possible\nunder restriction that only BaseFunction instances would be allowed in such\nusage so BaseFunction can store the wrapping. Since all usable cases for the\nautomatic conversion involves BaseFunction, this is not a serious restriction. \n\nFor this reasons the new patch does not have any support for automatic wrapping\nof generic JS object but just implements Java interface to JS function mapping.\nThe patch does not create the standard adapter to take advantage of the fact\nthat the glue object passed to Java method is not visible to JS. It allows not\nto create NativeJavaObject for the glue itself that the standard Java adapter\nwould do. Since the glue need to support only interfaces, the patch uses\nspecial IFGlue class as a base for all generated code to minimize amount of\ngenerated code.\n\nIn addition, patch adds optimization to the current adapter code to remove\ncalling Context.enter/Context.exit when converting Java to JS arguments for\neach non-primitive type since the conversion can be done when Context instance\nis obtained for calling the function itself.",
+            "date": "20031026T23:57:11",
+            "id": 1
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 134266\nUpdated patch: fixing wrong code generation for the glue class, updating documentation to refer to new facility and making function to interface conversion preferable.\n\nTo allow to write:\n\nvar t = java.lang.Thread(function f() { .... } )\n\nto mean to create a thread that will call f() in its run method and not create\nThread named by f.toString() the patch update makes conversion\nfunction->interface to weight 1 if interface contains single method.",
+            "date": "20031027T20:01:19",
+            "id": 2
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Changing the title:\n\nAutomatic conversion of JS object into JavaAdapter extending/implementing\narbitrary Java class would be sugar that is very easy to misuse. My initial\nintention was to have something that allow to simplify JS implementation of\nevent listening code in JS and the committed part took care about common case of\ninterfaces with single method. But in the rest of useful cases event listening\ninterfaces would have multiple methods with exactly the same signature like\nWindowListener, MouseListener etc. tand it is sufficient to provide sugar only\nfor this case.\n\nThus the idea would be allow to pass JS function to Java method not only when\ncorresponding Java type is an interface with single method but also for\ninterfaces with several methods with exactly the same signature. To distinguish\nbetween methods in JS the glue code would append method name as the last\nparameter. Since the signature for all methods are the same, the position of\nthis last parameter would be the same as well and one could write:\n\nframe.addWindowListener(function(event, methodName) {\n    if (methodName == \"windowClosing\") {\n        java.lang.System.exit(0);\n    }\n});\n",
+            "date": "20040323T13:10:08",
+            "id": 3
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 144564\nPass methodName as the last parameter\n\nThe patch changes the current glue code to pass the name of the called\ninterface method as the last parameter to JS function.\n\nThis is useful for debugging, for example, even without extending the\nconversion to interfaces with multiple methods with the same signature.",
+            "date": "20040323T13:16:34",
+            "id": 4
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 144596\nImplementation of the last idea: allow to convert to interfaces with more the one method \n\nThe patch checks if all additional interface methods have the same signature,\nthen the conversion is allowed and the initial JS function will be called for\neach method.",
+            "date": "20040323T20:54:37",
+            "id": 5
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "I committed the last patches which allows to mark bug as fixed",
+            "date": "20040324T14:17:11",
+            "id": 6
+        }
+    ],
+    "component": "Core",
+    "description": "It would be nice if Rhino would automatically create JavaAdapter from JavaScript\nobject when calling Java methods if corresponding Java parameter is interface.\n\nFor example, currently to add an action listener to Swing button\nSwingApplication.js example uses:\n\n    button.addActionListener(new ActionListener({\n\tactionPerformed : function() {\n\t    numClicks += 1;\n\t    label.setText(labelPrefix + numClicks);\n\t}\n    }));\n\nBut it would be much simpler to write just\n\n    button.addActionListener({\n\tactionPerformed : function() {\n\t    numClicks += 1;\n\t    label.setText(labelPrefix + numClicks);\n\t}\n    });\n\nwhich would create the adapter wrapper automatically and similarly it would be\npossible to replace\n\nframe.addWindowListener(new WindowAdapter({\n    windowClosing : function() {\n\tjava.lang.System.exit(0);\n    }\n}) );\n\nby\n\nframe.addWindowListener({\n    windowClosing : function() {\n\tjava.lang.System.exit(0);\n    }\n});\n \nYet another usability extension would be to allow to pass JS function where\ncorresponding Java type is an interface with a single method. With this\nextension the first example becomes simply:\n\n    button.addActionListener(function() {\n    \tnumClicks += 1;\n\tlabel.setText(labelPrefix + numClicks);\n    });\n\nMoreover, with such extension one would get automatic proper binding for DOM\nevent listeners. Java bindings for DOM states that event listener should\nimplement EventHandler interface which contains single handleEvent method while\nDOM bindings for ECMAScript accepts arbitrary function.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "223435",
+    "issuetypeClassified": "RFE",
+    "issuetypeTracker": "RFE",
+    "priority": "-- enhancement",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "Automatic conversion of JS functions into Java interfaces",
+    "systemSpecification": false,
+    "version": "other"
+}

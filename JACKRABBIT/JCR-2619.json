@@ -1,0 +1,89 @@
+{
+    "comments": [
+        {
+            "author": "Stefan Guggisberg",
+            "body": "patch with proposed changes. \n\nthere doesn't seem to be a significant impact on performance (test cases run times are more or less identical).",
+            "date": "2010-04-26T14:29:52.162+0000",
+            "id": 0
+        },
+        {
+            "author": "Tobias Bocanegra",
+            "body": "the memory footprint of a 25 char long string is about 88bytes (56% less) - if you really want to save space, why not use a byte array of the size 10 (for time and timezone) ?",
+            "date": "2010-04-26T20:03:06.140+0000",
+            "id": 1
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "The tradeoff between a string and a binary representation is the performance impact on having to generate the string when the getString() method is called. If that's not a concern, then I'd actually suggest that we simply use a single long value and avoid all object or array overhead.",
+            "date": "2010-04-26T22:57:03.970+0000",
+            "id": 2
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "You would need at least a long and an int to represent the date with the timezone.\nA String does use quite a lot of memory, but it's easier than writing a separate serialization.\n",
+            "date": "2010-04-27T04:56:41.567+0000",
+            "id": 3
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Actually a 64-bit long is quite enough to store all the information in the ISO8601 date string subset used by JCR.",
+            "date": "2010-04-27T10:32:42.793+0000",
+            "id": 4
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "> a 64-bit long is quite enough\n\nYes, if we restrict the year / don't support weird time zones. For me it's not a problem, but for some applications it may be.",
+            "date": "2010-04-27T11:08:55.056+0000",
+            "id": 5
+        },
+        {
+            "author": "Alexander Klimetschek",
+            "body": "It should support all values that a Calendar object can have, including any timezone offset. The maximum that I know is +14, so having the timezone running from -15h to +15h, which would be -900 to +900 minutes, should cover every case.\n\nhttp://www.worldtimezone.com/faq.html",
+            "date": "2010-04-27T12:12:38.294+0000",
+            "id": 6
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "> It should support all values that a Calendar object can have\n\nIf we want to do that, then a \"long\" is not enough. Even long+int is not enough, because a java.util.TimeZone (which is used internally in each java.util.Calendar) is not just an offset, but also includes rules.\n\nIf we want to support each possible java.util.Calendar, then we either need to use a String or store the Calendar object.\n\nIf we only want to support possible values according to the JCR 2.0 specification (this I'm not sure), then a long is enough, for example in the format yyyymmddhhMMssMMMZZZZ.",
+            "date": "2010-04-27T12:20:17.771+0000",
+            "id": 7
+        },
+        {
+            "author": "Stefan Guggisberg",
+            "body": "i've chosen the ISO8601 string representations for the following reasons:\n\na) smaller footprint \nb) immutable (no cloning required)\nc) human readable\nd) the ISO8601 format is used extensively for  serialization \n   (persistence layer, remoting protocols, xml, etc),\n   => getString()/toString() are very effiicient\n\ni've deliberately not chosen a more space-efficient\nbinary representation because of d)\n\n",
+            "date": "2010-04-27T12:59:31.213+0000",
+            "id": 8
+        },
+        {
+            "author": "Alexander Klimetschek",
+            "body": "> If we only want to support possible values according to the JCR 2.0 specification (this I'm not sure)\n\nThat's what I actually meant.\n\nMost notably, JCR 1.0 and 2.0 specifies the date based on the iso8601 string representation without the timezone ID, only with the current offset. Hence including the timezone ID and thus potentially changing the date upon access because of the re-interpretation of the rules and thus a different offset, could break existing applications that currently must work around this issue by storing the timezone ID separately.\n\n(It would be nice to have the timezone ID included, of course, but the spec unfortunately did not get this 100% right.)\n\n> for example in the format yyyymmddhhMMssMMMZZZZ\n\nMight work. ZZZZ would probably be shifted into the positive region, eg. by adding -900 if we say -900 is the smallest negative timezone offset in minutes.",
+            "date": "2010-04-27T13:46:32.414+0000",
+            "id": 9
+        },
+        {
+            "author": "Alexander Klimetschek",
+            "body": "> d) the ISO8601 format is used extensively for serialization \n>   (persistence layer, remoting protocols, xml, etc)\n\nIf the persistence layer can't (currently) be changed to use the same serialization format (eg. the optimized long) w/o conversion, I agree that the string rep is probably better.",
+            "date": "2010-04-27T13:50:51.881+0000",
+            "id": 10
+        },
+        {
+            "author": "Stefan Guggisberg",
+            "body": "committed patch in svn  r938969 ",
+            "date": "2010-04-28T12:36:35.918+0000",
+            "id": 11
+        }
+    ],
+    "component": "jackrabbit-core, jackrabbit-spi-commons",
+    "description": "DATE values are currently internally represented as java.util.Calendar objects.\n\nCalendar objects have a huge memory footprint (approx 200bytes per instance) \nand are mutable.\n\ni suggest to replace the internal DATE representation with a ISO8601 format string\n(immutable and approx. 85-90% smaller footprint).",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "JCR-2619",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Minor",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "improved internal representation of DATE values",
+    "systemSpecification": true,
+    "version": ""
+}

@@ -1,0 +1,77 @@
+{
+    "comments": [
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Tim,\n\nWould you be able to put all these changes in a patch (udiff format as produced by 'svn diff' command)?\n\nOleg",
+            "date": "2009-10-15T21:09:16.884+0000",
+            "id": 0
+        },
+        {
+            "author": "Tim Boemker",
+            "body": "Also attached.\n\nIndex: AbstractClientConnAdapter.java\n===================================================================\n--- AbstractClientConnAdapter.java      (revision 825665)\n+++ AbstractClientConnAdapter.java      (working copy)\n@@ -86,6 +86,9 @@\n     /** True if the connection has been aborted. */\n     private volatile boolean aborted;\n\n+    /** True if the connection has been released. */\n+    private boolean released;\n+\n     /** The duration this is valid for while idle (in ms). */\n     private volatile long duration;\n\n@@ -316,16 +319,25 @@\n     }\n\n     public void releaseConnection() {\n+        synchronized(this) {\n+            if (aborted || released) {\n+                return;\n+            }\n+            released = true;\n+        }\n         if (connManager != null) {\n             connManager.releaseConnection(this, duration, TimeUnit.MILLISECONDS);\n         }\n     }\n\n+\n     public void abortConnection() {\n-        if (aborted) {\n-            return;\n+        synchronized(this) {\n+            if (aborted || released) {\n+                return;\n+            }\n+            aborted = true;\n         }\n-        aborted = true;\n         unmarkReusable();\n         try {\n             shutdown();\n\n\n\n",
+            "date": "2009-10-15T21:37:35.265+0000",
+            "id": 1
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Tim\n\nThere was a regression in the test suite with your patch. I came up with a slight variation on your patch that appears to fix the race condition while preserving compatibility with the original behaviour of HttpUriRequest#abort(). Please pull the latest code from the SVN repository, review the changes an confirm the problem has been adequately fixed.\n\nI did not investigate thoroughly why those test cases started to fail. It can well be the test cases are flawed somehow.\n\nOleg\n\n----\nResults :\n\nTests in error:\n  testAbortDuringConnecting(org.apache.http.impl.conn.TestTSCCMWithServer)\n  testAbortBeforeSocketCreate(org.apache.http.impl.conn.TestTSCCMWithServer)\n  testAbortAfterSocketConnect(org.apache.http.impl.conn.TestTSCCMWithServer)\n  testAbortAfterOperatorOpen(org.apache.http.impl.conn.TestTSCCMWithServer)\n\nTests run: 477, Failures: 0, Errors: 4, Skipped: 0\n----",
+            "date": "2009-10-16T12:29:27.685+0000",
+            "id": 2
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "I figured why the test cases were failing. It was due to an erroneous assumption that connection abort would not automatically release the connection back to the manager. I also removed an old ugly hack that was no longer relevant / valid.\n\nAll looks okay to me now. Double-check, nonetheless.\n\nOleg",
+            "date": "2009-10-16T14:13:07.726+0000",
+            "id": 3
+        },
+        {
+            "author": "Tim Boemker",
+            "body": "The current version of the code still has a race condition.  In AbstractClientConnection.java, it's possible for abortConnection and releaseConnection both to read shutdown as false and for both to continue execution.  ThreadSafeClientConnManager.releaseConnection is not thread-safe when two threads are trying to release the same connection.\n\nI am following these steps to demonstrate the race condition:\n1) Let abortConnection and releaseConnection both step through the line that tests whether shutdown is already set.\n2) Let the thread running releaseConnection run just past the line in ThreadSafeClientConnManager.releaseConnection that sets local variable reusable from hca.isMarkedReusable.\n3) Let the thread running abortConnection run to the same point.\n4) Let the thread running releaseConnection finish.\n5) Let the thread running abortConnection finish.\n6) Attempt another request to the same host.\n\nThese steps consistently produce the following error:\njava.lang.IllegalStateException: There is no entry that could be dropped.\n\tat org.apache.http.impl.conn.tsccm.RouteSpecificPool.dropEntry(RouteSpecificPool.java:244)\n\tat org.apache.http.impl.conn.tsccm.ConnPoolByRoute.freeEntry(ConnPoolByRoute.java:418)\n\tat org.apache.http.impl.conn.tsccm.ThreadSafeClientConnManager.releaseConnection(ThreadSafeClientConnManager.java:254)\n\tat org.apache.http.impl.conn.AbstractClientConnAdapter.abortConnection(AbstractClientConnAdapter.java:338)\n\tat org.apache.http.impl.client.DefaultRequestDirector.abortConnection(DefaultRequestDirector.java:1058)\n\tat org.apache.http.impl.client.DefaultRequestDirector.execute(DefaultRequestDirector.java:566)\n\tat org.apache.http.impl.client.AbstractHttpClient.execute(AbstractHttpClient.java:674)\n\tat org.apache.http.impl.client.AbstractHttpClient.execute(AbstractHttpClient.java:609)\n\t...\n\nI propose the following change to the current version of AbstractClientConnection.java:\n\nIndex: AbstractClientConnAdapter.java\n===================================================================\n--- AbstractClientConnAdapter.java      (revision 825909)\n+++ AbstractClientConnAdapter.java      (working copy)\n@@ -311,20 +311,24 @@\n     }\n\n     public void releaseConnection() {\n-        if (shutdown) {\n-            return;\n+        synchronized(this) {\n+            if (shutdown) {\n+                return;\n+            }\n+            shutdown = true;\n         }\n-        shutdown = true;\n         if (connManager != null) {\n             connManager.releaseConnection(this, duration, TimeUnit.MILLISECONDS);\n         }\n     }\n\n     public void abortConnection() {\n-        if (shutdown) {\n-            return;\n+        synchronized(this) {\n+            if (shutdown) {\n+                return;\n+            }\n+            shutdown = true;\n         }\n-        shutdown = true;\n         unmarkReusable();\n         try {\n             shutdown();\n\nWith this code change, the regression tests pass and, I think, the problem is fixed.",
+            "date": "2009-10-16T15:32:54.734+0000",
+            "id": 4
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "* Methods mutating the internal state of the AbstractClientConnAdapter class and its subclasses made synchronized\n* ThreadSafeClientConnManager#releaseConnection method now synchronizes access to the BasicPooledConnAdapter instance\n\nPlease review / re-test\n\nOleg",
+            "date": "2009-10-16T16:54:50.289+0000",
+            "id": 5
+        },
+        {
+            "author": "Tim Boemker",
+            "body": "With the latest changes, I'm able to get HttpClient.execute to throw an IllegalStateException.\n\nSteps to reproduce:\n\n1) Run one thread to line 385 in DefaultRequestDirector, where it calls establishRoute.\n2) Run a second thread that calls HttpUriRequest.abort.  Abort calls BasicPooledConnAdapter.abortConnection, which calls ThreadSafeClientConnManager.releaseConnection, which calls BasicPooledConnAdapter.detach.\n3) Let the main thread continue. It throws an IllegalStateException because the adapter is now detached:\n\njava.lang.IllegalStateException: Adapter is detached.\n\tat org.apache.http.impl.conn.AbstractPooledConnAdapter.assertAttached(AbstractPooledConnAdapter.java:75)\n\tat org.apache.http.impl.conn.AbstractPooledConnAdapter.getRoute(AbstractPooledConnAdapter.java:91)\n\tat org.apache.http.impl.client.DefaultRequestDirector.establishRoute(DefaultRequestDirector.java:641)\n\tat org.apache.http.impl.client.DefaultRequestDirector.execute(DefaultRequestDirector.java:385)\n\tat org.apache.http.impl.client.AbstractHttpClient.execute(AbstractHttpClient.java:674)\n\tat org.apache.http.impl.client.AbstractHttpClient.execute(AbstractHttpClient.java:609)",
+            "date": "2009-10-16T17:58:37.110+0000",
+            "id": 6
+        },
+        {
+            "author": "Tim Boemker",
+            "body": "I see that the code in AbstractClientConnAdapter.abortConnection was changed from this:\n\n        // Usually #abortConnection() is expected to be called from \n        // a helper thread in order to unblock the main execution thread \n        // blocked in an I/O operation. It may be unsafe to call \n        // #releaseConnection() from the helper thread, so we have to rely\n        // on an IOException thrown by the closed socket on the main thread \n        // to trigger the release of the connection back to the \n        // connection manager.\n        // \n        // However, if this method is called from the main execution thread \n        // it should be safe to release the connection immediately. Besides, \n        // this also helps ensure the connection gets released back to the \n        // manager if #abortConnection() is called from the main execution \n        // thread while there is no blocking I/O operation.\n        if (executionThread.equals(Thread.currentThread())) {\n            releaseConnection();\n        }\n\nto this:\n\n        if (connManager != null) {\n            connManager.releaseConnection(this, duration, TimeUnit.MILLISECONDS);\n        }\n\nPerhaps the comment in the original code was correct.",
+            "date": "2009-10-16T18:15:41.296+0000",
+            "id": 7
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "I think it is perfectly reasonable that an attempt to perform an operation on an aborted connection would cause an exception of some sort. I made sure, though, that a normal operation (such as I/O operation) would result in an InterruptedIOException not IllegalStateException.\n\nPlease re-test\n\nOleg",
+            "date": "2009-10-16T19:04:22.071+0000",
+            "id": 8
+        },
+        {
+            "author": "Tim Boemker",
+            "body": "I did not find a defect in the new code.",
+            "date": "2009-10-16T20:20:53.456+0000",
+            "id": 9
+        }
+    ],
+    "component": "HttpClient (classic)",
+    "description": "If HttpUriRequest.abort() is called at about the same time that the request completes, it's possible for an aborted connection to be returned to the pool.  The next time the connection is used, HttpClient.execute fails without retrying, throwing this exception:\n\njava.io.IOException: Connection already shutdown\n\tat org.apache.http.impl.conn.DefaultClientConnection.opening(DefaultClientConnection.java:112)\n\tat org.apache.http.impl.conn.DefaultClientConnectionOperator.openConnection(DefaultClientConnectionOperator.java:120)\n\tat org.apache.http.impl.conn.AbstractPoolEntry.open(AbstractPoolEntry.java:147)\n\tat org.apache.http.impl.conn.AbstractPooledConnAdapter.open(AbstractPooledConnAdapter.java:101)\n\tat org.apache.http.impl.client.DefaultRequestDirector.execute(DefaultRequestDirector.java:381)\n\tat org.apache.http.impl.client.AbstractHttpClient.execute(AbstractHttpClient.java:641)\n\tat org.apache.http.impl.client.AbstractHttpClient.execute(AbstractHttpClient.java:576)\n\nSteps to reproduce:\n1) Set a breakpoint in ThreadSafeClientConnManager.releaseConnection just after \"reusable\" is set (and found to be true).\n2) Run to the breakpoint in releaseConnection.\n3) Call HttpUriRequest.abort.\n4) Let releaseConnection complete.\n\nWhen the connection is next used, the exception will be thrown.\n\nSnippet from ThreadSafeClientConnManager:\n    public void releaseConnection(ManagedClientConnection conn, long validDuration, TimeUnit timeUnit) {\n\t\t...\n            boolean reusable = hca.isMarkedReusable();\n            if (log.isDebugEnabled()) {                             // breakpoint here\n                if (reusable) {\n                    log.debug(\"Released connection is reusable.\");\n                } else {\n                    log.debug(\"Released connection is not reusable.\");\n                }\n            }\n            hca.detach();\n            if (entry != null) {\n                connectionPool.freeEntry(entry, reusable, validDuration, timeUnit);\n            }\n        }\n    }\n\n\nI think that AbstractClientConnAdapter should be modified as follows:\n\n1) Add \"released\" flag:\n\n    /** True if the connection has been released. */\n    private boolean released;\n\n2) Modify abortConnection:\n\n    public void abortConnection() {\n        synchronized(this) {\n            if (aborted || released) {\n                return;\n            }\n            aborted = true;\n        }\n        unmarkReusable(); // this line and all that follow unchanged\n\n3) Modify releaseConnection:\n\n    public void releaseConnection() {\n        synchronized(this) {\n            if (aborted || released) {\n                return;\n            }\n            released = true;\n        }\n        if (connManager != null) {\n            connManager.releaseConnection(this, duration, TimeUnit.MILLISECONDS);\n        }\n    }\n\n",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "HTTPCLIENT-881",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "HTTPCLIENT",
+    "project": "HTTPCLIENT",
+    "summary": "AbstractClientConnAdapter doesn't ensure that only one of ConnectionReleaseTrigger.abortConnection, .releaseConnection has effect",
+    "systemSpecification": true,
+    "version": "4.0 Final"
+}

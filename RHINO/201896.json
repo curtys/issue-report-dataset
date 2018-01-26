@@ -1,0 +1,59 @@
+{
+    "comments": [
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 120402\nReplacing methodArity in IdFunctionMaster by the arity field in IdFunction\n\nThe patch did not touch IdScriptable ands its subclasses besides changing\nmethodArity in IdScriptable from public to protected since IdScriptable needs\nto get an arity value form its subclasses which brings patrch minuses:\n\n1. Additional method invocation per each IdFunction instance initialization in\nIdScriptable subclasses.\n\n2. Additional field in IdScriptable.\n\nPerhaps for code that wants to add a function or two without using reflection\nit would be better to define something like JavaFunction or SimpleFunction that\nshould be extended to override the call method?",
+            "date": "20030413T23:24:56",
+            "id": 0
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "I renamed title since it seems a separated class to provide IdFunction\nfunctionality without a requirement to implement an additional interface would\nbe a good option to have.",
+            "date": "20030501T13:58:25",
+            "id": 1
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 122199\nNew JIFunction and its usage in NativeJavaPackage\n\nThe patch adds new JIFunction class  which stands for Java Implemented Function\n(NativeFunction is already taken and I like to have a short name) which is a\nsimplified version of IdFunction. The function has to be subclassed to\nimplement call method. I changed NativeJavaPackage to use it instead of using\nreflection to export getClass functionality. The core of changes is\nreplacement:\n\n-\t Method[] methods = FunctionObject.getMethodList(\n-\t\t\t\tNativeJavaPackage.class);\n-\t Method m = FunctionObject.findSingleMethod(methods,\n-\t\t\t\t\t\t    \"jsFunction_getClass\");\n-\t FunctionObject f = new FunctionObject(\"getClass\", m, scope);\n+\t JIFunction getClass = new JIFunction(\"getClass\", 1) {\n+\t     public Object call(Context fcx, Scriptable fscope,\n+\t\t\t\tScriptable thisObj, Object[] args)\n+\t     {\n+\t\t return js_getClass(fcx, fscope, packages, args);\n+\t     }\n+\t };\n \n...\n\n-\t global.defineProperty(\"getClass\", f, ScriptableObject.DONTENUM);\n+\t getClass.define(global, ScriptableObject.DONTENUM);\n\nwhich defines new function and does not increase amount of code lines\nnoticeably.\n\nIt also allows to make NativeJavaPackage.js_getClass package private thus\nproviding less room for erroneous code calling js_getClass from Java.",
+            "date": "20030501T14:12:53",
+            "id": 2
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 122597\nPatch update: better method naming and using JIFunction instead of IdFunction in ImporterTopLevel",
+            "date": "20030506T18:56:40",
+            "id": 3
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "I committed the patch.",
+            "date": "20030506T18:59:45",
+            "id": 4
+        },
+        {
+            "author": "pschwartau@meer.net",
+            "body": "Rubber-stamp vrfy -",
+            "date": "20030507T01:13:26",
+            "id": 5
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Targeting as resolved against 1.5R5",
+            "date": "20040213T11:42:47",
+            "id": 6
+        }
+    ],
+    "component": "Core",
+    "description": "Currently any usage of IdFunction requires to implement at least 2 methods in\nIdFunctionMaster, execMethod and methodArity in addition to code to create\nIdFunction instances. If methodArity is replaced by passing the arity value\ndirectly to IdFunction constructor, the usage would be simpler.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "201896",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "RFE",
+    "priority": "-- enhancement",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "Convenient way to implement functions in Java without using reflection",
+    "systemSpecification": false,
+    "version": "other"
+}

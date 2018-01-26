@@ -1,0 +1,47 @@
+{
+    "comments": [
+        {
+            "author": "Robert Muir",
+            "body": "attached is a testcase (fails on both trunk and 3.x):\n\nthis works:   \n{noformat}\npublic void testSort() throws Exception {\n    SortField sf = new SortField(\"field\", locale);\n    TopFieldDocs docs = searcher.search(new MatchAllDocsQuery(), null, numDocs, new Sort(sf));\n...\n{noformat}\n\nthis doesn't, if IS uses executorservice:\n{noformat}\n  public void testSort2() throws Exception {\n    SortField sf = new SortField(\"field\", new FieldComparatorSource() {\n      @Override\n      public FieldComparator newComparator(String fieldname, int numHits, int sortPos, boolean reversed) throws IOException {\n        return new FieldComparator.StringComparatorLocale(numHits, fieldname, locale);\n      }\n    });\n    TopFieldDocs docs = searcher.search(new MatchAllDocsQuery(), null, numDocs, new Sort(sf));\n{noformat}\n\nThe problem is inside the FieldDocSortedHitQueue... the only reason Locale sort works today is because it cheats and looks inside the SortField to see if it has a locale, and does things with its collator.\n\nBut if you code the same approach as a custom sort, it won't work.\n",
+            "date": "2011-02-27T23:43:15.950+0000",
+            "id": 0
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "How about something like this?  I just make a new TopFieldCollector to collect per-segment each of the subs.  If we do this we should remove the FieldDocSortedHitQueue.\n\n(I haven't checked whether Robert's test passes w/ this yet!)",
+            "date": "2011-02-28T16:13:15.451+0000",
+            "id": 1
+        },
+        {
+            "author": "Robert Muir",
+            "body": "Patch seems to fix my issue! (in trunk, the test attached to the issue is actually committed as contrib/queries/...TestSlowCollationMethods, you just gotta enable newSearcher to trigger the bug)\n\nbut the test attached to the issue works for branch_3x, so we probably want something like that there along with any fix.\n",
+            "date": "2011-02-28T16:41:42.299+0000",
+            "id": 2
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "New patch, cuts over the new TestSlowCollationMethods to newSearcher (which failed before but passes now), and removes dead code.",
+            "date": "2011-02-28T16:42:52.129+0000",
+            "id": 3
+        },
+        {
+            "author": "Grant Ingersoll",
+            "body": "Bulk close for 3.1",
+            "date": "2011-03-30T15:50:23.215+0000",
+            "id": 4
+        }
+    ],
+    "component": "",
+    "description": null,
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-2941",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "custom sort broken if IS uses executorservice",
+    "systemSpecification": true,
+    "version": ""
+}

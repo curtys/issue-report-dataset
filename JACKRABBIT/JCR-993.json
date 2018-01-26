@@ -1,0 +1,47 @@
+{
+    "comments": [
+        {
+            "author": "Stefan Rinner",
+            "body": "simple testcase",
+            "date": "2007-06-29T16:43:19.661+0000",
+            "id": 0
+        },
+        {
+            "author": "Dominique Pfister",
+            "body": "Hi Stefan,\n\nThank you for reporting this nasty bug in the CachingHierarchyManager (CHM) and providing a testcase that makes it really easy to reproduce what happens underneath. I found the problem to be the following: initially the ordering of elements is as follows:\n\nT1: a b c\n\nYou then reorder a before a (which is a no-op) and b before a. This results in:\n\nT2: b a c\n\nAt this point, b's path is retrieved and the CHM caches it as the first element in the list. You finally move c before b:\n\nT3: c b a\n\nThe CHM will receive a notification about this reordering, and retrieve the list of reordered child node entries. Since b did not change its position compared to T1 (which is the last state that was persisted) the change in b's index passes unnoticed.",
+            "date": "2007-07-02T09:45:55.454+0000",
+            "id": 1
+        },
+        {
+            "author": "Dominique Pfister",
+            "body": "As stated previously, caching a path to a child whose parent is currently being modified (or transient) leads to this problem and subsequent changes are hardly detectable. I therefore added a check to the CHM and verified that the testcase now passes.\n\nFixed in revision 552445.",
+            "date": "2007-07-02T09:56:30.906+0000",
+            "id": 2
+        },
+        {
+            "author": "Stefan Rinner",
+            "body": "have been running my fuzz test with the new jackrabbit version and the tests ran through\n\nthanks for the prompt bugfix",
+            "date": "2007-07-02T10:38:58.912+0000",
+            "id": 3
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Merged to the 1.3 branch in revision 552544.",
+            "date": "2007-07-02T17:04:55.760+0000",
+            "id": 4
+        }
+    ],
+    "component": "jackrabbit-core",
+    "description": "we just found a bug which corrupts the results of Node.getPath() - it seems to be related to older Jackrabbit bugs (e.g. JCR-768) but still happens in jackrabbit 1.3 and jackrabbit-1.4-SNAPSHOT\n\nBasically we have a node with 3 subnodes (a, b, c), we move all of them to index 1 - this works fine, unless we call getPath() of the third Node before moving it.\n\nThe expected paths after moving would be:\na: /pages[37]/page/element[3]\nb: /pages[37]/page/element[2]\nc: /pages[37]/page/element\n\nBut we get these paths:\n\na: /pages[37]/page/element[3]\nb: /pages[37]/page/element\nc: /pages[37]/page/element",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "JCR-993",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "corrupted paths after moving nodes",
+    "systemSpecification": true,
+    "version": "1.3"
+}

@@ -1,0 +1,53 @@
+{
+    "comments": [
+        {
+            "author": null,
+            "body": "This is not making sense. If you think accept can return 0 when using SSL, then\nthere's a bug with accept (since it's most likely not supposed to return a null\npointer; I have not coded for that case, and it's a miracle it doesn't just\ncrash right away), it has nothing to do with a \"deadlock\".",
+            "date": "20060906T09:40:32",
+            "id": 0
+        },
+        {
+            "author": null,
+            "body": "(In reply to comment #1)\n> This is not making sense. If you think accept can return 0 when using SSL, then\n> there's a bug with accept (since it's most likely not supposed to return a null\n> pointer; I have not coded for that case, and it's a miracle it doesn't just\n> crash right away), it has nothing to do with a \"deadlock\".\n\n(In reply to comment #1)\n> This is not making sense. If you think accept can return 0 when using SSL, then\n> there's a bug with accept (since it's most likely not supposed to return a null\n> pointer; I have not coded for that case, and it's a miracle it doesn't just\n> crash right away), it has nothing to do with a \"deadlock\".\n\nIf setSocketOptions() returns false the connector leak one Worker thread or am I\nmissing something?\n\n- Vicen\u00e7",
+            "date": "20060906T10:40:36",
+            "id": 1
+        },
+        {
+            "author": null,
+            "body": "You need to test again with the current Tomcat code.",
+            "date": "20060906T11:08:07",
+            "id": 2
+        },
+        {
+            "author": null,
+            "body": "*** Bug 40423 has been marked as a duplicate of this bug. ***",
+            "date": "20060906T11:14:43",
+            "id": 3
+        },
+        {
+            "author": null,
+            "body": "(In reply to comment #3)\n> You need to test again with the current Tomcat code.\n\nNow I see the commit http://svn.apache.org/viewvc?rev=429003&view=rev. Sorry for\nthe noise.\n\nThanks,\n\n- Vicen\u00e7\n",
+            "date": "20060906T13:15:55",
+            "id": 4
+        },
+        {
+            "author": null,
+            "body": "There's a small glitch remaining with that commit, since I put everything on one\nline of code (unlike on the TC 6 branch), which is a mistake if accept throws an\nexception (after verification, it cannot return 0) - it is allowed but most\nlikely it is not going to happen. I fixed that in a new commit.",
+            "date": "20060906T13:40:34",
+            "id": 5
+        }
+    ],
+    "component": "Connector:HTTP",
+    "description": "Under high ssl load (SPECweb2005 Banking application) the acceptor thread stops\naccepting new connections. The acceptor blocks in getWorkerThread() because\nthere isn't Worker threads available and maxThreads has been reached. The\nproblem is that all Worker threads are blocked waiting for a socket to process,\nbut this socket is never assigned because there is a leak in the Acceptor thread\ncode. I can attach the stacktrace of the relevant threads if necessary.\n\nRegards,\n \n- Vicen\u00e7\n\n\nThis modification remove the leak of Worker threads.\n\nIndex: connectors/util/java/org/apache/tomcat/util/net/AprEndpoint.java\n===================================================================\n--- connectors/util/java/org/apache/tomcat/util/net/AprEndpoint.java   \n(revision 130)\n+++ connectors/util/java/org/apache/tomcat/util/net/AprEndpoint.java    (working\ncopy)\n@@ -980,6 +980,7 @@\n          */\n         public void run() {\n\n+            Worker workerThread = null;\n             // Loop until we receive a shutdown command\n             while (running) {\n\n@@ -994,12 +995,15 @@\n\n                 try {\n                     // Allocate a new worker thread\n-                    Worker workerThread = getWorkerThread();\n+                    if (workerThread == null)\n+                        workerThread = getWorkerThread();\n+\n                     // Accept the next incoming connection from the server socket\n                     long socket = Socket.accept(serverSock);\n                     // Hand this socket off to an appropriate processor\n                     if (setSocketOptions(socket)) {\n                         workerThread.assign(socket);\n+                        if(socket != 0) workerThread = null;\n                     } else {\n                         // Close socket and pool right away\n                         Socket.destroy(socket);",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "40418",
+    "issuetypeClassified": "OTHER",
+    "issuetypeTracker": "BUG",
+    "priority": "P2 normal",
+    "product": "Tomcat 5",
+    "project": "TOMCAT",
+    "summary": "APR connector deadlock",
+    "systemSpecification": false,
+    "version": "5.5.17"
+}

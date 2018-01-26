@@ -1,0 +1,29 @@
+{
+    "comments": [
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "Fixed: \n\nChecking in NativeDate.java;\n/cvsroot/mozilla/js/rhino/src/org/mozilla/javascript/NativeDate.java,v  <--  NativeDate.java\nnew revision: 1.65.2.1; previous revision: 1.65\ndone\n\nI just synchronized access to the static DateFormat instances. ",
+            "date": "20070613T17:52:02",
+            "id": 0
+        },
+        {
+            "author": "gxue@actuate.com",
+            "body": "Norris - thanks for the fix. Did this fix make it into the 1.6R6 release? Thanks, Gary",
+            "date": "20070809T22:45:55",
+            "id": 1
+        }
+    ],
+    "component": "Core",
+    "description": "User-Agent:       Mozilla/5.0 (Windows; U; Windows NT 5.2; en-US; rv:1.8.0.11) Gecko/20070312 Firefox/1.5.0.11\nBuild Identifier: 1.6R1\n\nClass org.mozilla.javascript.NativeDate class uses static java.text.DateFormat instances (members: timeZoneFormatter,localeDateTimeFormatter,localeDateFormatter, localeTimeFormatter) to convert date/time values to string. However DateFormat instances are not thread-safe (check JDK documentation). This results in occasional runtime exceptions when expressions containing date->string conversion are evaluated concurrently.\n\nSee Steps to Reproduce for sample code that demonstrates this problem. This code evaluates an expression \n   \"Date:\" + date_var\nin 20 concurrent threads. The test code occasionally gives an ArrayIndexOutOfBoundsException.\n\nReproducible: Sometimes\n\nSteps to Reproduce:\n1.Run the following test code, preferrably on a multi-CPU machine. I've reliably reproduced this on a dual-Intel P4 2.8GHZ machine running Windows 2003 Server, against JRE version 1.5.0_07\n\n2. The program occasionally dumps an exception. See Actual Results for stack. This happens about 1 out of 5 runs in my test. \n\n---- Test Code  ----\n\nimport java.util.Random;\nimport org.mozilla.javascript.Context;\nimport org.mozilla.javascript.Scriptable;\n\npublic class DateConversionTest\n{\n\t\n\tpublic static void main(String[] args) throws Exception\n\t{\n\t\t// Run 10 threads\n\t\tfor ( int i = 0; i < 20; i++ )\n\t\t{\n\t\t\tThread t = new TestThread();\n\t\t\tt.start();\n\t\t}\n\t}\n\t\n\tstatic class TestThread extends Thread\n\t{\n        public void run() \n        {\n        \tContext cx;\n        \tScriptable scope;\n    \t\tcx = Context.enter();\n    \t\tscope = cx.initStandardObjects();\n\n    \t\tRandom rand = new Random();\n\n    \t\tfor (int i = 0; i < 1000; i++)\n    \t\t{\n        \t\tint year = rand.nextInt(10) + 1990;\n        \t\tint month = rand.nextInt(12) + 1;\n        \t\tint day = rand.nextInt(28) + 1;\n        \t\tint hour = rand.nextInt(24);\n        \t\tint minute = rand.nextInt(60);\n        \t\tint sec = rand.nextInt(60);\n        \t\t\n            \tString expr = \"\\\"Date: \\\" + new Date( \" + \n            \t\tyear + \",\" + month + \",\" + day + \",\" + hour + \",\" + minute + \",\" + sec + \")\"; \n        \t\tcx.evaluateString( scope, expr, \"\", 1, null );\n    \t\t}\n    \t\t\n    \t\tContext.exit();\n        }\t\t\n\t}\n\t\n}\n\nActual Results:  \nException: \n\nException in thread \"Thread-14\" java.lang.ArrayIndexOutOfBoundsException: 22\n        at sun.util.calendar.BaseCalendar.getCalendarDateFromFixedDate(Unknown Source)\n        at java.util.GregorianCalendar.computeFields(Unknown Source)\n        at java.util.GregorianCalendar.computeFields(Unknown Source)\n        at java.util.Calendar.setTimeInMillis(Unknown Source)\n        at java.util.Calendar.setTime(Unknown Source)\n        at java.text.SimpleDateFormat.format(Unknown Source)\n        at java.text.SimpleDateFormat.format(Unknown Source)\n        at java.text.DateFormat.format(Unknown Source)\n        at org.mozilla.javascript.NativeDate.date_format(NativeDate.java:1054)\n        at org.mozilla.javascript.NativeDate.execIdCall(NativeDate.java:201)\n        at org.mozilla.javascript.IdFunctionObject.call(IdFunctionObject.java:121)\n        at org.mozilla.javascript.ScriptableObject.getDefaultValue(ScriptableObject.java:577)\n        at org.mozilla.javascript.NativeDate.getDefaultValue(NativeDate.java:84)\n        at org.mozilla.javascript.ScriptRuntime.add(ScriptRuntime.java:2290)\n        at org.mozilla.javascript.gen.c2708._c0(:1)\n        at org.mozilla.javascript.gen.c2708.call()\n        at org.mozilla.javascript.ContextFactory.doTopCall(ContextFactory.java:304)\n        at org.mozilla.javascript.ScriptRuntime.doTopCall(ScriptRuntime.java:2769)\n        at org.mozilla.javascript.gen.c2708.call()\n        at org.mozilla.javascript.gen.c2708.exec()\n        at org.mozilla.javascript.Context.evaluateString(Context.java:1220)\n        at DateConversionTest$TestThread.run(DateConversionTest.java:61)\n\n\nExpected Results:  \nNo exception\n\nUse an instance of DateFormat per thread. Or synchronize code that accesses the static DateFormat instances.",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "380005",
+    "issuetypeClassified": "OTHER",
+    "issuetypeTracker": "BUG",
+    "priority": "-- normal",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "Date to String conversion code in NativeDate class is not thread-safe",
+    "systemSpecification": true,
+    "version": "other"
+}

@@ -1,0 +1,53 @@
+{
+    "comments": [
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Michael,\n\nIt is the same situation as with HTTPCORE-263. I really have no idea how to reproduce the issue and suspect the problem might be a side effect of obfuscation with Proguard. I will not be able to fix the problem without a reproducer.\n\nOleg ",
+            "date": "2011-09-02T15:40:43.526+0000",
+            "id": 0
+        },
+        {
+            "author": "Michael Pujos",
+            "body": "Noted, although this will be impossible to reproduce. Stack trace seems legit though. Proguard optimizations were disabled.\nRecent versions of HttpComponents has been very little tested on Android as 99.999% of Android developers use the httpclient/httpcore of the platform from 2008\nthat has been hacked by Google.\nThere might be some specific bugs on Android, especially due to bad connectivity that can be lost at any time, more often that any other platform. I've had very few issues with 4.1.1 besides a few more HTTPCORE-263 crashes in automatic user crash reports  (with matching backtrace lines this time).\n\nFor this specific issue, why not add null checks  for calls to conn.getRoute() ?\n\n",
+            "date": "2011-09-02T16:06:55.330+0000",
+            "id": 1
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "The HttpRoute should never be null (a connection is always open for a particular route) _unless_ the request has been aborted in the middle of execution process. I'll try to mitigate the problem by adding a check for HttpRoute being non-null, but it would be helpful to know what exactly Httpclient was doing at the point when the exception occurred. \n\nOleg",
+            "date": "2011-09-03T15:15:11.778+0000",
+            "id": 2
+        },
+        {
+            "author": "Michael Pujos",
+            "body": "Now that I think of it, the app code related to the stack trace above does indeed have plenty of HttpRequest.abort() going on while the request is executing. \nI'd say it has more aborting than usual, since requests are made to download thumbnails images in a list, and requests are aborted during scrolling when previously visible list item are now invisible.",
+            "date": "2011-09-06T09:17:57.759+0000",
+            "id": 3
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "With new ManagedClientConnection implementation the route for managed connections should never be null.\n\nOleg",
+            "date": "2011-09-23T14:00:54.097+0000",
+            "id": 4
+        },
+        {
+            "author": "Michael Pujos",
+            "body": "Thanks for the fix.\n\nHere's another stack trace that looks legit on an unchecked null route, that might confirm there was indeed a problem:\n\njava.lang.NullPointerException\nat com.bubblesoft.org.apache.http.client.protocol.RequestClientConnControl.process(SourceFile:86)\nat com.bubblesoft.org.apache.http.protocol.ImmutableHttpProcessor.process(SourceFile:108)\nat com.bubblesoft.org.apache.http.protocol.HttpRequestExecutor.preProcess(SourceFile:174)\nat com.bubblesoft.org.apache.http.impl.client.DefaultRequestDirector.execute(SourceFile:457)\nat com.bubblesoft.org.apache.http.impl.client.AbstractHttpClient.createHttpProcessor(SourceFile:821)\n                                                                 execute$1650775d\nat com.bubblesoft.org.apache.http.impl.client.AbstractHttpClient.createHttpProcessor(SourceFile:733)\n                                                                 execute\nat com.bubblesoft.android.utils.AndroidHttpClient.execute(SourceFile:279)\nat com.bubblesoft.android.utils.BitmapDownload.download(SourceFile:56)\nat com.bubblesoft.android.utils.BitmapDownloadTask.doInBackground(SourceFile:33)\nat com.bubblesoft.android.utils.BitmapDownloadTask.doInBackground(SourceFile:1)\nat android.os.AsyncTask$2.call(AsyncTask.java:185)\n\n\n\n",
+            "date": "2011-09-26T22:43:29.543+0000",
+            "id": 5
+        }
+    ],
+    "component": "HttpClient (classic)",
+    "description": "Got a NPE backtrace in RequestProxyAuthentication.process(). \n\nHttpRoute route = conn.getRoute();\n        if (route.isTunnelled()) {      <= line 88, NPE here\n            return;\n        }\n\nThere's no null check on the returned route although getRoute() can return null.\nI guess it's not supposed to happen.\n\nIn the httpclient code, there's a few more calls to getRoute() without a null check on the returned route.\n\n\njava.lang.NullPointerException\nat com.bubblesoft.org.apache.http.client.protocol.RequestProxyAuthentication.process(SourceFile:88)\nat com.bubblesoft.org.apache.http.protocol.ImmutableHttpProcessor.process(SourceFile:108)\nat com.bubblesoft.org.apache.http.protocol.HttpRequestExecutor.preProcess(SourceFile:174)\nat com.bubblesoft.org.apache.http.impl.client.DefaultRequestDirector.execute(SourceFile:457)\nat com.bubblesoft.org.apache.http.impl.client.AbstractHttpClient.createHttpProcessor(SourceFile:821)\n                                                                 execute\nat com.bubblesoft.org.apache.http.impl.client.AbstractHttpClient.createHttpProcessor(SourceFile:755)\n                                                                 execute\nat com.bubblesoft.org.apache.http.impl.client.AbstractHttpClient.createHttpProcessor(SourceFile:733)\n                                                                 execute\n",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "HTTPCLIENT-1122",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Minor",
+    "product": "HTTPCLIENT",
+    "project": "HTTPCLIENT",
+    "summary": "NPE in RequestProxyAuthentication on Android",
+    "systemSpecification": true,
+    "version": "4.1.1"
+}

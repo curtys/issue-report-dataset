@@ -1,0 +1,47 @@
+{
+    "comments": [
+        {
+            "author": "Jukka Zitting",
+            "body": "Fixed in trunk. I have streamlined a number of the versioning operations and made sure that all versioning changes are persisted strictly before they get referenced in normal workspace content.",
+            "date": "2008-10-07T09:20:36.522+0000",
+            "id": 0
+        },
+        {
+            "author": "Przemo Pakulski",
+            "body": "I've created custom PM by simply overriding one method, to be able to track the sequence of stored changes :\n\n    public synchronized void store(ChangeLog changeLog) throws ItemStateException {\n        super.store(changeLog);\n        log.warn(\"STORE :\" + getSchemaObjectPrefix() + \": \" + changeLog);\n    }\n\nThen I run checkout/checkin operation on single node :\n\n1) without transaction\n\ncheckout\n\n11:12:17 WARN  STORE :D1V1R2_: {#addedStates=0, #modifiedStates=2, #deletedStates=0, #modifiedRefs=0}\n11:12:17 WARN  STORE :VERSION_: {#addedStates=0, #modifiedStates=0, #deletedStates=0, #modifiedRefs=1}\n\ncheckin\n\n11:12:17 WARN  STORE :VERSION_: {#addedStates=13, #modifiedStates=3, #deletedStates=0, #modifiedRefs=0}\n11:12:17 WARN  STORE :D1V1R2_: {#addedStates=0, #modifiedStates=3, #deletedStates=0, #modifiedRefs=0}\n11:12:17 WARN  STORE :VERSION_: {#addedStates=0, #modifiedStates=0, #deletedStates=0, #modifiedRefs=1}\n11:12:17 WARN  STORE :VERSION_: {#addedStates=0, #modifiedStates=0, #deletedStates=0, #modifiedRefs=1}\n\n2) checkout/checkin in transaction\n\n11:13:57 WARN  STORE :D1V1R2_: {#addedStates=0, #modifiedStates=3, #deletedStates=0, #modifiedRefs=0}\n11:13:57 WARN  STORE :VERSION_: {#addedStates=0, #modifiedStates=0, #deletedStates=0, #modifiedRefs=1}\n11:13:57 WARN  STORE :VERSION_: {#addedStates=13, #modifiedStates=3, #deletedStates=0, #modifiedRefs=1}\n\nCheckout/checkin in single JCR transaction still consist of 3 database level transactions, \n\nMoreover when using transactions, as you can see from the logs changes in workspace are persisted first before storing changes in the version storage.\n\nThis is probably because of order of txResources in XASessionImpl class as described in JCR-631.\n\n",
+            "date": "2008-10-21T09:42:39.339+0000",
+            "id": 1
+        },
+        {
+            "author": "Przemo Pakulski",
+            "body": "D1V1R2 - is name of the workspace, VERSION is schemaObjectPrefix, i'm using MSSqlPersistenceManager",
+            "date": "2008-10-21T09:49:58.196+0000",
+            "id": 2
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "The behaviour without transactions is as expected, even though it results in more store operations than would be optimal. The XA case is wrong, and I've been trying to address that.\n\nFirst I revisited my original plan of solving both the transaction issue and optimize the number of stores in versioning operations by moving the NodeReferences that point to the version store to the workspace persistence managers. This  would improve a number of things but breaks the backreference checks for example when deleting versions. I had an idea to resolve that issue but unfortunately it didn't work out too well in practice.\n\nAs a fallback I'm now solving just the XA case and leaving the multiple store operations in place.",
+            "date": "2008-10-30T08:22:46.417+0000",
+            "id": 3
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "The XA case should also be fixed as of revision 710047. The sequence of saves for a checkin/checkout operation within an XA transaction is now:\n\nVERSION_: {#addedStates=14, #modifiedStates=3, #deletedStates=0, #modifiedRefs=0}\nDEFAULT_: {#addedStates=0, #modifiedStates=3, #deletedStates=0, #modifiedRefs=0}\nVERSION_: {#addedStates=0, #modifiedStates=0, #deletedStates=0, #modifiedRefs=1}\n\nAll tests (including a massive random/parallel test suite I ran over the weekend) pass.",
+            "date": "2008-11-03T13:07:42.378+0000",
+            "id": 4
+        }
+    ],
+    "component": "jackrabbit-core, transactions, versioning",
+    "description": "I've been working on a partial fix to JCR-630. Instead of implementing fully transactional versioning (i.e. a checkin will disappear when a transactin is rolled back), I'm ensuring that all versioning operations within a transaction will leave the version store in a consistent state even if the transaction otherwise fails at any point.",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "JCR-1775",
+    "issuetypeClassified": "RFE",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Major",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "Transaction-safe versioning",
+    "systemSpecification": true,
+    "version": ""
+}

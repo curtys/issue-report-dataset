@@ -1,0 +1,59 @@
+{
+    "comments": [
+        {
+            "author": "igor@mir2.org",
+            "body": "The bug presnts only in the interpreter mode (optimization -1), with\noptimization set to 0 or higher I have in the current tip/ 1.5R4.1 / 1.5R3:\n\ntry\nfinally\ncaught 1\nn=1\n\nwhile the interpreter gives:\n\ntry\nfinally\nfinally\ncaught 1\nn=2\n",
+            "date": "20030721T13:57:25",
+            "id": 0
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "The reason for the bug is that the interpreter maintains a stack of entered try\nstatements and during execution of a finally handler when code leaves the try\nblock, the finally handler is executed with the try stack still pointing to the\ncurrent try.\n\nIt is possible to fix the bug with properly updating the try stack before\ncalling the finally handler (adding ENDTRY byte code when necessary) but it is\ncomplicated by the fact that finally has to be executed after each\nreturn/break/continue that transfer control outside the try block and each such\ncase requires to know if the code is inside try or is inside catch with try\nstack already updated.\n\nIt seems a better way to fix this is to follow JVM byte code in the interpreter\n and construct a table of starting/ending byte codes for the try blocks and\ninstead of looking at the top of the try stack search this table when looking\nfor catch or finally handler. In this way finally code will never be executed\ntwice since it will be outside code for the try block.\n\nAs far as I can see the biggest obstacle to such implementation comes from\n\"with\" statements and changes in the scope that exception handler has to\nrestore. Currently the proper scope is placed on the try stack providing a\ntrivial way to restore the scope. \n\nWithout the try stack a counter has to be maintained of current \"with\" statement\n nesting and exception handler should store a static information about its\n\"with\" level. The exception handling can then unwind with scopes until the\ncurrent and expected levels matches.\n",
+            "date": "20030723T13:00:35",
+            "id": 1
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 128319\nFirst fix part: when handling exceptions, restore proper scope without using try stack\n\nThe patch implements the above idea of restoring catch/finally scope without\nusing try stack",
+            "date": "20030723T13:45:46",
+            "id": 2
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 128323\nThe seconf fix part: replacing try stack by static table of exception handlers\n\nWith the patch the above test case behaves properly under any optimization\nlevel.",
+            "date": "20030723T13:59:09",
+            "id": 3
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 128336\nAdditional cleanup: store catch/finally/with depth in the exception handler\n\nThis is an addition to the previous patch to completely remove generation f TRY\nbyte code. Since the second patch makes TRY byte code to hold only\ncatch/finally offsets and width depth, this patch moves that information into \nexception table removing the need for TRY byte code.",
+            "date": "20030723T16:24:10",
+            "id": 4
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "I committed the above patches to the interpreter. They passes the test suite and\nfixes the above problem but it is a significant change still.",
+            "date": "20030724T10:56:37",
+            "id": 5
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Targeting as resolved against 1.5R5",
+            "date": "20040213T11:42:24",
+            "id": 6
+        }
+    ],
+    "component": "Core",
+    "description": "User-Agent:       Mozilla/5.0 (X11; U; Linux i686; en-US; rv:1.3b) Gecko/20021213\nBuild Identifier: Mozilla/5.0 (X11; U; Linux i686; en-US; rv:1.3b) Gecko/20021213\n\nLike in Java, each finally block gets a guaranteed chance to run code upon exit\nof a scope.\nThings get a little strange when an exception is thrown from inside a finally\nblock, but, the outer finally blocks still must get a chance to run. \nPresumably, the first exception actually thrown makes it through, not sure.\nThe thing, is, it's understandable that it is quite tricky to implement a\nJavascript interpreter/compiler (or Java compiler) that properly handles this.\nBelow is a small code fragment how it gets confused.\n\nReproducible: Always\n\nSteps to Reproduce:\ntry\n{\n  print(\"try\");\n}\nfinally\n{\n  print(\"finally\");\n  throw 1;\n}\n\nThe output is:\ntry\nfinally\nfinally\n\nIt ran the print(\"finally\") twice...\n\nTry this in more details, using a counter:\n\n    try\n    {\n        n=0;\n        try\n        {\n          print(\"try\");\n        }\n        finally\n        {\n          print(\"finally\");\n          n++;\n          throw 1;\n        }\n    }\n    catch (e)\n    {\n        print(\"caught \" + e);\n    }\n    print(\"n=\" + n);\n\nThe output is:\ntry\nfinally\nfinally\ncaught 1\nn=2\n\nn became 2, proving again that the finally block ran twice.\n\nmy guess is that the bug is that Rhino wants to run the finally block even\nthough the exception is thrown from within that finally block.  It is not\ninfinite looping because presumably upon the first throw, the finally block gets\nmarked/flagged, so that next time it knows it already ran.  If this is how it\nworks, then perhaps a simple fix would be to 'flag' the finally block upon\nentering, before any exception.\n\n\n\n\n\nIf there are no developers involved in Rhino anymore, I wouldn't mind getting\ninvolved.  Rhino is a relative untapped resource and is way more useful than\npeople give it credit for.  Therefore I wouldn't mind getting some exposure this\nway.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "213231",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "-- normal",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "try / finally not working right",
+    "systemSpecification": true,
+    "version": "other"
+}

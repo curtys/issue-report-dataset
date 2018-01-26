@@ -1,0 +1,29 @@
+{
+    "comments": [
+        {
+            "author": "Tobias Bocanegra",
+            "body": "fixed.",
+            "date": "2007-03-01T17:23:45.897+0000",
+            "id": 0
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Tagging this still for 1.2.3.",
+            "date": "2007-03-03T14:14:42.955+0000",
+            "id": 1
+        }
+    ],
+    "component": "versioning",
+    "description": "I have setup 2 workspaces in Jackrabbit.  I have a preview and a production\nworkspace.  These workspaces keep a tree of menu nodes that can have content\nassociated to those menus.  Each node is of type nt:unstructured and has\nmixin types of versionable, lockable, and referenceable.\n\nIn our system you are only allowed to edit nodes in the preview workspace.\nSo what I do is when you go to edit a node we check it out, allow for edits,\nthen check it in.  This creates a new version on the node.  Then we merge\nthe node up to the production workspace.  All nodes in the production\nworkspace are always checked in and not locked.\n\nWhen I go to do a merge I run into problems when I try to merge a node that\nhas children.  Lets say I have node A with children B and C.  These all have\nthe same node types as stated above.  I make a change to a property in Node\nA in the preview workspace and now want to merge it into the production\nworkspace (where it exists already).  Here is the code that is run:\n\nNode destNode = destSession.getNodeByUUID(getUUID());\nNodeIterator ni = destNode.merge(\"preview\", true);\n\nNow this fails in the ItemImpl.internalRemove() method with a\nVersionException of cannot remove a child of a checked-in node.  Here is the\ntrace for the error:\nat org.apache.jackrabbit.core.ItemImpl.internalRemove(ItemImpl.java:848)\nat org.apache.jackrabbit.core.NodeImpl.internalMerge(NodeImpl.java:3693)\nat org.apache.jackrabbit.core.NodeImpl.internalMerge(NodeImpl.java:3587)\nat org.apache.jackrabbit.core.NodeImpl.merge(NodeImpl.java:3003)\n\nNow if I understand correctly when doing a merge the node that you are\ntrying to merge to needs to be older then the source node and the\ndestination node cannot be checked out (NodeImpl.doMergeTest() is where I\nfigured that out).  But then when I step through further in the merge in\nNodeImpl it gets all the nodes of the src node and retrieves the same\nchildren in the destination workspace and then tries to remove those\ndestination children but it can't remove those children b/c the parent node\n(which is node A in the production workspace) is not checked out, but\naccording to the mergeTest it can't be checked out or the merge won't even\nbegin.",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "JCR-772",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "Merging between workspaces fails",
+    "systemSpecification": true,
+    "version": "0.9, 1.0, 1.0.1, 1.1, 1.1.1, 1.2.1, 1.2.2"
+}

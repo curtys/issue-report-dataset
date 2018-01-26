@@ -1,0 +1,23 @@
+{
+    "comments": [
+        {
+            "author": "oleg.kalnichevski@bearingpoint.com",
+            "body": "HttpClient has been made more robust when dealing with older HTTP servers and\nproxies. It should not hang indefinitely anymore if status code 100 is not\nreturned when expected. HttpClient will resume sending request body after 3\nseconds if no response is sent.\n\nI have had only limited opportunity to test this functionality. I'd appreciate\nif you could verify that HttpClient now handles ambiguous situations\nappropriately and hang-ups do not recur",
+            "date": "2003-02-01T08:25:34.000+0000",
+            "id": 0
+        }
+    ],
+    "component": "HttpClient (classic)",
+    "description": "To reproduce, attempt a PUT request against an appropriate servlet under TC3.2\n(yes I know that needs an upgrade - sigh)\n\nRFC 2616 says:\n\"Because of the presence of older implementations, the protocol allows ambiguous\nsituations in which a client may send \"Expect: 100- continue\" without receiving\neither a 417 (Expectation Failed) status or a 100 (Continue) status. Therefore,\nwhen a client sends this header field to an origin server (possibly via a proxy)\nfrom which it has never seen a 100 (Continue) status, the client SHOULD NOT wait\nfor an indefinite period before sending the request body.\"\n\nThis isn't how HttpClient behaves. After sending the headers,\nPutMethod.writeRequestBody() returns false. HttpMethodBase then calls\nreadStatusCode(), which blocks waiting for a read (or I guess you could time out\nthe whole request). Right now this makes it impossible to use HttpClient to PUT\nto older Http 1.1 implementations.\n\nA suggested resolution: since the spec allows for clients to avoid waiting if\nthey know the 100 response will not arrive, why not simply provide a boolean\nflag to allow the 'wait for 100' behaviour in PutMethod.writeResponseBody() to\nbe turned off, on a per-request basis? This solution puts the burden of knowing\n\"origin server[s]...from which it has never seen a 100 (Continue) status\" on the\nuser of HttpClient. Less than perfect as you can only find out that this has\nhappened by trial and error.\n\nA more correct solution, is to maintain a list of servers that ignore the Expect\nheader in PutMethod, and override PutMethod.readStatusCode() to time out, send\nthe body, remember this server is buggy, and read the status code again.",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "HTTPCLIENT-98",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "HTTPCLIENT",
+    "project": "HTTPCLIENT",
+    "summary": "PUT method blocks against older servers",
+    "systemSpecification": true,
+    "version": "2.0 Alpha 1"
+}

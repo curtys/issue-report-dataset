@@ -1,0 +1,47 @@
+{
+    "comments": [
+        {
+            "author": "fernando.olcoz@madrid.cepsa.es",
+            "body": "Created attachment 180479\nProposed change to ScriptRuntime.java\n\nThis proposed change works for me:\n\n    public static Scriptable newCatchScope(Throwable t,\n\t\t\t\t\t   Scriptable lastCatchScope,\n\t\t\t\t\t   String exceptionName,\n\t\t\t\t\t   Context cx, Scriptable scope)\n    {\n\tObject obj;\n\tboolean cacheObj;\n\n\t// *** BEGIN\n\t// FO: Check whether t is a WrappedException that\n\t// contains a JavaScriptException; if so, unwrap\n\tif (t instanceof WrappedException) {\n\t    Throwable innerExc = ((WrappedException)t).getWrappedException();\n\t    if (innerExc instanceof JavaScriptException) {\n\t\tt = innerExc;\n\t    }\n\t}\n\t// *** END\n\t    \n      getObj:\n// rest of method unchanged",
+            "date": "20050412T12:35:33",
+            "id": 0
+        },
+        {
+            "author": "fernando.olcoz@madrid.cepsa.es",
+            "body": "An approach that works for me is:\n\n1. Host objects which wish to mimic the \"throw\" keyword behaviour in any of \nits members throw a JavaScriptException(originalException).\n\n2. ScriptRuntime.newCatchScope(...) checks the passed Throwable is a \nWrappedException wrapping a JavaScriptException. In that case unwraps the \nJavaScriptException and proceeds as usual.\n",
+            "date": "20050412T12:41:48",
+            "id": 1
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 187353\nBetter fix: JavaScriptException should not be wrapped",
+            "date": "20050626T21:30:34",
+            "id": 2
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "I committed the fix",
+            "date": "20050626T21:32:59",
+            "id": 3
+        },
+        {
+            "author": "eflexx@hotmail.com",
+            "body": "Created attachment 208287\nNew testcase that fails with current solution, and a proposed new solution",
+            "date": "20060112T20:07:42",
+            "id": 4
+        }
+    ],
+    "component": "Core",
+    "description": "User-Agent:       Mozilla/4.0 (compatible; MSIE 6.0; Windows NT 5.1; .NET CLR 1.1.4322)\nBuild Identifier: \n\nIt seems there is an inconsistent behaviour between an Object implemented in \nJavaScript and a host object implemented in Java when it comes to throwing \nexceptions.\n\u00bfWhat is the contract a Java host object must honor in order to simulate the \nJS \"throw\" keyword and being catched in JS \"unmodified\"? In 1.5R5, it worked \nthrowing a JavaScriptException(), but in 1.5R6 the JavaScriptException is \nplaced inside a WrappedException.\n\n\nReproducible: Always\n\nSteps to Reproduce:\n1.Consider the following script:\n\n// examples/problem-ok.js\nfunction JSCounter(n)\n{\n    this.n = n;\n    \n    this.count = function() {\n        if (n > 100) {\n            throw java.lang.IllegalStateException(\"Greater than 100\");\n        }\n        return n++;\n    };\n}\n\nvar c = new JSCounter(100);\ntry {\n    print(c.count());\n    print(c.count());\n}\ncatch (e) {\n    print(e);\n    if (e.javaException) {\n        // NEVER ENTERS HERE\n        print(e.javaException);\n    }\n}\n\nExecuting the script above produces the following, expected, output:\njs> load(\"examples/problem-ok.js\")\n100\njava.lang.IllegalStateException: Greater than 100\n\n2.Create a modified version of the supplied Counter host object that throws an \nexception when the count exceeds the 100 threshold:\n\n// Counter.java\n// ...\n    public int jsGet_count() {\n        if (count > 100) {\n            throw new IllegalStateException(\"Greater than 100\");\n        }\n        return count++;\n    }\n// ...\n\n3.Run the following script, that uses the host object above:\n\n// examples/problem.js\n\ndefineClass(\"Counter\");\n\nvar c = new Counter(100);\ntry {\n    print(c.count);\n    print(c.count);\n}\ncatch (e) {\n    print(e);\n    if (e.javaException) {\n        // ALWAYS ENTERS HERE\n        print(e.javaException);\n    }\n}\n\n4.Running the above script yields the following result:\njs> load(\"examples/problem.js\")\n100\nJavaException: java.lang.IllegalStateException: Greater than 100\njava.lang.IllegalStateException: Greater than 100\n\nActual Results:  \nThe host object implemented in Java is unable to reproduce the \"throw\" keyword \nbehaviour.\n\nExpected Results:  \nThere should be some way to write a host object in Java with members able to \nmimic the JS throw keyword.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "290034",
+    "issuetypeClassified": "OTHER",
+    "issuetypeTracker": "BUG",
+    "priority": "-- normal",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "Cannot catch in JavaScript the original exception thrown by a host object implemented in Java (ScriptableObject subclass)",
+    "systemSpecification": true,
+    "version": "other"
+}

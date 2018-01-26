@@ -1,0 +1,29 @@
+{
+    "comments": [
+        {
+            "author": "Michael McCandless",
+            "body": "OK I tracked this one down... in certain cases, IndexWriter would 1)\nopen a SegmentReader without doc stores (when merging, but doc stores\nnot being merged), 2) clone that SegmentReader to be readOnly (merging\nrequires point-in-time snapshot, ie, so deletions don't change during\nthe merge), and then 3) by the time the merge actually got started it\nbecame necessary to merge docStores (because deletions snuck in before\nthe cloning could finish) so 4) we ask those clones to open the doc\nstores.\n\nSegmentReader and its clone then have separate doc store IndexInputs\nopen, and then when both are closed, one set of doc stores fails to be\nclosed.\n\nIt was simple to fix: when the clone wants to open doc stores, we\nfirst as the original to do the open, then carry over the cloned\ncopies.\n\nI plan to commit shortly.\n",
+            "date": "2009-06-19T15:28:50.269+0000",
+            "id": 0
+        },
+        {
+            "author": "Jason Rutherglen",
+            "body": "Great work Mike!  I wonder if I was sometimes seeing this during development.",
+            "date": "2009-06-19T17:04:55.030+0000",
+            "id": 1
+        }
+    ],
+    "component": "",
+    "description": "Rarely, this test (which was added with LUCENE-1516) fails in MockRAMDirectory.close because some files were not closed, eg:\n{code}\n   [junit] NOTE: random seed of testcase 'testRandomIWReader' was: -5001333286299627079\n   [junit] ------------- ---------------- ---------------\n   [junit] Testcase: testRandomIWReader(org.apache.lucene.index.TestStressIndexing2):        Caused an ERROR\n   [junit] MockRAMDirectory: cannot close: there are still open files: {_cq.tvx=3, _cq.fdx=3, _cq.tvf=3, _cq.tvd=3, _cq.fdt=3}\n   [junit] java.lang.RuntimeException: MockRAMDirectory: cannot close: there are still open files: {_cq.tvx=3, _cq.fdx=3, _cq.tvf=3, _cq.tvd=3, _cq.fdt=3}\n   [junit]     at org.apache.lucene.store.MockRAMDirectory.close(MockRAMDirectory.java:292)\n   [junit]     at org.apache.lucene.index.TestStressIndexing2.testRandomIWReader(TestStressIndexing2.java:66)\n   [junit]     at org.apache.lucene.util.LuceneTestCase.runTest(LuceneTestCase.java:88)\n{code}",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-1639",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Minor",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "intermittent failure in TestIndexWriter. testRandomIWReader",
+    "systemSpecification": true,
+    "version": "2.9"
+}

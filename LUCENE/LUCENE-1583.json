@@ -1,0 +1,65 @@
+{
+    "comments": [
+        {
+            "author": "Michael McCandless",
+            "body": "LUCENE-1327 was a similar issue.",
+            "date": "2009-04-02T14:00:45.188+0000",
+            "id": 0
+        },
+        {
+            "author": "Mark Miller",
+            "body": "I havn't looked closely at it yet, but tests appear to pass (unknown if tests actually hit skipto on SpanOrQuery though)",
+            "date": "2009-06-11T03:30:30.852+0000",
+            "id": 1
+        },
+        {
+            "author": "Mark Miller",
+            "body": "I guess I'll do this one.\n\nYou out there reading Paul Elschot? This look right to you? Any issues it might cause?\n\nElse I guess I'll have to put on my thinking cap and figure it myself.",
+            "date": "2009-06-15T16:27:52.435+0000",
+            "id": 2
+        },
+        {
+            "author": "Paul Elschot",
+            "body": "Midnight here, still reading :)\n\nThe patch looks good. However, it might be easier to understand by starting like this after the queue initialisation:\n{code}\nif (!next()) return false;\n{code}\nand leave the rest of the code as it is.\n\nI did not run any tests on this, so a thinking cap might well save time.",
+            "date": "2009-06-15T22:08:51.266+0000",
+            "id": 3
+        },
+        {
+            "author": "Mark Miller",
+            "body": "That change would always call next once before skipping though right? And the way the patch is, you would only call next if no skipping occurred? I know its semantically the same, and I guess the clarity is probably worth any (probably extremely minor) slowdown?",
+            "date": "2009-06-19T16:19:29.588+0000",
+            "id": 4
+        },
+        {
+            "author": "Mark Miller",
+            "body": "I'm going to commit this soon.",
+            "date": "2009-06-24T14:54:48.963+0000",
+            "id": 5
+        },
+        {
+            "author": "Mark Miller",
+            "body": "Adds a Unit test and Changes entry",
+            "date": "2009-07-14T19:47:47.111+0000",
+            "id": 6
+        },
+        {
+            "author": "Mark Miller",
+            "body": "Thanks Moti!",
+            "date": "2009-07-14T21:03:21.813+0000",
+            "id": 7
+        }
+    ],
+    "component": "core/search",
+    "description": "In SpanOrQuery the skipTo() method is improperly implemented if the target doc is less than or equal to the current doc, since skipTo() may not be called for any of the clauses' spans:\n\n    public boolean skipTo(int target) throws IOException {\n          if (queue == null) {\n            return initSpanQueue(target);\n          }\n\n          while (queue.size() != 0 && top().doc() < target) {\n            if (top().skipTo(target)) {\n              queue.adjustTop();\n            } else {\n              queue.pop();\n            }\n          }\n          \n        \treturn queue.size() != 0;\n        }\n\nThis violates the correct behavior (as described in the Spans interface documentation), that skipTo() should always move forwards, in other words the correct implementation would be:\n\n    public boolean skipTo(int target) throws IOException {\n          if (queue == null) {\n            return initSpanQueue(target);\n          }\n\n          boolean skipCalled = false;\n          while (queue.size() != 0 && top().doc() < target) {\n            if (top().skipTo(target)) {\n              queue.adjustTop();\n            } else {\n              queue.pop();\n            }\n            skipCalled = true;\n          }\n          \n          if (skipCalled) {\n        \treturn queue.size() != 0;\n          }\n          return next();\n        }",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-1583",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Minor",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "SpanOrQuery skipTo() doesn't always move forwards",
+    "systemSpecification": true,
+    "version": "1.9, 2.0.0, 2.1, 2.2, 2.3, 2.3.1, 2.3.2, 2.4, 2.4.1"
+}

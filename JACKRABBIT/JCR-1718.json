@@ -1,0 +1,59 @@
+{
+    "comments": [
+        {
+            "author": "Jukka Zitting",
+            "body": "I'd rather not break things for people who may be validating the repository.xml. At least a change like this requires an update to the DTD version.\n\nAlso, for better backwards compatibility I'd make it (with an informal rule that you can have only a single Cluster configuration element):\n\n<!ELEMENT Repository (Cluster?,FileSystem,DataStore?,Security,Workspaces,Workspace,Versioning,Cluster?,SearchIndex?)> \n\nOr even (allowing more flexibility at the cost of some extra code and potential confusion):\n\n<!ELEMENT Repository (Cluster|FileSystem|DataStore|Security|Workspaces|Workspace|Versioning|SearchIndex)*> ",
+            "date": "2008-08-14T06:53:50.887+0000",
+            "id": 0
+        },
+        {
+            "author": "Alexander Klimetschek",
+            "body": "+1 for allowing an arbitrary order of elements - there is just no semantics for the order. Unfortunately you can no longer specify required and optional elements with the DTD mechanism. But switching to xsd or another schema is probably overkill here. We can still spit out warnings/errors in Jackrabbits configuration parser if required elements are missing - or is that already the case?",
+            "date": "2008-08-14T09:09:18.766+0000",
+            "id": 1
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "> <!ELEMENT Repository (Cluster|FileSystem|DataStore|Security|Workspaces|Workspace|Versioning|SearchIndex)*> \n\nThis would allow same name siblings, for example multiple Cluster elements in the same repository.xml. \n\n> I'd rather not break things for people who may be validating the repository.xml. \n\nWhile I don't have any numbers, I don't think many people do validate the repository.xml. Remember also we already broke all existing (old) repository.xml configurations by adding \"SecurityManager\" in \"Security\". I agree, the order of elements does not seem to be important, but I would rather have a strict order than not detecting typos (as we do now).\n\n> We can still spit out warnings/errors in Jackrabbits configuration parser if required elements are missing - or is that already the case?\n\nYes, that already works: I have removed the top FileSystem element, and got the exception\njavax.jcr.RepositoryException: Invalid repository configuration: \nrepository.xml: Configuration element FileSystem not found in Repository.: \nConfiguration element FileSystem not found in Repository.\n\n> At least a change like this requires an update to the DTD version. \n\nI don't think we did that in the past. Jackrabbit 1.4 uses repository-1.4.dtd. repository-1.5.dtd is only used in the Jackrabbt trunk. I don't think changes in the unreleased Jackrabbit 1.5 requires an update in the DTD version. Using repository-1.6.dtd for Jackrabbit 1.5 would be confusing.\n\nSo, I still like to change it to:\n<!ELEMENT Repository (Cluster?,FileSystem,DataStore?,Security,Workspaces,Workspace,Versioning,SearchIndex?)> \n\nWhat do you think?\n",
+            "date": "2008-08-18T21:25:06.196+0000",
+            "id": 2
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Yep, it's fine if the modified DTD is named jackrabbit-1.5.dtd.\n\nBut I don't want to introduce (before going to 2.x) a change that breaks existing configuration files, even if the breakage affects just validation and won't break a functional repository. Keeping the extra Cluster? around there (or allowing arbitrary order of elements) is a minor inconvenience.\n\nMore notably, your argument is essentially that it would be better to reorder the Cluster element. What's to say that someone else doesn't like some other element (say the search configuration) being more prominent? If we oblige your wish in this case (and I don't see why we shouldn't), then IMHO the logical solution would be to allow arbitrary ordering of elements in general instead of fixing just this one special case.\n",
+            "date": "2008-09-02T17:32:07.168+0000",
+            "id": 3
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "I understand the concern. In this case the best solution is probably:\n<!ELEMENT Repository (Cluster|FileSystem|DataStore|Security|Workspaces|Workspace|Versioning|SearchIndex)*> ",
+            "date": "2008-09-09T12:09:29.311+0000",
+            "id": 4
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "Committed in revision 697708 ",
+            "date": "2008-09-22T08:45:26.472+0000",
+            "id": 5
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "The latest version of the 1.5 DTD is now (revision 721465) also on the web site.",
+            "date": "2008-11-28T12:57:29.659+0000",
+            "id": 6
+        }
+    ],
+    "component": "jackrabbit-core",
+    "description": "Currently the order of elements in repository.xml is:\n<!ELEMENT Repository (FileSystem,Security,Workspaces,Workspace,Versioning,SearchIndex?,Cluster?,DataStore?)>\n\nI would like to change it to\n<!ELEMENT Repository (Cluster?,FileSystem,DataStore?,Security,Workspaces,Workspace,Versioning,SearchIndex?)>\nbecause I think that makes more sense.\n\nCurrently XML validation is disabled, and therefore the order of elements in the DTD does not need to match the repository.xml file. However as soon as XML validation is enabled, repository.xml files that use the wrong order will no longer work (the repository can not be started).\n\nThere is a request to enable XML validation at http://issues.apache.org/jira/browse/JCR-1462\n",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "JCR-1718",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Minor",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "repository-1.5.dtd: change order of main elements",
+    "systemSpecification": true,
+    "version": ""
+}

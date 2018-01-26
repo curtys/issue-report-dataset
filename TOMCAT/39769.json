@@ -1,0 +1,41 @@
+{
+    "comments": [
+        {
+            "author": null,
+            "body": "Created attachment 18442\nI patch the unload method the same way the load method is done\n\n  //I checked the load method and they don't care about setting the classloader\n\n  // So I removed the class loader setting in this method.\n  // I debugged the load() method an see that the WebClassLoader is used (Wich\nis good!)\n  // I debugged the unload() method and see that the current classloader when\nentering the method is the right one\n  // the method just replace it with the wrong one",
+            "date": "20060610T12:00:48",
+            "id": 0
+        },
+        {
+            "author": null,
+            "body": "Thanks for the patch. This is now fixed in 4.1.x, 5.5.x and 6.x ",
+            "date": "20060611T21:53:36",
+            "id": 1
+        },
+        {
+            "author": null,
+            "body": "Why is this reopened?",
+            "date": "20060615T20:07:46",
+            "id": 2
+        },
+        {
+            "author": null,
+            "body": "Sorry .. my mistake wrong bug :-)\n",
+            "date": "20060615T22:21:01",
+            "id": 3
+        }
+    ],
+    "component": "Catalina",
+    "description": "Hi all,\n\n  My web app needs to have Thread.currentThread().getContextClassLoader() always\nright.  When the application is unload it seem not be the case. \n\nMy classes are under the T5's shared directory (so all my\nservlet.getClass().getClassLoader() == the shared classloader i.e.:\nStandardCalssLoader.\n\nMy understanding is that when executing the code in my web app\nThread.currentThread().getContextClassLoader() should always give the\nWebappLoader used in the StandardContext.\n\nThe problem occurs in StandardWrapper.unload()  before calling the\nservlet.destroy() method\n\n....\n        ClassLoader oldCtxClassLoader =\n            Thread.currentThread().getContextClassLoader();\n        ClassLoader classLoader = instance.getClass().getClassLoader();\n\n        PrintStream out = System.out;\n        if (swallowOutput) {\n            SystemLogHandler.startCapture();\n        }\n\n        // Call the servlet destroy() method\n        try {\n            instanceSupport.fireInstanceEvent\n              (InstanceEvent.BEFORE_DESTROY_EVENT, instance);\n\n            Thread.currentThread().setContextClassLoader(classLoader);\n            if( System.getSecurityManager() != null) {\n                SecurityUtil.doAsPrivilege(\"destroy\",\n                                           instance);\n                SecurityUtil.remove(instance);                          \n            } else {\n                instance.destroy();\n            }\n\n....\n\nIn the code, the INSTANCE variable is my servlet and it have been loaded by the\nSHARED classloader.  So the classloader set in the thread is not the right one.\n It Should be the classloader related to StandardContext.getLoader()\n\nThis problem occurs when I try to close my T5 dos windows and I suppose will\noccurs when I will uninstall any webApp from my T5.\n\nI notice the problem in T5 5.5.16 but I verified and it's the same code in\n5.5.17.  So probably the problem is still there\n\n\nBest Regards\n/David Gagnon",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "39769",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "P2 normal",
+    "product": "Tomcat 5",
+    "project": "TOMCAT",
+    "summary": "Wrong class loader when the myServlet.destroy() called if myServlet is in the T5 shared directory",
+    "systemSpecification": true,
+    "version": "5.5.16"
+}

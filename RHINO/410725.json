@@ -1,0 +1,59 @@
+{
+    "comments": [
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "Bob, can you take a look at integrating this into the test suite?",
+            "date": "20080104T02:29:27",
+            "id": 0
+        },
+        {
+            "author": "bob@bclary.com",
+            "body": "where?",
+            "date": "20080104T12:42:11",
+            "id": 1
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "Created attachment 295359\njs1_7/geniter/iterator-ctor.js\n\nHere's the test case (thought I had attached it when I created the bug)",
+            "date": "20080104T13:04:23",
+            "id": 2
+        },
+        {
+            "author": "bob@bclary.com",
+            "body": "Created attachment 295372\njs1_7/extensions/iterator-ctor.js\n\nSince it uses uneval, I prefer to put it in extensions although that is kind of mute at the moment since only SpiderMonkey and Rhino support js17 anyway. Would putting the test in extensions work for Rhino?\n\nI went ahead and added this bugnumber to the test, to make it easier to find this bug and added a See devmo.\n\nminor nit: misspelled constructor\n\nnit: you didn't include the description in the reportCompare calls. Apart from their use visually to illustrate the specific test which failed, I use the description to distinguish individual cases when trying to compare results to known failures. In this cases the different calls to reportCompare(true, flag).\n\nSpiderMonkey on the 1.8 and trunk fail the last test.\n\njstest: js1_7/extensions/iterator-ctor.js bug:  result: FAILED type: shell description: uneval(iteratorToArray(new Iterator(obji,true))) expected: [-1, -2] actual: [\"__iterator__\", \"a\", \"b\"] reason: Expected value '[-1, -2]', Actual value '[\"__iterator__\", \"a\", \"b\"]' \n\n\njstest: js1_7/extensions/iterator-ctor.js bug:  result: FAILED type: shell description: uneval(iteratorToArray(new Iterator(obji,true))) flag expected: true actual: -1 reason: Type mismatch, expected type boolean, actual type number Expected value 'true', Actual value '-1' \n\nI'm not really clear as to the distinction between Iterator(...) and new Iterator(...). Igor, what say you? bug in test or bug in SpiderMonkey?",
+            "date": "20080104T14:20:16",
+            "id": 3
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "(In reply to comment #4)\n> Created an attachment (id=295372) [details]\n> js1_7/extensions/iterator-ctor.js\n> \n> Since it uses uneval, I prefer to put it in extensions although that is kind of\n> mute at the moment since only SpiderMonkey and Rhino support js17 anyway. Would\n> putting the test in extensions work for Rhino?\n\nThat's fine. The uneval was just a convenient way to compare the resulting arrays against an expected result. Do you have any better way to do the comparison? Like you say, it doesn't really matter much at the moment at least.\n\n> \n> I went ahead and added this bugnumber to the test, to make it easier to find\n> this bug and added a See devmo.\n\nThanks\n\n> \n> minor nit: misspelled constructor\n> \n> nit: you didn't include the description in the reportCompare calls. Apart from\n> their use visually to illustrate the specific test which failed, I use the\n> description to distinguish individual cases when trying to compare results to\n> known failures. In this cases the different calls to reportCompare(true, flag).\n\nThanks, that makes sense. I have to admit that I wish the test framework would just throw an exception that would have line numbers in the stack trace (does SpiderMonkey keep track of that?) but that's a bigger issue :-)\n\n> \n> SpiderMonkey on the 1.8 and trunk fail the last test.\n> \n> jstest: js1_7/extensions/iterator-ctor.js bug:  result: FAILED type: shell\n> description: uneval(iteratorToArray(new Iterator(obji,true))) expected: [-1,\n> -2] actual: [\"__iterator__\", \"a\", \"b\"] reason: Expected value '[-1, -2]',\n> Actual value '[\"__iterator__\", \"a\", \"b\"]' \n> \n> \n> jstest: js1_7/extensions/iterator-ctor.js bug:  result: FAILED type: shell\n> description: uneval(iteratorToArray(new Iterator(obji,true))) flag expected:\n> true actual: -1 reason: Type mismatch, expected type boolean, actual type\n> number Expected value 'true', Actual value '-1' \n\nYes, the SpiderMonkey trunk behavior makes more sense that what I'm testing for here. I thought I did everything compatible with SpiderMonkey but either I made a mistake or SpiderMonkey behavior has changed (I haven't rebuilt SpiderMonkey in some time).\n\nFeel free to check in the test as it works with SpiderMonkey and I'll make Rhino compatible.\n\n> \n> I'm not really clear as to the distinction between Iterator(...) and new\n> Iterator(...). Igor, what say you? bug in test or bug in SpiderMonkey?\n> ",
+            "date": "20080105T00:59:44",
+            "id": 4
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "(In reply to comment #4)\n> SpiderMonkey on the 1.8 and trunk fail the last test.\n> \n> jstest: js1_7/extensions/iterator-ctor.js bug:  result: FAILED type: shell\n> description: uneval(iteratorToArray(new Iterator(obji,true))) expected: [-1,\n> -2] actual: [\"__iterator__\", \"a\", \"b\"] reason: Expected value '[-1, -2]',\n> Actual value '[\"__iterator__\", \"a\", \"b\"]' \n> \n> \n> jstest: js1_7/extensions/iterator-ctor.js bug:  result: FAILED type: shell\n> description: uneval(iteratorToArray(new Iterator(obji,true))) flag expected:\n> true actual: -1 reason: Type mismatch, expected type boolean, actual type\n> number Expected value 'true', Actual value '-1' \n> \n> I'm not really clear as to the distinction between Iterator(...) and new\n> Iterator(...). Igor, what say you? bug in test or bug in SpiderMonkey?\n\nnew Iterator(obj, flag) always constructs a default iterator that iterates over the properties of the object obj and returns a sequence of property keys (flag is true) or a sequence of [key, value] pair (flag is false). There is no lookup of __iterator__ method here. As such the test case is wrong and [\"__iterator__\", \"a\", \"b\"] is the correct result as obji contains these 3 properties. \n\nIterator(obj, flag) is a converter to iterator. The call *looks* for __iterator__ property and is roughly equivalent to the following:\n\nlet (iter = obj.__iterator__) iter ? iter.call(obj, flag) : new Iterator(obj, flag)\n\nexcept it properly deals with XML objects and has a special support for native objects that provides own implementation of the iterator protocol.",
+            "date": "20080105T10:27:33",
+            "id": 5
+        },
+        {
+            "author": "bob@bclary.com",
+            "body": "Thanks Igor!\n\n/cvsroot/mozilla/js/tests/js1_7/extensions/iterator-ctor.js,v  <--  iterator-ctor.js\ninitial revision: 1.1\n",
+            "date": "20080105T14:17:18",
+            "id": 6
+        }
+    ],
+    "component": "Compiler",
+    "description": "Bob, I created a new test to catch some cases I was missing in Rhino that escaped the regression suite.",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "410725",
+    "issuetypeClassified": "OTHER",
+    "issuetypeTracker": "BUG",
+    "priority": "-- normal",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "New test for Iterator constructor",
+    "systemSpecification": true,
+    "version": "1.7R1"
+}

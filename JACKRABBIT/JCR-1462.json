@@ -1,0 +1,149 @@
+{
+    "comments": [
+        {
+            "author": "Thomas Mueller",
+            "body": "Committed in revision 635940.\nThis is a 'proof of concept'; it logs a warning and does not throw an exception:\n\n\"BeanConfig: org.apache.jackrabbit.core.fs.local.LocalFileSystem \ndoes not support 'abc'; the setting is ignored.\"\nwhen using\n<FileSystem class=\"org.apache.jackrabbit.core.fs.local.LocalFileSystem\">\n    <param name=\"abc\" value=\"\"/>\n    <param name=\"path\" value=\"${rep.home}/repository\"/>\n</FileSystem>\n    \nLogging a warning could even be done in Jackrabbit 1.4.x I think.\nIf there are no problem I will change the code in a week or so to throw an exception.\n",
+            "date": "2008-03-11T14:37:29.944+0000",
+            "id": 0
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "I tend to agree that the repository should not start if a parameter is wrong. Though this means that existing configurations with errors will not upgrade smoothly, but I guess that's OK.",
+            "date": "2008-03-11T15:28:23.647+0000",
+            "id": 1
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "Committed in revision 637933:\nXML validation is now enabled when parsing configuration files.\nHowever no exception is thrown if validation fails. Instead, a warning is\nwritten to the log.",
+            "date": "2008-03-17T15:12:11.357+0000",
+            "id": 2
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "I'm not happy with the current situation. Now that validation is enabled, there is a warn message in the log for every workspace.xml file we have. I'm not sure what causes it, but it's probably the missing DTD in the workspace.xml files.\n\nI'd rather want to see the initial idea implemented that the repository does not start up when there is an unknown parameter in the configuration. XML validation is IMO worth a different discussion.",
+            "date": "2008-03-25T13:18:17.359+0000",
+            "id": 3
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "> there is a warn message in the log for every workspace.xml file \nSorry, I didn't see this... What about only logging a warning when parsing repository.xml?",
+            "date": "2008-03-25T13:46:43.290+0000",
+            "id": 4
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "> What about only logging a warning when parsing repository.xml?\n\nI think that's useful.",
+            "date": "2008-03-25T14:51:25.394+0000",
+            "id": 5
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "Revision 640880: throw an exception when using unsupported parameters",
+            "date": "2008-03-25T16:14:43.027+0000",
+            "id": 6
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "Revision 640884: log a warning when repository.xml can not be validated (but not for workspace.xml)",
+            "date": "2008-03-25T16:17:46.271+0000",
+            "id": 7
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "IMO, this issue can be set to fixed.\n\nThomas, do you want to implement anything else?",
+            "date": "2008-03-26T09:35:02.566+0000",
+            "id": 8
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "> do you want to implement anything else?\n\nYes, throwing an exception instead of logging a warning if XML validation fails for repository.xml. That means, if there is an unknown tag in repository.xml. I would like to wait a week before doing that.\n\nRegards,\nThomas\n",
+            "date": "2008-03-26T09:40:14.341+0000",
+            "id": 9
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "This patch enables validation, and detects duplicate entries.\nBefore this patch is applied, the patch for bug\nhttps://issues.apache.org/jira/browse/JCR-1718\nmust be applied.",
+            "date": "2008-09-09T12:19:46.085+0000",
+            "id": 10
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "Committed in revision 697709",
+            "date": "2008-09-22T08:44:52.621+0000",
+            "id": 11
+        },
+        {
+            "author": "Micah Whitacre",
+            "body": "I'm not sure I have permissions to reopen this bug but was advised to do so.  This bug seems to have introduced the requirement that all repository.xml files specify a DOCTYPE.  If you don't have a doctype specified you start seeing SAX Parse exceptions like the following:\n\norg.xml.sax.SAXParseException: Document root element \"Repository\",\nmust match DOCTYPE root \"null\".\n       at com.sun.org.apache.xerces.internal.util.ErrorHandlerWrapper.createSAXParseException(ErrorHandlerWrapper.java:236)\n       at com.sun.org.apache.xerces.internal.util.ErrorHandlerWrapper.error(ErrorHandlerWrapper.java:172)\n       at com.sun.org.apache.xerces.internal.impl.XMLErrorReporter.reportError(XMLErrorReporter.java:382)\n       at com.sun.org.apache.xerces.internal.impl.XMLErrorReporter.reportError(XMLErrorReporter.java:316)\n       at com.sun.org.apache.xerces.internal.impl.dtd.XMLDTDValidator.rootElementSpecified(XMLDTDValidator.java:1652)\n       at com.sun.org.apache.xerces.internal.impl.dtd.XMLDTDValidator.handleStartElement(XMLDTDValidator.java:1931)\n       at com.sun.org.apache.xerces.internal.impl.dtd.XMLDTDValidator.startElement(XMLDTDValidator.java:795)\n       at com.sun.org.apache.xerces.internal.impl.XMLDocumentFragmentScannerImpl.scanStartElement(XMLDocumentFragmentScannerImpl.java:878)\n       at com.sun.org.apache.xerces.internal.impl.XMLDocumentScannerImpl$ContentDispatcher.scanRootElementHook(XMLDocumentScannerImpl.java:1157)\n       at com.sun.org.apache.xerces.internal.impl.XMLDocumentFragmentScannerImpl$FragmentContentDispatcher.dispatch(XMLDocumentFragmentScannerImpl.java:1794)\n       at com.sun.org.apache.xerces.internal.impl.XMLDocumentFragmentScannerImpl.scanDocument(XMLDocumentFragmentScannerImpl.java:368)\n       at com.sun.org.apache.xerces.internal.parsers.XML11Configuration.parse(XML11Configuration.java:834)\n       at com.sun.org.apache.xerces.internal.parsers.XML11Configuration.parse(XML11Configuration.java:764)\n       at com.sun.org.apache.xerces.internal.parsers.XMLParser.parse(XMLParser.java:148)\n       at com.sun.org.apache.xerces.internal.parsers.DOMParser.parse(DOMParser.java:250)\n       at com.sun.org.apache.xerces.internal.jaxp.DocumentBuilderImpl.parse(DocumentBuilderImpl.java:292)\n       at org.apache.jackrabbit.core.config.ConfigurationParser.parseXML(ConfigurationParser.java:215)\n       at org.apache.jackrabbit.core.config.RepositoryConfigurationParser.parseRepositoryConfig(RepositoryConfigurationParser.java:214)\n       at org.apache.jackrabbit.core.config.RepositoryConfig.create(RepositoryConfig.java:144)\n       at org.apache.jackrabbit.core.config.RepositoryConfig.create(RepositoryConfig.java:118)",
+            "date": "2008-09-23T20:07:22.733+0000",
+            "id": 12
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Reopened based on the last comment.\n\nI'm not sure I see how much we are actually gaining by enabling DTD validation. Even any valid XHTML document would pass that test without Jackrabbit being any wiser. Validation would make much more sense if the DTD was specified by the configuration parser instead of the document being parsed.",
+            "date": "2008-09-23T20:38:03.531+0000",
+            "id": 13
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "I think we should remove the DTD validation again.",
+            "date": "2008-09-24T07:57:00.589+0000",
+            "id": 14
+        },
+        {
+            "author": "Alexander Klimetschek",
+            "body": "What about a two-pass parsing: in the first pass enable validation and log errors/warnings, but don't stop and don't build the internal config. Now in the second pass we disable validation and build the config, just as before.\n\nThis way we at least print helpful errors on the console, without breaking the startup for still-working repository.xml files. WDYT?",
+            "date": "2008-09-24T08:06:35.810+0000",
+            "id": 15
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "How about if we set the http://apache.org/xml/features/validation/dynamic option(see [1])? That should enable validation only when a DOCTYPE is present, which IMHO sounds like a good compromise.\n\n[1] http://xerces.apache.org/xerces2-j/features.html#validation.dynamic",
+            "date": "2008-09-24T08:22:09.061+0000",
+            "id": 16
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Attached a proposed patch (JCR-1462-dynamic.patch) that enables validation on all XML documents (including workspace.xml) when an explicit DOCTYPE is specified. This feature only works on Apache Xerces, so validation is simply disabled when some other parser is used.",
+            "date": "2008-09-24T09:19:03.993+0000",
+            "id": 17
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "Is this option implementation independent?",
+            "date": "2008-09-24T09:20:17.335+0000",
+            "id": 18
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "> Is this option implementation independent? \n\nNo, it only works with Xerces. In the proposed patch I'm simply disabling validation if the parser does not support this feature.",
+            "date": "2008-09-24T09:28:42.740+0000",
+            "id": 19
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "> how much we are actually gaining by enabling DTD validation\n\nDTD validation is the easiest solution to detect typos in top level elements.\n\nCompatibility: Jackrabbit 1.5 will not work with 1.4 repository.xml files because of JCR-1472 (SecurityManager). If we want to make the repository.xml backward compatible, we should have a look at that as well.\n\nfactory.setFeature(\"http://apache.org/xml/features/validation/dynamic\", true) is not supported in JDK 1.4 (JDK 1.5 is required). I guess we will anyway switch to JDK 1.5 soon, we could wait until then.\n\nWhat about only log (not throw) the exception until we can enable 'dynamic validation'? I would just print warnings in the log file:\n\n24.09.2008 12:17:11 *WARN * [main] ConfigurationErrorHandler: Error parsing the configuration at line 23 using system id file:/C:/data/jackrabbit/jackrabbit-core/repository.xml: org.xml.sax.SAXParseException: Document root element \"Repository\", must match DOCTYPE root \"null\". (ConfigurationErrorHandler.java, line 44)\n24.09.2008 12:17:11 *WARN * [main] ConfigurationErrorHandler: Error parsing the configuration at line 23 using system id file:/C:/data/jackrabbit/jackrabbit-core/repository.xml: org.xml.sax.SAXParseException: Document is invalid: no grammar found. (ConfigurationErrorHandler.java, line 44)\n",
+            "date": "2008-09-24T12:05:32.139+0000",
+            "id": 20
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "Committed in revision 701158: only log a warning when not using a DTD",
+            "date": "2008-10-02T15:34:18.129+0000",
+            "id": 21
+        }
+    ],
+    "component": "jackrabbit-core",
+    "description": "Currently, unsupported parameters in repository.xml and workspace.xml are ignored.\nTo find problems earlier, such problems should result in an exception,\nand starting such a repository should not be possible.\nThe same should happen for unsupported values.\n\nFor currently unavailable options\n(such as text extraction filter classes if the class is not in the classpath),\nat least a warning should be written to the error log, or an error should be thrown.\n",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "JCR-1462",
+    "issuetypeClassified": "RFE",
+    "issuetypeTracker": "RFE",
+    "priority": "Minor",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "repository.xml: throw an exception on error",
+    "systemSpecification": true,
+    "version": ""
+}

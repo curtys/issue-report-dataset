@@ -1,0 +1,53 @@
+{
+    "comments": [
+        {
+            "author": null,
+            "body": "Created attachment 22666\nTest webapp that demonstrates error",
+            "date": "20081002T01:06:39",
+            "id": 0
+        },
+        {
+            "author": null,
+            "body": "I am unable to reproduce this. Looking at your stack trace the security exception is caused when trying to read jsp-api.jar. This jar should never be scanned as it is on the exclude list so I don't understand how you can be seeing this error.\n\nReviewing the code does show that there is an issue. Additionally, the XML validation settings of the first context precessed are used for all contexts. I can fix these issues based purely on code review but it would be nice to be able to confirm the fix with a test case.",
+            "date": "20081002T04:18:41",
+            "id": 1
+        },
+        {
+            "author": null,
+            "body": "Ignore my previous. I now have a test case.\n\nThanks for the report. This has been fixed in trunk and proposed for 6.0.x and 5.5.x.",
+            "date": "20081003T04:54:19",
+            "id": 2
+        },
+        {
+            "author": null,
+            "body": "This has been fixed 6.0.x and will be included in 6.0.19 onwards.",
+            "date": "20090131T00:26:49",
+            "id": 3
+        },
+        {
+            "author": null,
+            "body": "*** Bug 46549 has been marked as a duplicate of this bug. ***",
+            "date": "20090408T10:20:50",
+            "id": 4
+        },
+        {
+            "author": null,
+            "body": "The patch has been applied to 5.5.x and will be included in 5.5.28 onwards.",
+            "date": "20090603T13:56:05",
+            "id": 5
+        }
+    ],
+    "component": "Catalina",
+    "description": "Along the same lines with CR 29936, com.apache.catalina.startup.TldConfig.tldDigester has an issue with initialization.  Basically, the TldConfig's parser can be initialized with the webapp's XML parser, which causes a security problem, since it has permission issues with reading files.  This is caused by a similar scenario to CR 29936:\n\n1) Remove all stock webapps that come with the standard installation.  This\nincludes the ones in server/webapps.  Remember to remove the configurations in\nconf/Catalina.\n2) Add a webapp that has a XML parser located in WEB-INF/lib.  For instance,\none from sourceforge or Apache Xerces.\n3) Add a library containing a .tld file in META-INF like Spring.\n4) In order to actually have a log containing the error, you need to enable logging.  For example, by following the instructions laid out in http://tomcat.apache.org/tomcat-5.5-doc/logging.html.  I used log4j.\n5) Start the appserver in secure mode.\n\nYou should see an error in the log similar to the following:\n\nERROR main org.apache.catalina.startup.TldConfig - Exception processing TLD META-INF/spring-form.tld in JAR at resource path TOMCAT_PATH/webapps/MY_WAR/WEB-INF/lib/spring.jar in context /MY_WAR\njava.security.AccessControlException: access denied (java.io.FilePermission TOMCAT_PATH/common/lib/jsp-api.jar read)\n        at java.security.AccessControlContext.checkPermission(AccessControlContext.java:323)\n        at java.security.AccessController.checkPermission(AccessController.java:546)\n        at java.lang.SecurityManager.checkPermission(SecurityManager.java:532)\n        at java.lang.SecurityManager.checkRead(SecurityManager.java:871)\n        at java.util.zip.ZipFile.<init>(ZipFile.java:109)\n        at java.util.jar.JarFile.<init>(JarFile.java:133)\n        at java.util.jar.JarFile.<init>(JarFile.java:70)\n        at sun.net.www.protocol.jar.URLJarFile.<init>(URLJarFile.java:72)\n        at sun.net.www.protocol.jar.URLJarFile.getJarFile(URLJarFile.java:48)\n        at sun.net.www.protocol.jar.JarFileFactory.get(JarFileFactory.java:53)\n        at sun.net.www.protocol.jar.JarURLConnection.connect(JarURLConnection.java:104)\n        at sun.net.www.protocol.jar.JarURLConnection.getInputStream(JarURLConnection.java:132)\n        at java.net.URL.openStream(URL.java:1009)\n        at org.apache.xerces.impl.XMLEntityManager.setupCurrentEntity(Unknown Source)\n        at org.apache.xerces.impl.XMLEntityManager.startEntity(Unknown Source)\n        at org.apache.xerces.impl.XMLEntityManager.startDTDEntity(Unknown Source)\n        at org.apache.xerces.impl.XMLDTDScannerImpl.setInputSource(Unknown Source)\n        at org.apache.xerces.impl.XMLDocumentScannerImpl$DTDDispatcher.dispatch(Unknown Source)\n        at org.apache.xerces.impl.XMLDocumentFragmentScannerImpl.scanDocument(Unknown Source)\n        at org.apache.xerces.parsers.XML11Configuration.parse(Unknown Source)\n        at org.apache.xerces.parsers.DTDConfiguration.parse(Unknown Source)\n        at org.apache.xerces.parsers.XMLParser.parse(Unknown Source)\n        at org.apache.xerces.parsers.AbstractSAXParser.parse(Unknown Source)\n        at org.apache.tomcat.util.digester.Digester.parse(Digester.java:1562)\n        at org.apache.catalina.startup.TldConfig.tldScanStream(TldConfig.java:514)\n        at org.apache.catalina.startup.TldConfig.tldScanJar(TldConfig.java:472)\n        at org.apache.catalina.startup.TldConfig.execute(TldConfig.java:307)\n        at org.apache.catalina.core.StandardContext.processTlds(StandardContext.java:4307)\n        at org.apache.catalina.core.StandardContext.start(StandardContext.java:4144)\n        at org.apache.catalina.core.ContainerBase.addChildInternal(ContainerBase.java:760)\n        at org.apache.catalina.core.ContainerBase.access$000(ContainerBase.java:122)\n        at org.apache.catalina.core.ContainerBase$PrivilegedAddChild.run(ContainerBase.java:144)\n        at java.security.AccessController.doPrivileged(Native Method)\n        at org.apache.catalina.core.ContainerBase.addChild(ContainerBase.java:738)\n        at org.apache.catalina.core.StandardHost.addChild(StandardHost.java:544)\n        at org.apache.catalina.startup.HostConfig.deployWAR(HostConfig.java:831)\n        at org.apache.catalina.startup.HostConfig.deployWARs(HostConfig.java:720)\n        at org.apache.catalina.startup.HostConfig.deployApps(HostConfig.java:490)\n        at org.apache.catalina.startup.HostConfig.start(HostConfig.java:1150)\n        at org.apache.catalina.startup.HostConfig.lifecycleEvent(HostConfig.java:311)\n        at org.apache.catalina.util.LifecycleSupport.fireLifecycleEvent(LifecycleSupport.java:120)\n        at org.apache.catalina.core.ContainerBase.start(ContainerBase.java:1022)\n        at org.apache.catalina.core.StandardHost.start(StandardHost.java:736)\n        at org.apache.catalina.core.ContainerBase.start(ContainerBase.java:1014)\n        at org.apache.catalina.core.StandardEngine.start(StandardEngine.java:443)\n        at org.apache.catalina.core.StandardService.start(StandardService.java:448)\n        at org.apache.catalina.core.StandardServer.start(StandardServer.java:700)\n        at org.apache.catalina.startup.Catalina.start(Catalina.java:552)\n        at sun.reflect.NativeMethodAccessorImpl.invoke0(Native Method)\n        at sun.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:39)\n        at sun.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:25)\n        at java.lang.reflect.Method.invoke(Method.java:597)\n        at org.apache.catalina.startup.Bootstrap.start(Bootstrap.java:295)\n        at org.apache.catalina.startup.Bootstrap.main(Bootstrap.java:433)\n\nNote that if you restart the appserver, you will need to remove the webapp's TLD cache located at \"TOMCAT_PATH/work/Catalina/localhost/MY_WAR/tldCache.ser\" to reproduce the error again.",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "45933",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "P3 normal",
+    "product": "Tomcat 5",
+    "project": "TOMCAT",
+    "summary": "Error processing TLD file in webapp with XML parser",
+    "systemSpecification": true,
+    "version": "5.5.27"
+}

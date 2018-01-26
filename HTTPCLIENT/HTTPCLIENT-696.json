@@ -1,0 +1,35 @@
+{
+    "comments": [
+        {
+            "author": "Michael Clark",
+            "body": "I believe Elias's suggested fix is correct.  Unlike log4j's appenders, java.util.logging's handlers sometimes have higher-than-expected default level filters.  ConsoleHandler's JavaDoc mentions this fact:\n\n * java.util.logging.ConsoleHandler.level \n * specifies the default level for the <tt>Handler</tt>\n * (defaults to <tt>Level.INFO</tt>)\n\nI wanted to create a patch to fix this example, but the example seems to be gone from the HC 4.0 site (it seems I can only find it for HC 3.x)\n\nWould the fix, then, be to not just fix the example, but also to reintroduce it to the HC 4.0 site?",
+            "date": "2008-12-07T20:05:05.629+0000",
+            "id": 0
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Hi Mike\n\nIt has not been removed. It has not been written in the first place. All 3.x tutorials still need to be ported to the 4.0 API. The API has changed so much that most of the content will have to be completely rewritten. I just never got around to doing that. It is on my TODO list after HttpClient 4.0-beta2 and HttpCore 4.0 final.\n\nCheers\n\nOleg",
+            "date": "2008-12-08T16:39:03.453+0000",
+            "id": 1
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "I migrated the HttpClient Logging guide to the HttpClient 4.0 site and also fixed the issue with JUL configuration.\n\nhttp://hc.apache.org/httpcomponents-client/logging.html\n\nPlease review.\n\nOleg",
+            "date": "2009-03-01T16:57:11.304+0000",
+            "id": 2
+        }
+    ],
+    "component": "Documentation",
+    "description": "java.util.logging configuration examples do not work as intended. Those can be found here: http://jakarta.apache.org/httpcomponents/httpclient-3.x/logging.html\n\nSteps to reproduce:\n1. Create a simple project using HttpClient (see listing below) and JDK 1.6 (I suppose it is JDK 1.4 or higher, but I did not test anything other than 1.6). Without log4j in the classpath and without any commons-logging system properties set, java.util.logging is automatically selected by commons-logging.\n2. Create logging.properties file as shown in any of the java.util.logging examples\n3. Run a program, passing -Djava.util.logging.config.file=logging.properties argument to the JVM\n\nExpected results:\nQuite a few log messages should be sent to System.err\n\nActual results:\nUnless there is an I/O error encountered, no log messages are sent to System.err\n\nThe problem, as far as I can see, is caused by the default logging level of java.util.logging.ConsoleHandler, which is set to INFO. In order for any log messages to go through, the log hadler log level needs to be lower than logged messages log level. Adding the following line to all java.util.logging examples should fix the problem:\n\njava.util.logging.ConsoleHandler.level = ALL\n\n--- Get.java -----------------------------------------\n\nimport java.io.IOException;\nimport java.io.InputStreamReader;\nimport java.io.Reader;\n\nimport org.apache.commons.httpclient.HostConfiguration;\nimport org.apache.commons.httpclient.HttpClient;\nimport org.apache.commons.httpclient.HttpException;\nimport org.apache.commons.httpclient.HttpMethodBase;\nimport org.apache.commons.httpclient.methods.GetMethod;\n\n\npublic class Get {\n\n\t/**\n\t * @param args\n\t */\n\tpublic static void main(String[] args) {\n\t\t\n \t\tHttpClient client = new HttpClient();\n\t\tHttpMethodBase get = new GetMethod(\"http://www.apache.org\");\n\t\t\n\t\ttry {\n\t\t\tint code = client.executeMethod(get);\n\t\t\tSystem.out.println(\"Status code: \" + code);\n\t\t\t\n\t\t\tString csn = get.getResponseCharSet();\n\t\t\tSystem.out.println(\"Charset is: \" + csn);\n\t\t\t\n\t\t\tlong len = get.getResponseContentLength();\n\t\t\tSystem.out.println(\"Length is: \" + len);\n\t\t\tlen = len < 0 ? 200 : len;\n\t\t\t\n\t\t\tStringBuilder buf = new StringBuilder((int)len);\n\t\t\tReader r = new InputStreamReader(get.getResponseBodyAsStream(), csn);\n\t\t\tfor (int c = r.read(); c >= 0; c = r.read()) {\n\t\t\t\tbuf.append((char)c);\n\t\t\t}\n\t\t\t\n\t\t\tSystem.out.println(\"Body:\");\n\t\t\tSystem.out.println(buf.toString());\t\t\t\n\t\t\t\n\t\t} catch (HttpException e) {\n\t\t\te.printStackTrace();\n\t\t} catch (IOException e) {\n\t\t\te.printStackTrace();\n\t\t} finally {\n\t\t\tget.releaseConnection();\n\t\t}\t\t\t\t\n\t}\n}\n\n--- logging.properties ----- From examples ----------------------\n\n.level=INFO\n\nhandlers=java.util.logging.ConsoleHandler\njava.util.logging.ConsoleHandler.formatter = java.util.logging.SimpleFormatter\n\nhttpclient.wire.header.level=FINEST\norg.apache.commons.httpclient.level=FINEST\n\n--------------------------------------------------------------------------------\n",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "HTTPCLIENT-696",
+    "issuetypeClassified": "OTHER",
+    "issuetypeTracker": "BUG",
+    "priority": "Minor",
+    "product": "HTTPCLIENT",
+    "project": "HTTPCLIENT",
+    "summary": "java.util.logging configuration examples does not work as intended",
+    "systemSpecification": true,
+    "version": "3.1 (end of life)"
+}

@@ -1,0 +1,83 @@
+{
+    "comments": [
+        {
+            "author": "Greg Tarr",
+            "body": "Thanks for this Mark. A speedy resolution would be extremely helpful for confidence in our lucene-based implementation.",
+            "date": "2011-06-28T14:56:37.368+0000",
+            "id": 0
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "here is a more self contained testcase showing the problem - applies on 3.x and trunk",
+            "date": "2011-06-28T16:07:53.205+0000",
+            "id": 1
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Nice catch!  Indeed, because of back compat, we read a leading 0 as being an ancient format, and then interpret the next 0 to mean index has no segments.\n\nHowever, that ancient format predates 1.9, so the fix for 3.x is easy (remove support for this ancient format).\n\nNot sure what to do if we really need to fix this in pre-3.x releases...",
+            "date": "2011-06-28T16:12:38.571+0000",
+            "id": 2
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "4.0 is not affected because we had already removed this back compat code.",
+            "date": "2011-06-28T16:15:20.989+0000",
+            "id": 3
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "bq. Not sure what to do if we really need to fix this in pre-3.x releases...\nthere is not much todo really here. I don't see a good way to fix this there. :/ ",
+            "date": "2011-06-28T16:18:10.301+0000",
+            "id": 4
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Patch; I'll commit shortly...",
+            "date": "2011-06-28T16:34:16.285+0000",
+            "id": 5
+        },
+        {
+            "author": "Mark Harwood",
+            "body": "Thanks for the quick turnaround Mike/Simon.\n\nGreg is on 2.9.x and so the suggestion I have is that he adds some checking code in the app to remove the latest segments_n file if it looks to have anything other than -9 as a format value given he knows that his Lucene indexes should always be of that version. Maybe that could be a utility class that can be posted here on this issue for others who might share this issue. I'm guessing it's a quirk of the  file system to leave that all-zeros file in place prior to a flush of some kind?\n\n",
+            "date": "2011-06-28T16:41:00.628+0000",
+            "id": 6
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "That sounds like a good fix for 2.9.x.\n\n+1 for posting a utility here.\n\nbq. I'm guessing it's a quirk of the file system to leave that all-zeros file in place prior to a flush of some kind?\n\nActually I think various filesystems could conceivably do this (write all 0s to a file), eg on OS/hardware crash, if the file was written by not yet sync'd.",
+            "date": "2011-06-28T17:06:17.194+0000",
+            "id": 7
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "I wonder if we could check the latest segments_N file against a previous one and if the version of that file is older that the previous one we drop it since we don't provide forward compatibility. we could even spin a 2.9 bugfix release for that though.\n",
+            "date": "2011-06-29T07:32:53.663+0000",
+            "id": 8
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Ahh, good idea Simon!  That should work.\n\nAnother simple thing we could do is, throw an exc if we did not consume all bytes from the segments file.  In this case, the segments file was 20 bytes long, but the double 0 ints only consumes 8 bytes (two 0 ints).",
+            "date": "2011-06-29T10:47:01.567+0000",
+            "id": 9
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Actually, we can do something even simpler here: in the 1.9.x days Lucene never wrote a generation (_N) segments file.  It always wrote just \"segments\", so, if we see first int is a 0, and the file has a generation in it, then it's corrupt.",
+            "date": "2011-06-29T11:59:54.723+0000",
+            "id": 10
+        }
+    ],
+    "component": "",
+    "description": "Lucene will happily wipe an existing index if presented with a latest generation segments_n file of all zeros. File format documentation says segments_N files should start with a format of -9 but SegmentInfos.read accepts >=0 as valid for backward compatibility reasons.\n\n",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-3255",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "Corrupted segment file not detected and wipes index contents",
+    "systemSpecification": true,
+    "version": "2.9.4, 3.2"
+}

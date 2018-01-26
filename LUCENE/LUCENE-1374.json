@@ -1,0 +1,41 @@
+{
+    "comments": [
+        {
+            "author": "Michael McCandless",
+            "body": "Attached patch that fixes AbstractField's getBinaryValue() and getBinaryLength() methods to fallback to \"fieldsData instanceof byte[]\" when appropriate.  I plan to commit shortly.",
+            "date": "2008-09-03T11:51:11.146+0000",
+            "id": 0
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Committed revision 691617.",
+            "date": "2008-09-03T14:00:07.447+0000",
+            "id": 1
+        },
+        {
+            "author": "Chris Harris",
+            "body": "\"ant test\" on 691617 for me fails on the following test:\n\n  <testcase classname=\"org.apache.lucene.index.TestIndexWriter\" name=\"testMergeCompressedFields\" time=\"0.36\">\n    <error message=\"could not delete C:\\lucene\\691647\\build\\test\\mergecompressedfields\\_5.cfs\" type=\"java.io.IOException\">java.io.IOException: could not delete C:\\lucene\\691647\\build\\test\\mergecompressedfields\\_5.cfs\n\tat org.apache.lucene.util._TestUtil.rmDir(_TestUtil.java:37)\n\tat org.apache.lucene.index.TestIndexWriter.testMergeCompressedFields(TestIndexWriter.java:4111)\n</error>\n  </testcase>\n\nIt might be one of those things that shows up only on Windows. In any case, adding a call to IndexReader.close() in testMergeCompressedFields() seems to fix things up:\n\n{code}\n      IndexReader r = IndexReader.open(dir);\n      for(int i=0;i<5;i++) {\n        Document doc = r.document(i);\n        assertEquals(\"this is some data that will be compressed this this this\", doc.getField(\"test1\").stringValue());\n        byte[] b = doc.getField(\"test2\").binaryValue();\n        assertTrue(Arrays.equals(b, cmp));\n      }\n      r.close();  // <------------------------------- New line\n    } finally {\n      dir.close();\n      _TestUtil.rmDir(indexDir);\n    }\n{code}\n\nI guess technically the r.close() probably belongs in a finally block as well.",
+            "date": "2008-09-03T17:01:46.768+0000",
+            "id": 2
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Woops, you're right: I too see that failure (to rmDir the directory) only on Windows.  I'll commit a fix.  Thanks Chris!",
+            "date": "2008-09-03T17:33:08.276+0000",
+            "id": 3
+        }
+    ],
+    "component": "core/index",
+    "description": "This bug was introduced with LUCENE-1219 (only present on 2.4).\n\nThe bug happens when merging compressed string fields, but only if bulk-merging code does not apply because the FieldInfos for the segment being merged are not congruent.  This test shows the bug:\n\n{code}\n  public void testMergeCompressedFields() throws IOException {\n    File indexDir = new File(System.getProperty(\"tempDir\"), \"mergecompressedfields\");\n    Directory dir = FSDirectory.getDirectory(indexDir);\n    try {\n      for(int i=0;i<5;i++) {\n        // Must make a new writer & doc each time, w/\n        // different fields, so bulk merge of stored fields\n        // cannot run:\n        IndexWriter w = new IndexWriter(dir, new WhitespaceAnalyzer(), i==0, IndexWriter.MaxFieldLength.UNLIMITED);\n        w.setMergeFactor(5);\n        w.setMergeScheduler(new SerialMergeScheduler());\n        Document doc = new Document();\n        doc.add(new Field(\"test1\", \"this is some data that will be compressed this this this\", Field.Store.COMPRESS, Field.Index.NO));\n        doc.add(new Field(\"test2\", new byte[20], Field.Store.COMPRESS));\n        doc.add(new Field(\"field\" + i, \"random field\", Field.Store.NO, Field.Index.TOKENIZED));\n        w.addDocument(doc);\n        w.close();\n      }\n\n      byte[] cmp = new byte[20];\n\n      IndexReader r = IndexReader.open(dir);\n      for(int i=0;i<5;i++) {\n        Document doc = r.document(i);\n        assertEquals(\"this is some data that will be compressed this this this\", doc.getField(\"test1\").stringValue());\n        byte[] b = doc.getField(\"test2\").binaryValue();\n        assertTrue(Arrays.equals(b, cmp));\n      }\n    } finally {\n      dir.close();\n      _TestUtil.rmDir(indexDir);\n    }\n  }\n{code}\n\nIt's because in FieldsReader, when we load a field \"for merge\" we create a FieldForMerge instance which subsequently does not return the right values for getBinary{Value,Length,Offset}.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-1374",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "Merging of compressed string Fields may hit NPE",
+    "systemSpecification": true,
+    "version": "2.4"
+}

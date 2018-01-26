@@ -1,0 +1,41 @@
+{
+    "comments": [
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 156779\nTest case for shell",
+            "date": "20040823T11:24:13",
+            "id": 0
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 156784\nFix: refactoring of parser/tokenizer iteration\n\nTo fix the bug I decided to refactor the parsing and tokenizing interaction in\nthe following way:\n\n1. TokenStream is no longer responsible for storing pushed back token and\nalways read a token and return it. In addition TokenStream always return\nToken.EOL. \n\nTo compensate for this Parser gets few method like peekToken, consume token\netc. In addition Parser merge Token.EOL* token sequence into single\ntoken|TI_AFTER_EOL where TI_AFTER_EOL flag provides sensitivity for EOL. In\nthis way it became easier to track all eol issues and the end result is simpler\ncode in the parser that handles the test case correctly.\n\n2. The patch follows the SpiderMonkey practice and changes the parser to check\nfor well terminated statement in the single place at the end of\nstatementHelper. All statements that do not require the terminating semicolon\nsimply return from the function while those that do fall through to the\nsemicolon checks. In this way semicolon is consumed as the part of the\nstatement only if it is required.\n\nIn addition the code always autoinsert the semicolon after do-while loop to\nfollow SpiderMonkey (see bug 238945).\n\n3. The patch fixes mishandling of labeled blocks for decompiler. Now they are\ncorrectly preserved in the output source. \n\n4. The patch makes TokenStream package private and moves isJSLineTerminator to\nScriptRuntime as public method that regexp parser can use.\n\n5. The patch adds explicit ASSIGN_LSH, ASSIGN_ADD etc. tokens replacing\nASSIGNOP+op pair as it reduces code complexity.",
+            "date": "20040823T11:52:34",
+            "id": 1
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Test case run before the patch:\n\nFAILED: Postfix ++ and -- should be applicable to multiline operand like       (i\n        )++\nFAILED: Check for missed semicolon after the statement should be done even if\nthe statemen itself spans several lines and the following should produce\nSyntaxError:\n        1+\n        2 3\nFAILED: Semicolon after } should not be treated as a part of statement and the\nfollowing should produce SyntaxError:\nif (1)                                                     \n        while (0) { };                                     \nelse ;                                                     \n\nAfter the patch:\nAll is PASSED\n",
+            "date": "20040823T15:32:00",
+            "id": 2
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "I committed the patch",
+            "date": "20040823T19:07:30",
+            "id": 3
+        }
+    ],
+    "component": "Core",
+    "description": "Rhino parser mistreats end-of-line and semicolon in several places:\n\n1. It consumes ';' after '}' as a part of the statement. For example, it allows\nthe following code:\n\nif (condition) \n\twhile (condition2) { };\nelse \n\tsomeOtherCode;\n\nwhile in fact it should be rejected since while (condition2) { }; constitutes 2\nstatements, not one.\n\n2. It does not allow for postfix ++ and -- to follow multi-line expression. For\nexample, the following valid code is rejected:\n\n(\ni)++\n\n3. It does not generate SyntaxError if a statement that requires terminating\nsemicolon spans several lines does not have one and is followed by another\nstatement on the same line and auto-insert semicolon before the second\nstatement. I.e. while it correctly detects invalid code like:\n\n1 + 2 3\n\nit does not generate SyntaxError for\n1 +\n2 3",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "256575",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "-- normal",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "Mistreatment of end-of-line and semicolon",
+    "systemSpecification": true,
+    "version": "head"
+}

@@ -1,0 +1,47 @@
+{
+    "comments": [
+        {
+            "author": "hannesw@gmail.com",
+            "body": "Created attachment 376408\nsimplistic patch\n\nset the node type of second SETPROP child to STRING to mirror pre-AST-refactoring output",
+            "date": "20090508T14:34:04",
+            "id": 0
+        },
+        {
+            "author": "hannesw@gmail.com",
+            "body": "Created attachment 376478\nnew patch\n\nObviously, the string id should only be forced for SETPROP and not for SETELEM operations.",
+            "date": "20090508T20:49:59",
+            "id": 1
+        },
+        {
+            "author": "hannesw@gmail.com",
+            "body": "I noted that Norris recently removed the comment and Kit.codeBug():\n\nhttp://bonsai.mozilla.org/cvsquery.cgi?treeid=default&module=all&branch=HEAD&branchtype=match&dir=&file=mozilla%2Fjs%2Frhino%2F&filetype=match&who=&whotype=match&sortby=Date&hours=2&date=explicit&mindate=2009-05-27+05%3A23&maxdate=2009-05-27+05%3A25&cvsroot=%2Fcvsroot\n\nUnfortunately the bug is still there, it just doesn't show in the Rhino shell because this is a codegen-only bug and the shell runs in interpreter mode, which is probably why Norris assumed the bug had been fixed. \n\nIf nobody else comes up with a better solution, I suggest I'll commit my workaround patch with a big fat TODO comment including some explanation and a link to this bug.",
+            "date": "20090602T09:17:49",
+            "id": 2
+        },
+        {
+            "author": "hannesw@gmail.com",
+            "body": "Created attachment 381303\npatch with workaround and TODO comment with link to this bug\n\nPatch with the workaround that sets the GETPROP id type to STRING and a revised TODO comment with link to this bug.",
+            "date": "20090603T14:44:26",
+            "id": 3
+        },
+        {
+            "author": "hannesw@gmail.com",
+            "body": "Committed last patch.\n\nChecking in src/org/mozilla/javascript/Parser.java;\n/cvsroot/mozilla/js/rhino/src/org/mozilla/javascript/Parser.java,v  <--  Parser.java\nnew revision: 1.141; previous revision: 1.140\ndone",
+            "date": "20090603T14:47:39",
+            "id": 4
+        }
+    ],
+    "component": "Compiler",
+    "description": "Created attachment 376406\nsimple test script\n\nFrom IRFactory.transformAssignment: (line 397)\n\n        // TODO(stevey)\n        // Bug: for code like \"var obj={p:3};[obj.p]=[9];\", \"left\" will\n        // be ARRAYLITERAL with an embedded GETPROP. This causes errors\n        // at codegen.\n        Kit.codeBug();\n\nLooking at dumps of the parse tree, I noticed that the difference between rhino 1.7R2 and cvs head is middle child node of the SETPROP is of type STRING in 1.7R2 and of type NAME in HEAD:\n\n                         WITH\n                             COMMA\n                                 SETPROP\n-                                    NAME obj 2\n-                                    NAME foo 2\n+                                    NAME obj\n+                                    STRING foo\n                                     NAME $1\n                                 NUMBER 0.0\n                         LEAVEWITH\n\nSo I came up with this really simple patch that sets the node type where it is created in Parser.simpleAssignment(). It seems to work, but it's a simple hack of course, so somebody who knows the parser/classgen should definitely look into this for a real solution.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "492036",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "-- normal",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "New AST code throws codebug on certain forms of destructuring assignment",
+    "systemSpecification": true,
+    "version": "head"
+}

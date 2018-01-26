@@ -1,0 +1,149 @@
+{
+    "comments": [
+        {
+            "author": "Simon Willnauer",
+            "body": "here is a first patch - all tests pass with it enabled",
+            "date": "2010-11-15T20:11:17.748+0000",
+            "id": 0
+        },
+        {
+            "author": "Robert Muir",
+            "body": "Simon, just an idea:\n\ncan we give the randomprovider a special -D value, such as 'randomPerField', and enable this by default?\nWe should set the value to 'randomPerField' both in lucenetestcase (for IDEs) and in common-build.xml/etc (for ANT) to be consistent.\n\nadditionally, is it possible to give this thing a toString() or similar, to dump out the field->codec mapping?\nThis would be useful when tests fail: the 'global' codec is currently printed in the @afterClass of LuceneTestCase:\n{noformat}\n    // if tests failed, report some information back\n    if (testsFailed)\n      System.out.println(\"NOTE: test params are: codec=\" + codec + \n        \", locale=\" + locale + \n        \", timezone=\" + (timeZone == null ? \"(null)\" : timeZone.getID()));\n{noformat}\n",
+            "date": "2010-11-15T20:23:06.950+0000",
+            "id": 1
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "This is a great idea!  Makes our tests even more random... though we may hit file descriptor limits in some tests...",
+            "date": "2010-11-15T22:09:08.724+0000",
+            "id": 2
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "Here is a new patch incorporating Roberts ideas. This patch enables the randomPerFieldCodec by default unless there is a explicit test codec set.\n\nEventually  we would want to enable users to plug in their codecs into the RandomCodecProvider to test it against all our testcases. I think that should be a separate issue though.\n\nsimon",
+            "date": "2010-11-16T15:49:43.706+0000",
+            "id": 3
+        },
+        {
+            "author": "Robert Muir",
+            "body": "bq. Eventually we would want to enable users to plug in their codecs into the RandomCodecProvider to test it against all our testcases. I think that should be a separate issue though.\n\nI don't think we should do this.\nOur src/test shouldn't be a setup for people to test arbitrary extensions to lucene such as Directories or Codecs.\nIf it happens to work that they can simply edit a file and test these things, thats great, but we shouldnt officially support this in src/test.\nsrc/test is no-holds-barred just doing the best we can to test lucene itself... it should stick to this level of scope.\n\nif we want to provide mechanisms to test arbitrary user extensions it should be supported and documented in src/java like LockStressTest. \n",
+            "date": "2010-11-16T17:50:26.355+0000",
+            "id": 4
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "bq. if we want to provide mechanisms to test arbitrary user extensions it should be supported and documented in src/java like LockStressTest.\n\ngood point I guess you are right.\n\nanyway I think this is ready to be committed though - I will hold off a little and commit if nobody objects...\n\nsimon",
+            "date": "2010-11-16T18:39:32.799+0000",
+            "id": 5
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "bq. anyway I think this is ready to be committed though - I will hold off a little and commit if nobody objects...\nactually this doesn't use PreFlexRW since some tests don't like it - yet I think we need some way to exclude a codec within a testcase so that testcases that don't work with say PreFlex that this codec is not used within that testcase. \n\n",
+            "date": "2010-11-16T18:46:21.207+0000",
+            "id": 6
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "Well, I remember now why I didn't use PreFlexRW for perFieldRandom testing. The problem is if we have IW writing field A with codec Standard then open a new IW with field A using PreFlexRW we get problems with the comparator if those segments are merged though.  So maybe we should make the whole thing disabled by default. and only run it optionally. ",
+            "date": "2010-11-16T18:54:40.158+0000",
+            "id": 7
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "bq. The problem is if we have IW writing field A with codec Standard then open a new IW with field A using PreFlexRW we get problems with the comparator if those segments are merged though.\n\nHmm this should be OK...\n\nThe PreFlexRW codec has a sneaky \"impersonation\" layer (test only)\nthat attempts to figure out which term comparator it's supposed to be\nusing when something is reading the segment.  It sounds like that\nlayer isn't being smart enough now.\n\nI think we could fix it -- really it just needs to know which codec is\n\"writing\".  If it's PreFlexRW that's writing then it needs to use the\nlegacy sort order; else, unicode.\n",
+            "date": "2010-11-17T11:26:56.311+0000",
+            "id": 8
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "Here is a new patch that uses PreFlexRW in the RandomCodecProvider and all tests pass. I had to tell the backwards tests to use the default CodecProvider since otherwise the test will fail if some PreFlex PreFlexRW segments are merged in weird order. \n\nfeedback welcome",
+            "date": "2010-11-17T18:51:44.595+0000",
+            "id": 9
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "another iteration including suggestions from robert (thanks now that I get your point it makes lots of sense :D) to either run Random-PerField (without PreFlexRW) OR an PreFlex-Only codec provider randomly. \n\n ",
+            "date": "2010-11-18T09:11:22.496+0000",
+            "id": 10
+        },
+        {
+            "author": "Robert Muir",
+            "body": "Simon looks good.\n\nthis way, we randomly emulate working with lucene 3.0 indexes in our test, which are always completely preflex codec.\n\nthe patch looks good to me (i would fix the RAMDOM spelling to RANDOM in that one place, thats all).\n\nIt would probably be good to get Mike to check that \"impersonation\" is working [this is the whole business of how we use preflex-rw for writing but preflex for reading and they share the same name]. I think at one time, maybe for about 5 minutes i understood how this worked before, but i lost it.",
+            "date": "2010-11-18T14:54:49.477+0000",
+            "id": 11
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "s/TEST_RAMDOM_CODEC_PER_FIELD/TEST_RANDOM_CODEC_PER_FIELD",
+            "date": "2010-11-18T14:55:24.753+0000",
+            "id": 12
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Patch looks great Simon!  Since preflexrw is now \"all or none\" we don't need any changes to the impersonation logic...",
+            "date": "2010-11-18T17:10:23.263+0000",
+            "id": 13
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "Committed revision 1036543",
+            "date": "2010-11-18T17:29:49.335+0000",
+            "id": 14
+        },
+        {
+            "author": "Robert Muir",
+            "body": "I'm reopening as there are some problems... ill back out simon's patch and try to suggest some modifications\nto fix the build but also improve reproducibility, etc.",
+            "date": "2010-11-18T18:41:16.103+0000",
+            "id": 15
+        },
+        {
+            "author": "Robert Muir",
+            "body": "ok I think i reworked most of the problems: impersonation problems, etc.\n\npatch is a bit messy probably but i think the logic is correct.\n\nyou can give it a try with 'ant test' (it changes a default of -Dtests.codec=randomPerField)\n",
+            "date": "2010-11-18T21:11:36.931+0000",
+            "id": 16
+        },
+        {
+            "author": "Robert Muir",
+            "body": "ok after working on this (and running the tests over and over again), i just hit a non-reproducible test fail.\n\nthis stuff is really complex, we should really consider whether we should do this.\n",
+            "date": "2010-11-18T21:14:47.056+0000",
+            "id": 17
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "bq. ok after working on this (and running the tests over and over again), i just hit a non-reproducible test fail.\nrobert I think your patch looks good though...\n\nwhat kind of error did you hit? can you share?\n\nsimon\n",
+            "date": "2010-11-19T09:54:18.768+0000",
+            "id": 18
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "New version of this patch... there was a sneaky problem because IndexWriterConfig had a final static CodecProvider default, which held onto the wrong CodecProvider instance and caused tricky test failures.",
+            "date": "2010-11-19T19:05:02.270+0000",
+            "id": 19
+        },
+        {
+            "author": "Robert Muir",
+            "body": "Nice find Mike!\n\nI think this was a major cause of the problems!\n",
+            "date": "2010-11-19T21:17:45.970+0000",
+            "id": 20
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "bq. Nice find Mike!\noh man good catch :)\n\nthanks for diggin",
+            "date": "2010-11-20T15:07:10.872+0000",
+            "id": 21
+        }
+    ],
+    "component": "general/test",
+    "description": "Since we now have a real per field codec support we should enable to run the tests with a random codec per field. When I change something related to codecs internally I would like to ensure that whatever combination of codecs (except of preflex) I use the code works just fine. I created a RandomCodecProvider in LuceneTestCase that randomly selects the codec for fields when it sees them the first time. I disabled the test by default to leave the old randomize codec support in as it was / is.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-2764",
+    "issuetypeClassified": "OTHER",
+    "issuetypeTracker": "OTHER",
+    "priority": "Minor",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "Allow tests to use random codec per field",
+    "systemSpecification": true,
+    "version": "4.0-ALPHA"
+}

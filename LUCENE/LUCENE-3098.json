@@ -1,0 +1,167 @@
+{
+    "comments": [
+        {
+            "author": "Martijn van Groningen",
+            "body": "I think this can be implemented as separate collector and then together with the SecondPassGroupingCollector executed in the second search. We can use the MultiCollector for that.",
+            "date": "2011-05-14T14:28:41.216+0000",
+            "id": 0
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "I agree we should make it easy to get total number of (unique) groups.\n\nWe may want to just fold this into the 1st pass collector since it's already looking up group ord + value?",
+            "date": "2011-05-14T15:59:30.224+0000",
+            "id": 1
+        },
+        {
+            "author": "Martijn van Groningen",
+            "body": "Attached an initial patch for computing the total group count.\n\nCurrently it is implemented as a separate collector. The collector can be executed in the first and second pass if the MultiCollector is used.\n\nbq. We may want to just fold this into the 1st pass collector since it's already looking up group ord + value? \nThe 1st pass collector is more concerned with finding the top N groups. For this it takes in account the sort within a group to choose the right group head. The total group count collector doesn't care about the group sort. It just increments the count if an unseen group has been detected. The group count collector needs to do this for all groups, not just the top N. Therefore I think it is best implemented in a separate collector.\n\nI also measured some basic performance. I used a machine with a 2.16 GHz Core 2 Duo processor and 4GB RAM. I used an index of 30M documents. The group field has around 7500 unique values. The average search time was around 350 ms. The average heap usage was 122 MB. I ran 50 searches in parallel with only the total group count collector.",
+            "date": "2011-05-15T10:58:49.414+0000",
+            "id": 2
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Thanks for the quick pach Martijn!\n\nOK I think a dedicated separate collector is a good approach.\n\nThough, I'm nervous that you pull a top level DocTermsIndex just to get the max number of unique groups.  In fact, it's sort of odd that the user should even have to pass this in?  Actually, SentinelIntSet rehashes itself... so why do we need to alloc it to the max possible values up front?\n\nAlso, it'd be great to fold this collector in the random test in TestGrouping; I can do that too if you don't want to (TODO <-- I put this here to try to remind my later self!).",
+            "date": "2011-05-15T12:14:48.753+0000",
+            "id": 3
+        },
+        {
+            "author": "Martijn van Groningen",
+            "body": "bq. SentinelIntSet rehashes itself... so why do we need to alloc it to the max possible values up front?\nActually we don't. I will remove it. \n\nbq. it'd be great to fold this collector in the random test in TestGrouping\nNo problem. I will fold it into the random test.",
+            "date": "2011-05-15T13:43:15.187+0000",
+            "id": 4
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "OK thanks Martijn!  The new collector looks great.",
+            "date": "2011-05-15T14:00:37.535+0000",
+            "id": 5
+        },
+        {
+            "author": "Martijn van Groningen",
+            "body": "Attached new patch.\n* Added total count collector to random tests\n* Removed calculating max possible values upfront. Instead I added a initial size instead. A larger initial size results in less rehashing. Handy if you know more or less the number of groups upfront.\n\nbq. I'm nervous that you pull a top level DocTermsIndex just to get the max number of unique groups.\nI should have been nervous too! Turns out that the average heap usage is now around 59MB. A decrease of heap usage around 50%!\n\nThe random tests are really valuable! I found a bug with it. Group with null values weren't handled properly. Changing the random test was a bit difficult for me. So I think it is good if you take a look at it.",
+            "date": "2011-05-15T17:35:30.341+0000",
+            "id": 6
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Patch looks great!  And the changes to TestGrouping look spot on --\nyou randomly swap in the TotalGroupCountCollector (via MultiCollector) and\nassert that slowGrouping matches.\n\n  * Maybe only one ctor for TopGroups?  (Ie, we just pass in null as\n    totalGroupCount).  I'm wary of ctor explosion over time...\n\n  * In TestGrouping, you don't need a separate uniqueGroupCount int?\n    Can't you just use knownGroups.size() in the end?\n\n  * For TotalGroupCountCollector, in the jdocs for the ctor maybe\n    state that caller should set initialSize to rough estimate of how\n    many uniuqe groups are expected, but that this uses up 4 bytes *\n    initialSize?  Maybe we should also add a ctor that sets a default\n    for this (128?) and mark the other ctor as expert?\n\nHmm, it's a little odd to have TopGroups hold the totalGroupCount?\nIe, it's only the test case that makes use of this, because the 2nd\npass collector just sets it to null?  It'd be nice to find some way to\nhave 2nd pass collector be able to set this...\n",
+            "date": "2011-05-15T18:05:11.114+0000",
+            "id": 7
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "{quote}\nbq. I'm nervous that you pull a top level DocTermsIndex just to get the max number of unique groups.\n\nI should have been nervous too! Turns out that the average heap usage is now around 59MB. A decrease of heap usage around 50%!\n{quote}\n\nRight, we should avoid pulling FieldCache entries for top level reader, since it doubles the RAM usage if you also pull per-segment (as we do here).  Also, it's rather CPU costly to compute -- does a merge sort of all terms in the index.",
+            "date": "2011-05-15T18:06:32.867+0000",
+            "id": 8
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "bq. The random tests are really valuable! I found a bug with it. Group with null values weren't handled properly.\n\nOh, I'm glad to hear that ;)  I had just added testing of the null case...\n\nWe are big fans of randomized testing -- I wrote about this here: http://blog.mikemccandless.com/2011/03/your-test-cases-should-sometimes-fail.html",
+            "date": "2011-05-15T18:08:28.923+0000",
+            "id": 9
+        },
+        {
+            "author": "Martijn van Groningen",
+            "body": "{quote}\n * Maybe only one ctor for TopGroups?  (Ie, we just pass in null as\n   totalGroupCount).  I'm wary of ctor explosion over time...\n\n * In TestGrouping, you don't need a separate uniqueGroupCount int?\n   Can't you just use knownGroups.size() in the end?\n\n * For TotalGroupCountCollector, in the jdocs for the ctor maybe\n   state that caller should set initialSize to rough estimate of how\n   many uniuqe groups are expected, but that this uses up 4 bytes *\n   initialSize?  Maybe we should also add a ctor that sets a default\n   for this (128?) and mark the other ctor as expert?\n{quote}\nI agree. I've updated the patch.\n\n{quote}\nHmm, it's a little odd to have TopGroups hold the totalGroupCount?\nIe, it's only the test case that makes use of this, because the 2nd\npass collector just sets it to null?  It'd be nice to find some way to\nhave 2nd pass collector be able to set this...\n{quote}\nThat would be nice. Future collectors might need something similar. I'm currently think about a TopGroupsEnrich interface that collectors can implement. This allows them to add data to the TopGroups like total group count. The SecondPassGroupingCollector has a list of collectors that implement the TopGroupsEnrich interface. When the getTopGroups() method is executed it iterates of the these collectors and the TopGroups is enriched with data. Downside is that the fields inside TopGroups can't be final and properly we need setters. I think if we do something like this we should do this in a new Jira issue. ",
+            "date": "2011-05-15T19:13:10.661+0000",
+            "id": 10
+        },
+        {
+            "author": "Martijn van Groningen",
+            "body": "Last but not least: the 3x branch backport.",
+            "date": "2011-05-15T20:02:20.652+0000",
+            "id": 11
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Patch looks great Martijn; thanks!\n\nMaybe, until we work out how multiple collectors can \"update\" a single TopGroups result, we should make TopGroups' totalGroupCount changeable after the fact?  Ie, add a setter?  This way apps can at least do it themselves before passing the TopGroups onto consumers within the apps?\n\nAlso, could you update the code sample in package.html, showing how to also use the TotalGroupCountCollector, incl. setting this totalGroupCount in the TopGroups?",
+            "date": "2011-05-16T09:39:22.800+0000",
+            "id": 12
+        },
+        {
+            "author": "Martijn van Groningen",
+            "body": "I will update both patches today. A setter in TopGroups for now seems fine to me.",
+            "date": "2011-05-16T10:02:12.716+0000",
+            "id": 13
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "One more idea: should we add a getter to TotalGroupCountCollector so you can actually get the groups (Collection<BytesRef>) themselves...?  (Ie, not just the total unique count).",
+            "date": "2011-05-16T10:07:06.662+0000",
+            "id": 14
+        },
+        {
+            "author": "Martijn van Groningen",
+            "body": "Hmmm... So you get a list of all grouped values. That can be useful. Only remember that doesn't tell anything about the group head (most relevant document of a group), since we don't sort inside the groups.",
+            "date": "2011-05-16T14:03:58.429+0000",
+            "id": 15
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Right, we'd make it clear the collection is unordered.\n\nIt just seems like, since we are building up this collection anyway, we may as well give access to the consumer?",
+            "date": "2011-05-16T14:51:06.125+0000",
+            "id": 16
+        },
+        {
+            "author": "Martijn van Groningen",
+            "body": "That is true. It is just a simple un-orded collection of all values of the group field that have matches the query. I'll include this as well.",
+            "date": "2011-05-16T15:08:16.726+0000",
+            "id": 17
+        },
+        {
+            "author": "Martijn van Groningen",
+            "body": "Attached patch with the discussed changes.\n3x patch follows soon.",
+            "date": "2011-05-16T18:11:07.662+0000",
+            "id": 18
+        },
+        {
+            "author": "Martijn van Groningen",
+            "body": "Attached a new patch.\n\n* Renamed TotalGroupCountCollector to AllGroupsCollector. This rename reflects more what the collector is actual doing.\n* Group values are now collected in an ArrayList instead of a LinkedList. The initialSize is now also used for the ArrayList.",
+            "date": "2011-05-16T19:05:36.434+0000",
+            "id": 19
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Looks great Martijn!\n\nI'll commit in a day or two if nobody objects...",
+            "date": "2011-05-16T19:22:03.986+0000",
+            "id": 20
+        },
+        {
+            "author": "Martijn van Groningen",
+            "body": "Great! Attached the 3x backport.",
+            "date": "2011-05-16T19:37:33.944+0000",
+            "id": 21
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Thanks Martijn!!  But, in general, you don't have to do the 3.x backport ;)  I can do it too...\n\nWe want to minimize the effort for people to contribute to Lucene/Solr!\n\nBut thank you for backporting!",
+            "date": "2011-05-16T19:57:01.995+0000",
+            "id": 22
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Committed.  I made a small change to TestGrouping (renamed one variable) and tweaked jdocs a bit on AllGroupsCollector.\n\nThis is a great addition to the grouping module -- thanks Martijn!",
+            "date": "2011-05-17T17:35:14.171+0000",
+            "id": 23
+        },
+        {
+            "author": "Robert Muir",
+            "body": "Bulk closing for 3.2",
+            "date": "2011-06-03T16:37:19.004+0000",
+            "id": 24
+        }
+    ],
+    "component": "",
+    "description": "When grouping currently you can get two counts:\n* Total hit count. Which counts all documents that matched the query.\n* Total grouped hit count. Which counts all documents that have been grouped in the top N groups.\n\nSince the end user gets groups in his search result instead of plain documents with grouping. The total number of groups as total count makes more sense in many situations. ",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-3098",
+    "issuetypeClassified": "RFE",
+    "issuetypeTracker": "RFE",
+    "priority": "Major",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "Grouped total count",
+    "systemSpecification": true,
+    "version": ""
+}

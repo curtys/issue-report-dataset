@@ -1,0 +1,41 @@
+{
+    "comments": [
+        {
+            "author": "Nicolas Pombourcq",
+            "body": "Proposal: change getNodeTypeSpec to omit additional supertypes.\n\n--- nodetype/PredefinedNodeTypeTest.java        (revision 422074)\n+++ nodetype/PredefinedNodeTypeTest.java        (working copy)\n@@ -254,17 +254,28 @@\n      */\n     private static String getNodeTypeSpec(NodeType type)\n             throws RepositoryException {\n+        String typeName = type.getName();\n         StringWriter buffer = new StringWriter();\n  \n         PrintWriter writer = new PrintWriter(buffer);\n         writer.println(\"NodeTypeName\");\n-        writer.println(\"  \" + type.getName());\n+        writer.println(\"  \" + typeName);\n         writer.println(\"Supertypes\");\n         NodeType[] supertypes = type.getDeclaredSupertypes();\n         if (supertypes.length > 0) {\n             Arrays.sort(supertypes, NODE_TYPE_COMPARATOR);\n             for (int i = 0; i < supertypes.length; i++) {\n-                writer.println(\"  \" + supertypes[i].getName());\n+                String name = supertypes[i].getName();\n+                if (name.startsWith(\"nt:\") ||\n+                    name.startsWith(\"jcr:\") ||\n+                    (name.equals(\"mix:referenceable\") &&\n+                     (typeName.equals(\"mix:versionable\") ||\n+                      typeName.equals(\"nt:resource\") ||\n+                      typeName.equals(\"nt:versionHistory\") ||\n+                      typeName.equals(\"nt:version\") ||\n+                      typeName.equals(\"nt:frozenNode\")))) {\n+                    writer.println(\"  \" + supertypes[i].getName());\n+                }\n             }\n         } else {\n             writer.println(\"  []\");\n",
+            "date": "2006-07-25T21:06:29.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "Hi Nicolas,\n\nThank you for the proposal.\n\nThe patch introduces a check for supertype names that have the prefix 'jcr'. I don't see why this is necessary. Afaik there are only predefined node types with prefixes 'nt' and 'mix'.\n\nIs this some kind of left over or why is it necessary?\n\nOther than that the patch looks fine.",
+            "date": "2006-07-26T08:02:54.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Nicolas Pombourcq",
+            "body": "I have checked with David Pitfield who authored this patch and he agrees that the line you mention is not necessary.",
+            "date": "2006-07-26T15:49:16.000+0000",
+            "id": 2
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "Fixed in revision: 425992",
+            "date": "2006-07-27T07:46:58.000+0000",
+            "id": 3
+        }
+    ],
+    "component": "test",
+    "description": "As explained in section 6.7.22.2 (page 147) of the JSR 170 specification, an implementation is allowed to customize a predefined noe type definition with additional supertypes. The tests in PredefinedNodeTypeTest do not account for that and expect an exact match with the predefined node types.",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "JCR-491",
+    "issuetypeClassified": "OTHER",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "TCK: PredefinedNodeTypeTest does not allow additions to the predefined node types hierarchy",
+    "systemSpecification": true,
+    "version": ""
+}

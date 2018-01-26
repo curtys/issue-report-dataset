@@ -1,0 +1,101 @@
+{
+    "comments": [
+        {
+            "author": "Stefan Guggisberg",
+            "body": "test case",
+            "date": "2011-06-27T16:28:30.235+0000",
+            "id": 0
+        },
+        {
+            "author": "Julian Reschke",
+            "body": "Modified test case that uses random intermediate paths and user IDs so it can be run multiple time; also switches to common concurrent test utilities.\n\nCleanup remains a problem in the absence of a way to remove Users.",
+            "date": "2011-09-26T16:16:26.860+0000",
+            "id": 1
+        },
+        {
+            "author": "Julian Reschke",
+            "body": "OK, it seems there are two straightforward ways to fix this, depending how important we feel it is to parallelize user creation.\n\n(1) serialize all user/group creation, or\n\n(2) try a retry strategy.\n\n(2) seems to be a bit shaky due to session ownership. (1) seems to be simple.\n\nOpinions?",
+            "date": "2011-09-26T16:20:57.944+0000",
+            "id": 2
+        },
+        {
+            "author": "Julian Reschke",
+            "body": "Angela notes that this is not specific to the \"intermediate\" path signature. The user manager might be configured to introduce intermediate paths automatically, in which case the same problem can occur.",
+            "date": "2011-09-27T10:35:17.144+0000",
+            "id": 3
+        },
+        {
+            "author": "Julian Reschke",
+            "body": "test case modified to attempt user cleanup",
+            "date": "2011-09-27T10:36:01.669+0000",
+            "id": 4
+        },
+        {
+            "author": "Julian Reschke",
+            "body": "To measure the impact on serializing user creation, I just did a simple benchmark:\n\n    public void testBenchUserCreation() throws RepositoryException {\n\n        long ms = System.currentTimeMillis();\n        int cnt = 0;\n        \n        while (System.currentTimeMillis() - ms < 10000) {\n            JackrabbitSession s = null;\n            try {\n                s = (JackrabbitSession) getHelper().getSuperuserSession();\n                String name = \"newname-\" + UUID.randomUUID();\n                Authorizable authorizable = s.getUserManager().createUser(\n                        name, \"password1\", new TestPrincipal(name),\n                        INTERMEDIATE_PATH);\n                s.save();\n                userIDs.add(authorizable.getID());\n                log.println(authorizable + \" created\");\n                cnt += 1;\n            } finally {\n                s.logout();\n            }\n        }\n        \n        System.err.println (\"created \" + cnt + \" users in 10s\");\n    }\n\n    public void testBenchUserCreation2() throws Exception {\n\n        runTask(new Task() {\n            public void execute(Session session, Node test)\n                    throws RepositoryException {\n                testBenchUserCreation();\n            }\n        }, 8, \"/\" + testPath);\n    }\n\nOn my old quad core machine, a single thread can create ~60 users per second. 8 threads (without serialization) create ~100 users, 8 threads (with serialization) create ~70. Note that in the non-serialized case, some requests did fail, and the caller would need to be prepared to repeat them. It's a trade-off between robustness and performance...",
+            "date": "2011-09-27T12:41:41.770+0000",
+            "id": 5
+        },
+        {
+            "author": "Julian Reschke",
+            "body": "Proposed patch",
+            "date": "2011-09-27T13:13:57.373+0000",
+            "id": 6
+        },
+        {
+            "author": "Julian Reschke",
+            "body": "Note the current patch will not solve (completely) the problem in clustered installations.\n\nAlternatives:\n\n1) JCR lock on parent node: will prevent other changes in principals, such as changing properties, also that node is not lockable right now\n\n2) \"lock\" file, used to serialize access\n\n3) if the common modus operandi is the \"autoSave\" mode, the createUser code could indeed do a retry after refreshing the session.",
+            "date": "2011-09-27T14:14:58.971+0000",
+            "id": 7
+        },
+        {
+            "author": "Julian Reschke",
+            "body": "For archival purposes, here's an attempt of doing 3) for createUser():\n\n    /**\n     * @see UserManager#createUser(String, String, java.security.Principal, String)\n     */\n    public User createUser(String userID, String password,\n                           Principal principal, String intermediatePath)\n            throws AuthorizableExistsException, RepositoryException {\n        checkValidID(userID);\n        if (password == null) {\n            throw new IllegalArgumentException(\"Cannot create user: null password.\");\n        }\n        // NOTE: principal validation during setPrincipal call.\n        \n        int tryCount = isAutoSave() ? 3 : 1;\n        User user = null;\n        NodeImpl userNode = null;\n        \n        while (tryCount > 0 && user == null) {\n            tryCount -= 1;\n            \n            try {\n                userNode = (NodeImpl) nodeCreator.createUserNode(userID, intermediatePath);\n                setPrincipal(userNode, principal);\n                setProperty(userNode, P_PASSWORD, getValue(UserImpl.buildPasswordValue(password)), true);\n\n                user = createUser(userNode);\n                if (isAutoSave()) {\n                    session.save();\n                }\n            } catch (RepositoryException e) {\n                // something went wrong\n                user = null;\n                // revert changes\n                session.refresh(false);\n\n                if (e instanceof InvalidItemStateException && tryCount != 0) {\n                    // try again\n                    log.debug(\"Failed to create new User, retrying.\");\n                } else {\n                    // re-throw\n                    log.debug(\"Failed to create new User, reverting changes.\");\n                    throw e;\n                }\n            }\n        }\n\n        assert user != null;\n        \n        log.debug(\"User created: \" + userID + \"; \" + userNode.getPath());\n        return user;\n    }\n\nNote that this doesn't help for the non-autosave case (and would need to be extended to createGroup())",
+            "date": "2011-09-28T11:44:38.920+0000",
+            "id": 8
+        },
+        {
+            "author": "Julian Reschke",
+            "body": "Option 4, for completeness: use a helper session to create the intermediate nodes; this would be retry-able without affecting the caller's session.\n\nAfter discussions with Angela and Marcel the proposal is to live with the restriction, but to document it properly in Javadoc.",
+            "date": "2011-09-28T11:48:15.842+0000",
+            "id": 9
+        },
+        {
+            "author": "Julian Reschke",
+            "body": "Proposed patch, adding the test case (modified to do retries), and adding to the Javadoc explaining why retries may be needed.",
+            "date": "2011-09-29T15:24:58.040+0000",
+            "id": 10
+        },
+        {
+            "author": "angela",
+            "body": "looks good. just 2 minor comments regarding the the javadoc:\n\n> + * Note that all <code>create</code> calls will modify the current session. If\n\ni would stress that it's the current session associated with the user manager. if\nusers are not stored in a different session that session may differ from the one\nthe user manager was originally obtained from (see difference between the\n2 user manager implementations we are having in jackrabbit core).\n\n+ * the user manager is <em>not</em> in \"autosave\" mode (see\n+ * {@link UserManager#isAutoSave()}), problems like overlapping creation of\n+ * intermediate nodes may only surface upon a subsequent {@link Session#save()}\n+ * operation; callers should be prepared to repeat them in case this happens.\n\nin that case the editing session, which in the non-autosave mode is by definition\nthe same that is associated with the user manager, could also use the JCR\nlocking functionality to prevent collisions while creating users.",
+            "date": "2011-09-30T08:02:16.102+0000",
+            "id": 11
+        },
+        {
+            "author": "Julian Reschke",
+            "body": "fixed in trunk with r1177648",
+            "date": "2011-09-30T13:32:42.683+0000",
+            "id": 12
+        },
+        {
+            "author": "Julian Reschke",
+            "body": "I updated the note about the session, but left out a mention of JCR locks; in general, the caller will not know the location of the nodes in the repository (if they are there at all). Also, locking the whole tree would required the containing node to be lockable.",
+            "date": "2011-09-30T13:34:24.766+0000",
+            "id": 13
+        }
+    ],
+    "component": "security",
+    "description": "concurrently creating users using same intermediate path fails with \"node ... has been modified externally\".\n\nthe problem is the intermediate path. if it doesn't exist multiple threads try to create it concurrently: \n\no.a.jackrabbit.core.security.user.UserManagerImpl, line 1310ff:\n\n\n            String[] segmts = defaultPath.split(\"/\");\n            NodeImpl folder = (NodeImpl) session.getRootNode();\n            String authRoot = (isGroup) ? groupsPath : usersPath;\n\n            for (String segment : segmts) {\n                if (segment.length() < 1) {\n                    continue;\n                }\n                if (folder.hasNode(segment)) {\n                    folder = (NodeImpl) folder.getNode(segment);\n                    if (Text.isDescendantOrEqual(authRoot, folder.getPath()) &&\n                            !folder.isNodeType(NT_REP_AUTHORIZABLE_FOLDER)) {\n                        throw new ConstraintViolationException(\"Invalid intermediate path. Must be of type rep:AuthorizableFolder.\");\n                    }\n                } else {\n                    Node parent = folder;\n                    folder = addNode(folder, session.getQName(segment), NT_REP_AUTHORIZABLE_FOLDER);\n                }\n            }\n\nthe attached test case illustrates this issue/",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "JCR-3006",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "UserManager: concurrent user creation using same intermediate path fails",
+    "systemSpecification": true,
+    "version": "2.2.7"
+}

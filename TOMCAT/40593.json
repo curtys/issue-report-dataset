@@ -1,0 +1,71 @@
+{
+    "comments": [
+        {
+            "author": null,
+            "body": "The code you quoted is not the root cause of this behaviour. The root cause can\nbe found at line 483 of\nhttp://svn.apache.org/viewvc/tomcat/container/tc5.5.x/catalina/src/share/org/apache/catalina/session/StandardManager.java?revision=466608&view=markup\n\nAs far as I can see, the spec is silent on what should happen in this case. I am\ngoing to mark this as an enhancement request and start a discussion on the dev\nlist as to what, if anything, Tomcat should do in this case.",
+            "date": "20061125T08:32:44",
+            "id": 0
+        },
+        {
+            "author": null,
+            "body": "The conclusion from the discussion on the dev list was:\n- this change would be acceptable\n- it must be configurable\n- the default behaviour must be the current behaviour\n\nI'll come back to this later. In the meantime, you can always implement your own\nManager that extends StandardManager and overrides doUnload(). If you need help\nto do this, please ask on the users list.",
+            "date": "20061126T07:22:54",
+            "id": 1
+        },
+        {
+            "author": null,
+            "body": "Thanks Mark for the discussion.\n\nO.K, I will use my own Manager for the time being until you return.\n\nRegards.\nYuichiro",
+            "date": "20070120T05:24:23",
+            "id": 2
+        },
+        {
+            "author": null,
+            "body": "I have tried but I could't solve this problem.\n\nThe problem is that the listener is already stopped\nwhen doUnload is called.\nSo I think we have no way to call listener's method from\ndoUnload(or manager.stop).\n\nThe other way is using my own Context that extends StandardContext and \noverrides stop(), however I think it is not so good way.\n",
+            "date": "20070213T23:02:21",
+            "id": 3
+        },
+        {
+            "author": null,
+            "body": "Either Mark or Suzuki: did you ever develop a patch for this?  If so, please\nattach it to this item (or in Mark's case, just commit it).  I'll be glad to\nreview it.",
+            "date": "20070325T09:04:02",
+            "id": 4
+        },
+        {
+            "author": null,
+            "body": "I have seen that tomcat 6 the listenerStop() calls after manager.stop().\nI vote to change it also at tomcat 5.5 codebase.\n\nPeter\n\n(In reply to comment #5)\n> Either Mark or Suzuki: did you ever develop a patch for this?  If so, please\n> attach it to this item (or in Mark's case, just commit it).  I'll be glad to\n> review it.",
+            "date": "20070326T10:42:32",
+            "id": 5
+        },
+        {
+            "author": null,
+            "body": "Created attachment 19810\ntomcat5 patch for StandardContext calling listenerStop() after manager.stop()",
+            "date": "20070327T00:29:51",
+            "id": 6
+        },
+        {
+            "author": null,
+            "body": "Thanks Peter.\nI don't have good idea besides calling listenerStop() after manager.stop() \nsame as Tomcat6.\nIt is so simple, but I attached the patch.\n\nyuichiro\n",
+            "date": "20070327T00:31:00",
+            "id": 7
+        },
+        {
+            "author": null,
+            "body": "Fix with revision 522870 at tomcat 5.5 trunk.\n\nThanks for your patch.\nPeter",
+            "date": "20070327T04:39:03",
+            "id": 8
+        }
+    ],
+    "component": "Catalina",
+    "description": "I defined pathname=\"\" in the Manager tag,\nbecause I did not want to continue sessions\n even if my application(or tomcat) is reactivated. \n\nAs a result, sessions are not stored in the file \"SESSIONS.ser\",\nbut HttpSessionListener#sessionDestroyed is not called.\n\nI think following logic is the cause:\n---\n...In StandardContext#stop()\n    // Stop our filters\n    filterStop();\n\n    // Stop our application listeners\n    listenerStop();\n\n    // Stop ContainerBackgroundProcessor thread\n    super.threadStop();\n\n    if ((manager != null) && (manager instanceof Lifecycle)) {\n        ((Lifecycle) manager).stop();\n    }\n---\n\nI think it would be better that listenerStop() is called after manager#stop(),\nor that we do not set null to applicationLifecycleListenersObjects in \nlistenerStop() method at least for the HttpSessionListener instance.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "40593",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "RFE",
+    "priority": "P2 enhancement",
+    "product": "Tomcat 5",
+    "project": "TOMCAT",
+    "summary": "HttpSessionListener#sessionDestroyed is not called though the manager's pathname is emply.",
+    "systemSpecification": true,
+    "version": "Nightly Build"
+}

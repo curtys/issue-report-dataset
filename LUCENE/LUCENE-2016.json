@@ -1,0 +1,101 @@
+{
+    "comments": [
+        {
+            "author": "Michael McCandless",
+            "body": "Fix is trivial.",
+            "date": "2009-10-29T17:10:50.855+0000",
+            "id": 0
+        },
+        {
+            "author": "Robert Muir",
+            "body": "even disregarding the problem, I think FFFD is much better than truncation... its what i expect.\n\nbut I think we should handle U+FFFE also. (and FDD0-FDEF)\n\nthere are actually a few more 'guaranteed not to be a characters, not for interchange' outside of the BMP, but that invalid surrogate logic looks pretty hairy already :)\nto see the full list, look at http://www.unicode.org/charts/\n\nunder subheading: \nNoncharacters in Charts\n\nReserved range\n\nNoncharacters at end of ...",
+            "date": "2009-10-29T17:20:25.453+0000",
+            "id": 1
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Lucene has \"traditionally\" not enforced the \"not for interchange\"\ncharacters, ie, just let them through.\n\nBut then with the indexing speedups (LUCENE-843), we no longer allowed\nU+FFFF, and with the cutover to true UTF-8 in the index, we no longer\nallowed invalid surrogate pairs.\n\nAnd we know apps use these characters (because they hit problems with\nU+FFFF on upgrading to 2.3).\n\nSo I think it would be too anal to suddenly replace all of these\ninvalid interchange chars, starting today?  (Though, it would\nobviously be more \"standards compliant\").  Plus, it would cost us non\ntrivial indexing CPU to do so!!\n",
+            "date": "2009-10-29T17:40:19.341+0000",
+            "id": 2
+        },
+        {
+            "author": "Robert Muir",
+            "body": "Mike, I disagree.\n\nHere is my reasoning: Lucene Java happens to use U+FFFF as an internal identifier for processing.\nHowever, this is your choice, you  could have just as easily used U+FFFE, or some other codepoint even outside the BMP for this purpose. The standard gives you several options, perhaps you might need multiple process-internal characters to accomplish what you want to do internally.\n\nIts my understanding Lucene indexes should be portable to different programming languages: perhaps my implementation in C/perl/python decides to use a different process-internal character, this is allowed by Unicode and I think we should adhere to it, I don't think its being anal.\n\nFinally, I completely disagree with the nontrivial performance comment. The trick is to make sure the execution branch / checks for the process-internal characters outside the bmp, only occurs for surrogate pairs. They are statistically very rare and if done right, it will not affect performance of BMP content.\n\n",
+            "date": "2009-10-29T17:50:00.493+0000",
+            "id": 3
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "bq. Finally, I completely disagree with the nontrivial performance comment. The trick is to make sure the execution branch / checks for the process-internal characters outside the bmp, only occurs for surrogate pairs. They are statistically very rare and if done right, it will not affect performance of BMP content.\n\nOK I agree, you're right: we could in fact do this with negligible impact to performance.\n\nbq. Its my understanding Lucene indexes should be portable to different programming languages: perhaps my implementation in C/perl/python decides to use a different process-internal character, this is allowed by Unicode and I think we should adhere to it, I don't think its being anal.\n\nBut if we forcefully map all invalid-for-interchange unicode characters to the replacement character (I think that's what's being proposed, right?), then your app no longer has any characters it can use for its own \"internal\" purposes?\n\nCan you open a new issue to track this?  This is a wider discussion than preventing index corruption :)",
+            "date": "2009-10-29T18:07:25.217+0000",
+            "id": 4
+        },
+        {
+            "author": "Robert Muir",
+            "body": "{quote}\nBut if we forcefully map all invalid-for-interchange unicode characters to the replacement character (I think that's what's being proposed, right?), then your app no longer has any characters it can use for its own \"internal\" purposes?\n{quote}\n\nThis is not true. if you map them to replacement characters, then my app is free to use them \"process-internally\" as specified by the standard, without any concern that they will appear in the \"interchange\" (lucene index data).\n\nI agree with you, lets open a separate \"anal unicode issue\". Lets go with your U+FFFF fix for Lucene 2.9, since it fixes lucene java, but correct this for 3.x in the future?\n\n",
+            "date": "2009-10-29T18:10:33.617+0000",
+            "id": 5
+        },
+        {
+            "author": "Yonik Seeley",
+            "body": "bq. This is not true. if you map them to replacement characters, then my app is free to use them \"process-internally\" \n\nTricky semantics :-)  It rather depends on if you consider Lucene part if your \"process-internally\" .  Depending on the use case, it could be either.\n",
+            "date": "2009-10-29T18:18:48.066+0000",
+            "id": 6
+        },
+        {
+            "author": "Robert Muir",
+            "body": "bq. Tricky semantics It rather depends on if you consider Lucene part if your \"process-internally\" . Depending on the use case, it could be either.\n\nNot really, Lucene-java uses U+FFFF process-internally, but wasn't mapping it to something valid in the index. So when U+FFFF was stored in the index (or rather, wasn't being stored but handled incorrectly), it created an issue. This is a perfect example of this.\n\n",
+            "date": "2009-10-29T18:20:39.683+0000",
+            "id": 7
+        },
+        {
+            "author": "Robert Muir",
+            "body": "Michael, one last question. is there a possibility with your patch still of index problems if you had foobar<U+FFFF> but also foobar<U+FFFF><U+FFFF> ??? will it create duplicate terms of foobar<U+FFFD> ?",
+            "date": "2009-10-29T18:27:48.355+0000",
+            "id": 8
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "bq. is there a possibility with your patch still of index problems if you had foobar<U+FFFF> but also foobar<U+FFFF><U+FFFF> ??? will it create duplicate terms of foobar<U+FFFD> ?\n\nI think this won't cause problems -- that term will just be rewritten to foobar\\ufffd\\ufffd.",
+            "date": "2009-10-29T18:42:07.189+0000",
+            "id": 9
+        },
+        {
+            "author": "Robert Muir",
+            "body": "Michael, duh :) I think smart chinese has damaged my brain for the rest of the day.\n\nThanks for fixing this.",
+            "date": "2009-10-29T18:45:26.103+0000",
+            "id": 10
+        },
+        {
+            "author": "Earwin Burrfoot",
+            "body": "Being one of those hit by U+FFFF earlier, I'd rather like to see remapping happen in some filter and IW throwing an exception on what it deems 'illegal'. Or at very least a big fat documentation entry, that jumps in your face somehow and lists all codepoints that will be remapped.\n",
+            "date": "2009-10-29T18:56:04.596+0000",
+            "id": 11
+        },
+        {
+            "author": "Robert Muir",
+            "body": "Earwin, take a look at LUCENE-2019. I added a hyperlink to the list there... ",
+            "date": "2009-10-29T19:08:56.335+0000",
+            "id": 12
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Bulk close all 2.9.1 issues.",
+            "date": "2009-11-07T14:57:31.212+0000",
+            "id": 13
+        }
+    ],
+    "component": "",
+    "description": "If the invalid U+FFFF character is embedded in a token, it actually causes indexing to silently corrupt the index by writing duplicate terms into the terms dict.  CheckIndex will catch the error, and merging will hit exceptions (I think).\n\nWe already replace invalid surrogate pairs with the replacement character U+FFFD, so I'll just do the same with U+FFFF.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-2016",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "replace invalid U+FFFF character during indexing",
+    "systemSpecification": true,
+    "version": "2.4, 2.4.1, 2.9"
+}

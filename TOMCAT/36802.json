@@ -1,0 +1,41 @@
+{
+    "comments": [
+        {
+            "author": null,
+            "body": "Created attachment 16519\nUpdate to StandardContext to prevent double initialisation.",
+            "date": "20050924T22:40:35",
+            "id": 0
+        },
+        {
+            "author": null,
+            "body": "In 5.5.9, the call to init from addChild only happens if you are deploying the \nContext into a Host that has already been started.  In that case, your patch \ndoesn't do anything useful since the 'initialized' variable still won't be set \non the second call to init.",
+            "date": "20050925T00:31:24",
+            "id": 1
+        },
+        {
+            "author": null,
+            "body": "Thank you for your comment.\n\nThe host has already been started by the time the web application is deployed.\n\nThe getParent method constructed the correct ObjectName for the host and it was\nfound correctly.\n\nYes for the second call initialized will not be set, however the first call will\nbe blocked on the invoke on line 5005.\n\nThe second call will complete and control will return to the first, initialized\nwill now be true so the initialisation will not happen again (for the first call).\n",
+            "date": "20050925T01:28:07",
+            "id": 2
+        },
+        {
+            "author": null,
+            "body": "Ok, I see now.  I was thinking that you were trying to stop init being called \ntwice (which doesn't seem possible with the current JMX-deployment scheme).\n\nYou're patch is still sending the JMX Notification twice, so by the time you \nadd that, it seemed much simplier to simply do:\n  if( initialized ) {\n      return;\n  }\nSo that is what got committed to the CVS, and will appear in 5.5.13.",
+            "date": "20050925T02:33:10",
+            "id": 3
+        }
+    ],
+    "component": "Catalina",
+    "description": "Using JBoss 4.0.2 (With embeded Tomcat 5.5.9) when a web application is deployed\nthe context is initialised twice.  If you deploy a web application with a valve\ndefined in 'WEB-INF/context.xml' of the application the valve will be registered\ntwice and invoked twice for any invocation of the application.\n\nWhen Tomcat is run stand alone the deployer instantiates a new StandardContext\nand adds it as a child to the StandardHost, this in turn invokes the init method\nof the StandardContext - This correctly initialses the context based on the\nconfiguration.\n\nWhen Tomcat is embeded in JBoss the StandardContext is initialised, the host at\nthis stage is not available so JBoss invokes init on the StandardContext.  At\nthe top of the init method the context checks if it is associated with a parent\nhost as it is not the parent host is identified and the StandardContext added to\nthe parent.  The process of adding the context to the host causes the init\nmethod of the context to be invoked again.\n\nAlthough I have reported this against an older Tomcat version the affected code\nhas not been altered in the recent releases.\n\nI will attach a patch that contains a proposed fix.  The proposed fix simply\nchecks if the context has been initialised before performing the initialisation,\nif the initialisation has already been performed the initialisation is skipped.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "36802",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "BUG",
+    "priority": "P2 normal",
+    "product": "Tomcat 5",
+    "project": "TOMCAT",
+    "summary": "Embeded Tomcat Initialises Context Twice",
+    "systemSpecification": false,
+    "version": "5.5.9"
+}

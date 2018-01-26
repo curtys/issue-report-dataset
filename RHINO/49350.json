@@ -1,0 +1,101 @@
+{
+    "comments": [
+        {
+            "author": "rade@lshift.net",
+            "body": "changing ScriptRuntime::setAdapterProto as follows fixes things: \n\n    public static void setAdapterProto(Scriptable obj, Object adapter) {\n        Scriptable scope = ScriptableObject.getTopLevelScope(obj);\n        Scriptable wrapped = (Scriptable) Context.toObject(adapter, scope);\n        wrapped.setPrototype(obj);\n    }\n\nHowever, I'm not sure what the rationale was behind the original design. It is \ntherefore possible that the above completely misses the point :)\n",
+            "date": "20000817T19:05:20",
+            "id": 0
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "This code is in to support the use of JavaAdapters as in NervousText.js. See \nexamples/NervousText.js in the distribution. I verified that the proposed change \nbreaks this example:\n\n[rhino] java sun.applet.AppletViewer NervousText.html\nReferenceError: \"resize\" is not defined.\n        at org.mozilla.javascript.NativeGlobal.constructError(NativeGlobal.java:\n496)\n        at org.mozilla.javascript.ScriptRuntime.getBase(ScriptRuntime.java, Comp\niled Code)\n        at NervousText$init.call(Unknown Source)\n        at org.mozilla.javascript.ScriptRuntime.call(ScriptRuntime.java:1217)\n        at org.mozilla.javascript.JavaAdapter.callMethod(JavaAdapter.java:301)\n        at NervousText.init(<adapter>)\n        at sun.applet.AppletPanel.run(AppletPanel.java:333)\n        at java.lang.Thread.run(Thread.java:479)\n\nIn the init function, resize is called. In the Java implementation, the resize \nmethod lives in the base class, so we make the prototype of the JavaAdapter be \nthe Java reflection of the class so that base methods are \"inherited\". \n\nIt'd be great if we could figure out a way to make both work. Maybe the \nprototype should be changed only if it is set to Object.prototype (the default)?  \nIt's a bit of a weird case because of the collision of prototypes and \nclass-baseed inheritance.",
+            "date": "20000821T16:15:19",
+            "id": 1
+        },
+        {
+            "author": "rade@lshift.net",
+            "body": "Here is what I think should be done.\n\n1) Instead of setting the proto of the delegee to the wrapper, the proto of the \nwrapper is set to the delegee. This is *a lot* cleaner since it leaves the \ndelegee intact. It also means that any properties added later to the delegee (or \none of the objects in the prototype chain) will be accessible from the wrapper \n(on the Javascript side only though).\n\n2) When creating the wrapper class we not only generate methods for properties \non the delegee but also traverse the delegee's prototype chain. As a result, \nJava code can invoke methods on the Javascript object that are defined anywhere \nwithin the Javascript prototype chain.\n\n3) Instead of calling methods on the wrapper with \"this\" bound to the delegee, \nwe call them with \"this\" bound to the wrapper. This means that the \"this\" can be \nused to call methods on Java base classes. This *will* break existing code which \n calls the methods unqualified, but doing so was never the right thing to do in \nthe first place, IMHO.\n\nI have implemented 1)+3) and it works great. What do you think ?\n",
+            "date": "20000822T06:56:08",
+            "id": 2
+        },
+        {
+            "author": "rade@lshift.net",
+            "body": "Here's a nice little example of inheritance in Java and Javascript working in \nperfect harmony. This all works fine with the changes I proposed.\n\nA.java:\npublic class A extends B {\n    public String m1() { return \"m1\"+m2(); }\n}\n\nB.java:\npublic class B {\n    public String m2() { return \"m2\"; }\n    public String m4() { return \"m4\"; }\n}\n\nJavascript:\nfunction P() {}\nP.prototype.m2 = function() { return \"j2\"+this.m3(); }\nfunction J() {}\nJ.prototype = new P;\nJ.prototype.m3 = function() { return \"j3\"+this.m4(); }\nvar j = new J;\nvar jj = new JavaAdapter(Packages.A,j);\njj.m1(); //=> \"m1j2j3m4\"\n",
+            "date": "20000822T19:08:07",
+            "id": 3
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "Do you have a patch that implements the changes you suggest?\n\nThanks for looking at this.",
+            "date": "20000822T19:54:59",
+            "id": 4
+        },
+        {
+            "author": "rade@lshift.net",
+            "body": "Created attachment 13362\npatch (part 1/3)",
+            "date": "20000823T17:00:03",
+            "id": 5
+        },
+        {
+            "author": "rade@lshift.net",
+            "body": "Created attachment 13363\npatch (part 2/3)",
+            "date": "20000823T17:01:01",
+            "id": 6
+        },
+        {
+            "author": "rade@lshift.net",
+            "body": "Created attachment 13364\npatch (part 3/3)",
+            "date": "20000823T17:01:34",
+            "id": 7
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "I'm looking at this. Thanks for the patch files. Perhaps I'm doing something \nwrong, but I have trouble with the format of your patch files. I generally use a \nunified diff for patch files.",
+            "date": "20000824T14:09:04",
+            "id": 8
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "In the JavaAdapter patch you have\n\n+    public static Scriptable setAdapterProto(Scriptable obj, Object adapter) {\n+        Scriptable res = ScriptRuntime.toObject(ScriptableObject.getTopLevelSco\npe(obj),adapter);\n+        res.setPrototype(obj);\n+        return res;\n+    }\n\nThe parameters for Context.toObject are (value, scope). Did you mean \n    ScriptRuntime.toObject(adapter,ScriptableObject.getTopLevelScope(obj));\ninstead?",
+            "date": "20000828T13:45:40",
+            "id": 9
+        },
+        {
+            "author": "rade@lshift.net",
+            "body": "The parameters for Context.toObject are \"value,scope\". However, I'm using\n*ScriptRuntime* and there the parameters are \"scope,value\" :)\n",
+            "date": "20000904T14:10:01",
+            "id": 10
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "Finally got around to merging this patch. The only change I made was to keep\nRhino working on JDK 1.1.x by removing the use of HashSet. It's unfortunate \nbecause that looked like the best solution.\n\nChecking in examples/NervousText.js;\n/cvsroot/mozilla/js/rhino/examples/NervousText.js,v  <--  NervousText.js\nnew revision: 1.4; previous revision: 1.3\ndone\nChecking in org/mozilla/javascript/JavaAdapter.java;\n/cvsroot/mozilla/js/rhino/org/mozilla/javascript/JavaAdapter.java,v  <--  JavaAd\napter.java\nnew revision: 1.29; previous revision: 1.28\ndone\nChecking in org/mozilla/javascript/ScriptRuntime.java;\n/cvsroot/mozilla/js/rhino/org/mozilla/javascript/ScriptRuntime.java,v  <--  Scri\nptRuntime.java\nnew revision: 1.47; previous revision: 1.46\ndone\nChecking in org/mozilla/javascript/ScriptableObject.java;\n/cvsroot/mozilla/js/rhino/org/mozilla/javascript/ScriptableObject.java,v  <--  S\ncriptableObject.java\nnew revision: 1.20; previous revision: 1.19\ndone",
+            "date": "20000911T15:12:19",
+            "id": 11
+        },
+        {
+            "author": "rade@lshift.net",
+            "body": "Norris,\n\nin your attempt to eliminate HashSets you introduced an infinite loop in \nScriptableObject::getPropertyIds :\n\n       while (obj != null) {\n            Object[] ids = obj.getIds();\n            for (int i=0; i < ids.length; i++) {\n                h.put(ids[i], ids[i]);\n            }\n        }\n\nYou've missed out\n       obj = (Scriptable)obj.getPrototype();\nfrom the loop.\n",
+            "date": "20000912T15:32:58",
+            "id": 12
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "I did check in the fix to this, but didn't mark this fixed.",
+            "date": "20001030T19:38:18",
+            "id": 13
+        }
+    ],
+    "component": "Core",
+    "description": "For some bizarre reason there is some code in JavaAdapter that changes the \nprototype of the delegee object, e.g.\n new JavaAdapter(Packages.Foo, foo)\nwill actually change the prototype of foo to be the newly created object.\nThis is bad because\na) it is not very intuitive\nb) one cannot use Javascript inheritance (via prototypes) to implement methods \nof Java interfaces",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "49350",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "P3 normal",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "JavaAdapter changes prototype of delegee",
+    "systemSpecification": false,
+    "version": "other"
+}

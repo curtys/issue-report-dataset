@@ -1,0 +1,41 @@
+{
+    "comments": [
+        {
+            "author": "Marcel Reutegger",
+            "body": "As a proposed solution I added synchronisation to the SharedItemStateManager (SISM) using a ReadWriteLock. Multiple threads are allowed to read from the SISM as long as no other thread is writing to the SISM. Only one thread is allowed to write to the SISM at a time.\n\nread operations are the methods:\n- getItemState()\n- getNodeReferences()\n- hasItemState()\n- hasNodeReferences()\n\nwrite operation in method:\n- store()\n\nThe ReadWriteLock is a reentrant lock because the store operation also needs to read from the SISM / cache.",
+            "date": "2005-07-07T21:14:40.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "Proposed patch to SharedItemStateManager.",
+            "date": "2005-07-07T21:16:27.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Stefan Guggisberg",
+            "body": "+1, looks good.",
+            "date": "2005-07-07T21:37:18.000+0000",
+            "id": 2
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "Commited at revision: 209608",
+            "date": "2005-07-07T23:54:26.000+0000",
+            "id": 3
+        }
+    ],
+    "component": "jackrabbit-core",
+    "description": "Some time ago we removed synchronized modifiers from the methods store() hasItemState() and getItemState(). While some care has been taken to ensure the cache integrity, I think the contract for the SharedItemStateManager (SISM) is now broken. The JavaDoc does not clearly document this, but I think all relevant methods of the SISM working on ItemStates should be atomic.\n\nE.g. a call to hasItemState() should not return true for an ItemState that another thread is currently adding in store(). Similarly a getItemState() should not return an ItemState that is currenly added or modified in a store() operation.\n\nCurrently I see two options:\n- Change the methods to synchronized again. This will actually serialize all calls to the SISM.\n- Implement a more sophisticated synchronisation. E.g. multiple store operations can still be allowed, as long as their ChangeLogs do not intersect. Retrieving ItemStates might still be allowed while a ChangeLog is stored, as long as the ItemState to retrieve is not part of the ChangeLog.\n\nComments and suggestions are very welcome.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "JCR-164",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "SharedItemStateManager not properly synchronized",
+    "systemSpecification": true,
+    "version": ""
+}

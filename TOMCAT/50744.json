@@ -1,0 +1,101 @@
+{
+    "comments": [
+        {
+            "author": null,
+            "body": "The download source for Tomcat 5.5.32 is:\n\nhttp://archive.apache.org/dist/tomcat/tomcat-5/v5.5.32/bin/\n\nThe files that were downloaded are:\n\n_1_)\napache-tomcat-5.5.32-compat.tar.gz       2011-01-23 20:52  1.6M  \n\n_2_)\napache-tomcat-5.5.32.tar.gz              2011-01-23 20:54  7.8M  \n\nThe chsums matched and there is no corruption of any of the binaries/files.",
+            "date": "20110209T10:23:33",
+            "id": 0
+        },
+        {
+            "author": null,
+            "body": "(In reply to comment #0)\n> Catalina logs have some errors and I have attached the log to this BUG report).\n\nThere is no attachment. Without seeing the actual error it is hard to help.",
+            "date": "20110209T13:26:54",
+            "id": 1
+        },
+        {
+            "author": null,
+            "body": "You are going to provide some more information.\n\nThis isn't a bug report: it's a request for help. Please post to the user list before filing a bug. If this is determined to be a bug, please re-open.",
+            "date": "20110209T13:43:52",
+            "id": 2
+        },
+        {
+            "author": null,
+            "body": "Created attachment 26628\nCatalina Log",
+            "date": "20110209T14:02:44",
+            "id": 3
+        },
+        {
+            "author": null,
+            "body": "I personally think that it is not a help request. \n\nWe had a server.xml file working for both SSL port and Non-SSL port for Tomcat Version 5.5.27\n\nWe updated  the Tomcat to Version 5.5.32 and used the same server.xml file. With that the  SSL port of Tomcat stopped working.\n\nThe O/S and all the other things have remained the same on the server on which  Tomcat update was performed and that leads me to believe that something changed in Tomcat that caused the failure.\n\nI have upload the catalina log for your  perusal. Kindly review the log and let me know if in fact it is a configuartion issue and I need to pursue it with user group.\n\nThank you for your help and support in this matter.",
+            "date": "20110209T14:14:21",
+            "id": 4
+        },
+        {
+            "author": null,
+            "body": "From the log:\n\nFeb 8, 2011 8:40:32 PM org.apache.coyote.http11.Http11BaseProtocol init\nINFO: Initializing Coyote HTTP/1.1 on http-8080\nFeb 8, 2011 8:40:34 PM org.apache.coyote.http11.Http11BaseProtocol init\nSEVERE: Error initializing endpoint\njava.net.SocketException: Unbound server sockets not implemented\n\tat javax.net.ServerSocketFactory.createServerSocket(Unknown Source)\n\tat org.apache.tomcat.util.compat.Jdk14Compat.getUnboundSocket(Jdk14Compat.java:130)\n\tat org.apache.tomcat.util.net.jsse.JSSESocketFactory.checkConfig(JSSESocketFactory.java:393)\n\tat org.apache.tomcat.util.net.jsse.JSSE14SocketFactory.init(JSSE14SocketFactory.java:127)\n\tat org.apache.tomcat.util.net.jsse.JSSESocketFactory.createSocket(JSSESocketFactory.java:96)\n\tat org.apache.tomcat.util.net.PoolTcpEndpoint.initEndpoint(PoolTcpEndpoint.java:293)\n\tat org.apache.coyote.http11.Http11BaseProtocol.init(Http11BaseProtocol.java:139)\n\tat org.apache.catalina.connector.Connector.initialize(Connector.java:1002)\n(...)",
+            "date": "20110209T14:23:42",
+            "id": 5
+        },
+        {
+            "author": null,
+            "body": "Created attachment 26629\nThis server.xml works correctly for both SSL and non-SSL port for Tomcat 5.5.27 and fails to serve Tomcat on SSL port for Tomcat 5.5.32\n\nSumitting the server.xml  file that works correctly for both SSL and non-SSL port for Tomcat 5.5.27 and fails to serve Tomcat on SSL port for Tomcat 5.5.32.\n\nIf Tomcat 5.5.32 is working correctly then should the server.xml that I have attached work corrctly (which worked as per the design on Tomcat 5.5.27) ?",
+            "date": "20110209T14:26:44",
+            "id": 6
+        },
+        {
+            "author": null,
+            "body": "Hi Konstantin:\n\nIf all the configuartions  required for the Tomcat to start services on both SSL port ( 8443) and non-SSL port (8080) are put in place in server.xml  and when Tomcat server is started the services on port 8443 are not started with Tomcat  5.5.32\n\nHere is the deal:\n\nroot@svmciqa002 $ netstat -an | grep 8443\nroot@svmciqa002 $ netstat -an | grep 8080\ntcp        0      0  *.8080                 *.*                    LISTEN\nroot@svmciqa002 $ \n\nI configure Tomcat 5.5.27 and use the same server.xml that was used for 5.5.32. Guess what - both  ports (8443 and 8080) are listening as per the design:\n\nroot@svmciqa002 $ netstat -an | grep 8443\ntcp        0      0  *.8443                 *.*                    LISTEN\nroot@svmciqa002 $ netstat -an | grep 8080\ntcp        0      0  *.8080                 *.*                    LISTEN\nroot@svmciqa002 $ \n\nI disagree with your argument that  I have incorrect syntax with my server.xml file.\n\nIf what you suspect is true, then I would not see the services  on port 8443  for both Tomcat Versions (5.5.27 as well as 5.5.32)\n\nKindly get back to me with your thoughts on this.\n\nThank you for your help and support in this matter.\n\nSri",
+            "date": "20110209T20:54:40",
+            "id": 7
+        },
+        {
+            "author": null,
+            "body": "Created attachment 26630\n2011-02-11_tc55_50744_JSSESocketFactory.patch\n\n(In reply to comment #8)\n> I disagree with your argument that  I have incorrect syntax with my server.xml\n> file.\n\nWhom do you disagree with? I never said the above.\n\nThe issue here is that the 1.4 JVM that you are using does not implement a feature of \"unbound server sockets\" that the current code uses.\n\nLooking at Jdk14Compat.java that probably stems from\nhttp://svn.apache.org/viewvc?view=revision&revision=778258\nthat apparently is a fix for\nhttps://issues.apache.org/bugzilla/show_bug.cgi?id=45528\n\nwhich is about 1,5 years ago.\n\n\nI am attaching a patch (for the current tc5.5.x, as of 5.5.33) that will probably fix this issue.",
+            "date": "20110209T21:30:57",
+            "id": 8
+        },
+        {
+            "author": null,
+            "body": "Hi Konstantin:\n\nThank you very much for working on this issue, identifying the problem and also providing a patch.\n\nI will download the patch and test it out before COB today. \n\nI missed the fact that Christopher Schultz made an update and inadvertantly I assumed that you indicated that \"This isn't a bug report\". I apologize for my mistake.\n\n\nRegards,\n\nSridhar",
+            "date": "20110210T10:23:00",
+            "id": 9
+        },
+        {
+            "author": null,
+            "body": "Created attachment 26651\n2011-02-14_tc55_50744_JSSESocketFactory.patch\n\nA better patch. Now it includes debug logging.",
+            "date": "20110214T10:04:07",
+            "id": 10
+        },
+        {
+            "author": null,
+            "body": "Created attachment 26652\n2011-02-14 Binary version of the patch for 5.5.33 (unofficial)\n\nCompiled classes that match the 2011-02-14_tc55_50744_JSSESocketFactory.patch patch, for Tomcat 5.5.33.\n\nTo install:\n1) Install Tomcat 5.5.33\n2) Unzip the archive into $CATALINA_HOME/server/classes\n\nTo enable debug logging in JSSESocketFactory, if you are using the default (JULI) logging, add the following line into $CATALINA_BASE/conf/logging.properties:\n\norg.apache.tomcat.util.net.jsse.JSSESocketFactory.level=FINE\n\nNote, that this is an unofficial patch and it is not released by ASF. Use it on your own risk.",
+            "date": "20110214T10:22:04",
+            "id": 11
+        },
+        {
+            "author": null,
+            "body": "I will test this out next week and let you know if the issue reported is resolved. Thank you very much Konstantin for helping me with the patch.\n\nRegards,\nSri",
+            "date": "20110216T09:50:33",
+            "id": 12
+        },
+        {
+            "author": null,
+            "body": "This has been fixed in 5.5.x and will be included in 5.5.34 onwards.",
+            "date": "20110818T16:44:51",
+            "id": 13
+        }
+    ],
+    "component": "Servlet & JSP API",
+    "description": "_1_)\nIn response to CVE-2011-0013 ( and also to resolve other security issues) we decided to update Tomcat from Verion 5.5.27  to 5.5.32\n\n_2_)\nThe process to enable SSL for Tomcat documented at URL http://tomcat.apache.org/tomcat-5.5-doc/ssl-howto.html was followed for setting up the SSL at Version 5.5.27.\n\n_2_a_)\n\nThe following command was used to generate the Certificate Keystore\n\n$JAVA_HOME/bin/keytool -genkey -alias tomcat -keyalg RSA \\\n  -keystore /home/tomcat/.keystore\n\n(However we used our customized password rather than  the deafult one changeit)\n\n_2_b_)\n \nThe following entry was added to server.xml :\n\n    <!-- Define a SSL HTTP/1.1 Connector on port 8443 -->\n    <Connector port=\"8443\" maxHttpHeaderSize=\"8192\"\n               maxThreads=\"150\" minSpareThreads=\"25\" maxSpareThreads=\"75\"\n               enableLookups=\"false\" disableUploadTimeout=\"true\"\n               acceptCount=\"100\" scheme=\"https\" secure=\"true\" SSLEnabled=\"true\"\n               clientAuth=\"false\" sslProtocol=\"SSL\"\n               keystoreFile=\"/home/tomcat/.keystore\"\n               keystorePass=\"<Known Password>\" algorithm=\"IbmX509\" />\n\n_2_c_)\nThis process has worked correctly for serving Tomcat without SSL on port 8080 and  with SSL  on port 8443\n\n_3_)\nSimilar process was used to setup SSL for Tomcat 5.5.32. However Tomcat starts with some errors serving Tomcat on non-SSL  port 8080 correctly and the SSL port on 8443 does not work. (Catalina logs have some errors and I have attached the log to this BUG report).\n\n_4_)\nWhat changed between version 5.5.27 and 5.5.32  that resulted in this failure?\n\nThank you for your help and support in this matter.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "50744",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "P2 major",
+    "product": "Tomcat 5",
+    "project": "TOMCAT",
+    "summary": "When Tomcat was updated from version 5.5.27 to 5.5.32, SSL support for Tomcat does not work on AIX 5.3 TL-11 SP-2",
+    "systemSpecification": true,
+    "version": "5.5.32"
+}

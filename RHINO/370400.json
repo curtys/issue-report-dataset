@@ -1,0 +1,89 @@
+{
+    "comments": [
+        {
+            "author": "bjervis@google.com",
+            "body": "I'm working on a fix for this.",
+            "date": "20070214T18:12:51",
+            "id": 0
+        },
+        {
+            "author": "bjervis@google.com",
+            "body": "Created attachment 255242\nThis is a PARTIAL patch to this bug.\n\nI will lay odds that this patch will crash if opt level is > -1.  Do not integrate this patch.  I just want comments on the semantics and the changes in interfaces.",
+            "date": "20070215T19:13:49",
+            "id": 1
+        },
+        {
+            "author": "brendan@mozilla.org",
+            "body": "FYI, bug 229756 reports the lack of write-once semantics in SpiderMonkey's const.\n\n/be",
+            "date": "20070215T19:31:30",
+            "id": 2
+        },
+        {
+            "author": "bjervis@google.com",
+            "body": "Created attachment 256211\nThis is a full patch\n\nThis completes the implementation of const.  There are a couple of validation tests that were failing always before (because they used const in them).  These tests (js1_5/String/regress-354541-02.js and js1_5/String/regress-354541-04.js) now fail only on -opt -1 but pass on opt >= 0.  Modifying the source to use 'var' instead of const exhibits the same behavior even without my changes.  I therefore conclude that these failures are unrelated to my changes.",
+            "date": "20070223T21:47:11",
+            "id": 3
+        },
+        {
+            "author": "bjervis@google.com",
+            "body": "Created attachment 256706\nConstProperties.java\n\nThe diff stuff didn't includes this new file (it goes in src/org/mozilla/javascript).  Sorry I missed this earlier.",
+            "date": "20070227T23:28:21",
+            "id": 4
+        },
+        {
+            "author": "brendan@mozilla.org",
+            "body": "Bob, please see comment 4.\n\n/be",
+            "date": "20070228T01:08:48",
+            "id": 5
+        },
+        {
+            "author": "bob@bclary.com",
+            "body": "The referenced tests are now in js1_5/extensions/ due to the use of Script. Does Rhino even support Script? Brendan, I can change the use of const in the tests to var if that would fix the problem.",
+            "date": "20070228T03:12:43",
+            "id": 6
+        },
+        {
+            "author": "bjervis@google.com",
+            "body": "Changing const to var does not change the test outcome (I tried that to isolate the cause).  Rhino does support Script, but these tests only work correctly on the compiled-thru-Java cde path.  The stand-alone interpreter gets theanswer wrong.  I traced the interpreted code path thru to the Script constructor and it appeared that it used the global scope as it's scope, and not the local scope of the caller (which is what the tests assume).\n\n",
+            "date": "20070228T04:57:42",
+            "id": 7
+        },
+        {
+            "author": "bjervis@google.com",
+            "body": "I just confirmed a bug in the existing patches.  For compiled code path, assigning to const declared variables at function scope does not seem to work.  The compile itself will crash in org.mozilla.javascript.optimizer.BodyCodegen.generateExpression with an Unexpected node type 151 error.  I'm working on an updated patch that fixes this case.",
+            "date": "20070326T22:22:31",
+            "id": 8
+        },
+        {
+            "author": "bjervis@google.com",
+            "body": "Created attachment 259915\nUpdated const patch that fixes problems with const in functions.\n\nThis patch fixes the previously noted bug in the original patches.",
+            "date": "20070328T16:52:40",
+            "id": 9
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "Checked in patch:\n\nRCS file: /cvsroot/mozilla/js/rhino/src/org/mozilla/javascript/ConstProperties.java,v\ndone\nChecking in ConstProperties.java;\n/cvsroot/mozilla/js/rhino/src/org/mozilla/javascript/ConstProperties.java,v  <--  ConstProperties.java\ninitial revision: 1.1\ndone\nChecking in Decompiler.java;\n/cvsroot/mozilla/js/rhino/src/org/mozilla/javascript/Decompiler.java,v  <--  Decompiler.java\nnew revision: 1.23; previous revision: 1.22\ndone\nChecking in IRFactory.java;\n/cvsroot/mozilla/js/rhino/src/org/mozilla/javascript/IRFactory.java,v  <--  IRFactory.java\nnew revision: 1.103; previous revision: 1.102\ndone\nChecking in InterpretedFunction.java;\n/cvsroot/mozilla/js/rhino/src/org/mozilla/javascript/InterpretedFunction.java,v  <--  InterpretedFunction.java\nnew revision: 1.54; previous revision: 1.53\ndone\nChecking in Interpreter.java;\n/cvsroot/mozilla/js/rhino/src/org/mozilla/javascript/Interpreter.java,v  <--  Interpreter.java\nnew revision: 1.320; previous revision: 1.319\ndone\nChecking in InterpreterData.java;\n/cvsroot/mozilla/js/rhino/src/org/mozilla/javascript/InterpreterData.java,v  <--  InterpreterData.java\nnew revision: 1.55; previous revision: 1.54\ndone\nChecking in NativeCall.java;\n/cvsroot/mozilla/js/rhino/src/org/mozilla/javascript/NativeCall.java,v  <--  NativeCall.java\nnew revision: 1.35; previous revision: 1.34\ndone\nChecking in NativeFunction.java;\n/cvsroot/mozilla/js/rhino/src/org/mozilla/javascript/NativeFunction.java,v  <--  NativeFunction.java\nnew revision: 1.64; previous revision: 1.63\ndone\nChecking in NodeTransformer.java;\n/cvsroot/mozilla/js/rhino/src/org/mozilla/javascript/NodeTransformer.java,v  <--  NodeTransformer.java\nnew revision: 1.69; previous revision: 1.68\ndone\nChecking in Parser.java;\n/cvsroot/mozilla/js/rhino/src/org/mozilla/javascript/Parser.java,v  <--  Parser.java\nnew revision: 1.110; previous revision: 1.109\ndone\nChecking in ScriptOrFnNode.java;\n/cvsroot/mozilla/js/rhino/src/org/mozilla/javascript/ScriptOrFnNode.java,v  <--  ScriptOrFnNode.java\nnew revision: 1.20; previous revision: 1.19\ndone\nChecking in ScriptRuntime.java;\n/cvsroot/mozilla/js/rhino/src/org/mozilla/javascript/ScriptRuntime.java,v  <-- ScriptRuntime.java\nnew revision: 1.259; previous revision: 1.258\ndone\nChecking in ScriptableObject.java;\n/cvsroot/mozilla/js/rhino/src/org/mozilla/javascript/ScriptableObject.java,v  <--  ScriptableObject.java\nnew revision: 1.119; previous revision: 1.118\ndone\nChecking in Token.java;\n/cvsroot/mozilla/js/rhino/src/org/mozilla/javascript/Token.java,v  <--  Token.java\nnew revision: 1.38; previous revision: 1.37\ndone\nChecking in TokenStream.java;\n/cvsroot/mozilla/js/rhino/src/org/mozilla/javascript/TokenStream.java,v  <--  TokenStream.java\nnew revision: 1.66; previous revision: 1.65\ndone\nChecking in optimizer/Codegen.java;\n/cvsroot/mozilla/js/rhino/src/org/mozilla/javascript/optimizer/Codegen.java,v  <--  Codegen.java\nnew revision: 1.245; previous revision: 1.244\ndone\nChecking in optimizer/OptFunctionNode.java;\n/cvsroot/mozilla/js/rhino/src/org/mozilla/javascript/optimizer/OptFunctionNode.java,v  <--  OptFunctionNode.java\nnew revision: 1.33; previous revision: 1.32\ndone\nChecking in resources/Messages.properties;\n/cvsroot/mozilla/js/rhino/src/org/mozilla/javascript/resources/Messages.properties,v  <--  Messages.properties\nnew revision: 1.68; previous revision: 1.67\ndone\n",
+            "date": "20070404T21:06:13",
+            "id": 10
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "Adding target milestone of 1.6R6 based on the date this bug was resolved FIXED.",
+            "date": "20070518T15:12:00",
+            "id": 11
+        }
+    ],
+    "component": "Core",
+    "description": "User-Agent:       Mozilla/5.0 (X11; U; Linux i686; en-US; rv:1.8.0.7) Gecko/20060926 Ubuntu/breezy-security Firefox/1.5.0.7\nBuild Identifier: Rhino 1.6R5\n\nAnother JS 1.5 feature that RHino needs.\n\nReproducible: Always\n\nSteps to Reproduce:\n1. Start Rhino shell\n2. enter 'const foo = 5;'\n3.\nActual Results:  \nParse error.\n\nExpected Results:  \nShould work and protect foo from assignment.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "370400",
+    "issuetypeClassified": "RFE",
+    "issuetypeTracker": "BUG",
+    "priority": "-- normal",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "Rhino should support const keyword",
+    "systemSpecification": false,
+    "version": "other"
+}

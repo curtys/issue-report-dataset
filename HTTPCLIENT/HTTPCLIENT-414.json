@@ -1,0 +1,41 @@
+{
+    "comments": [
+        {
+            "author": "colin.taylor",
+            "body": "Amazon sets its user cookie to year '38' which is  a problem\nbecause httpclient thinks 1938 and ignores the cookie. The reason why\nit does this lies in SimpleDateFormat\nFrom the JDK:\n\n\"For parsing with the abbreviated year pattern (\"y\" or \"yy\"),\nSimpleDateFormat must interpret the abbreviated year relative to some\ncentury. It does this by adjusting dates to be within 80 years before\nand 20 years after the time the SimpleDateFormat instance is created.\nFor example, using a pattern of \"MM/dd/yy\" and a SimpleDateFormat\ninstance created on Jan 1, 1997, the string \"01/11/12\" would be\ninterpreted as Jan 11, 2012 while the string \"05/04/64\" would be\ninterpreted as May 4, 1964.\"\n\nSo in effect any cookie set more than 20 years in the future and using\na 2 digit format is gonna be screwed. The assumption being made that all two\ndigit years > current (YY+20) are last century.\n\nTo change the assumption all thats needed is to pass in a\ntwo_year_start to DateUtil.parseDate()   which should be \"20\" in the\nexpires field check IMHO. This wouldnt affect any fully specified\nyears and any other users of the field can use  \"19\" if so desired.\nTangentially,  the making of the simple date format in the local loop aint ideal...\n\nfrom\n\nif (dateParser == null) {\n dateParser = new SimpleDateFormat(format, Locale.US);\n dateParser.setTimeZone(TimeZone.getTimeZone(\"GMT\"));\n}\n\nto\n\nif (dateParser == null) {\n dateParser = new SimpleDateFormat(format, Locale.US);\n dateParser.setTimeZone(TimeZone.getTimeZone(\"GMT\"));\n dateParser.setTwoDigitYearStart(two_year_start));   // new",
+            "date": "2004-12-24T04:44:29.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Created an attachment (id=13839)\nPatch (take 1)\n\nPlease let me know what you think.\n\nOleg",
+            "date": "2004-12-24T07:15:59.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Looks good to me.\n\nMike",
+            "date": "2004-12-25T04:02:05.000+0000",
+            "id": 2
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Patch committed.\n\nOleg",
+            "date": "2004-12-25T05:36:37.000+0000",
+            "id": 3
+        }
+    ],
+    "component": "HttpClient (classic)",
+    "description": " ",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "HTTPCLIENT-414",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "HTTPCLIENT",
+    "project": "HTTPCLIENT",
+    "summary": "cookies > 20 years invalidated",
+    "systemSpecification": true,
+    "version": "3.0 Beta 1"
+}

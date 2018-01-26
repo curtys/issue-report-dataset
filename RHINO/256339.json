@@ -1,0 +1,41 @@
+{
+    "comments": [
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 156635\nImplementation\n\nThe patch adds the new internal class, State, and uses it to store the state of\nJS frames.\n\nThe patch wraps the current interpreter frame into additional loop that is used\nto transfer control between function and during stack unwind.\n\nThe patch tries to keep the overhead of additional indirection via caching in\nlocal variables frequently used runtime objects like stack and string table\nreferences etc.\n\nThe patch also takes advantage of the fact that catch and finally handlers are\nstatements in JS and expression stack should be empty when they executes. Thus\nit is possible to use a local variable to track stack references and\nsave/restore in to the state structure only during call/normal return\nimplementation.\n\nNote that PC counter should always be accessed through state since virtually\nall call to ScriptRuntime methods can throw catchable exceptions. So the patch\nintroduces some overhead but it also allow to simplify code since many helper\nfunctions now takes only State and Context arguments instead of stack, sdBl,\nscope etc lists.",
+            "date": "20040820T21:24:15",
+            "id": 0
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "I run benchmarks from mozilla/js/benchmarks directory and on average the patch\nslows down the interpreter performance by less then 3%. ",
+            "date": "20040820T22:22:57",
+            "id": 1
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "The previous comments are wrong: with the patch\nmozilla/js/benchmarks/all_bench.js runs faster by 2-3% then without. In addition\nalthough mozilla/js/benchmarks/BenchPress.js runs slower, the difference is less\nthen 1%.",
+            "date": "20040820T22:46:12",
+            "id": 2
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "I committed the patch given the above results and the fact that with the patch\nscript recursion is really limited only by the amount of available memory.",
+            "date": "20040820T22:55:15",
+            "id": 3
+        }
+    ],
+    "component": "Core",
+    "description": "Currently interpreter uses Java stack frame per each script frame. That limits\nscript recursion to the maximum depth of Java stack and since interpreter\nconsumes a lot of stack space for its local variables, a script that runs OK\nwith optimizer can cause StackOverflowException.\n\nSo the idea is to dynamically allocate space to hold local variables and\neliminate recursive usage of Java stack eliminating probably last limit in Rhino\non code complexity.\n\nThis should also allow to implement tail recursion optimization later and simply\nintegration of continuation patch to Rhino that was originally developed against\nRhino 1.5R2 by Christopher Oliver.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "256339",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "RFE",
+    "priority": "-- enhancement",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "Stackless interpreter",
+    "systemSpecification": true,
+    "version": "head"
+}

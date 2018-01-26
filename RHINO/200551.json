@@ -1,0 +1,113 @@
+{
+    "comments": [
+        {
+            "author": "pschwartau@meer.net",
+            "body": "cc'ing Igor -",
+            "date": "20030403T22:45:18",
+            "id": 0
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Rivas, which version of Rhino do you use? If it is 1.5R4, try 1.5R3 or the\nlatest build from CVS, it can be that you are affected by the regression bug\n196017 in 1.5R4.",
+            "date": "20030403T23:01:52",
+            "id": 1
+        },
+        {
+            "author": "rivasdiaz@yahoo.com",
+            "body": "I use rhino 1.5r4 and j2sdk 1.4.1_02\n\nI checked the other bug but i can't see if it's related. My app works perfectly\nif it is on the classpath, but fails if it is in jre/ext/lib.\nI'll download tonight the new j2sdk 1.4.2 beta to test it.\n\nthanks.",
+            "date": "20030404T02:45:28",
+            "id": 2
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "As regarding bug 196017, although its reasons are different, the fix there may\nhelp in your situation as well. So could you try Rhino build from CVS tip from\nftp://ftp.mozilla.org/pub/js/rhinoLatest.zip ?\n\n",
+            "date": "20030404T08:29:45",
+            "id": 3
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "A detailed test case:\n\n1. Copy js.jar from a Rhino distribution to lib/ext directory from JDK/JRE\ninstallation.\n\n2. Save the following Java source as MyTest.java in some directory and compile it:\n\npublic abstract class MyTest\n{\n\tpublic abstract int test();\n\t\n\tpublic static int runTest (MyTest x)\n\t{\n\t\treturn x.test();\n\t}\n\t\n}\n\n3. Save the following JS as test.js in the same directory:\n\nvar o = { test: function() { return 100; } };\n\nvar test_instance = new JavaAdapter(Packages.MyTest, o);\n\nvar i = Packages.MyTest.runTest(test_instance);\n\nprint(i);\n\n4. Run from this directory:\n\njava -classpath . org.mozilla.javascript.tools.shell.Main -f test.js\n\nI got with 1.5R4:\njs: \"/home/igor/w/js/test.js\", line 3: uncaught JavaScript exception: TypeError:\nexpected java class object (/home/igor/w/js/test.js; line 3)\n\n\nwhile js.jar from 1.5R3 gives the proper output:\n100\n\nIf the same is run ",
+            "date": "20030412T11:21:46",
+            "id": 4
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 120301\nThe test case files as a single patch file for convenience",
+            "date": "20030412T11:24:10",
+            "id": 5
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "The fix in the bug 196017 does not fix the problem since with the current Rhino\ntip I got the same problem:\n\njs: \"/home/igor/w/js/test.js\", line 3: uncaught JavaScript exception: TypeError:\nexpected java class object (/home/igor/w/js/test.js; line 3).\n\nThe reason for this is that the fix only restored search for thread context\nloader when defining classes and not when doing class search in NativeJavaPackage.\n\n\n",
+            "date": "20030412T11:46:25",
+            "id": 6
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 120305\nFix: Introduction of Context.getApplicationClassLoader() to get proper application loader.\n\nThe patch adds Context.getApplicationClassLoader() that is now used in all\ncases as a parent loader for generated classes and as the default class loader\nfor NativeJavaPackage. The default implementation tries to use\nThread.getContextClassLoader, but only when it is available and if Rhino\nclasses is available through it. Otherwise the loader for Context instance is\nused. In this way if Rhino is loaded through a custom loader, it will be used,\nand if Rhino classes are placed in lib/ext,  Thread.getContextClassLoader still\ngive the application loader.\n\nAnd if this default policy would not work in a particular application,\nContext.getApplicationClassLoader() can be overridden to in that application.\n\nI believe in this way all functionality of Rhino 1.5R3 regarding class loading\nis restored while making sure that fixes that triggers class loading changes in\n1.5R4 are not affected.",
+            "date": "20030412T13:35:50",
+            "id": 7
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 120308\nPatch update: do not assume that Class.getClassLoader() is not null to be compatible with JDK 1.1",
+            "date": "20030412T13:39:44",
+            "id": 8
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 120370\nPatch update to add explicit getter/setter for application class loader to Context\r\n\n\n\nI changed the patch to provide explicit getter/setter for application class\nloader so changing the application loader can be done without subclassing\nContext and a custom loader will be checked that current Rhino classes is\naccessible through it. Moreover, the method can be called from scripts directly\nto help to identify class loader problems quickly.",
+            "date": "20030413T11:29:32",
+            "id": 9
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 120373\nPatch update: call Context.getApplicationClassLoader() each time a default class loader is needed in NativeJavaPackage\n\nIn the previous version of the patch NativeJavaPackage called\nContext.getApplicationClassLoader() only in its constructor effectively\nignoring changes subsequent changes in Context.getApplicationClassLoader(). The\nnew version calls the method each time a new class is accessed.",
+            "date": "20030413T15:10:29",
+            "id": 10
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "I committed the last version of the patch",
+            "date": "20030415T08:09:09",
+            "id": 11
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 120557\nThe fix version for Rhino150R4_BRANCH since the bug is a regression since 1.5R3",
+            "date": "20030415T08:11:25",
+            "id": 12
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "I committed the fix to Rhino150R4_BRANCH as well ",
+            "date": "20030415T08:19:09",
+            "id": 13
+        },
+        {
+            "author": "pschwartau@meer.net",
+            "body": "Verified FIXED.\n\nFollowing the precise steps Igor gave in Comment #5, I copied js.jar from\ndifferent Rhino 1.5 releases to C:\\Program Files\\Java\\j2re1.4.1\\lib\\ext\\\n\nThe output I got before this fix were the same as Igor's results:\n\n1.5R3      --->  100\n1.5R4      --->  JavaScript exception: TypeError: expected java class object\n1.5R5pre   --->  JavaScript exception: TypeError: expected java class object\n\n\nNow, with 1.5R5pre after this fix, I get 100 as output -",
+            "date": "20030415T22:19:04",
+            "id": 14
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Targeting as resolved against 1.5R4.1",
+            "date": "20040213T11:49:27",
+            "id": 15
+        }
+    ],
+    "component": "Core",
+    "description": "User-Agent:       Mozilla/5.0 (Windows; U; Windows NT 5.1; en-US; rv:1.2) Gecko/20021126\nBuild Identifier: Mozilla/5.0 (Windows; U; Windows NT 5.1; en-US; rv:1.2) Gecko/20021126\n\nIn my app I execute some javascript files, they use the constructor JavaAdapter\nto load and extend java clases, some of them abstract clases extended in\njavascript code. If I run my app this way:\n\njava -cp js.jar;myapp.jar myapp.Main\n\neverythigs work ok, but when I put js.jar on the jre/lib/ext directory, and execute\n\njava -jar myapp.jar\n\nwhen my code is trying to execute the javascript file I get an error on the line:\nnew JavaAdapter(...);\n\nThe error is:\n\nTypeError: expected java class object\n(jar:file:/C:/Work/Eclipse/docgen.jar!/com/prospectiva/templates/poder_general.js;\nline 547)\n        at org.mozilla.javascript.NativeGlobal.constructError(NativeGlobal.java:597)\n        at org.mozilla.javascript.NativeGlobal.constructError(NativeGlobal.java:557)\n        at org.mozilla.javascript.JavaAdapter.jsConstructor(JavaAdapter.java:100)\n        at inv1.invoke()\n        at org.mozilla.javascript.FunctionObject.doInvoke(FunctionObject.java:498)\n        at\norg.mozilla.javascript.FunctionObject.callVarargs(FunctionObject.java:518)\n        at org.mozilla.javascript.FunctionObject.construct(FunctionObject.java:450)\n        at org.mozilla.javascript.ScriptRuntime.newObject(ScriptRuntime.java:1265)\n        at\norg.mozilla.javascript.gen.c12.call(jar:file:/C:/Work/Eclipse/docgen.jar!/com/prospectiva/templates/poder_general.js:547)\n        at\norg.mozilla.javascript.optimizer.OptRuntime.callSimple(OptRuntime.java:275)\n        at\norg.mozilla.javascript.gen.c13.call(jar:file:/C:/Work/Eclipse/docgen.jar!/com/prospectiva/templates/poder_general.js:553)\n        at\norg.mozilla.javascript.gen.c13.exec(jar:file:/C:/Work/Eclipse/docgen.jar!/com/prospectiva/templates/poder_general.js)\n        at org.mozilla.javascript.Context.evaluateReader(Context.java:820)\n\n\nReproducible: Always\n\nSteps to Reproduce:\n1. just put js.jar on the jre/lib/ext directory and execute a javascript program\nthat uses new JavaAdapter(...)\n\nActual Results:  \nException thrown\n\nExpected Results:  \ninstantiate a new class",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "200551",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "-- normal",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "JavaAdapter not loading a class if js.jar installed in jre/lib/ext directory",
+    "systemSpecification": true,
+    "version": "other"
+}

@@ -1,0 +1,71 @@
+{
+    "comments": [
+        {
+            "author": "Jukka Zitting",
+            "body": "I looked at this and it seems like the issue is not with the JCR-584 implementation, but rather a synchronization error between the active session and the observation thread pushing changes to it. I'll dig deeper...",
+            "date": "2008-02-06T11:06:06.775+0000",
+            "id": 0
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Unfortunately I don't have a fix for this for jackrabbit-core 1.4.1. As a workaround until we have a proper fix I would recommend using some external synchronization mechanism in cases where you have heavy concurrent writes like this.",
+            "date": "2008-02-16T15:36:05.785+0000",
+            "id": 1
+        },
+        {
+            "author": "Carsten Ziegeler",
+            "body": "Just as additional info: I have the same issue from time to time, but I'm not having such heavy concurrent writes. Usually it occures in my scenario with 5 to 10 nodes being written by one thread, while another thread changes or removes other nodes.",
+            "date": "2008-02-18T08:36:47.699+0000",
+            "id": 2
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Scheduling for jackrabbit-core 1.4.2",
+            "date": "2008-02-21T17:59:55.540+0000",
+            "id": 3
+        },
+        {
+            "author": "Stefan Guggisberg",
+            "body": "it took me a while to figure it out but i guess i finally found the root causes of the 2 aforementioned exceptions, i.e.\n\na) javax.jcr.nodetype.ConstraintViolationException: /A/7 needs to be saved as well. \nb) javax.jcr.RepositoryException: /A: unable to update item.: Unable to resolve path for item: 016b885a-64aa-45b9-a990-05cbabb4586f/{http://www.jcp.org/jcr/1.0}primaryType\n\nhere's my analysis (based on r632346):\n\na) happens when \n - thread 1 is in ItemImpl.save(), somewhere around line 1153, just about calling\n   nodeState.getRemovedChildNodeEntries() \n-  thread 2 then calls LocalItemStateManager.stateModified() and updates the underlying \n   local state\n-  thread 1 continues and calls nodeState.getRemovedChildNodeEntries(), reporting\n   the id of the child node added by thread 2 (transient and local state are not in sync \n   at this moment, i.e. the transient state is temporarily stale)\n-  thread 2 then calls SessionItemStateManager.stateModified() and merges the transient\n   state with the underlying local state; transient and local state are in sync again\n- the result is an exception incorrectly complaining about an unsatisfied dependency \n  (id needs to be saved as well)\n\n\nb) is more severe, it happens when \n-  thread 1 is in NodeImpl.makePersistent(), somewhere within the synchronized block\n   starting at line 933, holding the monitor on the NodeState instance 'persistentState'\n-  thread 2 then calls ItemState.pull() (via LocalItemStateManager.stateModified()) and\n   waits for the monitor  the NodeState instance before entering NodeState.copy())...\n-  thread 1 leaves the synchronized block\n-  thread 2 now calls NodeState.copy(), effectively overwriting thread 1's changes in \n   the change log...\n-  the result is an exception (unable to resolve path) because the child node entry \n   created by thread 1 was lost\n\n",
+            "date": "2008-02-29T15:50:51.944+0000",
+            "id": 4
+        },
+        {
+            "author": "Stefan Guggisberg",
+            "body": "fixed in r 632376",
+            "date": "2008-02-29T16:47:55.767+0000",
+            "id": 5
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Cool stuff, thanks! Merged to the 1.4 branch in revision 633847.",
+            "date": "2008-03-05T13:53:31.464+0000",
+            "id": 6
+        },
+        {
+            "author": "Stefan Guggisberg",
+            "body": "reopening because o.a.j.core.ConcurrentNodeModificationTest still occasionally fails with the same symptoms as described in this issue ",
+            "date": "2008-03-07T13:53:49.033+0000",
+            "id": 7
+        },
+        {
+            "author": "Stefan Guggisberg",
+            "body": "fixed in r634681",
+            "date": "2008-03-07T14:35:30.717+0000",
+            "id": 8
+        }
+    ],
+    "component": "jackrabbit-core",
+    "description": "Exceptions are thrown when trying to add child nodes to one parent node from different sessions running concurrently. One of the following exceptions is always thrown:\n\n * Exception in thread \"Thread-8\" java.lang.RuntimeException: javax.jcr.nodetype.ConstraintViolationException: /A/7 needs to be saved as well.\n * Exception in thread \"Thread-8\" java.lang.RuntimeException: javax.jcr.RepositoryException: /A: unable to update item.: Unable to\nresolve path for item: 016b885a-64aa-45b9-a990-05cbabb4586f/{http://www.jcp.org/jcr/1.0}primaryType: Unable to resolve path for item: 016b885a-64aa-45b9-a990-05cbabb4586f/{http://www.jcp.org/jcr/1.0}primaryType\n\nAccording to JCR-584 \"Improve handling of concurrent node modifications\" the following scenario \"session 1 adds or removes child node 'x', session 2 adds or removes child node 'y'\" should run gracefully, but the following test constantly fails:\n\npublic void testSync() throws Exception\n{\n       Node rootNode = getSession ().getRootNode ();\n       rootNode.addNode (\"A\");\n       rootNode.save();\n\n       final Session session1 = getRepository().login (new SimpleCredentials (\"userName\", \"password\".toCharArray()));\n       final Session session2 = getRepository().login (new SimpleCredentials (\"userName\", \"password\".toCharArray()));\n\n       Thread thread1 = new Thread (new Runnable()\n       {\n               public void run()\n               {\n                       try\n                       {\n                               addNodes (\"A\", session1, 0);\n                       }\n                       catch (RepositoryException ex)\n                       {\n                               throw new RuntimeException (ex);\n                       }\n               }\n       });\n\n       Thread thread2 = new Thread (new Runnable()\n       {\n               public void run()\n               {\n                       try\n                       {\n                               addNodes (\"A\", session2, 1001);\n                       }\n                       catch (RepositoryException ex)\n                       {\n                               throw new RuntimeException (ex);\n                       }\n               }\n       });\n\n       thread1.start();\n       thread2.start();\n\n       thread1.join();\n       thread2.join();\n}\n\nprivate void addNodes (String parentName, Session session, int startIndex)\n       throws RepositoryException\n{\n       Node parentNode = session.getRootNode().getNode (parentName);\n       for (int i = startIndex; i < startIndex + 100; i++)\n       {\n               String name = Integer.toString (i);\n               parentNode.addNode (name);\n               parentNode.save();\n       }\n}\n\nBTW: exceptions were also thrown when I tried to add nodes from one thread and remove some of them from another one. Each thread used it's own session, each node had unique name.\n\n",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "JCR-1359",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Critical",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "Adding nodes from concurrently running sessions cause exceptions",
+    "systemSpecification": true,
+    "version": "1.3.3, 1.4, core 1.4.1"
+}

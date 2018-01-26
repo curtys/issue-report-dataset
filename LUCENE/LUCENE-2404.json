@@ -1,0 +1,77 @@
+{
+    "comments": [
+        {
+            "author": "Uwe Schindler",
+            "body": "New patch, which preserves backwards with matchVersion. It adds an LowerCaseFilter in the ctor of ThaiWordFilter automatically, so the bahviour does not change, except a second bug:\nThe previous version of the filter did not correctly lowercase a token that contains \"ThaiEnglishThai\" text. As the filter is now plugged before, it will lowercase this correctly, so its a backwards break.\n\nSince Version 3.1, the filter is no longer automatically used, instead ThaiAnalyzer plugs it before the filter (I reversed the order in contrast to previous patch to have the same order in deprecated and actual case).",
+            "date": "2010-04-19T18:00:09.628+0000",
+            "id": 0
+        },
+        {
+            "author": "Robert Muir",
+            "body": "This is great. it already more than doubles the speed of this filter on english text...\n\nbut this filter has always been cheating with the UnicodeBlock check on charAt(0), as you could have EnglishThaiEnglish too.\nit also cheats because it doesn't check that the break boundaries are words, and not just spaces or punctuation.\n\nI suppose the above two things are not much of a problem if you assume StandardTokenizer, but maybe a problem for\nother Tokenizers... tricky to figure out how to make it correct and still as fast as the 'cheating'\n",
+            "date": "2010-04-19T18:17:27.459+0000",
+            "id": 1
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Another variant of the previous patch, slightly faster as Robert said, maybe we get an inspiration by that. It uses cloneAttributes and does not create new clones all the time.",
+            "date": "2010-04-19T18:24:45.773+0000",
+            "id": 2
+        },
+        {
+            "author": "Robert Muir",
+            "body": "Looking at Uwe's code points out there is another bug in the old filter, \nit does not really handle position increments correctly.\n\nSo if there is a stopword or some other posInc it gets applied to all\nsubwords... in my opinion only the first token should carry this.\n\nOtherwise you can have problems like SOLR-1852",
+            "date": "2010-04-19T18:32:37.280+0000",
+            "id": 3
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Yes, this is not a problem if you use the ThaiAnalyzer, as StopFilter comes after this filter. But users of Solr plugging this filter after a StopFilter will have problems.",
+            "date": "2010-04-19T19:29:31.219+0000",
+            "id": 4
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "New version of the cloneAttributes-version, that produces correct position increments with matchVersion=3.1.",
+            "date": "2010-04-19T20:33:32.538+0000",
+            "id": 5
+        },
+        {
+            "author": "Robert Muir",
+            "body": "Nice Uwe. So this patch fixes quite a few bugs and speeds things up... do you want to commit?",
+            "date": "2010-04-19T20:35:38.578+0000",
+            "id": 6
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "I will commit this soon after adding changes.",
+            "date": "2010-04-19T20:43:49.806+0000",
+            "id": 7
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Committed revisions: 935734 (Lucene) & 935739 (Solr)",
+            "date": "2010-04-19T20:58:17.579+0000",
+            "id": 8
+        },
+        {
+            "author": "Grant Ingersoll",
+            "body": "Bulk close for 3.1",
+            "date": "2011-03-30T15:50:26.600+0000",
+            "id": 9
+        }
+    ],
+    "component": "modules/analysis",
+    "description": "The ThaiWordFilter creates new Strings out of term buffer before passing to The BreakIterator., But BreakIterator can take a CharacterIterator and directly process on it without buffer copying.\nAs Java itsself does not provide a CharacterIterator implementation in java.text, we can use the javax.swing.text.Segment class, that operates on a char[] and is even reuseable! This class is very strange but it works and is in JDK 1.4+ and not deprecated.\n\nThe filter also had a bug: It stopped iterating tokens when an empty token occurred. Also the lowercasing for non-thai words was removed and put into the Analyzer by adding LowerCaseFilter.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-2404",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "Improve speed of ThaiWordFilter by CharacterIterator, factor out LowerCasing and also fix some bugs (empty tokens stop iteration)",
+    "systemSpecification": true,
+    "version": ""
+}

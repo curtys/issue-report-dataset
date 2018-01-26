@@ -1,0 +1,77 @@
+{
+    "comments": [
+        {
+            "author": "Grant Ingersoll",
+            "body": "Added get/setTypeBits() method and underlying storage and constructors.",
+            "date": "2008-01-16T16:47:41.734+0000",
+            "id": 0
+        },
+        {
+            "author": "Yonik Seeley",
+            "body": "Gack!  I recommended a bitset on Token previously, but I meant an elemental one... an int (32 bits) or a long (64 bits).\nHalf of the bits could be reserved for use by Lucene tokenizers, and half could be reserved for users.  I think an actual BitSet is too heavy-weight.\n\nJust provide a int or long Token.getFlags() and int or long Token.setFlags(), and nothing more (we don't need to do bit twiddling for users IMO)",
+            "date": "2008-01-16T17:02:54.597+0000",
+            "id": 1
+        },
+        {
+            "author": "Steve Rowe",
+            "body": "I see two problems with this patch:\n\n1. Although in the patch you say that the \"type bits\" field added by the patch is completely separate from the String type information, you don't name them with sufficiently different names to distinguish them.\n\n2. The information encoded by BitSet is a set of <int,boolean> tuples.  These are opaque values.  In order for this to work, every tokenizer in the chain has to be aware of every other one's use of these.  This makes sharing hard.\n\nAt a minimum, there should be some way to declare who's using what bit for what purpose - maybe through a static hash table or something?",
+            "date": "2008-01-16T17:10:00.165+0000",
+            "id": 2
+        },
+        {
+            "author": "Grant Ingersoll",
+            "body": "{quote}\nThe information encoded by BitSet is a set of <int,boolean> tuples. These are opaque values. In order for this to work, every tokenizer in the chain has to be aware of every other one's use of these. This makes sharing hard.\n{quote}\n\nTo some extent, though, the same is true for the current type() functionality.  One may decide to change the type, based on the value of the current type.\n\nWhile I agree the sharing is hard, it is not impossible, as one need just make sure to communicate which bits are available.  I suppose I could see about adding a isClaimed(int position) method or something like that, whereby one can query the chain to see if anyone claims ownership on that position.  I'll give that a try.  However, to some extent, I also think it is buyer beware in that TokenFilters further down the chain just need to be aware of what is going on.  This is part of constructing an Analyzer that works.\n\nAs for the naming, I suppose we could do Flags, as Yonik suggests.",
+            "date": "2008-01-16T17:24:47.260+0000",
+            "id": 3
+        },
+        {
+            "author": "Grant Ingersoll",
+            "body": "Never mind on the isClaimed() idea, I don't see a good way of how that would work.",
+            "date": "2008-01-16T17:39:32.923+0000",
+            "id": 4
+        },
+        {
+            "author": "Yonik Seeley",
+            "body": "If we go with the bitset (int or long!!!), \"type\" could be deprecated... there's no reason to have both.\n \nStandardTokenizer could define constants  to replace \npublic static final String [] TOKEN_TYPES = new String [] {\n    \"<ALPHANUM>\",\n    \"<APOSTROPHE>\",\n    \"<ACRONYM>\",\n    \"<COMPANY>\",\n    \"<EMAIL>\",\n    \"<HOST>\",\n    \"<NUM>\",\n    \"<CJ>\"\n};\n\nStandardTokenizer.ALPHANUM, etc",
+            "date": "2008-01-16T17:42:14.812+0000",
+            "id": 5
+        },
+        {
+            "author": "Grant Ingersoll",
+            "body": "Per feedback from Yonik, changes this to use an int.  The clear() method sets the flags value back to 0.",
+            "date": "2008-01-16T18:41:44.957+0000",
+            "id": 6
+        },
+        {
+            "author": "Steve Rowe",
+            "body": "Looks like the constructors still take a BitSet???\n\nMy vote is for long instead of int, to maximize forward compatibility...",
+            "date": "2008-01-16T19:16:32.723+0000",
+            "id": 7
+        },
+        {
+            "author": "Grant Ingersoll",
+            "body": "Let's try a patch that actually compiles",
+            "date": "2008-01-16T19:30:08.449+0000",
+            "id": 8
+        },
+        {
+            "author": "Grant Ingersoll",
+            "body": "Committed on 614891",
+            "date": "2008-01-24T15:01:16.508+0000",
+            "id": 9
+        }
+    ],
+    "component": "modules/analysis",
+    "description": "It is sometimes useful to have a more compact, easy to parse, type representation for Token than the current type() String.  This patch adds a BitSet onto Token, defaulting to null, with accessors for setting bit flags on a Token.  This is useful for communicating information about a token to TokenFilters further down the chain.  \n\nFor example, in the WikipediaTokenizer, the possibility exists that a token could be both a category and bold (or many other variations), yet it is difficult to communicate this without adding in a lot of different Strings for type.  Unlike using the payload information (which could serve this purpose), the BitSet does not get added to the index (although one could easily convert it to a payload.)",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-1137",
+    "issuetypeClassified": "RFE",
+    "issuetypeTracker": "RFE",
+    "priority": "Minor",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "Token type as BitSet: typeBits()",
+    "systemSpecification": true,
+    "version": ""
+}

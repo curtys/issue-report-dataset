@@ -1,0 +1,83 @@
+{
+    "comments": [
+        {
+            "author": "Michael Becke",
+            "body": "Hi Steve,\n\nI agree that HttpClient does not handle the 'stale' digest parameter, but I do not think this should \nbe a problem in standard use.  Under what circumstances is this showing up?\n\nAlso, if you could, please repost your patch as an attachment and in 'diff -u' format.\n\nThanks,\n\nMike",
+            "date": "2003-08-25T08:50:32.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Steve Cohen",
+            "body": "We're working on a real estate standard called RETS, and in order to\ninteroperate, we must deal with a specific vendor that expires nonce after the\nfirst auth attempt. I freely admit that this is very strange behavior, but I\ncan't tell them to change their client, since they are technically in line with\nthe spec (both RETS and HTTP). \nI'm sure this won't come up much, but I don't see a reason why HttpClient\nshouldn't support a stale nonce.\nHere's the diff -u\n---\n/home/scohen/downloads/httpclient-src/commons-httpclient-2.0-rc1/src/java/org/apache/commons/httpclient/HttpMethodBase.java\n2003-07-31 22:15:26.000000000 -0400\n+++ org/apache/commons/httpclient/HttpMethodBase.java   2003-08-21\n13:26:43.000000000 -0400\n@@ -1353,30 +1353,37 @@\n      *         connection\n      * @throws HttpException when a recoverable error occurs\n      */\n-    protected void addAuthorizationRequestHeader(HttpState state,\n-                                                 HttpConnection conn)\n-    throws IOException, HttpException {\n-        LOG.trace(\"enter HttpMethodBase.addAuthorizationRequestHeader(\"\n-                  + \"HttpState, HttpConnection)\");\n+    protected void addAuthorizationRequestHeader(HttpState state,\nHttpConnection conn)\n+        throws IOException, HttpException {\n+        LOG.trace(\"enter HttpMethodBase.addAuthorizationRequestHeader(\" +\n\"HttpState, HttpConnection)\");\n  \n         // add authorization header, if needed\n-        if (getRequestHeader(HttpAuthenticator.WWW_AUTH_RESP) == null) {\n-            Header[] challenges = getResponseHeaderGroup().getHeaders(\n-                                               HttpAuthenticator.WWW_AUTH);\n-            if (challenges.length > 0) {\n-                try {\n-                    AuthScheme authscheme =\nHttpAuthenticator.selectAuthScheme(challenges);\n+\n+        Header[] challenges =\ngetResponseHeaderGroup().getHeaders(HttpAuthenticator.WWW_AUTH);\n+        if (challenges.length > 0) {\n+\n+            try {\n+                AuthScheme authscheme =\nHttpAuthenticator.selectAuthScheme(challenges);\n+                if (getRequestHeader(HttpAuthenticator.WWW_AUTH_RESP) == null\n+                    || isNonceStale(authscheme) ) {\n                     HttpAuthenticator.authenticate(authscheme, this, conn, state);\n-                } catch (HttpException e) {\n-                    // log and move on\n-                    if (LOG.isErrorEnabled()) {\n-                        LOG.error(e.getMessage(), e);\n-                    }\n+                }\n+            } catch (HttpException e) {\n+                // log and move on\n+                if (LOG.isErrorEnabled()) {\n+                    LOG.error(e.getMessage(), e);\n                 }\n             }\n         }\n     }\n  \n+\n+    private boolean isNonceStale(AuthScheme authscheme) {\n+        return authscheme.getSchemeName().equalsIgnoreCase(\"digest\")\n+            && \"true\".equalsIgnoreCase(authscheme.getParameter(\"stale\"));\n+    }\n+\n+\n     /**\n      * Adds a <tt>Content-Length</tt> or <tt>Transfer-Encoding: Chunked</tt>\n      * request header, as long as no <tt>Content-Length</tt> request header\n@@ -2423,6 +2430,11 @@\n             String realm = buffer.toString();\n  \n             if (realmsUsed.contains(realm)) {\n+                               // check to see if the server has made our nonce\nstale.\n+                               // if it has, re-auth\n+               if ( isNonceStale(authscheme)) {\n+                       return false;\n+               }\n                 if (LOG.isInfoEnabled()) {\n                     LOG.info(\"Already tried to authenticate to \\\"\"\n                              + realm + \"\\\" but still receiving \"\n",
+            "date": "2003-08-25T20:05:37.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Michael Becke",
+            "body": "I agree.  It does appear to be compliant behavior, I just thought it was strange.  If you know of a \nserver configuration that I can test against or if you have a wire log <http://jakarta.apache.org/\ncommons/httpclient/logging.html> that would be great.\n\nDoes anyone have a problem with this patch(or something like it) going into 2.0?\n\nMike",
+            "date": "2003-08-27T09:42:26.000+0000",
+            "id": 2
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Attached below is a new solution to this problem, along with a test case. \nSteve, please give this a try when you have a chance.\n\nMike",
+            "date": "2003-09-02T03:56:22.000+0000",
+            "id": 3
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Created an attachment (id=8029)\nfix 2\n",
+            "date": "2003-09-02T03:56:58.000+0000",
+            "id": 4
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Mike, I think it is OK to commit this one.\n\nOleg",
+            "date": "2003-09-08T01:05:14.000+0000",
+            "id": 5
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Patch applied.",
+            "date": "2003-09-08T09:03:04.000+0000",
+            "id": 6
+        },
+        {
+            "author": "Steve Cohen",
+            "body": "That works for me. ",
+            "date": "2003-09-10T22:15:08.000+0000",
+            "id": 7
+        },
+        {
+            "author": "Winfried Wasser",
+            "body": "Sorry!\n\nYou are absolutely correct. Mistake happens because of the JBoss environment \nincluding 'Jakarta Commons-HttpClient/2.0rc1' in the distribution of 'JBoss \n3.2.3'.\nTested with 'Jakarta Commons-HttpClient/2.0final' and everything looks like it \nworks.\n\nThanks to you.",
+            "date": "2004-03-11T18:09:15.000+0000",
+            "id": 8
+        },
+        {
+            "author": "Winfried Wasser",
+            "body": "Sorry!\n\nYou are absolutely correct. Mistake happens because of the JBoss environment \nincluding 'Jakarta Commons-HttpClient/2.0rc1' in the distribution of 'JBoss \n3.2.3'.\nTested with 'Jakarta Commons-HttpClient/2.0final' and everything looks like it \nworks.\n\nThanks to you.",
+            "date": "2004-03-11T18:09:58.000+0000",
+            "id": 9
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "*** HTTPCLIENT-327 has been marked as a duplicate of this bug. ***",
+            "date": "2004-03-11T18:16:34.000+0000",
+            "id": 10
+        }
+    ],
+    "component": "HttpClient (classic)",
+    "description": "When using digest authentication, HTTP allows the server to mark the nonce value\nas stale. The client then must re-authenticate with a new nonce value provided\nby the server. Currently, HttpClient does not support this functionality. I've\ncreated a patch that allows HttpClient to support stale nonce values. It is\nattached below. The patch should be applied to HttpMethodBase.java\n\n\n***\n/home/scohen/downloads/httpclient-src/commons-httpclient-2.0-rc1/src/java/org/apache/commons/httpclient/HttpMethodBase.java\n2003-07-31 22:15:26.000000000 -0400\n--- org/apache/commons/httpclient/HttpMethodBase.java   2003-08-20\n17:22:52.000000000 -0400\n***************\n*** 1351,1384 ****\n       *\n       * @throws IOException when errors occur reading or writing to/from the\n       *         connection\n       * @throws HttpException when a recoverable error occurs\n       */\n!     protected void addAuthorizationRequestHeader(HttpState state,\n!                                                  HttpConnection conn)\n!     throws IOException, HttpException {\n!         LOG.trace(\"enter HttpMethodBase.addAuthorizationRequestHeader(\"\n!                   + \"HttpState, HttpConnection)\");\n   \n          // add authorization header, if needed\n!         if (getRequestHeader(HttpAuthenticator.WWW_AUTH_RESP) == null) {\n!             Header[] challenges = getResponseHeaderGroup().getHeaders(\n!                                                HttpAuthenticator.WWW_AUTH);\n!             if (challenges.length > 0) {\n!                 try {\n!                     AuthScheme authscheme =\nHttpAuthenticator.selectAuthScheme(challenges);\n                      HttpAuthenticator.authenticate(authscheme, this, conn, state);\n!                 } catch (HttpException e) {\n!                     // log and move on\n!                     if (LOG.isErrorEnabled()) {\n!                         LOG.error(e.getMessage(), e);\n!                     }\n                  }\n              }\n          }\n      }\n                                                                                \n      /**\n       * Adds a <tt>Content-Length</tt> or <tt>Transfer-Encoding: Chunked</tt>\n       * request header, as long as no <tt>Content-Length</tt> request header\n       * already exists.\n       *\n--- 1351,1391 ----\n       *\n       * @throws IOException when errors occur reading or writing to/from the\n       *         connection\n       * @throws HttpException when a recoverable error occurs\n       */\n!     protected void addAuthorizationRequestHeader(HttpState state,\nHttpConnection conn)\n!         throws IOException, HttpException {\n!         LOG.trace(\"enter HttpMethodBase.addAuthorizationRequestHeader(\" +\n\"HttpState, HttpConnection)\");\n                                                                                \n          // add authorization header, if needed\n!\n!         Header[] challenges =\ngetResponseHeaderGroup().getHeaders(HttpAuthenticator.WWW_AUTH);\n!         if (challenges.length > 0) {\n!\n!             try {\n!                 AuthScheme authscheme =\nHttpAuthenticator.selectAuthScheme(challenges);\n!                 if (getRequestHeader(HttpAuthenticator.WWW_AUTH_RESP) == null\n!                     || isNonceStale(authscheme) ) {\n                      HttpAuthenticator.authenticate(authscheme, this, conn, state);\n!                 }\n!             } catch (HttpException e) {\n!                 // log and move on\n!                 if (LOG.isErrorEnabled()) {\n!                     LOG.error(e.getMessage(), e);\n                  }\n              }\n          }\n      }\n                                                                                \n+\n+     private boolean isNonceStale(AuthScheme authscheme) {\n+         return authscheme.getSchemeName().equalsIgnoreCase(\"digest\")\n+             && \"true\".equalsIgnoreCase(authscheme.getParameter(\"stale\"));\n+     }\n+\n+\n      /**\n       * Adds a <tt>Content-Length</tt> or <tt>Transfer-Encoding: Chunked</tt>\n       * request header, as long as no <tt>Content-Length</tt> request header\n       * already exists.\n       *\n***************\n*** 2419,2430 ****\n                  buffer.append(port);\n              }\n              buffer.append('#');\n              buffer.append(authscheme.getID());\n              String realm = buffer.toString();\n!\n              if (realmsUsed.contains(realm)) {\n                  if (LOG.isInfoEnabled()) {\n                      LOG.info(\"Already tried to authenticate to \\\"\"\n                               + realm + \"\\\" but still receiving \"\n                               + statusCode + \".\");\n                  }\n--- 2426,2442 ----\n                  buffer.append(port);\n              }\n              buffer.append('#');\n              buffer.append(authscheme.getID());\n              String realm = buffer.toString();\n!\n!                       // check to see if the server has made our nonce stale.\n!                       // if it has, re-auth\n              if (realmsUsed.contains(realm)) {\n+               if ( isNonceStale(authscheme)) {\n+                       return false;\n+               }\n                  if (LOG.isInfoEnabled()) {\n                      LOG.info(\"Already tried to authenticate to \\\"\"\n                               + realm + \"\\\" but still receiving \"\n                               + statusCode + \".\");\n                  }",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "HTTPCLIENT-260",
+    "issuetypeClassified": "RFE",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Minor",
+    "product": "HTTPCLIENT",
+    "project": "HTTPCLIENT",
+    "summary": "Authentication does not respond to stale nonce",
+    "systemSpecification": false,
+    "version": "2.0 Milestone 2"
+}

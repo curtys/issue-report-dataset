@@ -1,0 +1,35 @@
+{
+    "comments": [
+        {
+            "author": "Gilad Barkai",
+            "body": "This issue is relevant for trunk as well.\nPlease update the Affected versions accordingly.",
+            "date": "2011-08-31T08:49:47.711+0000",
+            "id": 0
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "I found the issue: we are failing to drop pool'd readers in IW.deleteAll.  I'll commit fix shortly.",
+            "date": "2011-08-31T10:21:51.644+0000",
+            "id": 1
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Thanks tal!",
+            "date": "2011-08-31T12:09:40.746+0000",
+            "id": 2
+        }
+    ],
+    "component": "core/index",
+    "description": "with NRT reader/writer, emptying an index using:\nwriter.deleteAll()\nwriter.commit()\ndoesn't release all allocated memory.\n\nfor example the following code will generate a memory leak:\n\n/**\n\t * Reveals a memory leak in NRT reader/writer<br>\n\t * \n\t * The following main() does 10K cycles of:\n\t * <ul>\n\t * <li>Add 10K empty documents to index writer</li>\n\t * <li>commit()</li>\n\t * <li>open NRT reader over the writer, and immediately close it</li>\n\t * <li>delete all documents from the writer</li>\n\t * <li>commit changes to the writer</li>\n\t * </ul>\n\t * \n\t * Running with -Xmx256M results in an OOME after ~2600 cycles\n\t */\n\tpublic static void main(String[] args) throws Exception {\n\t\tRAMDirectory d = new RAMDirectory();\n\t\tIndexWriter w = new IndexWriter(d, new IndexWriterConfig(Version.LUCENE_33, new KeywordAnalyzer()));\n\t\tDocument doc = new Document();\n\t\t\n\t\tfor(int i = 0; i < 10000; i++) {\n\t\t\tfor(int j = 0; j < 10000; ++j) {\n\t\t\t\tw.addDocument(doc);\n\t\t\t}\n\t\t\tw.commit();\n\t\t\tIndexReader.open(w, true).close();\n\n\t\t\tw.deleteAll();\n\t\t\tw.commit();\n\t\t}\n\t\t\n\t\tw.close();\n\t\td.close();\n\t}\t",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "LUCENE-3409",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "NRT reader/writer over RAMDirectory memory leak",
+    "systemSpecification": true,
+    "version": "3.0.2, 3.3, 4.0-ALPHA"
+}

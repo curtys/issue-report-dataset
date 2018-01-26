@@ -1,0 +1,53 @@
+{
+    "comments": [
+        {
+            "author": "Peter Dolberg",
+            "body": "Created an attachment (id=17681)\nTest case source code\n\nThe attached source code is what I used to confirm that there could be a\nproblem with the clearCookies method.  Every time I run it I get a null Cookie\nafter just a second or two.  Sure, it's contrived, but it is more of a proof of\nconcept than anything.",
+            "date": "2006-02-14T07:23:24.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Ortwin Gl\u00fcck",
+            "body": "This is clearly a bug.\n\nHowever it seems awkward to me why you wanted to clear cookies from a different\nthread in the middle of other requests executing. Even if there is now no\nexception thrown anymore HttpClient's behaviour is certainly not deterministic\nin that case.",
+            "date": "2006-02-14T18:10:47.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Ortwin Gl\u00fcck",
+            "body": "Created an attachment (id=17685)\nPatch against 3.0 branch and trunk\n",
+            "date": "2006-02-14T18:35:00.000+0000",
+            "id": 2
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Patch away, Odi\n\nOleg",
+            "date": "2006-02-14T20:43:06.000+0000",
+            "id": 3
+        },
+        {
+            "author": "Ortwin Gl\u00fcck",
+            "body": "Patch committed.",
+            "date": "2006-02-14T20:48:59.000+0000",
+            "id": 4
+        },
+        {
+            "author": "Peter Dolberg",
+            "body": "(In reply to comment #2)\n> This is clearly a bug.\n> \n> However it seems awkward to me why you wanted to clear cookies from a different\n> thread in the middle of other requests executing. Even if there is now no\n> exception thrown anymore HttpClient's behaviour is certainly not deterministic\n> in that case.\n\nAgreed. When I saw someone else's code using the same HttpState object across\nmultiple threads, I immediately changed the code to use only one HttpState per\nthread. Yes, their code was not written with threadsafety in mind, but\nfortunately I was able to find that person's problem AND this bug and be part of\nthe solution for both.",
+            "date": "2006-02-15T00:24:05.000+0000",
+            "id": 5
+        }
+    ],
+    "component": "HttpClient (classic)",
+    "description": "The HttpState class has a clearCookies method that is not synchronized but\nshould be considering it modifies an ArrayList (which is unsynchronized). All\nother methods which modify or read from the ArrayList are synchronized except\nthe clearCookies method. \n\nI stumbled upon this fact because a webapp I am working on that uses HttpClient\nthrew an IllegalArgumentException indicating that one of the cookies in the\narray returned from HttpState.getCookies() was null, which shouldn't be\npossible.  Upon further inspection and testing, the only possible option is that\nthe threadsafety hole left by the unsynchronized clearCookies method caused the\nissue.",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "HTTPCLIENT-569",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Minor",
+    "product": "HTTPCLIENT",
+    "project": "HTTPCLIENT",
+    "summary": "HttpState.clearCookies() should be synchronized",
+    "systemSpecification": true,
+    "version": "3.0 RC2"
+}

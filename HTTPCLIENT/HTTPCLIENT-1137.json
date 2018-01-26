@@ -1,0 +1,47 @@
+{
+    "comments": [
+        {
+            "author": "Jon Moore",
+            "body": "Hi Vasile,\n\nSorry to just be getting around to this now. Can you explain the reason for breaking out a ViaHeaderCache as a separate class? Why not just a HashMap? Since this is a true function (given a ProtocolVersion I always generate the same Via header), there's no need to put locks around this, as once the cache is populated it won't be modified, and even if there is a race condition between two threads trying to populate the cache, they'll both arrive at the same answer.\n\nWould you like to revise your patch just to use a plain-old HashMap for this?\n\nJon",
+            "date": "2011-11-02T17:57:08.868+0000",
+            "id": 0
+        },
+        {
+            "author": "Alin Vasile",
+            "body": "Hi Jon,\n\n   Thanks for reviewing my patch.\n\n   I wanted to keep the request operations thread safe, but if you think race conditions are not a problem, I can use a simple map (my initial solution was a simple HashMap, as you suggest). Do you think a ConcurrentHashMap would be more appropriate, so we don't have stale string values? (I'm thinking that a different thread might see an incomplete Via value in this map if we use a simple HashMap).\n\n\nAlin",
+            "date": "2011-11-02T20:45:29.604+0000",
+            "id": 1
+        },
+        {
+            "author": "Jon Moore",
+            "body": "No, a regular HashMap is fine: Java Strings are immutable, and a put operation should just be a pointer swap.\n",
+            "date": "2011-11-03T16:55:29.354+0000",
+            "id": 2
+        },
+        {
+            "author": "Alin Vasile",
+            "body": "Patch modified according to Jon's comments to use a simple HashMap.",
+            "date": "2011-11-03T20:26:59.517+0000",
+            "id": 3
+        },
+        {
+            "author": "Jon Moore",
+            "body": "Ok, patch checked in. Thanks much, Alin!\n\n",
+            "date": "2011-11-04T19:13:03.410+0000",
+            "id": 4
+        }
+    ],
+    "component": "HttpCache",
+    "description": "The Via header that gets generated and inserted by the caching layer is done repeatedly in the HTTP conversation, even if the constructed string is constant for each protocol version that is involved.\n\nThe proposed patch constructs a map of generated values held in memory with the associated ProtocolVersion as a key and uses read/write locks to access the data. This  solution minimizes the time to generate such a value from several milliseconds to 40-50 microseconds.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "HTTPCLIENT-1137",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Trivial",
+    "product": "HTTPCLIENT",
+    "project": "HTTPCLIENT",
+    "summary": "The values for the Via header are created by httpclient-cache for each cached and backend request",
+    "systemSpecification": true,
+    "version": "4.1.2"
+}

@@ -1,0 +1,101 @@
+{
+    "comments": [
+        {
+            "author": "angela",
+            "body": "posted by jukka in JCR-1261:\n\nAnyway, going back to the original justification of this issue. Your first point was to minimize dependencies, which IMHO could be better achieved by just dropping the Xerces dependency in favor of standard JAXP (see also JCR-367). The attached patch (JCR-1261.drop-xerces.patch) does just that with trivial changes to the codebase. \n\n(Note that I haven't really tested the patch, there may be some subtle issues with JAXP serialization of namespaced DOM trees.) \n\n\ncomment angela:\n\nif both \n\n- litmus test suite on simple server \n- the spi2dav = jcr-server setup \n\ndon't reveal any problems, i would feel confident that the patch doesn't cause any problems. \nyukka, could you test your patch with both setups? thanks \n",
+            "date": "2008-01-15T09:21:51.542+0000",
+            "id": 0
+        },
+        {
+            "author": "angela",
+            "body": "patch provided by jukka",
+            "date": "2008-01-15T09:22:20.632+0000",
+            "id": 1
+        },
+        {
+            "author": "angela",
+            "body": "> if they don't reveal any problems\n\nbtw... i remember but now, that i tried to get rid of the xerces dependency within the jcr-webdav project before and i actually did run into problems with the TransformerFactory.\n\nbut maybe the workaround present with http://svn.apache.org/repos/asf/jackrabbit/trunk/jackrabbit-jcr2spi/src/main/java/org/apache/jackrabbit/jcr2spi/xml/WorkspaceContentHandler.java could help here as well.\n",
+            "date": "2008-01-16T07:50:52.822+0000",
+            "id": 2
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "You mean NamespaceFixingContentHandler? Nice! It's similar to what we did for XML exports in JCR-367 (see especially revision 418750).\n\nThe problem with serializing DOM trees is that they don't contain explicit xmlns: attributes. Early JAXP transformers (in jdk 1.4) didn't take that into account, they only serialized the attributes included in the DOM. See also JCR-1161 for a somewhat related issue (in Java 5 on Mac xmlns attributes are only generated for namespaces that are actually referenced in the document).\n\nI'll see if we could use the NamespaceFixingContentHandler approach here.",
+            "date": "2008-01-16T10:58:45.452+0000",
+            "id": 3
+        },
+        {
+            "author": "angela",
+            "body": "> Nice! \n\n=> carsten => cocoon. ",
+            "date": "2008-01-16T11:41:14.286+0000",
+            "id": 4
+        },
+        {
+            "author": "Brett Porter",
+            "body": "this would be helpful to me as well - I'm currently looking at pulling in the required org.apache.xml.* serializer classes to drop this dependency in a class that uses the webdav client.",
+            "date": "2008-05-19T22:51:37.305+0000",
+            "id": 5
+        },
+        {
+            "author": "angela",
+            "body": "extended patch that moves the NamespaceFixingContentHandler from jcr2spi\nto the jackrabbit-jcr-commons project, adds a namespace aware transformer and uses that one for the xml serialization in the webdav project.\n\ni did the following tests:\n\n- run litmus on the dav server\n- run some read/write/search tests on a jcr2spi-spi2dav-jcrserver setup.\n\nand had the impression that it works...\ncomments? anybody having time to do some more tests?\n\nangela",
+            "date": "2008-05-21T09:26:06.918+0000",
+            "id": 6
+        },
+        {
+            "author": "angela",
+            "body": "i will leave this issue open for a couple of days giving everybody the change to test or take a look at it.\nunless objections are raised i would then commit the changes proposed beginning next week.\n\nangela",
+            "date": "2008-05-21T09:27:50.480+0000",
+            "id": 7
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "How about using the SerializingContentHandler class from JCR-1350? I attached (JCR-1310-jukka.patch) a modified version of your patch that uses SerializingContentHandler instead of the new o.a.j.util.xml classes.\n\nI don't have the litmus suite or a spi2dav setup readily at hand, so I only tested this with normal \"mvn clean install\". Perhaps we could automate those tests somehow?\n\nApart from the different serialization class there are slight changes between your and my patches:\n\n* I used the ByteArrayOutputStream directly instead of a StringRequestEntity to implement the methods in XmlRequestEntity\n* I don't set the character encoding in the content type header, as currently SerializingContentHandler lets the JAXP implementation select the default encoding\n* I don't close() the ByteArrayOutputStreams\n\nAlso, should we use \"application/xml\" instead of \"text/xml\" as the XML content type?",
+            "date": "2008-05-21T13:11:16.445+0000",
+            "id": 8
+        },
+        {
+            "author": "angela",
+            "body": "> I don't have the litmus suite or a spi2dav setup readily at hand, so I only tested this with \n> normal \"mvn clean install\". \n\nhm... that doesn't help in this case. the namespace problems are only detected upon those\ntests.\n\ncould you test it? it takes forever to have everything installed and carefully looked at.\nand basically i don't have time for it.\n\nlitmus can be found here:\nhttp://www.webdav.org/neon/litmus/\n\nspi2dav:\n- tests including impersonation, clone and across-workspace-copy are not implemented.\n- some tests fail for imcompatibility between 170 and 283 functionaly already built into\n  jackrabbit-core.\n- running the tests a change to the default web.xml (missing-auth-param)\n- running the tests requires the webapp to contain the tck test content.\n\n> Perhaps we could automate those tests somehow? \n\ni don't know how. if you find a way to do so, that would be great.\n\n> Apart from the different serialization class there are slight changes between your and \n> my patches: \n\nfine with me, as long as everything works as expected.\n\n> Also, should we use \"application/xml\" instead of \"text/xml\" as the XML content type? \n\nno preference. i used text/xml since this is the mimetype mapping defined in the mimetypes.properties (jcr-server)... chances are, that the text/xml is wide-spread. so you\nwould have to replace the other locations as well for consistency reasons... if you have\ntime to so... otherwise i would leave it and have an extra enhancement issue for that.",
+            "date": "2008-05-21T13:59:20.135+0000",
+            "id": 9
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "OK, I'll take a look at the tests (and possibly automating them) later today.\n\nRe: application/xml; I filed a new issue for that, see JCR-1621.\n",
+            "date": "2008-05-21T15:44:09.128+0000",
+            "id": 10
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Tests work the same with or without my patch, so no regressions.\n\nI really need to automate this test setup... :-)",
+            "date": "2008-05-22T07:39:31.657+0000",
+            "id": 11
+        },
+        {
+            "author": "angela",
+            "body": "> Tests work the same with or without my patch, so no regressions. \n\nso +1 for you patch.\n\n> I really need to automate this test setup... :-) \n\nit's a pain, isn't it? :-)\ni was thinking recently about how we could have a better and extensible test set for the \ndav-server. dav-compliance is one important thing. but being able to add small tests for bugfixes and changes would be really an improvement. so any suggestion/ideas are welcome.",
+            "date": "2008-05-22T08:01:31.021+0000",
+            "id": 12
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Applied the jackrabbit-webdav changes in revision 659084. Note that this change introduces a \"text/xml\" content type without an explicitly declared character set, but I'll address that in JCR-1621.\n\nI'll associate the proposed jackrabbit-jcr2spi changes with JCR-1350 as no Maven dependency changes are needed and the change is just about starting to use the code added (based on the previous jcr2spi code) in JCR-1350.\n\nResolving as Fixed.",
+            "date": "2008-05-22T12:13:34.544+0000",
+            "id": 13
+        }
+    ],
+    "component": "jackrabbit-webdav",
+    "description": "jukka is the final assignee :) thanks for taking over.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "JCR-1310",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Minor",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "Webdav: Drop xerces dependency",
+    "systemSpecification": true,
+    "version": ""
+}

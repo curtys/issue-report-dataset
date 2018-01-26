@@ -1,0 +1,239 @@
+{
+    "comments": [
+        {
+            "author": "Claus K\u00f6ll",
+            "body": "lock_output.txt->\nI have added in the Methods of the DefaultISMLocking Class\nthe calling Threadname\njavacorexxx ->\nthe javacore file of the deadlock situation",
+            "date": "2008-01-21T13:35:09.344+0000",
+            "id": 0
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "Prepare and commit is indeed called using different threads. ",
+            "date": "2008-01-22T09:48:22.863+0000",
+            "id": 1
+        },
+        {
+            "author": "Claus K\u00f6ll",
+            "body": "do you have any ideas to solve that problem ?",
+            "date": "2008-01-23T07:07:06.536+0000",
+            "id": 2
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "I'm not an expert on JTS and JTA, but can you somehow change the transaction service to not use CORBA calls to coordinate the transaction?",
+            "date": "2008-01-23T10:58:56.550+0000",
+            "id": 3
+        },
+        {
+            "author": "Claus K\u00f6ll",
+            "body": "hi marcel,\ni have a sessionbean with a containermanaged transaction so i think \ni can't configure anything.\nBR,\nclaus",
+            "date": "2008-01-23T13:24:29.791+0000",
+            "id": 4
+        },
+        {
+            "author": "Claus K\u00f6ll",
+            "body": "what do you think about\nto bind the locks not to a thread but rather to the transactioncontext if we run in a xa environment,\nbecause you can not guarantee that the prepare and commit comes from the same thread in a container managed transaction\n\nBR,\nclaus",
+            "date": "2008-01-24T08:41:34.304+0000",
+            "id": 5
+        },
+        {
+            "author": "Claus K\u00f6ll",
+            "body": "hi guys,\nwhat do others think ?\ni think we can not per default bind a lock to a thread. this will work good for a standalone server\nbut not in a xa environment with container transactions on a j2ee server\nwe run now for about a half year with jackrabbit in production but without \nxa transactions and this is no good solution\nhope somebody will help to solve that problem\nbr\nclaus\n",
+            "date": "2008-02-07T09:46:06.039+0000",
+            "id": 6
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "Patched version of DefaultISMLocking",
+            "date": "2008-02-07T14:02:29.390+0000",
+            "id": 7
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "Claus, can you please compile and deploy the attached PatchedDefaultISMLocking class into your jackrabbit-jca and add the following element to your workspace.xml (as the following sibling of SearchIndex):\n\n<ISMLocking class=\"org.apache.jackrabbit.core.state.PatchedDefaultISMLocking\"/>\n\nIf that works for you I will commit the changes.\n\nThank you.",
+            "date": "2008-02-07T14:05:07.122+0000",
+            "id": 8
+        },
+        {
+            "author": "Claus K\u00f6ll",
+            "body": "hi marcel,\nthanks for your patch. it works fine on the downgrade method\nbut i have found that i get the same deadlock on acquireReadLock.\ni have attached the stacktrace and a new PatchedDefaultISMLocking.java\nwith this Locking Class it works fine\nwhat do you think about ?\nBR,\nclaus",
+            "date": "2008-02-11T11:57:33.133+0000",
+            "id": 9
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "The stacktrace you attached still shows the DefaultISMLocking class in use. Can you please run your test with the PatchedDefaultISMLocking?",
+            "date": "2008-02-13T10:24:51.048+0000",
+            "id": 10
+        },
+        {
+            "author": "Claus K\u00f6ll",
+            "body": "hi marcel,\nit has only that name but this is the patched one ...\n",
+            "date": "2008-02-13T10:36:57.036+0000",
+            "id": 11
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "Hmm, that looks strange, because the thread in the stacktrace should have set the thread that owns the write lock to the current thread, thus allowing subsequent read locks by the same thread.\n\nbtw. your version of PatchedDefaultISMLocking won't work, because it allows any thread to read, even if another thread is currently writing.",
+            "date": "2008-02-13T10:54:23.008+0000",
+            "id": 12
+        },
+        {
+            "author": "Claus K\u00f6ll",
+            "body": "ok i see. that was not clear to me but now i understand.\nhmm so websphere ignores the threads from which they get the readlock.\ni think they work in xa environemt not with threads ?\nwhen will the downgrade be called ? because the deadlock comes from the searchmanager.\nhe calls DefaultISMLocking.acquireReadLock and this call comes from a different thread than from downgrade.\n",
+            "date": "2008-02-13T11:07:18.683+0000",
+            "id": 13
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "> when will the downgrade be called ?\n\ndowngrade is called in SharedItemStateManager.Update.end()\n\n> because the deadlock comes from the searchmanager. he calls DefaultISMLocking.acquireReadLock and this\n> call comes from a different thread than from downgrade.\n\nno, I don't think so. the stacktrace includes the Update.end() call and at the time EventStateCollection.dispatch() is called the lock is downgraded and associated with the current thread that later calls acquireReadLock().",
+            "date": "2008-02-13T15:12:37.898+0000",
+            "id": 14
+        },
+        {
+            "author": "Claus K\u00f6ll",
+            "body": "first thanks for your help !\nok i will add more log output to get more informations ..\n",
+            "date": "2008-02-13T15:23:52.305+0000",
+            "id": 15
+        },
+        {
+            "author": "Claus K\u00f6ll",
+            "body": "hi marcel,\nis it possible that the are running two instances of the DefaultISMLocking Object ?\nAs i can see there will be generated a instance in the WorkspaceInfo.doInitalize() Method\nand one in the RepositoryImpl.createVersionManager() Method.\nI think on the downgrade Method the active Thread will be set coming from the SharedItemStateManager hold by the Workspace\nand the deadlock call comes from the VersionItemStateProvider.hasItemState and this call goes to the DefaultISMLocking Object that holds\nthe wrong active Thread.\ni hope i have explained it that you can follow me ;-)\n",
+            "date": "2008-02-13T17:48:20.597+0000",
+            "id": 16
+        },
+        {
+            "author": "Claus K\u00f6ll",
+            "body": "as i mentioned before with the two instances, i think this is the problem\nthis is the call stack:\n\nDefaultISMLocking.acquireWriteLock(), CurrentThreadName: ORB.thread.pool : 2\nDefaultISMLocking.acquireWriteLock().downgrade(), CurrentThreadName: ORB.thread.pool : 0\nDefaultISMLocking.RWLock().setActiveWriter(ORB.thread.pool : 0), Instance: org.apache.jackrabbit.core.state.DefaultISMLocking$RWLock@765fa6a6, CurrentThreadName: ORB.thread.pool : 0\n***** Different Thread access\n***** Hold Thread in RWLock: ORB.thread.pool : 2\n***** givenThread :ORB.thread.pool : 0\n\n...\n\nDefaultISMLocking.RWLock().allowReader() activeWriter: ORB.thread.pool : 2, Instance: org.apache.jackrabbit.core.state.DefaultISMLocking$RWLock@10b626ba, CurrentThreadName: ORB.thread.pool : 0\n\nthe downgrade is called on a other instance of the RWLock, \nthen the allowReader comes from a other thread an the hold activeWriter Thread in the RWLock is a different one.\ni don't know why there are two instances of the DefaultISMLocking Object.",
+            "date": "2008-02-18T09:11:45.885+0000",
+            "id": 17
+        },
+        {
+            "author": "Claus K\u00f6ll",
+            "body": "can anyone tell me why there are two instances of the DefaultISMLocking Objects ?\nThis is the reason for my problem.\nBR,\nclaus",
+            "date": "2008-02-25T07:25:06.999+0000",
+            "id": 18
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "The second RWLock probably belongs to the DefaultISMLocking of the version storage.\n\nDo you perform versioning operations at the same time?",
+            "date": "2008-02-25T13:40:37.737+0000",
+            "id": 19
+        },
+        {
+            "author": "Claus K\u00f6ll",
+            "body": "hi marcel,\nno i don't perform versioning operations.\ni only try to add a node. and this is the only operation where the deadlock occurs.\nplease read my comment from 13/Feb/08 09:48 AM,\nthere i have hopefully eyplained the deadlock, hope you can follow me :-)\n\nThe active writer will be changed in the DefaultISMLocking-Instance of the SharedItemStateManager.\nThe allowReader comes from the DefaultISMLocking-Instance hold by the VersionItemStateProvider and\nin this Instance is the wrong Thread set.\n\nthanks lot\nclaus\n",
+            "date": "2008-02-25T15:04:11.600+0000",
+            "id": 20
+        },
+        {
+            "author": "Claus K\u00f6ll",
+            "body": "is there anybody out who can tell me why there are 2 instances of DefaultISMLocking Objects ?\nwe need xa in our environment and so this is a realy important issue for us.\nthanks\nclaus",
+            "date": "2008-03-10T08:52:35.471+0000",
+            "id": 21
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "The second locking object belongs to the version storage. If that lock has a active writer then your code uses versioning. Is one of your nodes mix:versionable?\n\nDid you also configure the ISMLocking in the repository.xml for version storage as well? ",
+            "date": "2008-03-10T09:30:55.093+0000",
+            "id": 22
+        },
+        {
+            "author": "Claus K\u00f6ll",
+            "body": "hi marcel,\ni do not have configured a extra ISMLocking in my repository.xml file because\ni have applied the patched code directly on the DefaultISMLocking Class\nMy node have only the mix:referenceable and mix:lockable types.\nIf i look into the last stacktrace i have added i see that the deadlock comes from the SharedItemStateManager.getItemState\nThis calls VersionItemStateProvider.hasItemState. \nI do not know why this will be called on my node that has no mix:versionable as mixintype ?\n\nAnyway .. it tries to acquire a ReadLock with the DefaultISMLocking hold by versionstorage.\nOn the rwLock Object of that instance there was never called downgrade so the rwLock has a other Thread than\nthe rwLock Object of the DefaultISMLocking hold by the SharedItemStateManager.\n\nIf we call rwLock.setActiveWriter(Thread.currentThread()) in the DefaultISMLocking we must call it on every instance of the\nDefaultISMLocking with maybe a observation pattern ?\nWhat do you think ?\n\nBR\nclaus",
+            "date": "2008-03-10T10:17:23.555+0000",
+            "id": 23
+        },
+        {
+            "author": "Claus K\u00f6ll",
+            "body": "hi marcel,\nyesterday i have tested again to find a solution for that issue and i have taken the newest\npackages (core, common and rmi) and i don't know why but your pactch works now fine.\nthe VersionItemStateprovider.hasItemState will not be called anymore so no deadlock occurs.\nfrom my side it would be great if you can apply your patch to the trunk.\nit will work till we dont use versionable nodes but this is no requirement for us ..\n\nthanks \nclaus\n\n",
+            "date": "2008-04-16T05:09:54.803+0000",
+            "id": 24
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "Hi Claus,\n\nthat's good news. however be warned, that there still might be an issue. I ran our daily integration test with the patched DefaultISMLocking class and some tests failed with an exception.\n\nI'll have to further investigate what causes those errors, but once those are resolved I'll commit the changes.\n",
+            "date": "2008-04-18T12:38:13.007+0000",
+            "id": 25
+        },
+        {
+            "author": "Alexander T",
+            "body": "Confirmed on jboss 4.2.2.GA using jdk6 and solaris10. The deadlock occurs directly during deploy, but was not present using jdk5. ",
+            "date": "2008-04-25T14:52:52.454+0000",
+            "id": 26
+        },
+        {
+            "author": "Claus K\u00f6ll",
+            "body": "hi marcel,\n\ndo you have any news about the errors ?\n\nthanks\nclaus",
+            "date": "2008-05-06T13:18:26.314+0000",
+            "id": 27
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "Not yet. I was on vacation and did not have time to work on this issue.",
+            "date": "2008-05-07T12:25:06.380+0000",
+            "id": 28
+        },
+        {
+            "author": "Claus K\u00f6ll",
+            "body": "hi marcel,\n\nas written before your patch works fine but i found that in some really rarely situations (that i can not reproduce) a deadlock has still occured.\nI have modified your patch as follows to find out when a readlock will be aquired with a wrong active_writer\n\npublic Sync readLock() {\n  if (activeWriter_ != null && activeWriter_ != Thread.currentThread()) {\n    System.out.println(\"Jackrabbit - PatchedDefaultISMLocking: ActiveWriter Thread not the same for readLock() ! ActiveWriter is \" + activeWriter_.getName() \n            + \"CurrentThread is \" + Thread.currentThread().getName());\n    Throwable throwable = new Throwable();\n    throwable.fillInStackTrace();\n    throwable.printStackTrace();\n    activeWriter_ = Thread.currentThread();\n  }\n  return super.readLock();\n}\n\ni know to set the activewriter to the current Thread is no good idea but i want to know where the issues comes from and my application should not\nrun into a deadlock.\n\nAnd here is the stacktrace\n[25.06.08 18:13:36:019 CEST] 1ea9f0d9 SystemErr     R java.lang.Throwable\n[25.06.08 18:13:36:019 CEST] 1ea9f0d9 SystemErr     R \tat org.apache.jackrabbit.core.state.PatchedDefaultISMLocking$RWLock.readLock(PatchedDefaultISMLocking.java(Compiled Code))\n[25.06.08 18:13:36:019 CEST] 1ea9f0d9 SystemErr     R \tat org.apache.jackrabbit.core.state.PatchedDefaultISMLocking.acquireReadLock(PatchedDefaultISMLocking.java(Inlined Compiled Code))\n[25.06.08 18:13:36:019 CEST] 1ea9f0d9 SystemErr     R \tat org.apache.jackrabbit.core.state.SharedItemStateManager.acquireReadLock(SharedItemStateManager.java(Inlined Compiled Code))\n[25.06.08 18:13:36:019 CEST] 1ea9f0d9 SystemErr     R \tat org.apache.jackrabbit.core.state.SharedItemStateManager.getItemState(SharedItemStateManager.java(Compiled Code))\n[25.06.08 18:13:36:019 CEST] 1ea9f0d9 SystemErr     R \tat org.apache.jackrabbit.core.state.ChangeLog.undo(ChangeLog.java:330)\n[25.06.08 18:13:36:019 CEST] 1ea9f0d9 SystemErr     R \tat org.apache.jackrabbit.core.state.XAItemStateManager.rollback(XAItemStateManager.java:182)\n[25.06.08 18:13:36:019 CEST] 1ea9f0d9 SystemErr     R \tat org.apache.jackrabbit.core.TransactionContext.rollback(TransactionContext.java:224)\n[25.06.08 18:13:36:019 CEST] 1ea9f0d9 SystemErr     R \tat org.apache.jackrabbit.core.XASessionImpl.rollback(XASessionImpl.java:352)\n[25.06.08 18:13:36:019 CEST] 1ea9f0d9 SystemErr     R \tat org.apache.jackrabbit.jca.TransactionBoundXAResource.rollback(TransactionBoundXAResource.java:76)\n[25.06.08 18:13:36:019 CEST] 1ea9f0d9 SystemErr     R \tat com.ibm.ejs.j2c.XATransactionWrapper.rollback(XATransactionWrapper.java:1148)\n[25.06.08 18:13:36:019 CEST] 1ea9f0d9 SystemErr     R \tat com.ibm.ws.Transaction.JTA.JTAXAResourceImpl.rollback(JTAXAResourceImpl.java:347)\n[25.06.08 18:13:36:019 CEST] 1ea9f0d9 SystemErr     R \tat com.ibm.ws.Transaction.JTA.RegisteredResources.distributeOutcome(RegisteredResources.java:1085)\n[25.06.08 18:13:36:019 CEST] 1ea9f0d9 SystemErr     R \tat com.ibm.ws.Transaction.JTA.RegisteredResources.distributeRollback(RegisteredResources.java:1908)\n[25.06.08 18:13:36:019 CEST] 1ea9f0d9 SystemErr     R \tat com.ibm.ws.Transaction.JTA.TransactionImpl.internalRollback(TransactionImpl.java:1511)\n[25.06.08 18:13:36:019 CEST] 1ea9f0d9 SystemErr     R \tat com.ibm.ws.Transaction.JTS.TransactionWrapper.rollback(TransactionWrapper.java:591)\n[25.06.08 18:13:36:019 CEST] 1ea9f0d9 SystemErr     R \tat com.ibm.ws.Transaction.JTS.WSCoordinatorImpl.rollback(WSCoordinatorImpl.java:163)\n[25.06.08 18:13:36:019 CEST] 1ea9f0d9 SystemErr     R \tat com.ibm.ws.Transaction.JTS._WSCoordinatorImplBase._invoke(Unknown Source)\n[25.06.08 18:13:36:019 CEST] 1ea9f0d9 SystemErr     R \tat com.ibm.CORBA.iiop.ServerDelegate.dispatchInvokeHandler(ServerDelegate.java(Compiled Code))\n[25.06.08 18:13:36:019 CEST] 1ea9f0d9 SystemErr     R \tat com.ibm.CORBA.iiop.ServerDelegate.dispatch(ServerDelegate.java(Compiled Code))\n[25.06.08 18:13:36:019 CEST] 1ea9f0d9 SystemErr     R \tat com.ibm.rmi.iiop.ORB.process(ORB.java(Compiled Code))\n[25.06.08 18:13:36:019 CEST] 1ea9f0d9 SystemErr     R \tat com.ibm.CORBA.iiop.ORB.process(ORB.java(Compiled Code))\n[25.06.08 18:13:36:019 CEST] 1ea9f0d9 SystemErr     R \tat com.ibm.rmi.iiop.Connection.doWork(Connection.java(Compiled Code))\n[25.06.08 18:13:36:019 CEST] 1ea9f0d9 SystemErr     R \tat com.ibm.rmi.iiop.WorkUnitImpl.doWork(WorkUnitImpl.java(Compiled Code))\n[25.06.08 18:13:36:019 CEST] 1ea9f0d9 SystemErr     R \tat com.ibm.ejs.oa.pool.PooledThread.run(ThreadPool.java(Compiled Code))\n[25.06.08 18:13:36:019 CEST] 1ea9f0d9 SystemErr     R \tat com.ibm.ws.util.ThreadPool$Worker.run(ThreadPool.java:937)\n\nAs i can see Websphere has a ThreadPool for the XA Communication and so it is not guaranteed that the same thread that holds the writelock comes to get a redlock.\nI don't know how to solve that problem\n\nBR,\nclaus",
+            "date": "2008-06-26T08:56:14.734+0000",
+            "id": 29
+        },
+        {
+            "author": "Robert Sauer",
+            "body": "Hi,\n\nI got the same issue on Tomcat with Jencks when using ...rmi.ClientXASession. The prepare and commit requests seem to arrive sometimes at different threads, causing a deadlock.\n\nI understand that RMI gives no guarantee on which thread requests are served, so I fully agree that locking should not be thread based.\n\nBtw., I tested with the attached PatchedDefaultISMLocking class and I still get errors, although no deadlocks. I get a stale item state exception on commit after deleting a node having versions. So this does not seem to be a solution currently.\n\nRobert",
+            "date": "2008-09-15T10:33:17.079+0000",
+            "id": 30
+        },
+        {
+            "author": "Claus K\u00f6ll",
+            "body": "hi robert,\n\ni think the patched ISM Locking Class has nothing to do with the stale item exception you get now.\nI have also found a bug in the LockManager with Transactions see JCR-1702\nMaybe you test the attached patch and share your experiences ...\n\nthanks\nclaus",
+            "date": "2008-09-15T14:33:05.000+0000",
+            "id": 31
+        },
+        {
+            "author": "Claus K\u00f6ll",
+            "body": "I have implemented a extension to the current Locking Strategy that binds the lock to thread. \nNow the lock will not only be bound to the thread but also bound with the Xid to a ThreadLocal Object for the current transaction\nThis patch implements also the code for JCR-1702 patch\n",
+            "date": "2008-09-22T08:12:51.426+0000",
+            "id": 32
+        },
+        {
+            "author": "Claus K\u00f6ll",
+            "body": "aahh sorry  with this patch the timeout of a xasession will be set to 1200 instead of 5.\ni had problems that my container (websphere) does'nt set the configured timeout through the jca interfaces",
+            "date": "2008-09-22T08:19:15.065+0000",
+            "id": 33
+        },
+        {
+            "author": "Claus K\u00f6ll",
+            "body": "Valid patch against current trunk",
+            "date": "2008-10-20T10:01:15.598+0000",
+            "id": 34
+        },
+        {
+            "author": "Claus K\u00f6ll",
+            "body": "Committed in revision 734400 (trunk).",
+            "date": "2009-01-14T14:12:37.832+0000",
+            "id": 35
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Good stuff! Merged to the 1.5 branch in revision 743318.",
+            "date": "2009-02-11T13:12:12.142+0000",
+            "id": 36
+        }
+    ],
+    "component": "jackrabbit-core",
+    "description": "Since we have configured a j2c resource adapter any modification to the repository ends\nwith a deadlock.",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "JCR-1334",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Critical",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "Deadlock due different Thread access while prepare and commit in same Transaction",
+    "systemSpecification": true,
+    "version": "1.4"
+}

@@ -1,0 +1,41 @@
+{
+    "comments": [
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 156352\nOriginal test case from Merten Schumann",
+            "date": "20040817T17:38:52",
+            "id": 0
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 156353\nFix: use warnings instead of errors to report non-JS type",
+            "date": "20040817T17:42:47",
+            "id": 1
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "I committed the patch: folks at helma.org confirmed that it worked for them.",
+            "date": "20040901T14:18:02",
+            "id": 2
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "(In reply to comment #3)\n> I committed the patch: folks at helma.org confirmed that it worked for them.\n\nThat was comments for another bug, this should read:\n\nI committed the patch: Merten Schumann confirmed that it worked for him.\n",
+            "date": "20040901T14:20:59",
+            "id": 3
+        }
+    ],
+    "component": "Core",
+    "description": "Although Rhino officially supported only objects of type Scriptable, String,\nNumber and Boolean, the public API did not check for that. In addition since\nduring method calls ScriptRuntime uses toObject on any non-Scriptable value and\nthat would wrap non-JS objects using LiveConnect, it was possible to call\nmethods on non JS values leading to the problem not been noticed.\n\nFor 1.6 I added explicit checks to throw exceptions about this incorrect usage,\nbut it turned out to be too problematic as was reported by Merten Schumann:\n\n-------- Original Message --------\nSubject: Re: Problem with ambiguous method - under Solaris, works in Windows\nDate: Tue, 17 Aug 2004 17:23:29 +0200\nFrom: Igor Bukanov <igor@fastmail.fm>\nTo: Merten Schumann <Merten.Schumann@asg.com>\n\nMerten Schumann wrote:\n> Hello Igor,\n> \n> sorry, found another issue with most current Rhino sources.\n> Just sending the message - although new topic - to you, if this is not\n> okay, give me a bang, but not too hard. :-)\n> \n> I think I run now into (from Kit.java) quite new method\n> \n> public static RuntimeException badTypeJS(Object x) throws\n> RuntimeException\n> {\n>  throw new IllegalArgumentException(\"Type \"+x.getClass().getName()+\" of\n> \"+x+\" is not valid JS type\");\n> }\n> \n> with my Rhino usage. I tried to make some code to reproduce it, it's\n> attached. Makes no sense this code, I just tried to change my existing\n> code to reproduce the problem but work in Not-Merten's-Environment :-).\n> \n> I think, it's no longer simply possible to just call methods on plain\n> Java objects which are available via property in a scope.\n\nYour code defines:\nScriptableObject.defineProperty(root, \"$$GlobalSnippet\",\n  new Snippet(\"global\"),\n   ScriptableObject.PERMANENT | ScriptableObject.READONLY);\n\nwhich stores in root an object that is not Scriptable, Boolean, String \nor Number.\n\nBut such usage was never supported by Rhino, it should be changed to\n\nScriptableObject.defineProperty(root, \"$$GlobalSnippet\",\nContext.toObject(new Snippet(\"global\"), root),\n   ScriptableObject.PERMANENT | ScriptableObject.READONLY);\n\nto work reliably even in older Rhino releases. Rhino 1.6 simply enforced \nthat hidden assumption.\n\nFor compatibility I will replace the error by warning reporting so your \nscripts would continue to work as is in 1.6 but the longer term advise \nis to upgrade your scripts.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "255891",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "-- normal",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "Compatibility issue: non JS values stored as properties",
+    "systemSpecification": false,
+    "version": "head"
+}

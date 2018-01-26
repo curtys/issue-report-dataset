@@ -1,0 +1,59 @@
+{
+    "comments": [
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Nicolas,\nCould you please attach a wire/context log of the HTTP session?\nhttp://jakarta.apache.org/commons/httpclient/logging.html\n\nOleg",
+            "date": "2005-08-24T23:32:39.000+0000",
+            "id": 0
+        },
+        {
+            "author": "nicolas de loof",
+            "body": "Created an attachment (id=16177)\nlogs for duplicate request\n\npreemptive authentication is activated (line 11 :\nhttp.authentication.preemptive = true)\n\nfirst request is send (line 52)\nserver responds HTTP/1.1 401  (line 120) and requires basic authentication\n(line 138) WWW-Authenticate: Basic realm=\"Contact\"\nAuthChallengeProcessor runs challenge (line 159) and retries authentication\n(line 162)\nsecond request (line 193) uses same credentials\nand gets same 401 (line 257)\n\n\nI've made some changed to processWWWAuthChallenge() to include (after line 690)\n:\n\nboolean usePreemptive =\nmethod.getParams().isParameterTrue(HttpClientParams.PREEMPTIVE_AUTHENTICATION);\n\nboolean useBasic =\nAuthPolicy.BASIC.equalsIgnoreCase(authscheme.getSchemeName());\nif (usePreemptive && useBasic) {\n    return false;\n}\n\nUsing this, no challenge is processed.",
+            "date": "2005-08-25T00:19:33.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Ortwin Gl\u00fcck",
+            "body": "Now, I understand what the problem is: The request is retried instead of failing\nafter the first time.",
+            "date": "2005-08-25T00:39:19.000+0000",
+            "id": 2
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Created an attachment (id=16259)\nPatch (take 1)\n\nFolks,\nPlease review and let me know what you think\n\nOleg",
+            "date": "2005-08-31T06:45:24.000+0000",
+            "id": 3
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Did anyone have time to review this one? This is a fairly big change for a\nrelease candidate. Please test and review\n\nOleg",
+            "date": "2005-09-14T03:49:13.000+0000",
+            "id": 4
+        },
+        {
+            "author": "Michael Becke",
+            "body": "I haven't had a chance to test this, but it looks good to me.  The only other thing I can think of testing \nwould be the combination of failed preemptive authentication and a custom CredentialsProvider.\n\nMike",
+            "date": "2005-09-14T11:21:22.000+0000",
+            "id": 5
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Patch committed\n\nOleg",
+            "date": "2005-09-20T05:42:13.000+0000",
+            "id": 6
+        }
+    ],
+    "component": "HttpClient (classic)",
+    "description": "Hello,\n\nI'm using premptive authentification from an Axis client using BASIC Http\nauthentification. When the user isn't authenticated/authorized by server (in my\ncase, credentials are expired), httpclient runs a \"Chalenge\" that produces a\nsecond request to server with same credentials.\n\nwhen using preemptive mode, chalenge should be skipped if authentication scheme\nhasn't changed !",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "HTTPCLIENT-489",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "HTTPCLIENT",
+    "project": "HTTPCLIENT",
+    "summary": "Request is retried if preemptive authentication fails",
+    "systemSpecification": true,
+    "version": "3.0 RC3"
+}

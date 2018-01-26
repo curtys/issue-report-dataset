@@ -1,0 +1,53 @@
+{
+    "comments": [
+        {
+            "author": "Jeff Dever",
+            "body": "Need more information. What operating system is this occuring on?",
+            "date": "2003-01-28T05:10:57.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Aurelien Pernoud",
+            "body": "I've met this too.\nI have two servlets interacting using httpclient. Using my old nightly it \nworked fine, with current CVS the servlet using httpclient finally uses 100% \nCPU without any reason.\nConfig : 2 Tomcat 4.1.18, each one on Windows 2000 Server.\n\nI'm using MultiThreadedHttpConnectionManager to maintain a pool of connections \nbetween both apps, and all my requests are made this way :\ntry\n{\n  method.execute(state, mymanager.getconnection())\n}\ncatch (Exception e)\n{\n  log it\n}\nfinally\n{\n  method.releaseconnection()\n}\n\nI have nothing weird in logs, both apps are still up, but the one with \nhttpclient starts using 100% cpu \"I don't know when\" and never stops. I didn't \nmet the trouble using my old nightly, and the trouble has appeared when testing \nHTTPCLIENT-116",
+            "date": "2003-02-20T23:52:00.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Aur\u00e9lien,\nCould you please let me know exactly want nightly build you had been using before?\nOleg \n",
+            "date": "2003-02-21T00:01:05.000+0000",
+            "id": 2
+        },
+        {
+            "author": "Aurelien Pernoud",
+            "body": "An old old one, that was between 2.0a1 and 2.0a2 :(\nLooking the class in jar, it says 30 may 2002\nWith this one, there wasn't the connectionmanager so I used a modified version \nof httpmulticlient",
+            "date": "2003-02-21T00:26:51.000+0000",
+            "id": 3
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "The bug appears to have been found by Sam Maloney <sam.maloney@filogix.com>\n\n===========================================================================\nHere is the problem:\n\n        at \norg.apache.commons.httpclient.HttpParser.readRawLine(HttpParser.java:46)\n        at \norg.apache.commons.httpclient.HttpParser.readLine(HttpParser.java:81)\n        at \norg.apache.commons.httpclient.HttpConnection.readLine(HttpConnection.java:878)\n        at \norg.apache.commons.httpclient.HttpConnectionAdapter.readLine(MultiThreadedHttpConnectionManager_fixed.java:730)\n        at \norg.apache.commons.httpclient.HttpMethodBase.readStatusLine(HttpMethodBase.java:1917)\n\nYou can see that readStatusLine looks like this:\n\n<SNIP>\n        //read out the HTTP status string\n        String statusString = conn.readLine();\n        while ((statusString != null) && !statusString.startsWith(\"HTTP/\")) {\n                statusString = conn.readLine();\n        }\n        if (statusString == null) {\n                // A null statusString means the connection was lost before we got a\n                // response.  Try again.\n                throw new HttpRecoverableException(\"Error in parsing the status \"\n                        + \" line from the response: unable to find line starting\nwith\"\n                        + \" \\\"HTTP/\\\"\");\n        }\n</SNIP>\n\nYou can see from the above code, that until conn.readLine() returns null or a \nstring starting with \"HTTP/\", this piece of code will keep looping \nindefinatly (what is taking 100% CPU). Right now, readLine never will return \nnull, only empty strings.\n\nI'm guessing readLine must have returned null at one point, as every place \nthat calls it expects null to be returned on closed connection.\n\nThe way readLine must work for the calling code to work is:\n\n1) Read data upto \\r\\n, return line. (currently happens)\n2) if EOF before finding \\r\\n, but we have data in our buffer, return the \nbuffer. (also happens)\n\n3) if EOF before finding any data (buf.size()==0), then return null to signal \nthat no more data is possible, and caller should NOT call again. (this is \nwhat patch adds)\n\nIf we return empty string like is happening currently, then the caller will \nnot know NOT to call again. In this bugs case, the caller keeps reading lines \nuntil it finds 'HTTP/'. Since the empty string doesn't match that, the caller \nwill keep trying to get the next line, and they will just keep getting \"\".\n\nHere is my patch again, updated to apply to HttpParser (where the readLine \ncode has been moved to since my last patch). I have retested the new patch \nand it is working in all my test cases, including the one to reproduce the \nbug.\n\nIndex: HttpParser.java\n===================================================================\nRCS file: \n/home/cvspublic/jakarta-commons/httpclient/src/java/org/apache/commons/httpclient/HttpParser.java,v\nretrieving revision 1.1\ndiff -u -r1.1 HttpParser.java\n--- HttpParser.java     16 Feb 2003 13:10:16 -0000      1.1\n+++ HttpParser.java     20 Feb 2003 15:51:51 -0000\n@@ -58,6 +58,10 @@\n                 }\n             }\n         }\n+        if (buf.size() <= 0) {\n+            // Then we just started reading, but the stream is EOF (closed).\n+            return null; // Let caller know we got EOF BEFORE any data.\n+        }\n         if (WIRE_LOG.isDebugEnabled()) {\n             WIRE_LOG.debug(\"<< \\\"\" + buf.toString() + (ch>0 ? \"\\\" [\\\\r\\\\n]\" : \n\"\"));\n         }\n@@ -79,6 +83,12 @@\n     public static String readLine(InputStream inputStream) throws IOException \n{\n         LOG.trace(\"enter HttpConnection.readLine()\");\n         byte[] rawdata = readRawLine(inputStream);\n+\n+        if (rawdata == null) {\n+            // Then there was EOF before any data was read, we must let \ncaller know.\n+            return null;\n+        }\n+\n         int len = rawdata.length;\n         if (( len >= 2) && (rawdata[len - 2] == '\\r') && (rawdata[len - 1] == \n'\\n')) {\n             return HttpConstants.getString(rawdata, 0, rawdata.length - 2);\n",
+            "date": "2003-02-21T01:00:38.000+0000",
+            "id": 4
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "I assume this bug can be considered done with. Problems related to this bug\nshould re-resubmitted as new bugs\nOleg ",
+            "date": "2003-02-26T21:34:55.000+0000",
+            "id": 5
+        }
+    ],
+    "component": "HttpClient (classic)",
+    "description": "I was working masively using HttpClient (I was testing it for usage within a \nserver) and it got to 100% CPU for an endless time.\n\nI was querying urls of the type \nhttp://search.barnesandnoble.com/booksearch/results.asp?WRD=<text>&sort=R&SAT=1\n\nTo reproduce it, run 100-200 urls with random words instead of <text> and \nyou'll probably reproduce the problem.",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "HTTPCLIENT-147",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "HTTPCLIENT",
+    "project": "HTTPCLIENT",
+    "summary": "HttpClient enter 100% for endless time",
+    "systemSpecification": true,
+    "version": "2.0 Alpha 2"
+}

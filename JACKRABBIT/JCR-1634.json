@@ -1,0 +1,77 @@
+{
+    "comments": [
+        {
+            "author": "Roman Puchkovskiy",
+            "body": "Attaching test case. It contains two test methods: one without transactions, another using transactions.",
+            "date": "2008-05-30T15:52:50.159+0000",
+            "id": 0
+        },
+        {
+            "author": "Marius Ropotica",
+            "body": "I'm using jackrabbit 1.5 now , and this bug is not yet resolved. What is happening? Why this bug is ignored? Did anyone found workarounds for this problem?\n\nThis is the code that I'm trying to run in a transaction:\n\nsession.addLockToken(token);\nNode node = session.getNodeByUUID(id);\nnode.unlock();\n\naddLockToken method from SessionImpl delegates to method addLockToken from XAEnvironment class. This method is empty.\n\n",
+            "date": "2009-03-13T10:11:25.703+0000",
+            "id": 1
+        },
+        {
+            "author": "Marius Ropotica",
+            "body": "Well, I've modified the XAEnvironment and XALockManager classes.  I'm not sure that this is the right solution, but it seems that the problem is gone. \n\nIn XAEnvironment  I've modified addLockToken and removeLockToken methods as following:\n\n    public void addLockToken(SessionImpl session, String lt) {\n    \tlockMgr.lockTokenAdded(session, lt);\n    }\n\n    public void removeLockToken(SessionImpl session, String lt) {\n    \tlockMgr.lockTokenRemoved(session, lt);\n    }\n\nand in XALockManager class the following methods:\n\n    public void lockTokenAdded(SessionImpl session, String lt) {\n        if (isInXA()) {\n            xaEnv.addLockToken(session, lt);\n        } else {\n            lockMgr.lockTokenAdded(session, lt);\n        }\n    }\n\n    public void lockTokenRemoved(SessionImpl session, String lt) {\n        if (isInXA()) {\n            xaEnv.removeLockToken(session, lt);\n        } else {\n            lockMgr.lockTokenRemoved(session, lt);\n        }\n    }\n",
+            "date": "2009-03-13T13:45:00.591+0000",
+            "id": 2
+        },
+        {
+            "author": "Claus K\u00f6ll",
+            "body": "working patch ...",
+            "date": "2009-05-07T13:07:36.688+0000",
+            "id": 3
+        },
+        {
+            "author": "Claus K\u00f6ll",
+            "body": "arg ... works not perfect ... i will investigate mor time :-)",
+            "date": "2009-05-07T16:03:34.596+0000",
+            "id": 4
+        },
+        {
+            "author": "Claus K\u00f6ll",
+            "body": "now it works",
+            "date": "2009-05-11T07:17:54.991+0000",
+            "id": 5
+        },
+        {
+            "author": "Marius Ropotica",
+            "body": "Great. I didn't test the patch, but as soon as I will test it, I will provide feedback. Is there any planned release that include this patch?",
+            "date": "2009-05-11T12:32:58.162+0000",
+            "id": 6
+        },
+        {
+            "author": "Claus K\u00f6ll",
+            "body": "Resolved in revision 775868",
+            "date": "2009-05-18T09:20:51.652+0000",
+            "id": 7
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "I tried merging this to the 1.x branch (svn merge -c 775868 https://svn.apache.org/repos/asf/jackrabbit/trunk), but I'm getting the following test failure there (after fixing the trivial XATest merge failure):\n\ntestAddRemoveLockToken(org.apache.jackrabbit.core.XATest)  Time elapsed: 0.005 sec  <<< ERROR!\njavax.transaction.RollbackException: Transaction rolled back: XA_ERR=104\n        at org.apache.jackrabbit.core.UserTransactionImpl.commit(UserTransactionImpl.java:159)\n        at org.apache.jackrabbit.core.XATest.testAddRemoveLockToken(XATest.java:1000)\nCaused by: org.apache.jackrabbit.core.TransactionException: Unable to update.\n        at org.apache.jackrabbit.core.lock.XAEnvironment.prepare(XAEnvironment.java:345)\n        at org.apache.jackrabbit.core.lock.XALockManager.prepare(XALockManager.java:254)\n        at org.apache.jackrabbit.core.TransactionContext.prepare(TransactionContext.java:154)\n        at org.apache.jackrabbit.core.XASessionImpl.prepare(XASessionImpl.java:331)\n        at org.apache.jackrabbit.core.UserTransactionImpl.commit(UserTransactionImpl.java:121)\n        ... 30 more\nCaused by: javax.jcr.ItemNotFoundException: failed to build path of f3a5bece-ced2-4baf-909c-e13e9685893c: f3a5bece-ced2-4baf-909c-e13e9685893c: f3a5bece-ced2-4baf-909c-e13e9685893c\n        at org.apache.jackrabbit.core.HierarchyManagerImpl.getPath(HierarchyManagerImpl.java:398)\n        at org.apache.jackrabbit.core.CachingHierarchyManager.getPath(CachingHierarchyManager.java:229)\n        at org.apache.jackrabbit.core.lock.LockManagerImpl.getPath(LockManagerImpl.java:702)\n        at org.apache.jackrabbit.core.lock.LockManagerImpl.internalLock(LockManagerImpl.java:318)\n        at org.apache.jackrabbit.core.lock.XAEnvironment$LockInfo.update(XAEnvironment.java:492)\n        at org.apache.jackrabbit.core.lock.XAEnvironment.prepare(XAEnvironment.java:343)\n        ... 34 more\nCaused by: org.apache.jackrabbit.core.state.NoSuchItemStateException: f3a5bece-ced2-4baf-909c-e13e9685893c\n        at org.apache.jackrabbit.core.state.SessionItemStateManager.getItemState(SessionItemStateManager.java:185)\n        at org.apache.jackrabbit.core.HierarchyManagerImpl.getItemState(HierarchyManagerImpl.java:150)\n        at org.apache.jackrabbit.core.HierarchyManagerImpl.getPath(HierarchyManagerImpl.java:393)\n        ... 39 more\n\nClaus, do you want to give this a look in the 1.x branch or should we simply declare this as fixed for just the 2.0 release?",
+            "date": "2009-05-20T16:39:00.446+0000",
+            "id": 8
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Sorry for the noise. The test (and merge) failure was caused by the fact that I hadn't yet merged the JCR-1633 fix to the 1.x branch. After merging JCR-1633, this fix merged cleanly and passed all tests.\n\nMerged to the 1.x branch in revision 776766.",
+            "date": "2009-05-20T16:59:55.285+0000",
+            "id": 9
+        }
+    ],
+    "component": "jackrabbit-core",
+    "description": "Following sequence does not work as expected:\n1. first tx (and first session)\n  create node\n  make it lockable\n2. second tx (and second session)\n  lock this node and save lock token\n3. third tx (and third session)\n  add saved lock token to session\n  modify this locked node -> fails as if lock token was not added to session3\n\nThe same sequence works as expected without transactions.\nI had to separate transactions 1 and 2 because JCR-1633 prevents node from being locked in same tx in which it was created.",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "JCR-1634",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "In XA transaction session.addLockToken() does not have effect",
+    "systemSpecification": true,
+    "version": "core 1.4.4"
+}

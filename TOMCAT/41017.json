@@ -1,0 +1,53 @@
+{
+    "comments": [
+        {
+            "author": null,
+            "body": "I will not bother closing this report, as I am sure you would reopen it ;)\n\nCould you point out a paragraph in the specification which says using\nsetHeader(\"Cache-Control\", null) removes the cache-control header ? Thanks.\n",
+            "date": "20061122T07:18:54",
+            "id": 0
+        },
+        {
+            "author": null,
+            "body": "Of course, while the use case is not valid, the setString logic is not\nequivalent to what it was before (I will rectify it).",
+            "date": "20061122T07:40:03",
+            "id": 1
+        },
+        {
+            "author": null,
+            "body": "(You assume I reopen bugs for no good reason, but from my p.o.v, you seem to be\nclosing them for no good reason. Thanks for keeping an open mind.)\n\n----javadoc-----\npublic void setHeader(String name, String value)\nSets a response header with the given name and value. If the header had already\nbeen set, the new value overwrites the previous one. The containsHeader method\ncan be used to test for the presence of a header before setting its value.\n----spec SRV5.2 headers--------\nThe setHeader method sets a header with a given name and value. A previous\nheader is replaced by the new header. Where a set of header values exist for the\nname, the values are cleared and replaced with the new value.\n\n----------------\nSubjectively speaking, there is no unsetHeader() and you can imagine that the\nJSR wouldn't have forgotten about that. The .reset() is the only way to clear\nheaders. The behavior of setHeader(name, null) on a non-existing header is to\nactually add an entry in the headers with a null value. This indicates the\ntomcat code can at least support null values. Therefore, replacement of an\nexisting value with null is supported.\n\nOtherwise, it remains impossible to clear just one: since you cannot find\nexisting headers names nor values, you cannot back them up prior to reset and\ncannot repopulate the existing headers you want to keep (ex: from a servlet\nfilter in orthogonal code). So, the api subjectively indicates that clearing a\nheader is done through setHeader(null) although not declaratively spec'ed out.\nin the jsr. I know it is weak.\n\n-------\n\nThere is no workaround in the mean time, except fiddling with the server.xml\n\n<Valve className=\"org.apache.catalina.authenticator.FormAuthenticator\"\nsecurePagesWithPragma=\"false\" disableProxyCaching=\"false\"/>\n\nwhich brings its own problems of course, like revising the entire cache headers\nproduction layer of an app, with all the caching regression tests for the\nfrackin' browsers...(sigh)\n",
+            "date": "20061122T09:04:34",
+            "id": 2
+        },
+        {
+            "author": null,
+            "body": "Remy fixed this for TC6 and I ported the change back to T5.5.x. It will be\nincluded in 5.5.21 onwards.",
+            "date": "20061123T10:59:42",
+            "id": 3
+        },
+        {
+            "author": null,
+            "body": "Any decided date for the 5.5.21 drop?\nIf not, any ball-park estimate?\n",
+            "date": "20061127T08:06:24",
+            "id": 4
+        },
+        {
+            "author": null,
+            "body": "See #41780.\nThe header isn't removed, it is simply set with an empty value.\nAs this bug concerns the regression, I'm not reopening.\nSee #41780 for the new bug.\n",
+            "date": "20070307T06:47:32",
+            "id": 5
+        }
+    ],
+    "component": "Connector:HTTP",
+    "description": "MessageBytes used to call recycle() before setString(), now impossible to clear\na http header as in setHeader(null)\n\nI used to call response.setHeader(\"Cache-Control\", null) and\ngetResponse().setHeader(\"Pragma\", null) and it doesn't clear the headers anymore.\n\nThis is because the org.apache.tomcat.util.buf.MessageBytes.setString()\ndoesn't do anything if the given string is null. It is a major regression if not\na servlet spec violation to not allow to clear a http header.",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "41017",
+    "issuetypeClassified": "RFE",
+    "issuetypeTracker": "BUG",
+    "priority": "P2 normal",
+    "product": "Tomcat 5",
+    "project": "TOMCAT",
+    "summary": "MessageBytes used to call recycle() before setString(), now impossible to clear a http header as in setHeader(null)",
+    "systemSpecification": true,
+    "version": "5.5.20"
+}

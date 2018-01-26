@@ -1,0 +1,53 @@
+{
+    "comments": [
+        {
+            "author": null,
+            "body": "Created attachment 20310\nMy patch to fix this issue",
+            "date": "20070604T14:14:32",
+            "id": 0
+        },
+        {
+            "author": null,
+            "body": "By the way of JNDI/Tomcat + Active Directory:\n\nAs JNDIRealm is/was never quite happy with Active\nDirectory for a variety of reasons. After a bunch\nof frustrations (of which the lying isUserInGruop()\nwas one of the worst), I decided to write a new \nRealm class, which I may contribute. \n\nhttp://www.a-weinert.de/java/docs/aWeinertBib/de/a_weinert/realm/ADweRealm.html\n\nADweRealm seaches only one way (performance!) from \n(authenticated) users to their groups. It follows \nthe quite important group-in-group relations, and so on.\n\nExperiences in a Windows Server 2003 domain (3000+ user\naccounts, hundreds of groups etc.) are quite encouraging.\nNone of the Tomcat + Active Directory problems, of which\nGoogle is full of, arised any more.\n\nSorry, this comment is not quite related to below\nbug, bat anybody facing AD problems might as well give\nADweRealm a try. For 6.0.x, just  put \nhttp://www.a-weinert.de/java/catErgWe.jar\ninto lib, and configure accordingly:\n\n   <!--  ADweRealm added 17.02.2008, a Realm for Active Directory      \n      Special development logging can be switched on by \n       devLog=\"C:\\Programme\\Apache\\Tomcat\\logs\\awRe.log\"\n      or\n       devLog=\" \"\n      which gives above as default.           \n      Omit for no extra logging by de.a_weinert.realm.ADweRealm.DevLog\n      \n      Default attributes (can be omitted if value fits) are:\n          userRoleName=\"memberOf\" \n          userSubtree=\"true\"\n          userSearch=\"(sAMAccountName={0})\"\n          shortRoles=\"true\"\n          followRoles=\"true\"\n       -->\n   <Realm name=\"ADsso\" className=\"de.a_weinert.realm.ADweRealm\" debug=\"999\"\n      devLog=\"C:\\Programme\\Apache\\Tomcat\\logs\\awRe.log\"\n      allRolesMode=\"authOnly\"\n      \n      connectionURL=\"ldap://193.175.115.2:389\"\n      alternateURL=\"ldap://193.175.115.4:389\"\n      connectionName=\"CN=ldap Leser,CN=Users,DC=FB3-MEVA,DC=fh-bochum,DC=de\"\n      connectionPassword=\"mauseSpatz\"\n\n      userBase=\"DC=FB3-MEVA,DC=fh-bochum,DC=de\"\n      defaultRole=\"fb3-meva_user\"\n      shortRoles=\"short\"\n    />  \n\n\n\n \n (what\nJNDIRealm can'tlinks ",
+            "date": "20080227T22:48:41",
+            "id": 1
+        },
+        {
+            "author": null,
+            "body": "This has been fixed in 6.0.x and will be included in 6.0.20 onwards.",
+            "date": "20090428T06:42:12",
+            "id": 2
+        },
+        {
+            "author": null,
+            "body": "This has been fixed in 5.5.x and will be included in 5.5.28 onwards.",
+            "date": "20090525T02:51:41",
+            "id": 3
+        },
+        {
+            "author": null,
+            "body": "I looked at the changes that were made in the 6.0 branch and note that you factored the code in my patch into a method, but then failed to invoke it, so the bug still exists. This is in revision 769402. I didn't go check to see if the same mistake was made in the 5.5 branch.",
+            "date": "20091008T08:55:37",
+            "id": 4
+        },
+        {
+            "author": null,
+            "body": "(In reply to comment #5)\nThis was corrected in a later commit for 6.0.x. 5.5.x is also fine.",
+            "date": "20091021T14:54:21",
+            "id": 5
+        }
+    ],
+    "component": "Catalina",
+    "description": "Active Directory can respond to a query with SearchResult's that are not\nrelative.  We discovered this happening with a directory hosted across many\nservers when the userBase was not sufficient to identify a single server.\n\nIn getUserBySearch, JNDIRealm assumes that the SearchResult is relative and goes\nabout creating a DN for the user by appending together the various bits of names\nit gets back.  This is definitely wrong for absolute names which are URL's of\nthe form:  ldap://server/encoded_user_dn\n\nI discovered this issue in Tomcat 5.5 and a cursory look at the SVN repo for\nTomcat 6.0 reveals that this bug is also present there.  \n\nI have a patch for this issue which I will attach.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "42579",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "P2 normal",
+    "product": "Tomcat 5",
+    "project": "TOMCAT",
+    "summary": "[Patch] JNDIRealm fails to parse absolute names",
+    "systemSpecification": true,
+    "version": "5.5.23"
+}

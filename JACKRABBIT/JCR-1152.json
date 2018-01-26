@@ -1,0 +1,83 @@
+{
+    "comments": [
+        {
+            "author": "angela",
+            "body": "hi julian\n\nfrom my understanding the SPI impl must only provide a QValueFactory.\nmaybe i don't get your point...\n\nangela\n",
+            "date": "2007-10-22T14:23:36.882+0000",
+            "id": 0
+        },
+        {
+            "author": "Julian Reschke",
+            "body": "There's \n\n  RepositoryConfig.getValueFactory()\n\nand it's used within JCR2SPI....\n",
+            "date": "2007-10-22T14:38:17.546+0000",
+            "id": 1
+        },
+        {
+            "author": "angela",
+            "body": "ah... so the subject is wrong. should be 'jcr2spi', right?",
+            "date": "2007-10-22T14:54:15.595+0000",
+            "id": 2
+        },
+        {
+            "author": "Julian Reschke",
+            "body": "I don't think so.\n\nObviously, as a JCR implementation, JCR2SPI needs to provide a ValueFactory to the JCR client.\n\nHowever, right now, an SPI implementation needs to provide implementations of both jcr.ValueFactory and spi.QValueFactory. Optimally, only the latter would be needed, and JCR2SPI would provide a ValueFactory implementation wrapping just the spi:QValueFactory.\n\nNow clearer?\n",
+            "date": "2007-10-22T15:02:22.351+0000",
+            "id": 3
+        },
+        {
+            "author": "Julian Reschke",
+            "body": "Plan:\n\n- remove getValueFactory() from RepositoryConfig\n\n- let JCR2SPI implement it's own ValueFactory, wrapping the QValueFactory implemented  by the SPI impl\n\n- use Value instances that wrap QValues\n\n- push most functionality down from Value to QValue\n\nNOTE: this means that QValue implementations now have to deal with value conversions, while before this was done by the ValueFactory that was used.\n",
+            "date": "2007-10-25T17:05:43.921+0000",
+            "id": 4
+        },
+        {
+            "author": "angela",
+            "body": "from my understanding this would also mean\n\n- QValue (or its factory) is in charge of defining the required format of a Reference values\n   i.e. this is delegated to the SPI implementation.\n\nconsequently we can probably get rid if the second valuefactory i moved to jcr-commons,\ncan't we?\n\n- I would be possible to have SPI implementation that uses a separate data store for\n  binaries and have the entries created immediately upon creation of a JCR Value. at\n  least theoretically... \n  ",
+            "date": "2007-10-26T07:25:17.152+0000",
+            "id": 5
+        },
+        {
+            "author": "Julian Reschke",
+            "body": "> - QValue (or its factory) is in charge of defining the required format of a Reference values\n>   i.e. this is delegated to the SPI implementation.\n\nCorrect.\n\n> consequently we can probably get rid if the second valuefactory i moved to jcr-commons,\n> can't we?\n\nWe won't need the ValueFactory and the ValueImpls anymore. Maybe we can also get rid of some utility classes for conversion.\n\n> - I would be possible to have SPI implementation that uses a separate data store for\n>  binaries and have the entries created immediately upon creation of a JCR Value. at\n>  least theoretically... \n\nCorrect.\n",
+            "date": "2007-10-26T07:32:06.489+0000",
+            "id": 6
+        },
+        {
+            "author": "Julian Reschke",
+            "body": "Revision 589720: parametrize RepositoryConfig.getValueFactory (this is an intermediate step towards resolving the issue completely).\n",
+            "date": "2007-10-29T16:23:20.083+0000",
+            "id": 7
+        },
+        {
+            "author": "Julian Reschke",
+            "body": "Next step: the plan is to update jcr-spi-commons with:\n\n- an implementation of Value (JCR) that just wraps a QValue (SPI) instance, and\n\n- an implementation of ValueFactory (JCR) that just wraps QValueFactory (SPI) and NamePathResolver (SPI commons) instances.\n\nNote that this means that all the logic for converting between property types, and comparing values will be pushed down into the QValue instance. The Value implementation will only be responsible for the JCR-specific stream handling.\n\n",
+            "date": "2007-10-29T17:34:51.830+0000",
+            "id": 8
+        },
+        {
+            "author": "Julian Reschke",
+            "body": "Fixed with revision 590140.\n",
+            "date": "2007-10-30T16:52:17.211+0000",
+            "id": 9
+        },
+        {
+            "author": "angela",
+            "body": "and removed the extra ValueFactory implementation (that is now obsolete) from jcr-commons with rev. 592698  \n",
+            "date": "2007-11-07T11:03:42.561+0000",
+            "id": 10
+        }
+    ],
+    "component": "jackrabbit-spi",
+    "description": "This should be simplified so that an implementation of QValueFactory is sufficient.\n",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "JCR-1152",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Minor",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "SPI implementations currently need to provide implementations of both ValueFactory and QValueFactory",
+    "systemSpecification": true,
+    "version": ""
+}

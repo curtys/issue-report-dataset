@@ -1,0 +1,131 @@
+{
+    "comments": [
+        {
+            "author": "Uwe Schindler",
+            "body": "Here a first patch for the core tokenstreams. Tests not yet changed.\n\nThe following things were additionally fixed:\n- StandardAnalyzer was made final (backwards break, we forgot to made it final in the 3.0 TS finalization issue). This enabled me to subclass StopwordAnalyzerBase and remove heavy code duplication. The original code also contained a bug in the tokenStream method (no setReplaceInvalidAcronym) which was correctin reusableTokenStream. Now it is correct.\n\nI will post further patches for core.",
+            "date": "2010-04-09T07:41:59.792+0000",
+            "id": 0
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Patch that removes deprecated usage of TermAttribute from Lucene Core completely, all tests also fixed.",
+            "date": "2010-04-09T14:03:44.841+0000",
+            "id": 1
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Small updates.\n\nJust one question: The only non-final Analyzer left is KeywordAnalyzer. If I make it final and also use ReusableTokenizerBase, we can remove the overridesTokenStream check completely? The question is, whoever wants to override this class.\n\nStandardAnalyzer was made final in this patch, why not also this one?",
+            "date": "2010-04-09T17:40:11.754+0000",
+            "id": 2
+        },
+        {
+            "author": "Mark Miller",
+            "body": "bq.If I make it final and\n\n+1 - lets just remember to add these breaks to the CHANGES BW break section...",
+            "date": "2010-04-09T17:46:33.690+0000",
+            "id": 3
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "+1 to making KeywordAnalyzer final.",
+            "date": "2010-04-09T17:49:06.294+0000",
+            "id": 4
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Did it already for StandardAna (see patch).",
+            "date": "2010-04-09T17:49:18.945+0000",
+            "id": 5
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "One more: PerFieldAnalyzerWrapper :( - Sorry",
+            "date": "2010-04-09T17:58:38.956+0000",
+            "id": 6
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Updated patch, now also KeywordAnalyzer and PerFieldAnalyzerWrapper made final and the backwards layer removed.\n\nI will commit this later this day and proceed with contrib. Robert, we should talk who does which one!",
+            "date": "2010-04-10T10:24:35.328+0000",
+            "id": 7
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Updated patch after last commit.",
+            "date": "2010-04-10T11:53:28.878+0000",
+            "id": 8
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Committed core part in revision: 932749",
+            "date": "2010-04-10T15:36:58.582+0000",
+            "id": 9
+        },
+        {
+            "author": "Robert Muir",
+            "body": "here is a start for the remaining ones (what was in contrib/analyzers). theres a few more i didnt do yet, but most are done.",
+            "date": "2010-05-31T14:30:59.197+0000",
+            "id": 10
+        },
+        {
+            "author": "Robert Muir",
+            "body": "i converted some more usages here... there is still a lot more to do.\n\nseparately, we should open another issue (if there isnt one) for use of other preflex apis in contrib, as i see some uses of TermEnum etc just fixing these up.\n",
+            "date": "2010-05-31T17:22:09.661+0000",
+            "id": 11
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "bq. separately, we should open another issue (if there isnt one) for use of other preflex apis in contrib, as i see some uses of TermEnum etc just fixing these up.\n\nWe have LUCENE-2378 open for this -- I gotta get to it!",
+            "date": "2010-05-31T19:12:22.804+0000",
+            "id": 12
+        },
+        {
+            "author": "Robert Muir",
+            "body": "ok, this is the rest of it, minus anything tricky.\n\ni will leave the hard stuff to uwe :)",
+            "date": "2010-05-31T19:33:40.658+0000",
+            "id": 13
+        },
+        {
+            "author": "Robert Muir",
+            "body": "i updated the patch with the problematic ones... we can fix their other problems on LUCENE-2378\n\nfor example, convert MemoryIndex to use byte[], in this patch i only switch it to consume with BytesRef, but it calls utf8ToString() since the whole thing still works with String.\n",
+            "date": "2010-05-31T21:58:38.408+0000",
+            "id": 14
+        },
+        {
+            "author": "Robert Muir",
+            "body": "i updated the patch to remove all uses of deprecated CharTermAttributeImpl methods, such as via Token.term() etc.\n\nwith this patch, we can then remove TermAttribute from trunk completely, by removing deprecations and the sophisticated backwards layer in the indexer.\n",
+            "date": "2010-05-31T23:12:25.217+0000",
+            "id": 15
+        },
+        {
+            "author": "Robert Muir",
+            "body": "Committed LUCENE-2372_contrib_solr.patch revisions 950008 (trunk) / 950026 (3x)",
+            "date": "2010-06-01T11:48:50.252+0000",
+            "id": 16
+        },
+        {
+            "author": "Robert Muir",
+            "body": "everything is cutover to the new attribute now",
+            "date": "2010-06-01T11:51:02.895+0000",
+            "id": 17
+        },
+        {
+            "author": "Grant Ingersoll",
+            "body": "Bulk close for 3.1",
+            "date": "2011-03-30T15:50:01.376+0000",
+            "id": 18
+        }
+    ],
+    "component": "modules/analysis",
+    "description": "After LUCENE-2302 is merged to trunk with flex, we need to carry over all tokenizers and consumers of the TokenStreams to the new CharTermAttribute.\n\nWe should also think about adding a AttributeFactory that creates a subclass of CharTermAttributeImpl that returns collation keys in toBytesRef() accessor. CollationKeyFilter is then obsolete, instead you can simply convert every TokenStream to indexing only CollationKeys by changing the attribute implementation.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-2372",
+    "issuetypeClassified": "OTHER",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Major",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "Replace deprecated TermAttribute by new CharTermAttribute",
+    "systemSpecification": true,
+    "version": "3.1"
+}

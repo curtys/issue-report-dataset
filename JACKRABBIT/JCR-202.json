@@ -1,0 +1,77 @@
+{
+    "comments": [
+        {
+            "author": "Marcel Reutegger",
+            "body": "With resolution of JCR-257 it is now possible to exclude /jcr:system from indexing.",
+            "date": "2005-12-20T20:24:58.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Jan Kuzniak",
+            "body": "Hello,\n\nI started working on this issue and I have some ideas that I would like to discuss here. To cut a long story short, I think of implementing this configuration as a set of rules for including/excluding elements. Before adding node to index the rules should be checked and indexing engine should apply to first rule this node matches.\n\nI think of storing this configuration in XML file, and my first thought is workspace.xml and repository.xml (as a template for workspace.xml). XML configuration should look like as follows:\n\n    <!-- ==================== <SearchConfiguration> ======================== -->\n\n    <!--\n        The SearchConfiguration element allows to include/exclude parts of \n        repository from indexing. It is achieved using rules. First rule is\n        the most significant one and the last one (default rule) is the least\n        significant one.\n        If no SearchConfiguration is specified, the default configuration is \n        assumed:\n        <SearchConfiguration>\n          <SearchRule action=\"include\" />\n        </SearchConfiguration>\n    -->\n    <!ELEMENT SearchConfiguration (SearchRule+)>\n\n    <!--\n        The SearchRule element includes/excludes part of repository from \n        indexing. It has one required attributes - action to be taken when node\n        matches this rule - include or exclude this node from indexing. If no\n        other attributes are spefified, all nodes will match this rule.\n        If nodePath is specified - nodes in given path (and below) will match. \n        Any valid java.util.regex regular expression is allowed.\n        If nodeType is specified - nodes of given type will match. Both \n        attributes can be specified at once.\n    -->\n    <!ELEMENT SearchRule (NodeAttribute*)>\n    <!ATTLIST SearchRule\n      nodePath (CDATA) #IMPLIED\n      nodeType (CDATA) #IMPLIED\n      action (include|exclude) #REQUIRED>\n\n    <!--\n        The NodeAttribute element allows to include/exclude attributes of node\n        from indexing. It has one required attributes - action to be taken when \n        attribute matches this rule - include or exclude this attribute from \n        indexing. If no other attributes are spefified, all attributes will \n        match this rule.\n        If attributeName is specified - attributes with given names will match. \n        Any valid java.util.regex regular expression is allowed.\n        If attributeType is specified - attributes of given type will match. \n        Both attributes can be specified at once. If no NodeAttribute is \n        specified for search rule, default configuration is assumed:\n        <NodeAttribute action=\"include\" />\n    -->\n    <!ELEMENT NodeAttribute EMPTY>\n    <!ATTLIST NodeAttribute\n      attributeName (CDATA) #IMPLIED\n      attributeType (CDATA) #IMPLIED\n      action (include|exclude) #REQUIRED>\n\n    <!-- ==================== </SearchConfiguration> ======================= -->\n\nI am waiting for your comments and suggestions.\n\nRegards,\nJan",
+            "date": "2006-11-07T14:22:26.000+0000",
+            "id": 1
+        },
+        {
+            "author": "C\u00e9dric Damioli",
+            "body": "May the above rule-based suggestion be only a default implementation of the SearchConfiguration ?\nIMHO with these simple XML rules, you can't cover all possibilities.\n\nWhat about <SearchConfiguration class=\"whatever\"/> ? \nWhere the class is an implementation simply answering to \nboolean include (Node node);\nboolean exclude (Node node);\n\nYour proposed rule-based implementation may become the standard, default one, while enabling more advanced needs to be also implemented.\n\nThoughts ?",
+            "date": "2006-11-07T14:42:48.000+0000",
+            "id": 2
+        },
+        {
+            "author": "Jan Kuzniak",
+            "body": "Yes C\u00e9dric, I find it a good idea to make this configuration as wide as possible, especially that I can easily think of more sophisticated cases (e.g. using decision tree).\n\nIn that case, I'll add two more parameters to SearchConfiguration:\n<!ATTLIST SearchConfiguration\n      class CDATA #IMPLIED \n      configurationFile CDATA #IMPLIED >\nfirst one will allow to force use of different configuration mechanism, and second one to pass configuration file for this specific mechanism.\n\nAlthough I will leave possibility to put configuration into repository.xml.\n\nRegards,\n Jan",
+            "date": "2006-11-09T08:28:22.000+0000",
+            "id": 3
+        },
+        {
+            "author": "Jan Kuzniak",
+            "body": "One more thing - I am going to implement only boolean include (Node node) just to avoid confusions: exclude(node) is equivalent to !include(node).",
+            "date": "2006-11-09T08:36:33.000+0000",
+            "id": 4
+        },
+        {
+            "author": "Jan Kuzniak",
+            "body": "Ok, after quite a while of work here it comes. I was not as easy as I thought and I had to change few parts of the code. If you have any questions about this changes, please ask without hesistation.\n\nPatch consists of 16 new files (in folder structure of course) and 11 changed files (in standard svn .patch file).\n\nRegards,\n Jan",
+            "date": "2006-11-27T10:01:53.000+0000",
+            "id": 5
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "There are a couple of issues with the proposed patch:\n\n- The configuration is query handler dependent and should therefore not be prescribed in the repository.xml. The configuration should rather be added as a separate XML file.\n- Completely excluding certain nodes from indexing can have severe side effects because the index depends on each node being indexed to resolve the node hierarchy.\n- Matches of property names do not respect the namespace URI\n- The class NodeStateLocationAware extends from NodeState and adds the path as a fixed value, the path should rather be retrieved from a hierarchy manager.",
+            "date": "2007-04-20T08:25:45.745+0000",
+            "id": 6
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "This is an alternative implementation to solve this issue. It also supports indexing aggregates and boost configuration.",
+            "date": "2007-04-20T08:38:25.934+0000",
+            "id": 7
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "Committed my proposed patch in revision: 530696",
+            "date": "2007-04-20T08:46:22.230+0000",
+            "id": 8
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "Fixed malformed DTD in revision: 535238",
+            "date": "2007-05-04T13:42:38.953+0000",
+            "id": 9
+        }
+    ],
+    "component": "config, indexing, jackrabbit-core",
+    "description": "Right now, if the search manager is active, everything is indexed, even the system branch of a workspace with the versions.\n\ntake parameters / conditions into account whether a node should be indexed:\n- path\n- node type\n- property type\n- property name\n\n\nsee also http://thread.gmane.org/gmane.comp.apache.jackrabbit.devel/3343",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "JCR-202",
+    "issuetypeClassified": "RFE",
+    "issuetypeTracker": "RFE",
+    "priority": "Major",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "Add configuration options for search manager",
+    "systemSpecification": true,
+    "version": ""
+}

@@ -1,0 +1,71 @@
+{
+    "comments": [
+        {
+            "author": "Martijn Hendriks",
+            "body": "I think that this could be fixed by extending the CachingPersistenceManager interface by a method to clear the cache(s) for a certain set of ids. The SharedItemStateManager$Update.cancel() method should then call this method first if its persistence manager is a CachingPersistenceManager.",
+            "date": "2007-09-11T10:18:06.804+0000",
+            "id": 0
+        },
+        {
+            "author": "Martijn Hendriks",
+            "body": "Here is a patch that clears the cache(s) of a caching persistence manager from the Update.cancel() method. The AbstractBundlepersistenceManager removes all given nodeIds from its bundle and missing cache.\n",
+            "date": "2007-09-12T09:53:53.399+0000",
+            "id": 1
+        },
+        {
+            "author": "Martijn Hendriks",
+            "body": "The first patch clears the cache too late. Suppose that the storage of a changelog fails, and blockOnConnectionLoss is true, then storage of the ChangeLog is retried with the corrupt bundle cache until it succeeeds. If this succeeds, then possibly corrupt bundles have been flushed to the DB.",
+            "date": "2009-02-20T07:53:49.641+0000",
+            "id": 2
+        },
+        {
+            "author": "Martijn Hendriks",
+            "body": "Linking this issue to JCR-1806 as it might explain inconsistencies.",
+            "date": "2009-02-20T08:10:35.284+0000",
+            "id": 3
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "Wouldn't it make more sense to move the call to clearBundleCache to AbstractBundlePersistenceManager? In the end any implementation that throws an exception on store(ChangeLog) should ensure the bundle cache consistency, right?",
+            "date": "2009-02-20T13:21:00.902+0000",
+            "id": 4
+        },
+        {
+            "author": "Martijn Hendriks",
+            "body": "Marcel, I think you are right. Furthermore, the \"clearBundleCache\" method should also clear the \"missing\" cache. I'll create a new patch.",
+            "date": "2009-02-21T08:24:59.554+0000",
+            "id": 5
+        },
+        {
+            "author": "Martijn Hendriks",
+            "body": "Added a new patch which addresses Marcel's comment.",
+            "date": "2009-02-27T12:37:03.343+0000",
+            "id": 6
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "+1\n\nlooks good to me.",
+            "date": "2009-02-27T13:17:26.623+0000",
+            "id": 7
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Merged to the 1.5 branch in revision 760810.",
+            "date": "2009-04-01T08:09:01.826+0000",
+            "id": 8
+        }
+    ],
+    "component": "jackrabbit-core",
+    "description": "The bundle cache in the bundle persistence managers is not restored to its old state when the AbstractBundlePersistenceManager.store(ChangeLog changeLog) method throws an exception. If, for instance, the storage of references fails then the AbstractBundlePersistenceManager.putBundle(NodePropBundle bundle) method has already been called for all modified bundles. Because of the connection rollback, the bundle cache will be out-of-sync with the persistent state. As a result, the SharedItemStateManager will have an incorrect view of the persistent state.\nFurthermore, if the blockOnConnectionLoss property is set to true, then the BundleDbPersistenceManager can be caught in an infinite loop because of invalid SQL inserts because of an incorrect bundle cache; see attached stacktrace.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "JCR-1117",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "Bundle cache is not rolled back when the storage of a ChangeLog fails",
+    "systemSpecification": true,
+    "version": "1.3, 1.4, 1.5, 1.5.2, 1.5.3, 1.5.4"
+}

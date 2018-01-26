@@ -1,0 +1,95 @@
+{
+    "comments": [
+        {
+            "author": "Robert Muir",
+            "body": "test, fails under preflex codec",
+            "date": "2011-10-24T02:38:29.102+0000",
+            "id": 0
+        },
+        {
+            "author": "Robert Muir",
+            "body": "I committed this test to 3.x, it passes there.",
+            "date": "2011-10-24T02:47:29.676+0000",
+            "id": 1
+        },
+        {
+            "author": "Robert Muir",
+            "body": "same test but with out-of-bounds checks for docFreq and totalTermFreq in checkIndex.\n\nThese would have found the bug, too (i committed already to 3.x's checkIndex)",
+            "date": "2011-10-24T03:16:59.735+0000",
+            "id": 2
+        },
+        {
+            "author": "Robert Muir",
+            "body": "Updated set of tests, I changed TestRegexpRandom2 to sometimes use an empty field name for better testing.\n\nthis seems to trigger its own problems:\n{noformat}\n[junit] Testcase: testRegexps(org.apache.lucene.search.TestRegexpRandom2):        FAILED\n   [junit] Terms are out of order: field= (number 0) lastField= (number -1) text= lastText=\n   [junit] junit.framework.AssertionFailedError: Terms are out of order: field= (number 0) lastField= (number -1) text= lastText=\n   [junit]         at org.apache.lucene.util.LuceneTestCaseRunner.runChild(LuceneTestCaseRunner.java:149)\n   [junit]         at org.apache.lucene.util.LuceneTestCaseRunner.runChild(LuceneTestCaseRunner.java:51)\n   [junit]         at org.apache.lucene.index.codecs.preflexrw.TermInfosWriter.add(TermInfosWriter.java:213)\n   [junit]         at org.apache.lucene.index.codecs.preflexrw.PreFlexFieldsWriter$PreFlexTermsWriter.finishTerm(PreFlexFieldsWriter.java:192)\n   [junit]         at org.apache.lucene.index.FreqProxTermsWriterPerField.flush(FreqProxTermsWriterPerField.java:409)\n   [junit]         at org.apache.lucene.index.FreqProxTermsWriter.flush(FreqProxTermsWriter.java:92)\n{noformat}\n\nI had thought to workaround this original issue with this hack-patch, but i still get that fail... perhaps its a bad assert/something unrelated?\n{noformat}\nIndex: src/java/org/apache/lucene/index/codecs/preflex/PreFlexFields.java\n===================================================================\n--- src/java/org/apache/lucene/index/codecs/preflex/PreFlexFields.java\t(revision 1188010)\n+++ src/java/org/apache/lucene/index/codecs/preflex/PreFlexFields.java\t(working copy)\n@@ -711,7 +711,12 @@\n       } else {\n         getTermsDict().seekEnum(termEnum, term, true);\n       }\n-      skipNext = true;\n+      if (internedFieldName == \"\") {\n+        // hackedy-hack: we aren't actually positioned yet\n+        skipNext = false;\n+      } else {\n+        skipNext = true;\n+      }\n \n       unicodeSortOrder = sortTermsByUnicode();\n{noformat}",
+            "date": "2011-10-24T13:08:02.840+0000",
+            "id": 3
+        },
+        {
+            "author": "Robert Muir",
+            "body": "ok, here's a patch... all tests pass now.\n\nThe assert fail in the writer was a bad assert, we previously had:\n{noformat}\n      // If there is a field named \"\" (empty string) then we\n      // will get 0 on this comparison, yet, it's \"OK\".  But\n      // it's not OK if two different field numbers map to\n      // the same name.\n      if (cmp != 0 || lastFieldNumber != -1)\n        return cmp;\n{noformat}\n\nwhich is nice, but it doesn't cover the case of empty term PLUS empty string: Term(\"\", \"\"). in this case we would fall thru and return 0, which is wrong.",
+            "date": "2011-10-24T13:28:41.271+0000",
+            "id": 4
+        },
+        {
+            "author": "Robert Muir",
+            "body": "oops, wrong patch. here is the correct one",
+            "date": "2011-10-24T13:29:21.433+0000",
+            "id": 5
+        },
+        {
+            "author": "Robert Muir",
+            "body": "I will add an additional test to 3.x for Term(\"\", \"\") and see if it has any bad asserts like this, and add it to the patch.\n",
+            "date": "2011-10-24T13:39:46.660+0000",
+            "id": 6
+        },
+        {
+            "author": "Robert Muir",
+            "body": "There are more serious problems in 3.x here.\n\n* if you create new Field(\"\", \"\"), you get IllegalArgumentException from Field's ctor: \"name and value cannot both be empty\"\n* But there are tons of other ways to index an empty term for the empty field (for example initially make it \"garbage\" then .setValue(\"\"), or via tokenstream).\n* If you do this, and you have assertions enabled, you will trip the same assert bug i fixed in trunk here.\n* If you don't have assertions enabled, you will create a corrupt index:     test: terms, freq, prox...ERROR [term : docFreq=1 != num docs seen 0 + num docs deleted 0]\n\nSo we need to figure out what the semantics should be for 3.x. is Term(\"\", \"\") allowed or not?",
+            "date": "2011-10-24T14:08:59.266+0000",
+            "id": 7
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "I think the hack is actually correct, but maybe change it to check termEnum.position >= 0?\n\nSo this was a case we missed from LUCENE-3183 (maybe there are more!?), where we decided for the corner case of empty field and term text, the caller must handle that the returned enum is unpositioned (in exchange for not adding an if per next).\n\nAnd maybe add the same comment about LUCENE-3183 on top of that logic?",
+            "date": "2011-10-24T16:25:04.015+0000",
+            "id": 8
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Patch, putting back the safer-but-if-per-scan from LUCENE-3183; this fixed another test failure.",
+            "date": "2011-10-24T16:26:36.526+0000",
+            "id": 9
+        },
+        {
+            "author": "Robert Muir",
+            "body": "+1, i'm running the tests a lot, this seems solid.\n",
+            "date": "2011-10-24T16:32:36.849+0000",
+            "id": 10
+        },
+        {
+            "author": "Robert Muir",
+            "body": "I committed this, thanks Mike!\n\nNow to figure out wtf to do for 3.x...",
+            "date": "2011-10-24T16:58:16.802+0000",
+            "id": 11
+        },
+        {
+            "author": "Robert Muir",
+            "body": "I'm gonna close this issue and open a separate issue for Term(\"\", \"\") on 3.x... ",
+            "date": "2011-10-24T17:40:12.942+0000",
+            "id": 12
+        }
+    ],
+    "component": "",
+    "description": "spinoff from LUCENE-3473.\n\nI have a standalone test for this... the termsenum is returning a bogus extra empty-term (I assume it has no postings, i didnt try).\n\nThis causes the checkindex test in LUCENE-3473 to fail, because there are 4 terms instead of 3. \n\n",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-3526",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "preflex codec returns wrong terms if you use an empty field name",
+    "systemSpecification": true,
+    "version": "4.0-ALPHA"
+}

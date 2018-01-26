@@ -1,0 +1,107 @@
+{
+    "comments": [
+        {
+            "author": "Robert Muir",
+            "body": "also, we can fix the issue Shai brought up for the 3.1 VOTE while we are here.\n\nin seek(long pos) i think we should do:\n{code}\ntry {\n ...\n position()\n ...\n} catch (IllegalArgumentException e) {\n  if (pos < 0) \n    throw exc;\n  else \n    throw new IOException(\"read past EOF\"); \n}\n{code}\n\nThis would be more consistent with NIOFS/SimpleFS from an exception perspective.\n",
+            "date": "2011-06-13T23:05:18.440+0000",
+            "id": 0
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Here the patch.",
+            "date": "2011-06-14T00:54:37.378+0000",
+            "id": 1
+        },
+        {
+            "author": "Robert Muir",
+            "body": "at a glance the patch is looking really good overall! I'll help with some review and testing.",
+            "date": "2011-06-14T01:02:22.812+0000",
+            "id": 2
+        },
+        {
+            "author": "Robert Muir",
+            "body": "here are some additional stress tests for mmap",
+            "date": "2011-06-14T02:06:45.344+0000",
+            "id": 3
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "New patch with some minor issues fixed:\n- fixed the RuntimeException\n- fixed readByte to throw EOF if we are at the end of the n-1 th buffer. as buffer n may be size 0, we will throw BufferUnderFlow in the chatch block. I added hasRemaining() there, so its consistent with readBytes.\n- The check for an invalid power was bogus (0 is allowed, leads to buffer size 1)\n- The check for RandomAccessFile too big for maximum buffer size did not respect the additional buffer. nrBuffers can then overflow easily\n",
+            "date": "2011-06-14T02:15:53.851+0000",
+            "id": 4
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Same patch with Robert's tests included.",
+            "date": "2011-06-14T02:20:47.369+0000",
+            "id": 5
+        },
+        {
+            "author": "Robert Muir",
+            "body": "same as uwe's patch, but i also nuked the previous hack in TestTermVectorsReader, as MMapDir returns read past EOF now like the others.",
+            "date": "2011-06-14T02:26:49.374+0000",
+            "id": 6
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Little cleanups & improvements:\n- made readByte() consistent with readBytes() [catch block using remaining-while loop for size=0 buffers]\n- renamed field names and variables to use chunkSize consistently\n\nI think it's ready to commit, we should only wait for Mike to check on beast.",
+            "date": "2011-06-14T08:12:32.428+0000",
+            "id": 7
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "+1 to commit!\n\nIn my stress NRT test (runs optimize on a full Wiki index with ongoing\nindexing / reopening), without this patch, I see performance drop\nsubstantially (like 180 QPS down to 140 QPS) when the JVM cuts over to\nthe optimized segment.  With the patch I see it jump up a bit after\nthe optimize completes!  So this seems to make hotspot's job\neasier...\n",
+            "date": "2011-06-14T10:49:03.500+0000",
+            "id": 8
+        },
+        {
+            "author": "Robert Muir",
+            "body": "+1, great work Uwe.",
+            "date": "2011-06-14T10:53:12.142+0000",
+            "id": 9
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "+1 this looks awesome. Gute Arbeit Uwe :)",
+            "date": "2011-06-14T12:29:14.343+0000",
+            "id": 10
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Committed trunk revision: 1135537\nCommitted 3.x revision: 1135538",
+            "date": "2011-06-14T12:55:49.274+0000",
+            "id": 11
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Thanks to Robert for help debugging my stupid + vs | problem and lots of fruitful discussions about the whole stuff and how to improve :) Thanks to Mike for testing on beast!\n\nNow you can refactor CFSIndexInput & Co!",
+            "date": "2011-06-14T12:57:39.590+0000",
+            "id": 12
+        },
+        {
+            "author": "Robert Muir",
+            "body": "bulk close for 3.3",
+            "date": "2011-07-02T02:40:14.142+0000",
+            "id": 13
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "MMapDirectory missed a explicit nulling of curBuf, commited trunk revision: 1205152, 3x in revision: 1205153",
+            "date": "2011-11-22T20:20:46.273+0000",
+            "id": 14
+        }
+    ],
+    "component": "",
+    "description": "Robert and me discussed a little bit after Mike's investigations, that using SingleMMapIndexinput together with MultiMMapIndexInput leads to hotspot slowdowns sometimes.\n\nWe had the following ideas:\n- MultiMMapIndexInput is almost as fast as SingleMMapIndexInput, as the switching between buffer boundaries is done in exception catch blocks. So normal code path is always the same like for Single*\n- Only the seek method uses strange calculations (the modulo is totally bogus, it could be simply: int bufOffset = (int) (pos % maxBufSize); - very strange way of calculating modulo in the original code)\n- Because of speed we suggest to no longer use arbitrary buffer sizes. We should pass only the power of 2 to the indexinput as size. All calculations in seek and anywhere else would be simple bit shifts and AND operations (the and masks for the modulo can be calculated in the ctor like NumericUtils does when calculating precisionSteps).\n- the maximum buffer size will now be 2^30, not 2^31-1. But thats not an issue at all. In my opinion, a buffer size of 2^31-1 is stupid in all cases, as it will no longer fit page boundaries and mmapping gets harder for the O/S.\n\nWe will provide a patch with those cleanups.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-3200",
+    "issuetypeClassified": "OTHER",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Major",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "Cleanup MMapDirectory to use only one MMapIndexInput impl with mapping sized of powers of 2",
+    "systemSpecification": true,
+    "version": ""
+}

@@ -1,0 +1,53 @@
+{
+    "comments": [
+        {
+            "author": null,
+            "body": "Created attachment 7704\nProposed patch",
+            "date": "20030809T01:30:31",
+            "id": 0
+        },
+        {
+            "author": null,
+            "body": "It looks that was what was originally intended, so it's likely another great\npatch :)\nI'll apply both of your patches.",
+            "date": "20030809T19:22:29",
+            "id": 1
+        },
+        {
+            "author": null,
+            "body": "I would have preferred that this optimization be done with a separate pass over\nthe parsed nodes, which combines contiguous template text nodes into one.  The\nlook-ahead used in this patch duplicates logic used in the other part of the\nParser (it also misses <jsp:text>, for instance), and may have some performance\nimpact.\n\nI'll leave this patch in for now, but may undo it when the separate optim pass\nis implemented later, unless Eric beats me to it!  :-)",
+            "date": "20030812T17:21:39",
+            "id": 2
+        },
+        {
+            "author": null,
+            "body": "Unfortunately I've thrown out the actual numbers I got in the performance \ntesting I did (all on a 1 GHz Windows XP laptop), but the salient results were \nas follows:\n1) The patch made Tomcat faster at compiling and serving pages with a \npreponderance of HTML tags versus JSP tags (the lookahead does take some extra \ntime, but is more than made up if the lookahead results in one less node to be \ntraversed later).  With the patch in place, Tomcat compiled and served \nindex.html from the jsp-examples webapp (renamed to index.jsp, obviously) \nabout 9% faster than without the patch.\n2) On balance, however, the patch made Tomcat slower at compiling and serving \npages.  At least, when I tested against the jsp-examples webapp (with \nindex.jsp renamed back to index.html so it wasn't part of the test), time to \ncompile and serve was about 2% slower.\n3) I couldn't find any difference in serving compiled pages with the patch in \nplace (I thought there might be a small improvement because the patch shrinks \nthe .class files).\n\nBased on those numbers, I decided not to submit the patch as an option \nconfigurable separately from mappedfile, or as a non-configurable \nenhancement.  But since the mappedfile documentation said it was intended for \ndebugging, I thought the performance hit was acceptable.\n\nI didn't test your idea of a separate pass through the parsed nodes, but I did \ntest code that, when about to create a new TemplateText node, checked to see \nif the previous node was also a TemplateText node, and if so, just appended \nits text to the previous node's (the ideas being that anything that conserved \nnodes might improve performance, and that I didn't like duplicating logic from \nanother part of the Parser, either).  But that was noticeably slower (I've \nforgotten the numbers entirely) than the patch I submitted.\n\nAnyway, I submitted the patch as an enhancement, so I can't complain if it \ngets implemented differently or not at all.  The above is just to help folks \nmake an informed decision.",
+            "date": "20030813T02:09:27",
+            "id": 3
+        },
+        {
+            "author": null,
+            "body": "There is no doubt that concatenating contiguous template texts into one improves\nthe runtime performance and I am not too worry about spending extra time during\ncompilation, since I believe web applications should be deployed precompiled.\n\nMy suggestion for a separate pass was motivated by the design principle to keep\nthe modules simple and direct.  The current compiler is made up of a number of\npasses, driven by the common data structure (Node and PageInof etc).  I'd like\nto keep Parser only doing the basic parsing, but leaves the optimizations to\nother passes.  Not only will it be easier for debugging and maintenance,\nswitching on and off such optimizations will also made easier.\n\nLike I said, this no big deal, so I'll leave the patch in for now.  Anyway,\nthanks for contributing to improve Jasper, and don't let slight disagreements\nlike this prevent you from making more contributions in the future.",
+            "date": "20030813T18:43:14",
+            "id": 4
+        },
+        {
+            "author": null,
+            "body": "It's just occurred to me that if the consolidation were done in a separate \npass, it would apply to JSPs in XML format as well.  So provided the \nperformance hit during compilation is acceptable (and I take your point that \nwebapps should be deployed precompiled), I agree a separate pass is the way to \ngo.\n\nBut if a performance hit during compilation is acceptable, is there any reason \nnot to do this consolidation even when mappedfile=\"false\"?  As you say, it \nshould improve runtime performance, and we always have JspUtil.CHUNKSIZE \n(which could be made a configurable parameter) to keep individual lines from \ngetting too long.  That was the only other downside that I found when I tested \nwith mappedfile=\"false\"-- very long template text sections were arguably even \nharder to follow all crammed into one output line than they were split at \nevery HTML tag.",
+            "date": "20030821T06:00:21",
+            "id": 5
+        }
+    ],
+    "component": "Jasper",
+    "description": "Jasper's mappedfile=true option doesn't always generate static content with \none print statement per input line.  Jasper creates a new Node every time it \nsees a \"<\" in the input, so when template text contains an HTML tag in the \nmiddle of an input line, the resulting Java code is split across multiple \noutput lines (and in my opinion is therefore harder to read).\n\nThis can be fixed by checking the text after the \"<\" before moving on to the \nnext Node.  I will attach a patch that implements this.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "22266",
+    "issuetypeClassified": "RFE",
+    "issuetypeTracker": "RFE",
+    "priority": "P3 enhancement",
+    "product": "Tomcat 5",
+    "project": "TOMCAT",
+    "summary": "Keep template text together with mappedfile=\"true\"",
+    "systemSpecification": false,
+    "version": "Nightly Build"
+}

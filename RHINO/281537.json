@@ -1,0 +1,59 @@
+{
+    "comments": [
+        {
+            "author": "szegedia@freemail.hu",
+            "body": "Created attachment 173769\nThe patch to solve this bug",
+            "date": "20050208T18:54:05",
+            "id": 0
+        },
+        {
+            "author": "szegedia@freemail.hu",
+            "body": "Of course, it's possible that #280047 will also address this.",
+            "date": "20050208T19:15:33",
+            "id": 1
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "The message is just a bug caused by implementing bug 280047. \n\nThanks for spotting this!",
+            "date": "20050208T19:30:15",
+            "id": 2
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 173775\n2-loop pattern in toNumber/toBoolean\n\nThe above patch was OK, but I would like toNumber and toBoolean to follow the\nsame double-loop pattern that is used in few other places in ScriptRuntime to\nhave smaller and easier to follow code.",
+            "date": "20050208T19:41:40",
+            "id": 3
+        },
+        {
+            "author": "szegedia@freemail.hu",
+            "body": "(In reply to comment #4)\n> Created an attachment (id=173775) [edit]\n> 2-loop pattern in toNumber/toBoolean\n> \n> The above patch was OK, but I would like toNumber and toBoolean to follow the\n> same double-loop pattern that is used in few other places in ScriptRuntime to\n> have smaller and easier to follow code.\n\nThat loop isn't double, it's a plain single loop :-)\n\nAnyway, I get what you're doing in there - it's a clever way to guarantee that \nif the method ever returns, the return value is a number, regardless of what \ndoes the Scriptable.defaultValue(NumberClass) return. Of course, an offending \nScriptable returning \"this\" could force the interpreter into an infinite loop ..\n.",
+            "date": "20050208T20:28:38",
+            "id": 4
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "(In reply to comment #5)\n> That loop isn't double, it's a plain single loop :-)\n\nOf cause, it was not \"double-loop\" but rather no more then 2 times executed loop ;)\n\n> \n> Anyway, I get what you're doing in there \n\nIt is not me but rather the initial creators of Rhino who put such loop as\noptimization in some of Rhino methods. \n\nThe loop is not necessary if the code would check for Scriptable first. But then\nthe overhead of \"instanceof Scriptable\" check would occur in the majority of\ncases. The loop allows to run the most common case of Number for toNumber and\nBoolean for toBoolean while avoiding duplicating code for the checks.\n\n",
+            "date": "20050209T15:44:09",
+            "id": 5
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "I committed the fix.",
+            "date": "20050209T15:47:04",
+            "id": 6
+        }
+    ],
+    "component": "Core",
+    "description": "User-Agent:       Opera/7.54 (Windows NT 5.0; U)  [en]\nBuild Identifier: \n\nScriptRuntime.toNumber() will print a warning \n\n\"RHINO USAGE WARNING: Missed Context.javaToJS() conversion: Rhino runtime \ndetected object org.mozilla.javascript.Undefined@165d905 of class org.mozilla.\njavascript.Undefined where it expected String, Number, Boolean or Scriptable \ninstance. Please check your code for missig Context.javaToJS() call\"\n\nNow, according to ECMA 9.3 Undefined is a perfectly convertible to a number, as \nNaN. I don't think the warning should be logged, esp. since other toXxx methods \ndon't log a warning on Undefined.\n\nReproducible: Always\n\nSteps to Reproduce:",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "281537",
+    "issuetypeClassified": "OTHER",
+    "issuetypeTracker": "BUG",
+    "priority": "-- normal",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "ScriptRuntime.toNumber warns on Undefined",
+    "systemSpecification": false,
+    "version": "other"
+}

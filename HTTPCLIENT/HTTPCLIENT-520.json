@@ -1,0 +1,137 @@
+{
+    "comments": [
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Created an attachment (id=16887)\nPatch (take 1)\n\nPlease test and review\n\nOleg",
+            "date": "2005-11-07T03:23:17.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Ortwin Gl\u00fcck",
+            "body": "looks okay",
+            "date": "2005-11-07T22:01:45.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Michael Becke",
+            "body": "The code looks fine.  I can't rememeber the specifics but I thought there was\nsome reason we didn't support chunked multipart request in the past.  Has this\nbeen tested in production?  Do servers actually support this?  Am I just crazy :)\n\nMike",
+            "date": "2005-11-07T22:54:59.000+0000",
+            "id": 2
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "(In reply to comment #3)\n> The code looks fine.  I can't rememeber the specifics but I thought there was\n> some reason we didn't support chunked multipart request in the past.  Has this\n> been tested in production?  Do servers actually support this?  Am I just crazy :)\n> \n> Mike\n\nThe HTTPCLIENT-164 was consolidated with the HTTPCLIENT-382 at some point of time and\neventually lost track of. I am not sure this will ever work in production. It is\nstill better than sending wrong content-length header\n\nOleg\n",
+            "date": "2005-11-07T23:57:41.000+0000",
+            "id": 3
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Agreed, sounds reasonable.  Patch away.\n\nMike",
+            "date": "2005-11-08T00:50:07.000+0000",
+            "id": 4
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Patch checked in\n\nOleg",
+            "date": "2005-11-08T06:43:13.000+0000",
+            "id": 5
+        },
+        {
+            "author": "Lo\u00efc P\u00e9ron",
+            "body": "Hi all,\n\nThanks for your quick investigations. I did not intend to use this feature now,\nbut felt compelled to test your patch to show some gratitude ;)\n\nHowever, I found the unknown length for Parts to need some more modifications,\nespecially in Part.length() calling Part.lengthOfData(), and\nFilePart(PartSource) requiring the source.length() >= 0.\n\nSee attached patches for modification proposals.\n\nI did test transferring a 150Mb file using a PartSource wrapping an InputStream,\nto a test servlet using FileUpload 1.0 (patched to accept posts of unknown length).",
+            "date": "2005-11-08T18:15:48.000+0000",
+            "id": 6
+        },
+        {
+            "author": "Lo\u00efc P\u00e9ron",
+            "body": "Created an attachment (id=16898)\nPart.patch (take 2)\n",
+            "date": "2005-11-08T18:16:49.000+0000",
+            "id": 7
+        },
+        {
+            "author": "Lo\u00efc P\u00e9ron",
+            "body": "Created an attachment (id=16899)\nFilePart.patch (take 2)\n",
+            "date": "2005-11-08T18:17:30.000+0000",
+            "id": 8
+        },
+        {
+            "author": "Ortwin Gl\u00fcck",
+            "body": "Lo\u00efc,\n\nThanks for the improvements. While you are at it, do you mind writing some\nsimple JUnit test cases for this issue? So we know it really works...\n\nCheers\n\nOrtwin",
+            "date": "2005-11-08T18:25:38.000+0000",
+            "id": 9
+        },
+        {
+            "author": "Lo\u00efc P\u00e9ron",
+            "body": "Created an attachment (id=16900)\nPartSource wrapping an InputStream\n",
+            "date": "2005-11-08T19:03:15.000+0000",
+            "id": 10
+        },
+        {
+            "author": "Lo\u00efc P\u00e9ron",
+            "body": "Created an attachment (id=16901)\nTest for unknown length FilePart\n",
+            "date": "2005-11-08T19:10:01.000+0000",
+            "id": 11
+        },
+        {
+            "author": "Lo\u00efc P\u00e9ron",
+            "body": "Hi,\n\nI added a simple test for a FIlePart of unknown length, exercising all the\nproposed changes.\nBut I do not know how to check that the POST is really chunked; thge reply seems\nto be the unchunked request.",
+            "date": "2005-11-08T19:12:25.000+0000",
+            "id": 12
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Created an attachment (id=16918)\nConsolidated patch (take 2)\n\nIf I hear no complaints, I'll commit the patch tomorrow (~22:00 GMT)\n\nOleg",
+            "date": "2005-11-09T05:41:05.000+0000",
+            "id": 13
+        },
+        {
+            "author": "Ortwin Gl\u00fcck",
+            "body": "Created an attachment (id=16919)\nFixed patch (take 3)\n\nThe patch assumed the dafault platform encoding to be ISO-8859-1 compatible.\nBreaks with EBCDIC on zOS for instance.\n\nTestPartSource.createInputStream now actually creates a new input stream. Just\nto get the semantics right even if it's a test case. (Any retries would have\nfailed before)",
+            "date": "2005-11-09T06:05:33.000+0000",
+            "id": 14
+        },
+        {
+            "author": "Lo\u00efc P\u00e9ron",
+            "body": "(In reply to comment #15)\n> TestPartSource.createInputStream now actually creates a new input stream. Just\n> to get the semantics right even if it's a test case. (Any retries would have\n> failed before)\n\nI had overlooked the retries. What if my InputStream cannot be recreated?\nIt seems to me that Part.isRepeatable() should be abstract and implemented only\nin  StringPart (returning true) and FilePartSource (returning true), allowing\nfor a notRepeatable InputStream to be wrapped by a PartSource. Otherwise, a new\nPart must be fully implemented.",
+            "date": "2005-11-09T18:12:02.000+0000",
+            "id": 15
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Patch checked in\n\nOleg",
+            "date": "2005-11-10T04:43:43.000+0000",
+            "id": 16
+        },
+        {
+            "author": "Lo\u00efc P\u00e9ron",
+            "body": "Created an attachment (id=16938)\nFull patch including refactored isRepeatable()\n\nThis patch consolidate all previous patches, and changes isRepeatable() to be\nabstract in Part, implemented in StringPart, delegated in FilePart to\nPartSource, implemented in ByteArrayPartSource and FilePartSource.\n\nThis allows to wrap non-repeatable InputStreams with a PartSOurce and correctly\nindicating repeatability.",
+            "date": "2005-11-10T21:04:17.000+0000",
+            "id": 17
+        },
+        {
+            "author": "Ortwin Gl\u00fcck",
+            "body": "Lo\u00efc,\n\nWe can not change the API at the current stage of the release process. We may\nconsider the Part API changes for 4.0. You may want to open a separate bug\nreport for this because this one is already resolved.\n\nOrtwin",
+            "date": "2005-11-10T21:17:01.000+0000",
+            "id": 18
+        },
+        {
+            "author": "Lo\u00efc P\u00e9ron",
+            "body": "(In reply to comment #19)\n> We can not change the API at the current stage of the release process. We may\n> consider the Part API changes for 4.0.\n\nThat is highly unfortunate, as it either requires Part.isRepeatable to be\noverridden in a subclass, or PartSource.createInputStream() to be made always\nrepeatable.\n\nIt does not simply allow non-repeatable InputStreams to be simply wrapped by a\nPartSource.\n\n> You may want to open a separate bug \n> report for this because this one is already resolved.\n\nDone. Opened HTTPCLIENT-525.\n",
+            "date": "2005-11-10T22:50:28.000+0000",
+            "id": 19
+        }
+    ],
+    "component": "HttpClient (classic)",
+    "description": "If any Part of a MultipartEntity reports an unknown length (-1), MultipartEntity\nreports an erroneous length value. It should report an unknown length (-1) if\nany of the parts is of unknown length, that would cause the POST to be chunked.\n\nSee\nhttp://mail-archives.apache.org/mod_mbox/jakarta-httpclient-user/200510.mbox/ajax/%3ceb3d689c0510250851t2eb78462tbf701135bbf718c9@mail.gmail.com%3e",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "HTTPCLIENT-520",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "HTTPCLIENT",
+    "project": "HTTPCLIENT",
+    "summary": "MultipartEntity incorrectly computes unknown length",
+    "systemSpecification": false,
+    "version": "3.0 RC4"
+}

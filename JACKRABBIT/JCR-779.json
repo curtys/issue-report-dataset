@@ -1,0 +1,95 @@
+{
+    "comments": [
+        {
+            "author": "Jukka Zitting",
+            "body": "Changing the priority as it's possible for you to achieve the same functionality with extra client code.\n\nSession timeouts: I'm not convinced, as long as there's a reference to a Session instance it shouldn't just be closed without explicit action from the client. Once the reference is gone, the session should get closed as a part of the garbage collection process. I'm actually not sure whether this happens currently. If not, please file a new bug report for that.\n\nLock timeouts: Again, not convinced, since session-scoped locks will expire when the associated session is closed and open-scoped locks should by definition persist until they are explicitly unlocked. We perhaps should provide some administrative mechanism for retrieving the lock tokens of all active locks to avoid situations where the lock token of an open-scoped lock gets lost, but that would again be a different feature request.\n\nI'm inclined to resolve this issue as Won't Fix, but please counter my arguments if you think I'm wrong.",
+            "date": "2007-03-08T11:36:56.997+0000",
+            "id": 0
+        },
+        {
+            "author": "Julian Reschke",
+            "body": "I think lock timeouts are very valuable for open-scoped locks, if only for the reason that real-world clients (MS Office through WebDAV) expect them.\n",
+            "date": "2007-03-08T12:17:55.124+0000",
+            "id": 1
+        },
+        {
+            "author": "Dietmar Gr\u00e4bner",
+            "body": "As already posted in the user-mailinglist I currently deal with the MS Office, SimpleWebdavServer and Jackrabbit setup.\nWithout implementing one of the proposed mechanism (lock timeouts or the administrative mechnism for the lost lock-tokens) this setup, and an MS Office Webdav client is not what I call an exotic client,  can't be used.\n\nI am working on a temporary solution providing a logging mechanism for the lock-tokens to the WebdavServer. With the stored  lock tokens a seperated batch job should be able to release the locks.  Not a beauty - but it should work.\n\nPerhaps someone has a better idea or can raise the priority of this task :)\n\nregards\n\n",
+            "date": "2007-03-16T09:57:30.718+0000",
+            "id": 2
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "It seems to me that this feature is mostly needed and could be implemented in the WebDAV server instead of directly in the core. I'm not too eager to add custom extensions for features that can be reasonably be implemented on top of the JCR API. Changing component from \"core\" to \"webdav\".",
+            "date": "2007-03-16T10:16:26.871+0000",
+            "id": 3
+        },
+        {
+            "author": "angela",
+            "body": "i don't agree, that this is a WebDAV issue...\n\nas i said in the mailing list its not the responsibility of a dav-server to determine whether a lock present on a node might still be used or if it can be removed. the webdav implementation represents a dav-server on top of a jsr 170 repository present and not on top of jackrabbit.\nand according to the specification it's up to the jsr 170 implementation if locks can timeout and when they timeout. therefore i don't think the dav-server should deal with this.\n\nremoving webdav component again.",
+            "date": "2007-03-16T10:49:51.557+0000",
+            "id": 4
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "There are basically two ways to implement proper support for the Timeout header in a LOCK request based on just the JCR API:\n\n1) Keep track of opened locks and their timeout values in the WebDAV server, explicitly unlocking them when the timeout is reached.\n\n2) Implement lock timeouts in jackrabbit-core, and use the custom API extension to access that functionality in the WebDAV server.\n\nOption 1 is localized to the WebDAV implementation, requires no JCR API extensions, and will work with all JCR implementations that support locking. I think it's by far a better solution to this issue.\n",
+            "date": "2007-03-16T11:05:51.842+0000",
+            "id": 5
+        },
+        {
+            "author": "Julian Reschke",
+            "body": "I don't think that option 1 is going to work well. It would introduce local state into the the WebDAV server component, where before there wasn't any. Furthermore, it will be hard to implement in setups where many WebDAV server instances talk to the same JCR server (think HTTP-level load balancing).\n\nFurthermore, an existing document store may already support lock timeouts (very likely if it also supports WebDAV), in which case it would be *much* easier just to expose that through the JCR API.\n\n\n",
+            "date": "2007-03-16T11:15:15.509+0000",
+            "id": 6
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Hmm, good points. What would the JCR API extension look like?",
+            "date": "2007-03-16T11:24:02.588+0000",
+            "id": 7
+        },
+        {
+            "author": "Julian Reschke",
+            "body": "I feared you would ask .-)\n\nFor lock timeout, we would\n\n- need the ability to specifiy it upon lock creation (or set it afterwards)\n- need to reset the lock timeout\n- discover the current value\n\nIf we don't want to change the Java API, we could just have a mixin node type that defines the timeout information, and make that writeable, such as:\n\next:lockable extends mix:lockable\n\n  - ext:lockRefreshed (date)  ignore\n  - ext:lockTimeoutSeconds (long)  ignore\n\nSetting ext:lockRefreshed would refresh the lock.ext:lockTimeoutSeconds would used to compute when the lock times out.\n\nFor WebDAV, we IMHO also would need one additional property to persist the lock owner information (see <http://greenbytes.de/tech/webdav/draft-ietf-webdav-rfc2518bis-18.html#owner>).\n",
+            "date": "2007-03-16T12:50:47.817+0000",
+            "id": 8
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "I like the approach of using the content model for this, and actually I don't think we'd even need any special processing or magic properties to make this happen. Even a standard node type like the following should be enough:\n\n    [ext:lockable] > mix:lockable mixin\n    - ext:timeout (DATE) ignore\n\nWe could add a process in Jackrabbit (or in an external client that has some way to retrieve the lock token of a node) that observes such ext:lockable nodes an unlocks them when the timeout has been reached. Refreshing the timeout would require just updating the ext:timeout property. (I'm not sure if there's a chance for some race conditions on locking/unlocking the node and setting the timeout property.)\n\nWould that cover the use case, or do we need some more internal mechanism?\n",
+            "date": "2007-03-16T13:40:09.476+0000",
+            "id": 9
+        },
+        {
+            "author": "Julian Reschke",
+            "body": "Actually, it probably will not be sufficient. The store I'm currently working with requires the timeout to be known at the time of lock creation (and the other one I'm familiar with does so as well). As lock creation writes directly to the workspace, it seems that we really need a lock() method with additional parameters, after all.\n",
+            "date": "2007-03-16T16:39:33.759+0000",
+            "id": 10
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "JCR 2.0 has a lock timeout hint mechanism. I'm looking at implementing it in Jackrabbit.",
+            "date": "2009-08-11T13:43:37.305+0000",
+            "id": 11
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "The JCR 2.0 timeout hint mechanism implemented in revision 805431.",
+            "date": "2009-08-18T14:59:40.853+0000",
+            "id": 12
+        }
+    ],
+    "component": "jackrabbit-core, locks",
+    "description": "I think there needs to be a mechanism where we can set the timeout for a particular jcr Session.  Or at the most, there should be a provision to set a timeout for a lock on a node.\n\nHope this is implemented soon.\n\nThanks.",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "JCR-779",
+    "issuetypeClassified": "RFE",
+    "issuetypeTracker": "RFE",
+    "priority": "Minor",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "Timeout for Session and/or Lock",
+    "systemSpecification": true,
+    "version": ""
+}

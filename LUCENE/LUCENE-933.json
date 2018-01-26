@@ -1,0 +1,65 @@
+{
+    "comments": [
+        {
+            "author": "Hoss Man",
+            "body": "linking to origin of report from SOLR",
+            "date": "2007-06-16T07:28:26.623+0000",
+            "id": 0
+        },
+        {
+            "author": "Doron Cohen",
+            "body": ">  a) +foo:BBB +() \n>  I have no idea what the \"right\" thing to do for situation (a) is.\n\nInterestingly, see TestQueryParser.testQPA():\n      assertQueryEquals(\"term +stop term\", qpAnalyzer, \"term term\");\n      assertQueryEquals(\"term -stop term\", qpAnalyzer, \"term term\");\n\nSo today already requiring word W to not/appear become a non-requirement in case W is a stopword. \n\nCurrently adding  any of these would cause failure:\n    assertQueryEquals(\"term +(stop) term\", qpAnalyzer, \"term term\");\n    assertQueryEquals(\"term -(stop) term\", qpAnalyzer, \"term term\");\n    assertQueryEquals(\"term +(stop stop) term\", qpAnalyzer, \"term term\");\n    assertQueryEquals(\"term -(stop stop) term\", qpAnalyzer, \"term term\");\n\nI feel comfortable with applying the logic we have for a single (stop)word on a group of (stop)words, i.e. making the added lines pass.\n\nInterestingly, consider this query: \n      A  B +(+C -C)\nRegularly it would have no match, because  \n     X AND NOT X == FALSE\nbut if C is a stopword, with the fixed(?) logic the query would become:\n     A  B \nand might have matches.\nNow is that a glitch? I'd like to think not.",
+            "date": "2007-06-20T00:09:24.441+0000",
+            "id": 1
+        },
+        {
+            "author": "Hoss Man",
+            "body": "> I feel comfortable with applying the logic we have for a single (stop)word on a group of\n> (stop)words, i.e. making the added lines pass.\n\n+1\n\n> Interestingly, consider this query:\n>       A  B +(+C -C)\n\nperhaps an alternate way to view this problem would be to ask:  what should QueryParser do, if asked to parse this string...\n        A B +()\n\n...if the answer is \"treat it like 'A B'\" then i think we're okay with the approach you described above.  if the answer is \"an empty query doesn't match anything, so requiring a match on a clause which is an empty query should result in the outer query matching nothing\"  then we've got a problem ... mainly that it contradicts the example you cited from TestQueryParser.testQPA() if you replace \"an empty query\" in the previous statement with \"a query on a stop word\"\n\npersonally, i think it's okay to say \"A  B +(+C -C)\" == \"A B\" if the analyzer doesn't produce any tokens for C.",
+            "date": "2007-06-20T01:10:09.314+0000",
+            "id": 2
+        },
+        {
+            "author": "Doron Cohen",
+            "body": "So an acceptable solution is:\n  Query parser will ignore empty clauses (e.g. ' ( ) ' ) resulted from words filtering, the same as it already does for single words. \n\nA straightforward fix is for QueryParser to avoid adding null (inner) queries into (outer) clauses sets. (It makes sense, too.)\n\nHowever this has a side effect: \n  For queries that became \"empty\" as result of filtering (stopping), QueryParser would now return null. \n\nThis is an API semantics change, because applications that used to get a BooleanQuery with 0 clauses as parse result, would now get a null query. \n\nHere is a closer look on the behavior change:\n\nOriginal behavior:\n   (1)  parse(\" \")  == ParseException\n   (2)  parse(\"( )\")  == ParseException\n   (3)  parse(\"stop\") == \" \"    \n        (actually a boolean query with 0 clauses)\n   (4)  parse(\"(stop)\")  == \" \"    \n        (actually a boolean query with 0 clauses)\n   (5)  parse(\"a stop b\") == \"a b\"\n   (6)  parse(\"a (stop) b\") == \"a () b\"   \n        (middle part is a boolean query with 0 clauses)\n   (7)  parse(\"a ((stop)) b\") == \"a () b\" \n        (again middle part is a boolean query with 0 clauses)\n\nModified behavior:   \n   (3)  parse(\"stop\") == null\n   (4)  parse(\"(stop)\")  == null    \n   (6)  parse(\"a (stop) b\") == \"a b\"   \n   (7)  parse(\"a ((stop)) b\") == \"a b\" \n\nI think the modified behavior is the right one - applications can test a query for being null and realize that it is a no-op. \n\nHowever backwards compatibility is important - would this change break existing applications with annoying new NPEs?\n\nAs an alternative, QueryParser parse() methods can be modified to return a phony empty BQ instead of returning null, for the sake of backwards compatibility.\n\nThoughts?",
+            "date": "2007-06-20T22:20:51.426+0000",
+            "id": 3
+        },
+        {
+            "author": "Doron Cohen",
+            "body": "Ok attaching two different fixes (as discussed above) \n  (1)  lucene-933_backwards_comapatible.patch \n  (2)  lucene-933_nullify.patch\n\nAll tests pass with either of these.\n\nThe \"nullify\" approach requires more changes especially tests as well as in MemoryIndex, so, after while fixing as required for tests to pass in this (nullifying) approach I cane to conclusion that it is better to continue to not return null queries as result of parsing, otherwise there'll be lots of \"noise\". \n\nSo I would like to commit patch (1) - unless someone points a problem that I missed.",
+            "date": "2007-06-21T01:35:24.629+0000",
+            "id": 4
+        },
+        {
+            "author": "Doron Cohen",
+            "body": "committed the bakwards-compatible patch (parsed query is not null).",
+            "date": "2007-06-26T00:44:50.350+0000",
+            "id": 5
+        },
+        {
+            "author": "Hoss Man",
+            "body": "woops ... sorry doron, i actually reviewed these patches the other day, but aparently i got side tracked and never commented.\n\ni think you made the right choice with the backwards_comapatible.patch ",
+            "date": "2007-06-26T04:44:17.054+0000",
+            "id": 6
+        },
+        {
+            "author": "Doron Cohen",
+            "body": "great, thanks Hoss!",
+            "date": "2007-06-26T05:18:50.245+0000",
+            "id": 7
+        }
+    ],
+    "component": "",
+    "description": "as triggered by SOLR-261, if you have a query like this...\n\n   +foo:BBB  +(yak:AAA  baz:CCC)\n\n...where the analyzer produces no tokens for the \"yak:AAA\" or \"baz:CCC\" portions of the query (posisbly because they are stop words) the resulting query produced by the QueryParser will be...\n\n  +foo:BBB +()\n\n...that is a BooleanQuery with two required clauses, one of which is an empty BooleanQuery with no clauses.\n\nthis does not appear to be \"good\" behavior.\n\nIn general, QueryParser should be smarter about what it does when parsing encountering parens whose contents result in an empty BooleanQuery -- but what exactly it should do in the following situations...\n\n a)  +foo:BBB +()\n b)  +foo:BBB ()\n c)  +foo:BBB -()\n\n...is up for interpretation.  I would think situation (b) clearly lends itself to dropping the sub-BooleanQuery completely.  situation (c) may also lend itself to that solution, since semanticly it means \"don't allow a match on any queries in the empty set of queries\".  .... I have no idea what the \"right\" thing to do for situation (a) is.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-933",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "QueryParser can produce empty sub BooleanQueries when Analyzer proudces no tokens for input",
+    "systemSpecification": true,
+    "version": ""
+}

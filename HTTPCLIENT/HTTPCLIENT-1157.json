@@ -1,0 +1,101 @@
+{
+    "comments": [
+        {
+            "author": "James Miller",
+            "body": "Here is a patch wrapping the OperationTimeoutException as an IOException so that the normal code path can be followed.",
+            "date": "2012-01-05T21:53:02.983+0000",
+            "id": 0
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "If no one else steps in, I'll commit the patch in a few days\n\nOleg",
+            "date": "2012-01-06T19:15:42.030+0000",
+            "id": 1
+        },
+        {
+            "author": "Jon Moore",
+            "body": "@James: why not just wrap some try...catch blocks around the current calls to the MemcachedClientIF in MemcachedHttpCacheStorage? You can catch the OperationTimeoutException and re-throw wrapped in an IOException.",
+            "date": "2012-01-09T21:39:27.305+0000",
+            "id": 2
+        },
+        {
+            "author": "James Miller",
+            "body": "@Jon: I started out that way, but I felt that all the try..catch blocks distracted from actual cache logic. I can update the patch if you feel that is cleaner.",
+            "date": "2012-01-09T22:11:20.386+0000",
+            "id": 3
+        },
+        {
+            "author": "Jon Moore",
+            "body": "@James: yes, I think just putting the try...catch around the Memcached operations would be overall simpler. If you can update the patch I'd be happy to apply it.",
+            "date": "2012-01-10T19:07:11.255+0000",
+            "id": 4
+        },
+        {
+            "author": "James Miller",
+            "body": "Here is an updated patch that only wraps the MemcachedClientIF methods that throw a OperationTimeoutException in a try..catch and throws an IOException instead",
+            "date": "2012-01-11T16:56:40.465+0000",
+            "id": 5
+        },
+        {
+            "author": "Jon Moore",
+            "body": "@James: patch committed to trunk. I also wrapped try...catch around the cache puts and cache deletes as well for completeness. Please take a look, and if that works for you I'll also backport to 4.1.x. Many thanks for this!\n",
+            "date": "2012-01-11T18:14:13.374+0000",
+            "id": 6
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "@Jon\nThe latest changes in SVN trunk introduced dependency on a Java 1.6 specific IOexception constructor, which broke the build\n\nhttps://builds.apache.org/job/HttpComponents%20Client/402/console\n\nWe need to keep HttpClient Java 1.5 compatible, at least for now.\n\nOleg",
+            "date": "2012-01-12T09:54:45.388+0000",
+            "id": 7
+        },
+        {
+            "author": "Sebb",
+            "body": "Agreed.\n\nIf we do decide to move to 1.6 minimum, it should be on the basis of some functionality that is only available in Java 1.6.",
+            "date": "2012-01-12T11:21:59.149+0000",
+            "id": 8
+        },
+        {
+            "author": "Jon Moore",
+            "body": "Also agreed -- my bad. I'll fix it when I get into the office this morning. Where is our virtual collection jar so I can put my $1 in for breaking the build? :)\n\n",
+            "date": "2012-01-12T11:46:49.271+0000",
+            "id": 9
+        },
+        {
+            "author": "Jon Moore",
+            "body": "@Oleg: I see you beat me to it. Thanks. :)\n",
+            "date": "2012-01-12T13:49:48.415+0000",
+            "id": 10
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "@Jon. My pleasure. Truth to be told I was not going to, but I needed the trunk to be compilable to be able to publish the latest snapshot.\n\nOleg ",
+            "date": "2012-01-12T14:00:37.392+0000",
+            "id": 11
+        },
+        {
+            "author": "Jon Moore",
+            "body": "Backported to 4.1.x. @James: Please verify and close issue if appropriate. Thanks!",
+            "date": "2012-01-12T14:23:38.129+0000",
+            "id": 12
+        },
+        {
+            "author": "James Miller",
+            "body": "Looks good, thanks!",
+            "date": "2012-01-12T15:44:40.708+0000",
+            "id": 13
+        }
+    ],
+    "component": "HttpCache",
+    "description": "The MemcachedHttpCacheStorage class implements HttpCacheStorage which defines that methods will throw IOExceptions, but the underlying net.spy.memcached.MemcachedClientIF throws runtime exceptions. These exceptions are not caught in the code where IOExceptions are expected causing these exception bubble up to the calling code. It seems like the MemcachedHttpCacheStorage class should treat at least some of these runtime exceptions as IOExceptions so that normal code execution paths can be followed.  \n\nI'm proposing that MemcachedHttpCacheStorage treat a OperationTimeoutException from the memcached client as an IOException. This would allow the existing CachingHttpClient code to catch and log the exception as a warning, instead of bubbling the exception up the calling code.\n",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "HTTPCLIENT-1157",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "HTTPCLIENT",
+    "project": "HTTPCLIENT",
+    "summary": "MemcachedHttpCacheStorage should throw IOExceptions instead of Runtime Exceptions",
+    "systemSpecification": true,
+    "version": "4.2 Alpha1"
+}

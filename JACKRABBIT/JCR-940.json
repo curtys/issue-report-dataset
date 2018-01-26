@@ -1,0 +1,149 @@
+{
+    "comments": [
+        {
+            "author": "Martijn Hendriks",
+            "body": "Here's a patch that adds reconnection logic to the bundle persistence managers. I've made an attempt to put this in a separate class such that it can be reused. I've tested it with MSSQL and with Oracle 10. Feedback is much appreciated!",
+            "date": "2007-08-17T13:57:43.155+0000",
+            "id": 0
+        },
+        {
+            "author": "Stefan Guggisberg",
+            "body": "martijn, thanks for the patch. the patch looks very good in general, excellent job!\n\ni quickly browsed through the patch and i got a few comments:\n\n- some changes in BundleDbPersistenceManager seem to have gone lost\n   in your patch (e.g. #566985 & #563900). \n\n- Oracle9PersistenceManager#storeBundle: the blob parameter is never set ;-)\n\n- what was the reason for removing resetStatement(stmt) calls? \n  (see e.g. PostgreSQLPersistenceManager line 120)\n\n- tabs should be avoided in the source code\n\ncheers\nstefan",
+            "date": "2007-08-23T16:02:02.163+0000",
+            "id": 1
+        },
+        {
+            "author": "Martijn Hendriks",
+            "body": "Hi Stefan,\n\nThanks for the feedback! I'll check out the lost changes you mention, and you're absolotely right on the blob parameter. The resetStatement calls are not removed but are now placed in the ConnectionRecoveryManager.executeStmt method.\n\nWhat do you think about letting Jackrabbit only return when a query succeeded (i.e., if the database connection is lost then Jackrabbit code retries until it succeeds)?\n\nI'll try to make a second version of the patch asap.\n\nBest regards,\n\nMartijn",
+            "date": "2007-08-24T11:07:42.690+0000",
+            "id": 2
+        },
+        {
+            "author": "Stefan Guggisberg",
+            "body": "> What do you think about letting Jackrabbit only return when a query succeeded (i.e., if the database connection is lost then Jackrabbit code retries until it succeeds)?\n\npersonally i don't think that this would be a good idea since JCR api calls could as a result block forever.",
+            "date": "2007-08-24T12:18:19.744+0000",
+            "id": 3
+        },
+        {
+            "author": "Stefan Guggisberg",
+            "body": "one thing i forgot to mention: the new classes ConnectionRecoverable & ConnectionRecoveryManager would IMO be better placed in the o.a.j.core.persistence.util package (instead of o.a.j.core) .",
+            "date": "2007-08-24T14:23:37.462+0000",
+            "id": 4
+        },
+        {
+            "author": "Martijn Hendriks",
+            "body": "Hi Stefan,\n\nI'm preparing a new version of the patch. I see that #563900 belongs to JCR-1039, but where is #566385?\n\nBest regards,\nMartijn",
+            "date": "2007-09-06T06:35:09.777+0000",
+            "id": 5
+        },
+        {
+            "author": "Stefan Guggisberg",
+            "body": "> Martijn Hendriks commented on JCR-940:\n> --------------------------------------\n> \n> Hi Stefan,\n> \n> I'm preparing a new version of the patch. I see that #563900 belongs to JCR-1039, but where is #566385?\n\nsorry, my mistake. it's #566985. it's just a trivial typo correction:\n\nhttp://svn.apache.org/viewvc?view=rev&revision=566985\n\ncheers\nstefan\n\n> \n> Best regards,\n> Martijn\n\n",
+            "date": "2007-09-06T12:37:49.660+0000",
+            "id": 6
+        },
+        {
+            "author": "Martijn Hendriks",
+            "body": "Hi,\n\nHere's a second version of the patch.\n\nBest regards,\n\nMartijn",
+            "date": "2007-09-07T07:17:06.653+0000",
+            "id": 7
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "Hi,\nI have a few comments:\n\nSLEEP_BEFORE_RECONNECT = 10000;\nTRIALS = 1;\nI would use:\nSLEEP_BEFORE_RECONNECT = 500;\nTRIALS = 20;\n\npublic synchronized boolean addStatement(String sql) {\n...\n        log.warn(\"failed to add statement\");\n        return false;\n    }\n\nIt's easy to forget checking the return value. Actually, you did _not_ check it.\nI would throw an exception if preparing a statement failed.\n\ninitPreparedStatements: why not prepare the statements when they are first used?\nLike that you only prepare statements that are actually used. This saves time. So I would change:\n\nPreparedStatement stmt = (PreparedStatement) preparedStatements.get(sql);\nif (stmt == null) {\n  throw new Exception(\"unknown SQL statement: \" + sql);\n}\n\nto\n\nPreparedStatement stmt = (PreparedStatement) preparedStatements.get(sql);\nif (stmt == null) {\n  stmt = connection.prepareStatement(sql);\n  preparedStatements.add(sql, stmt);\n}\n\nThere is anyway a loop to reconnect if this failed. So you can get rid of addStatement(..), rePrepareStatements, and sqlStatements.\n\n+                        if (params[i] instanceof Long) {\n+                            stmt.setLong(i + 1, ((Long) params[i]).longValue());\n+                        } else if (params[i] instanceof byte[]) {\n+                            stmt.setBytes(i + 1, (byte[]) params[i]);\n+                        } else if (params[i] instanceof Blob) {\n+                            stmt.setBlob(i + 1, (Blob) params[i]);\n+                        } else {\n+                            stmt.setObject(i + 1, params[i]);\n\nOnly the last line is required.\n\n// close shared prepared statements\n\nThis is not required. If the connection is closed, the prepared statements are closed. Just calling preparedStatements.clear() is enough.\n\nboolean reestablishConnection(..)\n\nAgain, using a return value...\n\n\nprivate Set sqlStatements = new HashSet();\n\n\n-                stmt = con.prepareStatement(\n-                        \"select NODE_ID, BUNDLE_DATA from \"\n-                        + schemaObjectPrefix + \"BUNDLE\");\n+                stmt = connectionManager.getConnection().prepareStatement(\"select NODE_ID, BUNDLE_DATA from BUNDLE\");\n\nThe schemaObjectPrefix is lost here.\n",
+            "date": "2007-09-07T07:54:09.384+0000",
+            "id": 8
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "> store: log.warn(\"storing and committing changes failed: \" + e.getMessage());\n\nexception stack traces must be logged as well:\n\nlog.warn(\"storing and committing changes failed: \" + e.getMessage(), e);\n\n> stmt = connectionManager.getConnection().prepareStatement(\"select NODE_ID, BUNDLE_DATA from BUNDLE\");\n\nThe SQL statement should stored in one of the member variables in my view (but it was also not done before...).\n\n+        if (!connectionManager.setAutoCommit(false)) {\n+            throw new ItemStateException(\"disabling autoCommit failed\");\n\nUsing a return value for an exception.\n\n+            Object[] keys = getKey(bundle.getId().getUUID());\n+            Object[] params = new Object[keys.length + 1];\n+            params[0] = out.toByteArray();\n+            for (int i = 1; i < params.length; i++) {\n+                params[i] = keys[i-1];\n             }\n\nWhat about using an ArrayList:\nList params = getKey(bundle.getId().getUUID());\nparams.add(out.toByteArray());\n\n-            stmt.setBytes(2, bundle.getId().getUUID().getRawBytes());\nThis is code you removed... Strange, how did this work with getStorageModel() != SM_BINARY_KEYS?\n\n+            Connection con = connectionManager.getConnection();\n+            if (con != null) {\n+                DatabaseMetaData metaData = con.getMetaData();\n+                if (metaData.getDriverMajorVersion() < 10) {\n\n+            Connection con = connectionManager.getConnection();\n+            if (con != null) {\n+                try {\n+                    con.rollback();\n\nIn some places the return value is checked, in other places not. I would make sure getConnection never returns null, otherwise you get NullPointerExceptions in strange places, and you don't really know what was the reason.\n\n+    /**\n+     * @return the database connection that is managed, possibly null\n+     */\n+    public synchronized Connection getConnection() {\n+        int trials = TRIALS;\n+        while (trials-- > 0) {\n+\n+            // First, try to reconnect if needed\n+            if (isClosed && autoReconnect) {\n+                reestablishConnection();\n+            }\n+\n+            // Then, try to return the connection\n+            if (!isClosed) {\n+                return connection;\n+            }\n+        }\n+        log.warn(\"failed to get connection\");\n+        return null;\n+    }\n\nI would write:\n\n+    /**\n+     * @return the database connection that is managed, possibly null\n+     */\n+    public synchronized Connection getConnection() throws SQLException {\n+        // reconnect if needed\n+        if (isClosed && autoReconnect) {\n+            reestablishConnection();\n+        }\n+        return connection;\n+    }\n\nIn my view, reestablishConnection should loop, and if it can't connect, throw an exception. And once it failed, it should set autoReconnect to false, otherwise other code will try to re-connect again and again (maybe endlessly). You have used reestablishConnection in many places in the code, I think it should only be called in one place.\n\nThomas\n",
+            "date": "2007-09-07T08:48:15.921+0000",
+            "id": 9
+        },
+        {
+            "author": "Martijn Hendriks",
+            "body": "Hi Thomas,\n\nThanks for your detailed comments! I'll take a good look at them when I have time (probably after the weekend) and prepare a third version.\n\nMartijn",
+            "date": "2007-09-07T10:59:08.220+0000",
+            "id": 10
+        },
+        {
+            "author": "Martijn Hendriks",
+            "body": "Hi Thomas,\n\nHere's a third version of the patch. Thanks for your useful comments: I think that they have improved it significantly. I also have added a \"blockOnConnectionLoss\" property that can be configured from the repository.xml (default value is false).\n\nYour last comment suggested to set autoReconnect to false after a failed reconnection attempt. I haven't included that because I have no idea who and when should set it to true again.\n\nBest regards,\n\nMartijn",
+            "date": "2007-09-14T08:21:36.073+0000",
+            "id": 11
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "Hi,\n\nGreat! The patch looks very good! \n\nI will apply it in my environment, test it, and then commit it. The 'blockOnConnectionLoss' feature is OK, what is your use case? Just one remark: currently SLEEP_BEFORE_RECONNECT is 0.5 seconds, that's great because re-creating a TCP/IP connection usually is quick, no need to wait many seconds before the first re-try (if we expect MySQL to be the 'customer' for this feature). \n\nCurrently TRIALS is 2, that means giving up after at most 1 second. I think that's a bit short. What about setting TRIALS to 10? It will then try at most 5 seconds, enough for a unstable wireless connection (not sure if this is a use case).\n\nThomas",
+            "date": "2007-09-14T10:14:00.756+0000",
+            "id": 12
+        },
+        {
+            "author": "Martijn Hendriks",
+            "body": "> Great! The patch looks very good!\nThanks!\n\n> I will apply it in my environment, test it, and then commit it. The 'blockOnConnectionLoss' feature is OK, what is your use case? Just one remark: \n\nOur application caches query results that we know to be stable. If some nodes in the result set of such a query are not yet in the Jackrabbit caches and the connection is lost, then they are skipped in the NodeIterator for the queries result. I.e., our caches could get out-of-sync when the connection is lost, which would require a restart. Blocking within Jackrabbit solves this transparently, and this patch makes a first attempt at that. Currently one statement/changelog fails before blocking, i.e. that statement/changelog is lost, so with very bad luck our caches could still get out of sync. I'm still thinking on how to block on this first statement/changelog in an elegant way. Of course, we get a lot of contention, but that would - in theory be resolved - when the connection comes up again.\n\n> Currently TRIALS is 2, that means giving up after at most 1 second. I think that's a bit short. What about setting TRIALS to 10? It will then try at\n> most 5 seconds, enough for a unstable wireless connection (not sure if this is a use case).\n\nYes, 10 is fine.\n\nMartijn",
+            "date": "2007-09-14T12:07:16.950+0000",
+            "id": 13
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "I have run the unit tests with this patch, and that works.\n\nI wanted to test if auto-reconnect works using PostgreSQL on a remote machine. Unfortunately it is quite complex to enable remote connections in PostgreSQL (you need to change pg_hba.conf and postgresql.conf, the GUI doesn't really work), and I was not fully successful: Remote connections still don't work, except if I use a TCP/IP redirect utility (actually one I made myself some time ago). But this is very slow.\n\nI tried out auto-reconnect (remove network cable), but I found some problems: Unlike the regular DatabasePersistenceManager, BundleDbPersistenceManager.store doesn't try to re-connect:\n\nvoid store(ChangeLog changeLog) {\n  ..\n  connectionManager.setAutoReconnect(false);\n  super.store(changeLog);\n  ..\n}\n\nSo the feature still needs to be improved and tested more.\nBut the patch doesn't seem to break anything, so I will commit it shortly.\n\nThomas",
+            "date": "2007-09-14T14:39:13.032+0000",
+            "id": 14
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "Revision 575734: BundleDbPersistenceManager auto-reconnect\nI have implemented the loop BundleDbPersistenceManager.store(ChangeLog), but unfortunately the feature still doesn't work always in the following case:\n- enabling 'blockOnConnectionLoss'\n- run mvn install\n- stop the database server (for example PostgreSQL) while the test runs\n- start the database server\nSometimes the SQLException is thrown, and the test fails.\nThis needs to be tested some more.",
+            "date": "2007-09-14T16:08:43.277+0000",
+            "id": 15
+        },
+        {
+            "author": "Martijn Hendriks",
+            "body": "Hi Thomas,\n\nI think that besides the BundleDbPM.store method the ConnectionrecoveryManager.execute* methods also need to be wrapped by a retry-loop. I've patched this locally and want to execute the unit tests using the MSSQL bundle PM. I'm not familiar with the test harness...how should I do this? Some initial attempts to alter the repository.xml and workspace.xmls in the jackrabbit-core\\applications\\test directory failed.",
+            "date": "2007-09-20T11:49:45.145+0000",
+            "id": 16
+        },
+        {
+            "author": "Martijn Hendriks",
+            "body": "Here's a cumulative patch that wraps the ConnectionRecoveryManager.execute* methods and the BundleDbPM.store method in a retry loop.\n\nI tested this using the unit tests with a remote MSSQL database. The blockOnConnectionLoss=true option now seems to work as expected: all tests still pass when the network cable is unplugged one or more times during the tests.",
+            "date": "2007-09-21T08:04:57.491+0000",
+            "id": 17
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "Sorry, I have attached my comments to the wrong bug (JCR-1138).\n\nHi,\n\nThe patch looks good. I tried with PostgreSQL and got this problem:\n\nConnectionRecoveryManager: could not setup connection, reason: could not load driver: org.postgresql.Driver, state/code: null/0\n(ConnectionRecoveryManager.java, line 430)\nConnectionRecoveryManager: blocking until database connection is up again...\n(ConnectionRecoveryManager.java, line 368)\n\nDo you agree that retry doesn't make sense if the driver could not be loaded? If yes I will change the code. Also, it would probably make sense to write the database URL and the user name (not the password) to the log file, so the person (alias poor guy) who has to start the database knows which one and can test the connection using some other tool.\n\nIf that's OK with you, I will make it throw a RepositoryException if the database driver could not be loaded or initialized (ExceptionInInitializerError):\n\n    private void setupConnection() throws SQLException, RepositoryException {\n        try {\n            Class driverClass = Class.forName(driver);\n            // Workaround for Apache Derby:\n            // The JDBC specification recommends the Class.ForName method without the .newInstance() method call,\n            // but adding the newInstance() guarantees that Derby will be booted on any Java Virtual Machine.\n            driverClass.newInstance();\n        } catch (Throwable e) {\n            throw new RepositoryException(\"Could not load or initialize the database driver class \" + driver, e);\n        }\n\n",
+            "date": "2007-09-21T08:51:03.955+0000",
+            "id": 18
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "Revision 578043: apply patch submitted by Martijn Hendriks (plus RepositoryException if the driver could not be loaded).",
+            "date": "2007-09-21T10:15:44.395+0000",
+            "id": 19
+        },
+        {
+            "author": "Martijn Hendriks",
+            "body": "> Do you agree that retry doesn't make sense if the driver could not be loaded?\n\nYes, good point!\n\n> If yes I will change the code. Also, it would probably make sense to write the database URL and the user name (not the password) to the log file, so\n> the person (alias poor guy) who has to start the database knows which one and can test the connection using some other tool.\n\nYes, that's more informative than the current situation.\n\n\n",
+            "date": "2007-09-21T11:10:32.343+0000",
+            "id": 20
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "It seems to work now. Please re-open or create a new bug if not.",
+            "date": "2007-09-21T11:35:27.368+0000",
+            "id": 21
+        }
+    ],
+    "component": "jackrabbit-core",
+    "description": "Since bundled db pm doesn't inherited from database pm, it can't reconnect once database is bounced. it would be nice to add this feature. ",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "JCR-940",
+    "issuetypeClassified": "RFE",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Major",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "add db connection autoConnect for BundleDbPersistenceManager.",
+    "systemSpecification": true,
+    "version": ""
+}

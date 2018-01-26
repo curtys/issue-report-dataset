@@ -1,0 +1,95 @@
+{
+    "comments": [
+        {
+            "author": null,
+            "body": "Created attachment 20851\nSlow down -force execution\n\nAdd a 10 (???) second delay between having issued the \"stop\" command\nand issuing the kill comman. This gives the JVM time to finish\ncleaning up.",
+            "date": "20070918T15:27:49",
+            "id": 0
+        },
+        {
+            "author": null,
+            "body": "Isn't the point of -force to stop the jvm with wild abandon?\n\n1) I think the existing behavior here is pretty appropriate\n2) -force really shouldn't be depended upon to leave the environment in a sane\nstate, but I would expect it to return quickly (possibly leaving a trail of\nbloodied jvms in its wake)",
+            "date": "20070919T10:15:04",
+            "id": 1
+        },
+        {
+            "author": null,
+            "body": "Actually - I'd prefer look for an env variable called CATALINA_WAIT and if it \nexists - optionally sleep for that amount of time",
+            "date": "20070919T10:32:15",
+            "id": 2
+        },
+        {
+            "author": null,
+            "body": "Good idea. At least the default behavior doesn't change.",
+            "date": "20070919T10:53:06",
+            "id": 3
+        },
+        {
+            "author": null,
+            "body": ".. or(/and) add one more command line option if the force is used;\n-waitBeforeKill or something like that. (Environment variables are generally evil).",
+            "date": "20070920T00:53:57",
+            "id": 4
+        },
+        {
+            "author": null,
+            "body": "Could someone provide a use case for this. The whole point of -force is to kill\nthe process when a normal stop fails.",
+            "date": "20070926T19:15:55",
+            "id": 5
+        },
+        {
+            "author": null,
+            "body": "The assumption is that the once the shutdown command has been issued\nand the process has finished, that this means that the JVM is really\ndead. In fact, the JVM may still be running for a short time after \nTomcat has \"gone\" away. So the 'kill' command is executed too soon.\nIn my case, this means that any temporary files created with the\n\"delete on exit\" flag are not removed, eventually filling up the\nfile system.",
+            "date": "20070926T20:16:43",
+            "id": 6
+        },
+        {
+            "author": null,
+            "body": "So why can't you just not use the -force option and let Tomcat stop normally?",
+            "date": "20070927T00:56:20",
+            "id": 7
+        },
+        {
+            "author": null,
+            "body": "Because every once in a blue moon, the JVM does not exit, and it has to be killed\nso that we restart the service. Better to have it done by the shutdown script\nrather then being called at 4 in morning because the service can't be restarted.",
+            "date": "20070927T10:31:22",
+            "id": 8
+        },
+        {
+            "author": null,
+            "body": "OK. I understand your use case now.\n\nIf the JVM doesn't stop cleanly then something is wrong that needs to be fixed.\nI think adding this feature would encourage people to use -force all the time\nwhich would mask that the stop was not clean which in turns hides the fact there\nis some underlying issue.\n\nI would be -1 on the patch as is since it removes some existing functionality\nand the delay is not configurable. With the warning restored and the delay made\nconfigurable I would be -0. Of course, I am only one person. The rest of the\ncommunity may have very different views.",
+            "date": "20070927T20:08:16",
+            "id": 9
+        },
+        {
+            "author": null,
+            "body": "I don't like the patch, but the feature are usefull.\n\nTipp: Use the Java Service Wrapper :-)",
+            "date": "20070930T02:06:11",
+            "id": 10
+        },
+        {
+            "author": null,
+            "body": "Created attachment 20907\nPatch for catalina.sh from tomcat6.0 branch\n\nPatch from tomcat6 branch.\nIf -force is chosen - a kill is attempted and NO shutdown is attempted. (Since\nthe kill -9 WILL shutdown tomcat for us)",
+            "date": "20071002T10:31:55",
+            "id": 11
+        },
+        {
+            "author": null,
+            "body": "This was fixed for Tomcat 6.0.21 onwards. The fix wasn't back-ported to 5.5.x.",
+            "date": "20110306T17:46:14",
+            "id": 12
+        }
+    ],
+    "component": "Catalina",
+    "description": "The -force option to catalina.sh is executed too fast.\n\nThe \"stop\" command can return even though the JVM is still running so killing the process immediately can\ncause problems for the JVM, e.g. files marked as delete on exit are not removed.\n\nTomcat 6 has the same problem",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "43423",
+    "issuetypeClassified": "OTHER",
+    "issuetypeTracker": "RFE",
+    "priority": "P3 enhancement",
+    "product": "Tomcat 5",
+    "project": "TOMCAT",
+    "summary": "catalina.sh -force too fast",
+    "systemSpecification": true,
+    "version": "5.5.23"
+}

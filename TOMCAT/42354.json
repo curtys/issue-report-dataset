@@ -1,0 +1,23 @@
+{
+    "comments": [
+        {
+            "author": null,
+            "body": "Fixed in svn and will be included in 5.5.24 onwards.",
+            "date": "20070512T16:29:03",
+            "id": 0
+        }
+    ],
+    "component": "Catalina",
+    "description": "TLD's are not processed if the webapp is in a folder that has a space in it.\n\nMyspaces is failing using Tomcat 5.5 because its listener was not being \ninvoked.  I traced the problem with the debugger and found the problem.  \n\nJAR files in the WEB-INF/lib folder were supposed to be scanned for TLD's.  The \nmethod getJarPaths in startup/TldConfig.java[1] is supposed to return all the \nJAR files that have a TLD within them.  This method is not working correctly.\n\nThe problem is with how the path to the JAR files is locoated.  First all the \nclasspath entries for the webapp are converted to URL's.  \n\n  URL[] urls = ((URLClassLoader) loader).getURLs();\n\nThen to test to see the file exists a java.io.File is used\n\n  File file = new File(urls[i].getFile());\n  try {\n    file = file.getCanonicalFile();\n  } catch (IOException e) {\n    // Ignore\n  }\n  \n  if (!file.exists()) { // file.exists() RETURNING FALSE\n    continue;\n  }\n\nThe problem is to do with converting spaces.  The paths on my web app all \nlooked something like \"file:///c:/Documents%20%and%20Settings/foo/bar\".  The \nFile class does not understand the %20 as a space.\n\nA hack would be to add a .replaceAll(\"%20\", \" \") but i'm sure this will cause \nproblems somewhere.  And is %20 valid in a File URI?\n\n[1] \nhttp://svn.apache.org/repos/asf/tomcat/container/tc5.5.x/catalina/src/share/org/\napache/catalina/startup/TldConfig.java",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "42354",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "P2 major",
+    "product": "Tomcat 5",
+    "project": "TOMCAT",
+    "summary": "Web App JAR's are not scanned for TLD's if a space in the path",
+    "systemSpecification": true,
+    "version": "5.5.23"
+}

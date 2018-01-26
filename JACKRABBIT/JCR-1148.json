@@ -1,0 +1,65 @@
+{
+    "comments": [
+        {
+            "author": "Esteban Franqueiro",
+            "body": "This issue is the same one Pablo mentioned in JCR-935. Are you using the fine grained locking strategy? Because in our testing this happened when using it.",
+            "date": "2007-09-28T14:18:46.249+0000",
+            "id": 0
+        },
+        {
+            "author": "Stefan Guggisberg",
+            "body": "what configuration are you using? any custom code/modifications involved?\n\nare you able to reproduce it with an out-of-the-box jackrabbit release? \n\ncould you perhaps provide a simple test case?",
+            "date": "2007-09-28T14:31:47.418+0000",
+            "id": 1
+        },
+        {
+            "author": "Martijn Hendriks",
+            "body": "> This issue is the same one Pablo mentioned in JCR-935.\n\nIndeed, I didn't search JIRA well enough...\n\n> what configuration are you using? any custom code/modifications involved?\n> are you able to reproduce it with an out-of-the-box jackrabbit release?\n\nWe're using a patched 1.3 version, but I just reproduced it with the clean 1.3 release.\n\n> could you perhaps provide a simple test case?\n\nI will try. The problem is that this issue turned up during an integration test from which it is a long way down to Jackrabbit code.",
+            "date": "2007-10-01T07:54:10.303+0000",
+            "id": 2
+        },
+        {
+            "author": "Martijn Hendriks",
+            "body": "Here are the stacktraces of two threads involved in the NPE:\n\nThe thread that throws the NPE (line information in ItemState has been changed due to debugging code):\n\nThread [Thread-38] (Suspended (breakpoint at line 158 in ItemState))\t\n\tNodeState(ItemState).pull() line: 158\t\n\tXAItemStateManager(LocalItemStateManager).stateModified(ItemState) line: 420\t\n\tStateChangeDispatcher.notifyStateModified(ItemState) line: 85\t\n\tSharedItemStateManager.stateModified(ItemState) line: 390\t\n\tNodeState(ItemState).notifyStateUpdated() line: 244\t\n\tChangeLog.persisted() line: 271\t\n\tSharedItemStateManager$Update.end() line: 702\t\n\tSharedItemStateManager.update(ChangeLog, EventStateCollectionFactory) line: 855\t\n\tXAItemStateManager(LocalItemStateManager).update(ChangeLog) line: 326\t\n\tXAItemStateManager.update(ChangeLog) line: 313\t\n\tXAItemStateManager(LocalItemStateManager).update() line: 302\t\n\tSessionItemStateManager.update() line: 306\t\n\tNodeImpl(ItemImpl).save() line: 1214\t\n\tXASessionImpl(SessionImpl).save() line: 849\t\n\nThe thread that just reset the overlayedState of the ItemState in the above thread to null:\n\n\tItemState.disconnect(ItemState.java:209)\n\tChangeLog.modified(ChangeLog.java:70)\n\tLocalItemStateManager.store(LocalItemStateManager.java:268)\n\tSessionItemStateManager.store(SessionItemStateManager.java:283)\n\tNodeImpl.makePersistent(NodeImpl.java:984)\n\tItemImpl.persistTransientItems(ItemImpl.java:687)\n\tItemImpl.save(ItemImpl.java:1198)\n\tSessionImpl.save(SessionImpl.java:849)\n\nThe problem is that saving causes a call to disconnect of an ItemState of the LocalItemStateManager, and that saving another session in another thread causes a call to pull of that ItemState through the SISM notification mechanism.",
+            "date": "2007-10-03T07:51:05.518+0000",
+            "id": 3
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "I'm able to reproduce this issue with the test case ConcurrentyTest.testConcurrentWritingSessions() and FineGrainedISMLocking.",
+            "date": "2007-12-17T15:11:53.835+0000",
+            "id": 4
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "Proposed fix.",
+            "date": "2007-12-17T15:15:52.244+0000",
+            "id": 5
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Looks good enough, though I must admit I'm having a hard time understanding the relevant data and control flows.",
+            "date": "2007-12-18T16:42:36.200+0000",
+            "id": 6
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "Thank you for reviewing the patch.\n\nI committed the patch in revision 605509",
+            "date": "2007-12-19T10:41:45.460+0000",
+            "id": 7
+        }
+    ],
+    "component": "jackrabbit-core",
+    "description": "The following happens quite regularly when multiple threads are adding, retrieving and removing nodes simultaneously. Looking at the code of the pull method, this seems due to under-synchronization somewhere as overlayedState was tested at line 153 for null.\n\njava.lang.NullPointerException\n        at org.apache.jackrabbit.core.state.ItemState.pull(ItemState.java:156)\n        at org.apache.jackrabbit.core.state.LocalItemStateManager.stateModified(LocalItemStateManager.java:421)\n        at org.apache.jackrabbit.core.state.StateChangeDispatcher.notifyStateModified(StateChangeDispatcher.java:85)\n        at org.apache.jackrabbit.core.state.SharedItemStateManager.stateModified(SharedItemStateManager.java:434)\n        at org.apache.jackrabbit.core.state.ItemState.notifyStateUpdated(ItemState.java:241)\n        at org.apache.jackrabbit.core.state.ChangeLog.persisted(ChangeLog.java:271)\n        at org.apache.jackrabbit.core.state.SharedItemStateManager$Update.end(SharedItemStateManager.java:741)\n        at org.apache.jackrabbit.core.state.SharedItemStateManager.update(SharedItemStateManager.java:937)\n        at org.apache.jackrabbit.core.state.LocalItemStateManager.update(LocalItemStateManager.java:327)\n        at org.apache.jackrabbit.core.state.XAItemStateManager.update(XAItemStateManager.java:313)\n        at org.apache.jackrabbit.core.state.LocalItemStateManager.update(LocalItemStateManager.java:303)\n        at org.apache.jackrabbit.core.state.SessionItemStateManager.update(SessionItemStateManager.java:307)\n        at org.apache.jackrabbit.core.ItemImpl.save(ItemImpl.java:1374)",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "JCR-1148",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "NullPointerException in ItemState",
+    "systemSpecification": true,
+    "version": "1.3, 1.3.1, 1.3.3"
+}

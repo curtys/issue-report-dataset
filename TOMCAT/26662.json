@@ -1,0 +1,95 @@
+{
+    "comments": [
+        {
+            "author": null,
+            "body": "Long time since I last heard about your reports. Now you'll see that this must\nbe wrapped with another filter for content delimitation (either identity or\nchunked), which can be safely cast. If this doesn't happen, then you have a bug,\nbut quite frankly I really doubt it.",
+            "date": "20040204T15:59:12",
+            "id": 0
+        },
+        {
+            "author": null,
+            "body": "Remy,\n\nI did not think you read my bug reports, I though you would have filtered them \nby now.. :-)\n\nI understand what you are saying, but I keep getting the following stacktrace...\n\nava.lang.ClassCastException\n\tat org.apache.coyote.http11.filters.GzipOutputFilter.end\n(GzipOutputFilter.java:165)\n\tat org.apache.coyote.http11.InternalOutputBuffer.endRequest\n(InternalOutputBuffer.java:439)\n\tat org.apache.coyote.http11.Http11Processor.action\n(Http11Processor.java:968)\n\tat org.apache.coyote.Response.action(Response.java:226)\n\tat org.apache.coyote.Response.finish(Response.java:348)\n\tat org.apache.coyote.tomcat5.OutputBuffer.close(OutputBuffer.java:328)\n\tat org.apache.coyote.tomcat5.CoyoteResponse.finishResponse\n(CoyoteResponse.java:497)\n\tat org.apache.coyote.tomcat5.CoyoteAdapter.service\n(CoyoteAdapter.java:209)\n\tat org.apache.coyote.http11.Http11Processor.process\n(Http11Processor.java:828)\n\tat \norg.apache.coyote.http11.Http11Protocol$Http11ConnectionHandler.processConnectio\nn(Http11Protocol.java:700)\n\tat org.apache.tomcat.util.net.TcpWorkerThread.runIt\n(PoolTcpEndpoint.java:584)\n\tat org.apache.tomcat.util.threads.ThreadPool$ControlRunnable.run\n(ThreadPool.java:683)\n\tat java.lang.Thread.run(Thread.java:536)\n\nThis would indicate to me that it is a bug..\n\n\n",
+            "date": "20040204T16:09:18",
+            "id": 1
+        },
+        {
+            "author": null,
+            "body": "So basically, you are complining about stacktraces in your logs, right ?\n\"I get ClassCastException's when navigating our site\" would be translated by a\nnormal guy as: I see the stacktrace in my browser.\nMaybe it could happen when finishing an error request.",
+            "date": "20040204T16:23:51",
+            "id": 2
+        },
+        {
+            "author": null,
+            "body": "I added a filter for the only branch of the if which wasn't adding a filter. I\ndon't quite understand when this branch code was being run; possibly in the case\nof an error. So this is fixed.",
+            "date": "20040204T16:39:25",
+            "id": 3
+        },
+        {
+            "author": null,
+            "body": "I know it seems silly (believe me I know!!) but I just do as management tells \nme to and they wanted me to see if I could get it fixed.. ",
+            "date": "20040204T17:34:44",
+            "id": 4
+        },
+        {
+            "author": null,
+            "body": "Okidoki. Feel free to test the patch.",
+            "date": "20040204T19:44:08",
+            "id": 5
+        },
+        {
+            "author": null,
+            "body": "Remy,\n\nThe fix did not work.. I still get the classcastexception.  The stacktrace is \nthe same..\n\n",
+            "date": "20040205T13:47:35",
+            "id": 6
+        },
+        {
+            "author": null,
+            "body": "Sure. Please provide a test case (test telnet request + servlet or JSP if needed).",
+            "date": "20040205T17:10:04",
+            "id": 7
+        },
+        {
+            "author": null,
+            "body": "*** Bug 27197 has been marked as a duplicate of this bug. ***",
+            "date": "20040224T23:16:20",
+            "id": 8
+        },
+        {
+            "author": null,
+            "body": "\nI found what was causing the class cast exception.  The maxKeepAliveRequests is \nset to 100.  If more than 100 requests are sent to that connection then the \nHttp11Processor.process() sets keepAlive to false (which is the correct \nbehavior) but when Http11Processor.processResponse() is called the following \ncode \n\n1485        if (contentLength != -1) {\n1486            response.getMimeHeaders().setValue(\"Content-Length\")\n1487                .setInt(contentLength);\n1488            outputBuffer.addActiveFilter\n1489                (outputFilters[Constants.IDENTITY_FILTER]);\n1490            contentDelimitation = true;\n1491        } else {\n1492            if (entityBody && http11 && keepAlive) {\n1493                outputBuffer.addActiveFilter\n1494                    (outputFilters[Constants.CHUNKED_FILTER]);\n1495                contentDelimitation = true;\n1496                response.addHeader(\"Transfer-Encoding\", \"chunked\");\n1497            }\n1498        }\n\ndoes not add a filter there for causing the compression filter to be the only \none added.  \n\nI am attaching a patch that checks to see if there are any filters added before \nthe compression filter is and if not added the identityFilter.\n\nAll line numbers and the patch are for 5.0.18\n\nJohn",
+            "date": "20040317T19:23:49",
+            "id": 9
+        },
+        {
+            "author": null,
+            "body": "Created attachment 10835\nPatch for the HttpProcessor, fixes classCastException",
+            "date": "20040317T19:24:48",
+            "id": 10
+        },
+        {
+            "author": null,
+            "body": "Created attachment 10836\nfixed the patch.. had a extra char in it. sorry remy",
+            "date": "20040317T20:00:56",
+            "id": 11
+        },
+        {
+            "author": null,
+            "body": "The current code reads:\n\n        if (contentLength != -1) {\n            response.getMimeHeaders().setValue(\"Content-Length\")\n                .setInt(contentLength);\n            outputBuffer.addActiveFilter\n                (outputFilters[Constants.IDENTITY_FILTER]);\n            contentDelimitation = true;\n        } else {\n            if (entityBody && http11 && keepAlive) {\n                outputBuffer.addActiveFilter\n                    (outputFilters[Constants.CHUNKED_FILTER]);\n                contentDelimitation = true;\n                response.addHeader(\"Transfer-Encoding\", \"chunked\");\n            } else {\n                outputBuffer.addActiveFilter\n                    (outputFilters[Constants.IDENTITY_FILTER]);\n            }\n        }\n",
+            "date": "20040317T23:16:56",
+            "id": 12
+        }
+    ],
+    "component": "Connector:Coyote",
+    "description": "When using the compression filter included with the coyote connector I get \nClassCastException's when navigating our site.  It is at line 165 in the \nGzipOutputFilter\n\n159     public long end()\n160        throws IOException {\n161        if (compressionStream == null) {\n162            compressionStream = new GZIPOutputStream(fakeOutputStream);\n163        }\n164        compressionStream.finish();\n165        return ((OutputFilter) buffer).end();\n166    }\n\nthe buffer being cast into an OutputFilter is not always an OutputFilter as \nshow in InternalOutputBuffer line 309 \n\n306    public void addActiveFilter(OutputFilter filter) {\n307\n308        if (lastActiveFilter == -1) {\n309            filter.setBuffer(outputStreamOutputBuffer);\n310        } else {\n311            for (int i = 0; i <= lastActiveFilter; i++) {\n312                if (activeFilters[i] == filter)\n313                    return;\n314            }\n315            filter.setBuffer(activeFilters[lastActiveFilter]);\n316        }\n317\n318        activeFilters[++lastActiveFilter] = filter;\n319\n320        filter.setResponse(response);\n321\n322    } \n\nas you can see if lastActiveFilter = -1 then the buffer is set to \noutputStreamOutputBuffer which is an OutputStreamOutputBuffer which inherits \nfrom OutputBuffer not OutputFilter so the cast fails.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "26662",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "P3 normal",
+    "product": "Tomcat 5",
+    "project": "TOMCAT",
+    "summary": "ClassCastException in GzipOutputFilter",
+    "systemSpecification": true,
+    "version": "5.0.18"
+}

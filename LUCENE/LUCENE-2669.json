@@ -1,0 +1,65 @@
+{
+    "comments": [
+        {
+            "author": "Michael McCandless",
+            "body": "Patch w/ 2 asserts.  NRQ only trips up on the first (FilteredTermsEnum) assert.  That it doesn't trip the 2nd shows that indeed its seek ranges are properly sorted...",
+            "date": "2010-09-26T17:59:49.025+0000",
+            "id": 0
+        },
+        {
+            "author": "Robert Muir",
+            "body": "This is a good catch: NRQ should play ping-pong to avoid these unnecessary seeks :)\n",
+            "date": "2010-09-26T18:23:52.239+0000",
+            "id": 1
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Here a patch that fixed NRTE to only seek forward. This should also improve NRQ's perf in trunk.\n\nIt works like the following:\n\n# nextSeekTerm() checks that the next range already fits the *current* term. If not it forwards to the next sub-range and returns a seek term that is at least greater or equal the *current* term\n# accept() checks for the non-hit case (seldom as for a NRQ most terms are hits until the upper sub-range-bound is reached), if the next sub-range lower bound term on the stack is greater that the *current* one, and only then returns NO_AND_SEEK. If this is not the case, it does not seek but instead only move forward to the next sub-range and repeats the bounds checks [for(;;) loop].",
+            "date": "2010-09-26T20:07:46.979+0000",
+            "id": 2
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Slightly more readable patch: for(;;)-loop removed and so first if check in accept() negated and used as while-clause instead\n\nMike you set this as fix 3.1 and 4.0, but 3.1 does not have FilteredTermsEnum. We cannot fix it there easily, as it uses the old style logic from 3.0.",
+            "date": "2010-09-26T20:25:33.365+0000",
+            "id": 3
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "bq. Mike you set this as fix 3.1 and 4.0, but 3.1 does not have FilteredTermsEnum. We cannot fix it there easily, as it uses the old style logic from 3.0.\n\nWoops, right -- I'll fix to 4.0 only.",
+            "date": "2010-09-26T20:27:21.312+0000",
+            "id": 4
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "bq. Mike you set this as fix 3.1 and 4.0, but 3.1 does not have FilteredTermsEnum. We cannot fix it there easily, as it uses the old style logic from 3.0.\n\nWe can maybe fix this also in 3.0 and not fetch a new enum, when the same conditions apply. But its totally different code, will do that in a separate patch, if its easy (the 3.0/3.1 enum is complicated...)",
+            "date": "2010-09-26T20:28:21.426+0000",
+            "id": 5
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Committed revision: 1001582\n\nThanks Mike for catching this!",
+            "date": "2010-09-27T04:08:08.348+0000",
+            "id": 6
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Sweet, that was fast -- thanks Uwe!",
+            "date": "2010-09-27T09:12:21.542+0000",
+            "id": 7
+        }
+    ],
+    "component": "core/search",
+    "description": "Subclasses of FilteredTermsEnum are \"supposed to\" seek forwards only (this gives better performance, typically).\n\nHowever, we don't check for this, so I added an assert to do that (while digging into testing the SimpleText codec) and NumericRangeQuery trips the assert!\n\nOther MTQs seem not to trip it.\n\nI think I know what's happening -- say NRQ has term ranges a-c, e-f to seek to, but then while it's .next()'ing through the first range, the first term after c is f.  At this point NRQ sees the range a-c is done, and then tries to seek to term e which is before f.  Maybe NRQ's accept method should detect this case (where you've accidentally .next()'d into or possibly beyond the next one or more seek ranges)?",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-2669",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Major",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "NumericRangeQuery.NumericRangeTermsEnum sometimes seeks backwards",
+    "systemSpecification": true,
+    "version": ""
+}

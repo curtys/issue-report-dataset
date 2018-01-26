@@ -1,0 +1,95 @@
+{
+    "comments": [
+        {
+            "author": null,
+            "body": "The spec requires that the request is committed after the amount of bytes\nspecified in the content-length has been written. So setting content-length to 0\ncommits (sort of).",
+            "date": "20041210T18:28:14",
+            "id": 0
+        },
+        {
+            "author": null,
+            "body": "I'm reading sectio SRV.5.1 of servlet spec 2.4, and it doesn't seem to provide\nan exact definition for \"committed\" responses. On the other hand, it says...:\n\n\"The isCommitted method returns a boolean value indicating whether any\nresponse bytes have been returned to the client.\"\n\nThis doesn't seem to allow a behaviour where the engine commits the response\nwithout the servlet having explicitly written anything, though,\n\nCan you point to other portions of the spec that would allow that behaviour?",
+            "date": "20041210T19:04:37",
+            "id": 1
+        },
+        {
+            "author": null,
+            "body": "(In reply to comment #2)\n> Can you point to other portions of the spec that would allow that behaviour?\n\nSection 5.5 bullet 2.\n",
+            "date": "20041210T19:26:13",
+            "id": 2
+        },
+        {
+            "author": null,
+            "body": "(In reply to comment #3)\n> (In reply to comment #2)\n> > Can you point to other portions of the spec that would allow that behaviour?\n> \n> Section 5.5 bullet 2.\n> \n\nUnderstood, but seems to be very legalistic view; and I'd be surprised that this\ninterpretation was intended. Following up with\n<mailto:servletapi-feedback@eng.sun.com>.\n",
+            "date": "20041210T19:44:41",
+            "id": 3
+        },
+        {
+            "author": null,
+            "body": "Remy Maucherat wrote\n> The spec requires that the request is committed after the amount of bytes\n> specified in the content-length has been written. So setting content-length \nto 0\n> commits (sort of).\n\nthe section 5.5 bullet 2 says\n\u2022 The amount of content specified in the setContentLength method of the response\nhas been written to the response.\n\nWe are talking headers not content here. I agree if it was body content, but \nnot for http headers. I haven't seen either in the http rfc either in the \nservlet 2.4 any way to specify the http header length!\n\nAfter some thought it only appears in my case because the content-length is set \nto 0 and I write only http headers. \n",
+            "date": "20041213T10:01:21",
+            "id": 4
+        },
+        {
+            "author": null,
+            "body": "Please, don't waste your time. The specification is very clear.",
+            "date": "20041214T10:02:19",
+            "id": 5
+        },
+        {
+            "author": null,
+            "body": "I agree that reopening bugs without any new points is a waste of time\n(obviously). I disagree that the specification is very clear.",
+            "date": "20041214T10:29:34",
+            "id": 6
+        },
+        {
+            "author": null,
+            "body": "The sentence is very clear, actually.\nThat it may or may not have consequences you feel are inappropriate or\nunintended, but this is not relevant at this point.",
+            "date": "20041214T10:43:15",
+            "id": 7
+        },
+        {
+            "author": null,
+            "body": "*** Bug 32688 has been marked as a duplicate of this bug. ***",
+            "date": "20041214T11:05:07",
+            "id": 8
+        },
+        {
+            "author": null,
+            "body": "I agree with Remy here that response.setContentLength(0) would cause the\nresponse to be closed, because it meets the condition that the amount of content\nspecified in the setContentLength method of the response (in this case: zero)\nhas been written to the response.\n\nJulian/Touchard, the reason the response is considered committed from the\nimplementation point of view is because getContentCount() and getContentLength()\nare both zero in:\n\n    public boolean isAppCommitted() {\n        return (this.appCommitted || isCommitted() || isSuspended()\n                || ((getContentLength() != -1) \n                    && (getContentCount() >= getContentLength())));\n    }\n\nPlease notice that getContentCount() really only returns the number of bytes\nwritten to the response body (in this case: zero): it does not include any\nresponse header bytes, which - I agree with you - would be wrong.",
+            "date": "20050112T02:35:03",
+            "id": 9
+        },
+        {
+            "author": null,
+            "body": "Well, obviously different readers come to different conclusions. If this is\nreally the intended meaning of the language in the servlet spec, I'd expect for\na clarification in the spec (I did ask for it at\n<mailto:servletapi-feedback@eng.sun.com> over four weeks ago but so far didn't\nget any response).",
+            "date": "20050112T14:52:56",
+            "id": 10
+        },
+        {
+            "author": null,
+            "body": "One (probably unintended) side effect of SRV.5.5, 2nd bullet, is that\neven when response.setContentLength(0) is not called explicitly, but\nthe response's content length is set to 0 via\nresponse.setHeader(\"Content-Length\", \"0\"), as in the following code\nsnippet:\n\n  response.setHeader(\"Host\", \"localhost\");\n  response.setHeader(\"Pragma\", \"nocache\");\n  response.setHeader(\"Content-Length\", \"0\");\n  response.setHeader(\"location\", \"http://www.apache.org\");\n\nany subsequently setHeader() calls are ignored.\n\nThis is not intuitive, because HTTP response headers should be\nsettable in any order.\n\nI suggest we amend SRV.5.5, 2nd bullet, in the upcoming Servlet Maintenance\nrelease, as follows:\n\n  The amount of content specified in the setContentLength method of the\n  response [ADD: has been greater than zero] and has been written to the\n  response\n\nUnless there are any objections, I am going to apply the following\npatch:\n\nIndex: Response.java\n===================================================================\nRCS file:\n/home/cvs/jakarta-tomcat-catalina/catalina/src/share/org/apache/catalina/connector/Response.java,v\nretrieving revision 1.11\ndiff -u -r1.11 Response.java\n--- Response.java       31 Mar 2005 10:31:53 -0000      1.11\n+++ Response.java       25 Apr 2005 16:03:48 -0000\n@@ -315,7 +315,7 @@\n      */\n     public boolean isAppCommitted() {\n         return (this.appCommitted || isCommitted() || isSuspended()\n-                || ((getContentLength() != -1) \n+                || ((getContentLength() > 0) \n                     && (getContentCount() >= getContentLength())));\n     }\n\nPlease let me know.\n\n\nJan",
+            "date": "20050425T18:07:20",
+            "id": 11
+        },
+        {
+            "author": null,
+            "body": "*** Bug 36763 has been marked as a duplicate of this bug. ***",
+            "date": "20050921T23:29:59",
+            "id": 12
+        }
+    ],
+    "component": "Connector:Coyote",
+    "description": "If you set the content-length to a very small value before setting headers in \nthe httpResponse, they are all lost.\n\nIn my case:\nThe following actions are done in my code (a proxy)\n..\nhandleResponse(HttpServletRequest request, HttpServletResponse response)\n..\nresponse.setHeader(\"Host\", \"localhost\");\nresponse.setHeader(\"Pragma\", \"nocache\");\nresponse.setContentLength(0);\nresponse.setHeader(\"location\", \"http://www.apache.org\");\n...\n\nI sniff the http strean and the location field is lost.\nIt's lost because the response is considered committed after setting the conten-\nlength to zero and the actual set of the header is only done when the response \nis not committed:\nin class org.apache.coyote.tomcat5.CoyoteResponse\nwe have\n public void setHeader(String name, String value) {\n        if (isCommitted())\n            return;\n\n        // Ignore any call from an included servlet\n        if (included)\n            return;\n\n        coyoteResponse.setHeader(name, value);\n\n    }\n\n\nI deep into the code and found the following that isCommitted calls \nisAppCommitted:\n    public boolean isAppCommitted() {\n        return (this.appCommitted || isCommitted() || isSuspended()\n                || ((getContentLength() != -1) \n                    && (getContentCount() >= getContentLength())));\n    }\nIf the header has already been written (that's my case but i don't know why)\nthe ((getContentLength() != -1) && (getContentCount() >= getContentLength())) \npredicate is returning true.\n\nI think this can also happens for example with a small text file in response \nwith huge header and by settings the content-length at the beginning.",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "32604",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "BUG",
+    "priority": "P2 normal",
+    "product": "Tomcat 5",
+    "project": "TOMCAT",
+    "summary": "Some httpHeaders can be lost in response",
+    "systemSpecification": true,
+    "version": "5.0.30"
+}

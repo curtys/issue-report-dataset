@@ -1,0 +1,149 @@
+{
+    "comments": [
+        {
+            "author": "Grant Ingersoll",
+            "body": "NOTE: This code cannot be released until the LGPL dependencies are removed.  ",
+            "date": "2008-09-15T19:10:50.077+0000",
+            "id": 0
+        },
+        {
+            "author": "Ryan McKinley",
+            "body": "I'm in the process of removing the LGPL dependencies now....\n\nWhat are the thoughts on where this should live once things are squared away?  \n\nCurrently, the package names are:\n com.pjaol.search.*\n com.mapquest.spatialbase;\n com.mapquest.localsolr;\n\nWhere do we want them to live in lucene?\n\n org.apache.lucene.spatial\n org.apache.solr.spatial\n\nperhaps \"geo\", \"gis\", \"geosearch\"\n\nI lean towards \"spatial\"\n\n",
+            "date": "2008-09-17T20:29:30.252+0000",
+            "id": 1
+        },
+        {
+            "author": "Ryan McKinley",
+            "body": "locallucene has some java 1.5 code in it -- enums and a few iterators.\n\nWhat is the policy with java 1.5 for contribs?  \n\nWe could probably make it 1.4 compatible, but why fight the future?!",
+            "date": "2008-09-17T22:04:45.469+0000",
+            "id": 2
+        },
+        {
+            "author": "Ryan McKinley",
+            "body": "How do lucene contribs usually do logging?\n\nMy understanding is that lucene core does not do logging...   can we do SLF4J logging with this?  That would fit nicely with SOLR-560",
+            "date": "2008-09-18T02:48:07.581+0000",
+            "id": 3
+        },
+        {
+            "author": "Ryan McKinley",
+            "body": "Ok, I've got this compiling and running without the LGPL libraries/files\n\nI moved mqspatialbase into locallucene and use the mqspatialbase math (LatLng.arcDistance( LatLng )) rather then the stuff from LatLonTrig.java\n\nWhat are the next steps? \n\nIf we add a \"spatial\" contrib to lucene now, can it be excluded from 2.4?",
+            "date": "2008-09-18T05:16:05.838+0000",
+            "id": 4
+        },
+        {
+            "author": "Grant Ingersoll",
+            "body": "I think we can wait until after 2.4, which should be soon.  Mike said he was going to branch today anyway, so...\n\nI think we could put in a contrib in 2.9 if we wanted to.\n\nAs for JDK 1.5, we allow new contribs to be 1.5.",
+            "date": "2008-09-18T12:52:12.137+0000",
+            "id": 5
+        },
+        {
+            "author": "Grant Ingersoll",
+            "body": "Logging:  Lucene contribs handler their own logging.  SLF4J sounds good to me\n\nAs for package name, spatial works for me\n\n{quote}\nWhat are the next steps? \n{quote}\n\nCreate a patch per the HowToContribute section on the wiki that hooks it into the build system like the other contribs.  Make sure it has tests, docs, etc.",
+            "date": "2008-09-18T12:56:04.458+0000",
+            "id": 6
+        },
+        {
+            "author": "Ryan McKinley",
+            "body": "Here is a modified version of the grant with no LGPL dependencies and moved to org.apache.lucene.spatial.\n\nSince 2.4 has been branched, it would be nice to add this soon so better qualified folks can push on it easily :)",
+            "date": "2008-09-18T22:11:52.080+0000",
+            "id": 7
+        },
+        {
+            "author": "Ryan McKinley",
+            "body": "I'm struggling to get two of the existing tests to pass...  I don't think it is from my modifications since they don't pass on the original either.\n\nThe two are:\n  TestCartesian.java\n  TestDistance.java\n\noriginally, they get 0 results for everything.  After I add:  writer.commit();  in setup, I get more results, but still not matching the existing tests expectaions.\n\nFor TestCartesian, I get:\nDistances should be 10 14\nResults should be 6 7\n\nFor TestDistanc I get:\nDistance Filter filtered: 7\nResults: 7\n(it expects 6 for both...)\n\nAny ideas?",
+            "date": "2008-09-19T15:21:44.096+0000",
+            "id": 8
+        },
+        {
+            "author": "Karl Wettin",
+            "body": "bq. I'm struggling to get two of the existing tests to pass... I don't think it is from my modifications since they don't pass on the original either.\n\nOn my box the test fails with different results due to the writer not beeing comitted in setUp, giving me 0 results. After adding a commit it fails with the results you are reporting here.\n\nIs it possible that you are getting one sort of result in the original due to non committed writer and another error in this version due to your changes to the distance measurement? All points in the list are rather close to each other so very small changes to the algorithm might be the problem.\n\nI have a hard time tracing the code and I'm sort of hoping this might be the problem.",
+            "date": "2008-09-21T22:32:59.726+0000",
+            "id": 9
+        },
+        {
+            "author": "patrick o'leary",
+            "body": "Yeah, the tests numbers are wrong, I'll put together better tests later today for it.\nIt was brought to my attention recently when someone was trying lucene 2.4, I just didn't get around to resolving it.\n\n",
+            "date": "2008-09-22T14:50:39.481+0000",
+            "id": 10
+        },
+        {
+            "author": "Xibin Zeng",
+            "body": "Hey Guys! Where is this now? Has it been checked in yet? I am asking as I am currently planning a feature and wanted to know if it is realistic to take advantage of it now. Any update is appreciated!",
+            "date": "2008-10-21T04:31:35.329+0000",
+            "id": 11
+        },
+        {
+            "author": "patrick o'leary",
+            "body": "Latest version of local / spatial lucene with LGPL dependencies removed\nand working unit tests. The code's only dependency is on JUnit for tests during compilation.\n\nAll the code's header's should be changed to Apache License as well.",
+            "date": "2008-12-18T18:13:03.705+0000",
+            "id": 12
+        },
+        {
+            "author": "Ryan McKinley",
+            "body": "Looks great patrick!\n\nAt quick glance, all the headers look fine -- i'll run it through RAT to make sure though.\n\nSome notes about the changes here:\n * this includes a copy of NumberUtils from solr rather then depending on the library -- I think that is the best option till NumberUtils can be moved into Lucene\n * this uses the package name: org.apache.lucene.spatial.tier\n\nI'll try to get the ball rolling to get this committed soon.  Then we will have a base to work from and integrate with solr.",
+            "date": "2008-12-18T18:25:28.981+0000",
+            "id": 13
+        },
+        {
+            "author": "Ryan McKinley",
+            "body": "Just noticed something...\n\nThe TestCartesian creates a temp index like this:\n{code:java}\nFile luceneDirectory = new File(\"/tmp/example-lucene\");\n    if (! luceneDirectory.exists()) \n      luceneDirectory.mkdir();\n    \n    directory = FSDirectory.getDirectory(luceneDirectory);\n{code}\n\nFor simplicity, we should probably just use:\n{code:java}\n   directory = new RAMDirectory();\n{code}",
+            "date": "2008-12-18T19:38:57.048+0000",
+            "id": 14
+        },
+        {
+            "author": "Ryan McKinley",
+            "body": "here is an updated zip.\n\nThis one can be dropped into:\n http://svn.apache.org/repos/asf/lucene/java/trunk/contrib\n\nand hooks into that build system.\n\nNow i *really* think this is ready to go....",
+            "date": "2008-12-18T19:53:03.751+0000",
+            "id": 15
+        },
+        {
+            "author": "Erik Hatcher",
+            "body": "I've taken some quick peeks into the code, run the unit tests, nicely packaged and presented!\n\nA couple of thoughts:\n\n* Maybe the Filter's should be using the DocIdSet API rather than the BitSet deprecated stuff?  We can refactor that after being committed I supposed, but not something we want to leave like that.\n\n* DistanceQuery is awkwardly named.  It's not an (extends) Query.... it's a POJO with helpers.  Maybe DistanceQueryFactory?   (but it creates a Filter also)\n\n* CartesianPolyFilter is not a Filter (but CartesianShapeFilter is)\n\nI think this looks good enough to commit as well, just noting the above for cosmetic refactoring consideration after the code is in.\n\n\n",
+            "date": "2008-12-19T11:06:13.280+0000",
+            "id": 16
+        },
+        {
+            "author": "Ryan McKinley",
+            "body": "Agree -- but these changes are best made in svn.  \n\nMore eyes will help out",
+            "date": "2008-12-19T14:20:05.536+0000",
+            "id": 17
+        },
+        {
+            "author": "Ryan McKinley",
+            "body": "added in #730067\n\nthanks everyone.",
+            "date": "2008-12-30T17:31:44.512+0000",
+            "id": 18
+        },
+        {
+            "author": "Earwin Burrfoot",
+            "body": "LatLonDistanceFilter.java:\n\n  public BitSet bits(IndexReader reader) throws IOException {\n\n    /* Create a BitSet to store the result */\n    int maxdocs = reader.numDocs();               <----- probably reader.maxDoc ?\n    BitSet bits = new BitSet(maxdocs);\n",
+            "date": "2009-05-10T18:16:20.383+0000",
+            "id": 19
+        },
+        {
+            "author": "Grant Ingersoll",
+            "body": "FWIW, you might find the discussion on SOLR-773 interesting.",
+            "date": "2009-05-11T20:00:57.666+0000",
+            "id": 20
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "I committed that fix; thanks Earwin!",
+            "date": "2009-06-02T19:38:43.554+0000",
+            "id": 21
+        }
+    ],
+    "component": "modules/spatial",
+    "description": "Local Lucene (Geo-search) has been donated to the Lucene project, per https://issues.apache.org/jira/browse/INCUBATOR-77.  This issue is to handle the Lucene portion of integration.\n\nSee http://lucene.markmail.org/message/orzro22sqdj3wows?q=LocalLucene\n",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "LUCENE-1387",
+    "issuetypeClassified": "RFE",
+    "issuetypeTracker": "RFE",
+    "priority": "Minor",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "Add LocalLucene",
+    "systemSpecification": true,
+    "version": ""
+}

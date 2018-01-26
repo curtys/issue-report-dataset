@@ -1,0 +1,83 @@
+{
+    "comments": [
+        {
+            "author": "Ortwin Gl\u00fcck",
+            "body": "Good point, Julius. Personally I have no experience with SSL on vhosts. But looking at the references document it looks like we should support the \"CN+SubjAltNames\" and \"SubjectAltName\" variants.\n\nMay I mention that the * solution in 613 is wrong:\nif ( wildcard )     match = host.endsWith( cn.substring( 1 ) );\nwould result in bar.foo.a.com matching *.a.com\nbut RFC says:\nE.g., *.a.com matches foo.a.com but  not bar.foo.a.com. \n\nMaking a mistake here opens spoofing possibilities!",
+            "date": "2006-12-08T16:04:31.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Julius Davies",
+            "body": "Hi, Odi,\n\nI believe \"host.endsWith( cn.substring( 1 ) )\" mimics Firefox's behaviour  (but without support for \"CN + SubjAltNames\").\n\nThis wiki entry has an interesting catalog of browser behaviour with wildcards:\n\nhttp://wiki.cacert.org/wiki/WildcardCertificates\n\n- IE6 doesn't allow subdomains (so follows the RFC).   *.apache.org  does not match  \"a.b.apache.org\".\n\n- Firefox/Mozilla allows subdomains (breaks RFC).    *.apache.org  DOES MATCH  \"a.b.apache.org\"!\n\n- New versions of Konqueror (so Safari too?) allows subdomains (breaks RFC).\n\n- Opera 9.0 allows subdomains (breaks RFC).\n\n\nI think I'll do some experimentation on my own and test some additional clients.  I'll add my findings to cacert's very handy wiki!  Curious about the following (but I'm lazy so I'm just going to stick to Linux and maybe a little dabbling on Windows):\n\n- wget\n- curl\n- java.net.URL on the following:\n   1.  Sun Java 1.3.1 + JSSE  \n   2.  Sun Java 1.4.2\n   3.  Sun Java 5.0\n   4.  Sun Java 6.0\n   5.  IBM Java 1.4.2\n   6.  IBM Java 5.0\n   7.  JRockit Java 1.4.2\n   8.  JRockit Java 5.0\n\nI think if our default behaviour mimics Sun Java 6, that's good enough.\n\n",
+            "date": "2006-12-08T16:49:06.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Julius,\nWe have been through a similar process with HTTP cookie policies. Pluggable validators is the way to go. Anyone who needs a specific way of validating host names is very welcome to build his/her own.  We should provide two policies (validators) out of the box: the RFC compliant (strict) and the browser compatible  (lapse). No need to mimic every single bloody browser out there.\n\nOleg",
+            "date": "2006-12-08T21:09:52.000+0000",
+            "id": 2
+        },
+        {
+            "author": "Julius Davies",
+            "body": "Trying out a pluggable implementation.\n\nIf anyone is interested in seeing where I'm currently at:\n\nhttp://juliusdavies.ca/httpclient/\n\nOf note:\n\nNew interface:\no.a.http.conn.ssl.HostnameVerifier\n\nIt actually extends the javax.net.ssl one (http://java.sun.com/j2se/1.5.0/docs/api/javax/net/ssl/HostnameVerifier.html).  But I don't expect our SSLSocketFactory to use that API.  I'm just including that as a comforting \"things seem familiar\" door-knob/hand-rail.\n\nOf note, I'm actually sticking the implementation directly inside this interface as anonymous-inner-classes.  Defining the following:\n\nHostnameVerifier.DEFAULT  (mimics curl and firefox)\nHostnameVerifier.STRICT  (mimics java.net.URL, and very close to IE6)\nHostnameVerifier.ALLOW_ALL  (turns off hostname verification)\n\nIIRC, anonymous inner-classes only showed up in Java 1.3.x so this would be inappropriate for Httpclient 3.x (which supports Java 1.2.x).\n\nNow I'm just working on unit tests before I create the patch....\n\n",
+            "date": "2006-12-11T19:19:30.000+0000",
+            "id": 3
+        },
+        {
+            "author": "Julius Davies",
+            "body": "This patch introduces a pluggable HostnameVerifer implementation, including JUnit tests.  I also threw in two other things:\n\n#1.   Use HttpsURLConnection.getDefaultSSLSocketFactory().\n------------------------------------\nthe no-arg SSLSocketFactory() constructor now uses:\nHttpsURLConnection.getDefaultSSLSocketFactory();\n\nThis way the client certs in the browser will also be available when using Java Webstart, and brings our \"https\" behaviour even closer to java.net.URL's.\n\n\n#2.  JUnits for SSLSocketFactory\n------------------------------------\nJUnit dependency on commons-codec.  This is so I can decode a base64 RSA private key I stored inside \"CertificatesToPlayWith\".  Probably I should unravel that and just store the BigIntegers directly, and get rid of the commons-codec dependency.\n\nThis RSA private key is important so that we can build our own JKS, store it using a temp file, set the \"javax.net.ssl.keystore\" system property, and become our own SSLServer in a reliable and repeatable way.  We also set the \"javax.net.ssl.truststore\" system property to point to the same temp file so that we can make sure HttpsURLConnection.getDefaultSSLSocketFactory() isn't stabbing us in the back!\n\nAll JUnit tests are passing on Linux with:\n\nSun 1.4.2\nSun 5.0\nSun 6.0-rc\nIBM 1.4.2\nIBM 5.0\n\n",
+            "date": "2006-12-12T04:51:55.000+0000",
+            "id": 4
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Julius,\n\nWould it be possible to get rid of dependency on commons-codec, especially if it is only needed to run test cases? \n\nI personally would prefer to move all HostnameVerifier impls to o.a.http.conn.impl package. HostnameVerifier.DEFAULT and friends should probably be better off moved to an object factory of a sort.\n\nI'll review the patch more thoroughly tomorrow and check it in to the SVN trunk\n\nOleg",
+            "date": "2006-12-12T11:35:50.000+0000",
+            "id": 5
+        },
+        {
+            "author": "Julius Davies",
+            "body": "- this patch is better: removed dependency on commons-codec\n\n- no longer accidentally including setTimeout() in DefaultHttpHostConnection.java (required for javac, though!)\n\n\n\n",
+            "date": "2006-12-12T13:35:11.000+0000",
+            "id": 6
+        },
+        {
+            "author": "Julius Davies",
+            "body": "- No more japanese characters directly in the source files.  Using \"\\u82b1\\u5b50\" instead.  These japanese hostname tests are probably silly (will never occur in real life thanks to \"\"xn--i8s592g.co.jp\" puny encoding.  But they're fun.  :-)\n\nOleg, can we commit this version, and then look into a factory approach?",
+            "date": "2006-12-14T16:27:40.000+0000",
+            "id": 7
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Julius, \n\nI'll review and commit the patch later tonight or tomorrow in the evening\n\nOleg",
+            "date": "2006-12-14T17:27:13.000+0000",
+            "id": 8
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Patch checked in. Many thanks, Julius\n\nOleg",
+            "date": "2006-12-14T20:59:19.000+0000",
+            "id": 9
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "* Moved all concrete HostnameVerifier impls from the interface declaration to separate public classes\n* Renamed DEFAULT HostnameVerifier to BROWSER_COMPATIBLE (still used per default, but we may want to use STRICT instead in the future)\n\nClosing as FIXED. Many thanks for this contribution, Julius \n\nOleg",
+            "date": "2007-05-21T13:32:40.438+0000",
+            "id": 10
+        }
+    ],
+    "component": "HttpClient (classic)",
+    "description": "We're now doing a decent job for checking the CN of the x509 cert with https:\n\nhttp://issues.apache.org/jira/browse/HTTPCLIENT-613\n\nI think the patch for HTTPCLIENT-613 should cover 99.9% of the users out there.  But there are some more esoteric possibilities, so I think Oleg is right.  We need to let the user change the strategy, or provide their own strategy if they want to. \n\nSome additional things to think about:\n\n- http://wiki.cacert.org/wiki/VhostTaskForce !!!   CN is depreciated?!?!   (I am not able to find a popular website on HTTPS that isn't using CN!)\n\n- [*.example.com] matches subdomains [a.b.example.com] on Firefox, but not IE6.  The patch for HTTPCLIENT-613 allows subdomains.\n\n- Should we support multiple CN's in the subject?\n\n- Should we support \"subjectAltName=DNS:www.example.com\" ?  Should we support lots of them in a single cert?\n\n- Should we support a mix of CN and subjectAltName?\n\n\nIf we do create some alternate strategies for people to try, I'd probably lean towards something like this:\n\nX509NameCheckingStrategy.SUN_JAVA_6  (default)\nX509NameCheckingStrategy.FIREFOX2\nX509NameCheckingStrategy.IE7\nX509NameCheckingStrategy.FIRST_CN_AND_NO_WILDCARDS   (aka \"STRICT\")\n\n",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "HTTPCLIENT-614",
+    "issuetypeClassified": "RFE",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Major",
+    "product": "HTTPCLIENT",
+    "project": "HTTPCLIENT",
+    "summary": "allow different strategies when checking CN of x509 cert",
+    "systemSpecification": true,
+    "version": ""
+}

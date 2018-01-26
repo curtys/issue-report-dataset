@@ -1,0 +1,227 @@
+{
+    "comments": [
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 158590\nInitial patch for experimentation\n\nThe initial path provides something to experiment with and includes:\n\n1. Continuation object that is available for scripts if \nContext.hasFeature(Context.FEATURE_INTERPRETER_CONTINUATIONS) returns true.\n\n2. Modifications to shell that adds -continuations flag to enable the feature\nand choose interpreter mode. I also added support for \"-opt -2\" to mean\n\"-continuations\".\n\n3. Interpreter changes to use \"new Continuation()\" (or just \"Continuation()\")\nto capture continuation. As with Christopher Oliver's patch the continuation\ncapture is lightweight and use lazy state coping but the implementation is much\nsimpler. The continuation share explicitly share vars but not internal locals\nor stack.\n\n4. Interpreter changes to restore the continuation. As with Christopher\nOliver's patch the control effectively returned to the place that captured\ncontinuation and then \"return result\" is executed. The control transfer\nrespects finally blocks and executes all of them that are found during stack\nunwind. The implementation allows for finally blocks during continuation\nrestore to throw exceptions or even execute continuation capture/restore with\ndefined behavior.\n\n5. Bugs.\n\n\nThinks to do:\n\n1. The patch does not contain any support for special catch\n(break|continue|return) statements since support for finally makes catch\n(break|return) unnecessary and for now catch (continue) has to use workaround.\nBut it would be nice to have some way to do re-initialization cleared by\nfinally when restoring continuation state.\n\n2. The patch do not have any support for interpretation across\nFunction.apply/call or across veal. \n\n3. There is no Java APO to restart continuation from Continuation object.",
+            "date": "20040912T00:44:27",
+            "id": 0
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 158591\nTest to play with\n\nTo use the test -continuations should be passed to Rhino shell",
+            "date": "20040912T00:48:49",
+            "id": 1
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "http://www.mir2.org/igor/rhino/ contains prebuilt rhino distro with the patch\napplied.",
+            "date": "20040912T00:53:05",
+            "id": 2
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 158621\nUpdate of the initial patch to reflect CVS changes\n\nI committed few cleanups useful on their own from the patch to CVS tip to\nremove changes unrelated to continuation support from the patch",
+            "date": "20040912T13:13:01",
+            "id": 3
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 158637\nPatch update with debugger changes\n\nThe patch update includes changes to the debugger to allow to use debug GUI to\ndebug continuation scripts.\n\nTo test it, pass \"-continuations\" option to the debugger when invoking it:\n\njava -classpath js.jar \\\n    org.mozilla.javascript.tools.debugger.Main -continuations",
+            "date": "20040912T16:57:01",
+            "id": 4
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 158640\ntest case to verify finally behavior",
+            "date": "20040912T17:06:16",
+            "id": 5
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 158681\nUpdate to allow external continuation restart\n\nThe patch update that allows to call stored Continuation from Java application\nto restore its execution. For example, in Java one can use the following code\nto check that \"Object value\" is continuation and restart it passing the string\n\"Hello\" to the restoration point: \n\nif (value instanceof Function) {\n\tFunction f = (Function)value;\n\tif (\"Continuation\".equals(f.getClassName())) {\n\t\tf.call(cx, scope, null, new Object[] { \"Hello\" });\n\t}\n}\n\nNote that the valid scope has to be passed to f.call as it is uses to\ninitialize the execution top scope.",
+            "date": "20040912T23:40:10",
+            "id": 6
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Note on Context.FEATURE_INTERPRETER_CONTINUATIONS:\n\nCurrently the patch uses the feature only to initialize \"Continuation\" object\nduring the initialization of the standard host objects in\nContext.initStandardObjects(). It means that the feature should be set before\nany calls to Context.initStandardObjects(). The simplest way to do it is to\ndefine ContextFactory like in:\n\nclass MyFactory extends ContextFactory\n{\n    public boolean hasFeature(Context cx, int featureIndex)\n    {\n        // Turn on maximim compatibility with MSIE scripts\n        switch (featureIndex) {\n            case Context.FEATURE_INTERPRETER_CONTINUATIONS:\n                return true;\n        }\n        return super.hasFeature(cx, featureIndex);\n    }\n}\n\n\nand then set MyFactory as the global factory before any calls to\nContext.initStandardObjects, perhaps in some static block:\n\n     static {\n         // Initialize GlobalFactory with custom factory\n         ContextFactory.initGlobal(new MyFactory());\n     }",
+            "date": "20040913T08:53:00",
+            "id": 7
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 158735\nUpdate to sync with CVS tip",
+            "date": "20040913T13:22:23",
+            "id": 8
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 158864\nUpdate with cheap restart\n\nThe patch changes continuation capture/restore logic to avoid calls frame\nduplication on stack rewind. The implementation follows implementation paper of\nSISC, http://sisc.sourceforge.net/sisc.ps.gz and during capture simply marks\nall the necessary stack frames as frozen. Then only when the frame is about to\nbe used for script execution  it is cloned. In this way during rewind it is\nnecessary to clone only the last frame that gets control.\n\nIn this way captured continuations can be used for multiple freeze/restore and\nthat would be cheap since in case of no finally frame would only be copied only\non normal return to frozen frame.",
+            "date": "20040914T11:33:34",
+            "id": 9
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "I updated http://www.mir2.org/igor/rhino/ with rhino build using the patch from\nattachment 158864",
+            "date": "20040914T11:43:29",
+            "id": 10
+        },
+        {
+            "author": "szegedia@freemail.hu",
+            "body": "One \"minor\" thing: make Interpreter.CallFrame implement Serializable, otherwise \nthe continuations won't be serializable.\n",
+            "date": "20040914T13:11:01",
+            "id": 11
+        },
+        {
+            "author": "szegedia@freemail.hu",
+            "body": "Another minor thing: if FEATURE_INTERPRETER_CONTINUATIONS is on, make sure \nScriptableOutputStream excludes \"Continuation\" and \"Continuation.prototype\" in \nexcludeStandardObjectNames()",
+            "date": "20040914T13:32:28",
+            "id": 12
+        },
+        {
+            "author": "szegedia@freemail.hu",
+            "body": "Created attachment 158872\nFinally not being respected\n\nI still see that a \"finally\" block enclosing continuation capture is not being\nrespected. If you try the attached script \"Finally not being respected\" you'll\nsee what I mean. Of course, if it'd make implementation more complex or have\nhigher runtime overhead, then we might as well document this behavior as a\nfeature.",
+            "date": "20040914T13:50:54",
+            "id": 13
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "(In reply to comment #14)\n> Created an attachment (id=158872)\n> Finally not being respected\n> \n> I still see that a \"finally\" block enclosing continuation capture is not being\n> respected. If you try the attached script \"Finally not being respected\" you'll\n> see what I mean. Of course, if it'd make implementation more complex or have\n> higher runtime overhead, then we might as well document this behavior as a\n> feature.\n\nThis is by design: Continuation capture the state at the point of call to the\ncurrent function. Thus on restore the jump will be there, not to the point that\ncalled Continuation. If you change the example to:\n\nfunction captureContinuation()\n{\n    return Continuation();\n}\n\n\nvar out=java.lang.System.out;\nfunction x()\n{\n  try\n  {\n    return captureContinuation();\n  }\n  finally\n  {\n     out.println(\"finally\");\n  }\n}\n\nvar cc = x();\nout.println(cc);\nif(cc instanceof Continuation)\n{\n  cc(\"You won't see finally again\");\n}\n\n \nit should work.\n",
+            "date": "20040914T14:03:21",
+            "id": 14
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 158878\nUpdate with serialization support\n\nSince CallFrame can store in CallFrame.stack Interpreter.DBL_MARK which is\nObject it still would not be serializable even with \"implements Serializable\".\nAs a simple fix I changed DBL_MARK to be an instance of UniqueTag to ensure\nthat deserialization would map the tag back to UniqueTag.DOUBLE_MARK. It has\nadditional benefit of better debug printouts for DBL_MARK. \n\nA better solution would be to add custom read/write methods to write only used\ndata from the stack but due to potential sharing of CallFrame vars arrays it is\nnot trivial. For now DOUBLE_MARK should be good enough.",
+            "date": "20040914T15:31:20",
+            "id": 15
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 158896\nMore serialization changes\n\nI made Interpreter.ContinuationJump to implement Serializable since class\ninstances can be stored in frame locals. \n\nhttp://www.mir2.org/igor/rhino/ is updated with binary with this patch",
+            "date": "20040914T18:51:28",
+            "id": 16
+        },
+        {
+            "author": "szegedia@freemail.hu",
+            "body": "Applying the \"More serialization changes\" patch to CVS HEAD complains about \nalready applied patches to\n\ntoolsrc/org/mozilla/javascript/tools/debugger/Dim.java\ntoolsrc/org/mozilla/javascript/tools/debugger/Main.java\ntoolsrc/org/mozilla/javascript/tools/shell/Global.java\ntoolsrc/org/mozilla/javascript/tools/shell/Main.java\n\nI guess you have already committed these to CVS...",
+            "date": "20040914T18:54:23",
+            "id": 17
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "(In reply to comment #18)\n> Applying the \"More serialization changes\" patch to CVS HEAD complains about \n> already applied patches to\n> \n> toolsrc/org/mozilla/javascript/tools/debugger/Dim.java\n> toolsrc/org/mozilla/javascript/tools/debugger/Main.java\n> toolsrc/org/mozilla/javascript/tools/shell/Global.java\n> toolsrc/org/mozilla/javascript/tools/shell/Main.java\n\nAre you sure about that? I just checked with CVS tip and the cjanges are not\nthere. In addition I was able to apply the patch cleanly:\n\n~/w/js/rhino/tip> patch -p1 -i ~/s/cont.diff \npatching file src/org/mozilla/javascript/ContextFactory.java\npatching file src/org/mozilla/javascript/Context.java\npatching file src/org/mozilla/javascript/Continuation.java\npatching file src/org/mozilla/javascript/Interpreter.java\npatching file src/org/mozilla/javascript/ScriptRuntime.java\npatching file src/org/mozilla/javascript/serialize/ScriptableOutputStream.java\npatching file src/org/mozilla/javascript/UniqueTag.java\npatching file toolsrc/org/mozilla/javascript/tools/debugger/Dim.java\npatching file toolsrc/org/mozilla/javascript/tools/debugger/Main.java\npatching file toolsrc/org/mozilla/javascript/tools/shell/Global.java\npatching file toolsrc/org/mozilla/javascript/tools/shell/Main.java",
+            "date": "20040914T20:37:19",
+            "id": 18
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 158984\nUpdate to reflect CVS changes\n\nI committed UniqueTag.DOUBLE_MARK and few debugger/shell changes from the patch\nto Rhino CVS since they are useful on their own. So yo test the patch either\napply it to the latest CVS tip or use http://www.mir2.org/igor/rhino/",
+            "date": "20040915T16:21:14",
+            "id": 19
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "I committed the last patch to Rhino CVS. I will keep the bug open until some\ndocumentation would be written. \n\nOn the otehr to imlemement possible sysntax sugar or to allow for continuations\nto cross eval() and Function.prototype.(apply|call)() boundaries a separated\nbugs should be filed.",
+            "date": "20040916T18:31:10",
+            "id": 20
+        },
+        {
+            "author": "szegedia@freemail.hu",
+            "body": "(In reply to comment #21)\n> I committed the last patch to Rhino CVS. \n\nGreat news. Thanks for all the work on it, Igor! I'm constantly testing it \nagainst a prototype system I have here that I have built around continuation-\nsupporting Rhino, and so far everything is peachy (altough I must admit I don't \nuse more advanced stuff like multiple restarts, or restarting a continuation \nfrom inside a script).",
+            "date": "20040921T14:52:36",
+            "id": 21
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 161607\nContinuations by default\n\nThe patch enables support for Continuation object in the interpreter by default\nand removes Context.FEATURE_INTERPRETER_CONTINUATIONS since the testing shows\nthat it works OK. If necessary, the application can disable continuations\nsupport by removing Continuation from the scope after calling\nContext.initStandardObjects()\n\nIn addition patch allows to specify -2 which is turned into -1 for\ncompatibility with the original Rhino+Continuations fork.",
+            "date": "20041009T22:04:30",
+            "id": 22
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "I committed the last patch",
+            "date": "20041009T22:07:29",
+            "id": 23
+        },
+        {
+            "author": "szegedia@freemail.hu",
+            "body": "Ok, here's a problem: I invoke call() on a Continuation object from Java in a \nfreshly created context to restart a continuation that was previously serialized \nin another JVM and now deserialized. I receive this:\n\njava.lang.NullPointerException\n\tat org.mozilla.javascript.Interpreter$ContinuationJump.<init>(Interpreter.java:\n291)\n\tat org.mozilla.javascript.Interpreter.restartContinuation(Interpreter.java:\n2190)\n\tat org.mozilla.javascript.Continuation.call(Continuation.java:63)\n\tat org.mozilla.javascript.ContextFactory.doTopCall(ContextFactory.java:290)\n\tat org.mozilla.javascript.ScriptRuntime.doTopCall(ScriptRuntime.java:2780)\n\tat org.mozilla.javascript.Interpreter.restartContinuation(Interpreter.java:\n2174)\n\tat org.mozilla.javascript.Continuation.call(Continuation.java:63)\n...\n\nNote that there are two invocations of Interpreter.restartContinuation on the \nstack after I call Continuation.call. At first glance, it seems that the problem \nis that null is being passed as the \"CallFrame current\" argument of the \nContinuationJump constructor in Interpreter.java:2190. It is then assigned to \nthe local variable \"chain2\" in the said constructor (line 287), and a little bit \nlater dereferenced (\"chain2.frameIndex\", line 291).\n\nIs it okay at all to restart a continuation from Java code using call() on \nContinuation?",
+            "date": "20041012T11:06:54",
+            "id": 24
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 161853\nFix for the problem from the above comment",
+            "date": "20041012T12:11:06",
+            "id": 25
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "(In reply to comment #25)\n> Is it okay at all to restart a continuation from Java code using call() on \n> Continuation?\n\nYes, this is how it supposes to work. ",
+            "date": "20041012T12:12:30",
+            "id": 26
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "I commited the fix for comment 25",
+            "date": "20041012T13:59:23",
+            "id": 27
+        },
+        {
+            "author": "szegedia@freemail.hu",
+            "body": "Thanks, works like charm.",
+            "date": "20041012T20:42:32",
+            "id": 28
+        },
+        {
+            "author": "szegedia@freemail.hu",
+            "body": "Here's a curious problem that we're seeing lately on continuation restarts:\n\njava.lang.ArrayIndexOutOfBoundsException: -1\n          at org.mozilla.javascript.Interpreter.interpret(Interpreter.java:2942)\n          at org.mozilla.javascript.Interpreter.restartContinuation(Interpreter.\njava:2196)\n          at org.mozilla.javascript.continuations.Continuation.\ncall(Continuation.java:75)\n          at org.mozilla.javascript.ContextFactory.doTopCall(ContextFactory.\njava:301)\n          ...\n\nI've tried figuring out how could it happen, but to no avail. Do you have any \nidea? I'm sorry I can't provide you with more specific information at the moment \n- if you need additional information, please ask and I'll see what can I do. It \nhappens in a rather big environment, and so far I was unfortunately not \nsuccessful in reducing it into a reproducible testcase...",
+            "date": "20041206T19:22:29",
+            "id": 29
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "(In reply to comment #30)\n> Here's a curious problem that we're seeing lately on continuation restarts:\n> \n> java.lang.ArrayIndexOutOfBoundsException: -1\n>           at org.mozilla.javascript.Interpreter.interpret(Interpreter.java:2942)\n...\n> \n> I've tried figuring out how could it happen, but to no avail. Do you have any \n> idea? \n\nIt indicates that stack tracking code in Interpreter.interpret is wrong\nsomewhere. To track that down try to do the following:\n\n1. Add printout like the following before the line 2942:\nif (stackTop < 0) {\nSystem.out.println(\"BAD STACK!!!\");\nSystem.out.println(\"STACK CONTENT:\");\nfor (int ii = 0; ii != stack.length; ++ii) {\n  System.out.println(\"stack[\"+ii+\"]=\"+stack[ii]);\n}\nfor (int ii = 0; ii != stack.length; ++ii) {\n  System.out.println(\"stack[\"+ii+\"]=\"+stack[ii]);\n}\nSystem.out.println(\"Line: \"+getIndex(iCode, frame.pcSourceLineStart));\nSystem.out.println(\"Source: \"+idata.itsSourceFile);\n}\n\nThen check the script source before the line: is it close to continuation\ncapture point?",
+            "date": "20041206T21:25:46",
+            "id": 30
+        },
+        {
+            "author": "szegedia@freemail.hu",
+            "body": "Ok, here's a problem: we use continuations to store interpreter state, and also \nuse a top-level continuation to stop the interpreter after it captured its \nstate. The problem is that whenever we execute the top-level continuation, all \nof the finally blocks get executed, i.e. see this console session:\n\njs> c = new Continuation();\n[object Continuation]\njs> try { c(); } finally { java.lang.System.out.println(\"x\"); }\nx\n\nThis is rather undesirable for us - we don't want to have finally blocks \nexecuted when we terminate the interpreter using the top-level continuation. It \nis also arguable whether they should execute in the calling code whenever a \ncontinuation is resumed by being called. Is this a feature or a bug? (I can not \ndecide...)",
+            "date": "20050428T18:14:25",
+            "id": 31
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "(In reply to comment #32)\n> This is rather undesirable for us - we don't want to have finally blocks \n> executed when we terminate the interpreter using the top-level continuation. It \n> is also arguable whether they should execute in the calling code whenever a \n> continuation is resumed by being called. Is this a feature or a bug? (I can not \n> decide...)\n\nThis is the feature. Continations are by design very similar to exceptions\nexcept they can in addition to unwinding stack also rewind it. So continuations\nhas to execute finally blocks. Otherwise when exactly finally block should be\ncalled given that continuations can restored multiple times? \n\nDuring initial work on continuations I though of adding \"initially\" block like in:\n\ntry {\n  main_code\n} initially {\n  init_code\n} finally {\n  clenup_code\n}\n\nwhich would execute init_code whenever the control reaches main_code either\nthrough normal flow or via continuation jump. Thus one can write:\n\ntry {\n  use_db_connection ane jump out_in through continuations\n} initially {\n  db_connection = create_db_connection();\n} finally {\n  db_connection.close();\n}\n\nBut that turned out to be extremely complex to implement correctly. In addition\nthere is a simple workaround for that like in:\n\ndb_connection = create_db_connection();\ntry {\n  ...\n  // after possible continuation control transfer\n  if (db_connection == null) {\n    db_connection = create_db_connection();\n  }\n\n  use_db_connection ane jump out_in through continuations\n} finally {\n  db_connection.close();\n  db_connection = null;\n}\n\nNow if you need full freeze/restore, then it is NOT continuations and can be\nimplemented on the base of continuation mashinery pretty easily via special\nmarker function. Then your native code would have to implement its own\nfinalization, but that is a different story and bug.",
+            "date": "20050801T11:07:13",
+            "id": 32
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "(In reply to comment #33)\n> (In reply to comment #32)\n\nOne more thing: the test case from attachment 158640 shows the intended behavior\nof continuations which is in this case to print:\n\nfinally\nresult=1\ni=1\nB Restore\nfinally\nresult=1\ni=2\n",
+            "date": "20050801T11:13:24",
+            "id": 33
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Marking as fixed: new issues with continuations should be reported as separated bugs",
+            "date": "20050801T11:16:22",
+            "id": 34
+        }
+    ],
+    "component": "Core",
+    "description": "Since it turned out that the interpreter implementing calls to interpreted\nfunction and scripts without using Java stack does not add any overhead (see bug\n256339), it should be possible to add the continuation support to the\ninterpreter without slowing the scripts that do not use it.\n\nThe continuation support should provide the same level of functionality that \nChristopher Oliver patch against Rhino 1.5R4_pre brought so Cocoon\nhttp://cocoon.apache.org/ can use the new version without much efforts.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "258844",
+    "issuetypeClassified": "RFE",
+    "issuetypeTracker": "RFE",
+    "priority": "-- enhancement",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "Continuation support in interpreter",
+    "systemSpecification": true,
+    "version": "head"
+}

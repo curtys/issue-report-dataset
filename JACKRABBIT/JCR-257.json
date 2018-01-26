@@ -1,0 +1,59 @@
+{
+    "comments": [
+        {
+            "author": "Marcel Reutegger",
+            "body": "Separated index as proposed. There is one repository wide system index that contains /jcr:system tree. In addition to this 'global' index there are still the workspace indexes as before. Queries are executed on both indexes and will return results from both indexes.\n\nSeparating the indexes now also allows to disable indexing of versions. One simply does not configure a system index on the repository level.\n\nImportant note: this causes a minor backward compatibility issue. Existing configurations do not have a system search index configured on the repository level and will not index versions anymore. That means, queries will return versions of nodes that have been checked in before this code change but no checkins after this change. Apart from that Jackrabbit will work just fine. If you need to search versions of nodes see below how.\n\nMigration instructions:\n- add a SearchIndex element at the end of the repository configuration. See jackrabbit/src/main/config/repository.xml for an example\n- delete index folders in all your workspace directories\n- restart jackrabbit (will re-index workspaces and jcr:system tree)\n\nsvn revision: 357961",
+            "date": "2005-12-20T20:13:38.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "Also updated repository.xml files in contrib projects.",
+            "date": "2005-12-20T20:21:59.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Przemo Pakulski",
+            "body": "I checked r386604 and it looks that doesn't work as expected.\n\nEven if 'repository wide system index that contains /jcr:system tree' is not configured, following nodes are still indexed : versionLabels, versionStorage, versionHistory, version, frozenNode.\n\nAdditionally index is duplicated over all workspaces, what lead to huge index size and performance/memory problems especially if we use many workspaces.\n\nWhat's interesting is that if I remove all index folders, and restart repository then all indexes are rebuilded without mentioned nodes, and indexes are much smaller then. ",
+            "date": "2006-03-17T21:03:26.000+0000",
+            "id": 2
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "Paths of events that origin from the version storage are wrong and thus are not filtered correctly anymore. This problem was probably introduced when fixing JCR-141.\n\nTest cases should be extended to check paths of version events.",
+            "date": "2006-03-21T00:46:32.000+0000",
+            "id": 3
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "Committed a preliminary fix. \n\nMost of the changes are actually located in the event system and not the search index itself. It would have probably made more sense to reopen JCR-141, but anyway...\n\nI strongly encourage everyone to re-index an existing repository that was used with a jackrabbit svn revision between 368026 and 388123 and that is now upgraded to a higher version! Indexing of versions was completely broken between those svn revision!\n\nI'm currently writing some additional test cases and will resolve this issue once I have commited the test cases.",
+            "date": "2006-03-23T17:48:06.000+0000",
+            "id": 4
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "Fixed in revision: 388559\n\nAlso added some test cases that check observation and querying on version storage.",
+            "date": "2006-03-24T23:22:10.000+0000",
+            "id": 5
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Merged to 1.0 in revision 389544.",
+            "date": "2006-03-29T02:09:16.000+0000",
+            "id": 6
+        }
+    ],
+    "component": "",
+    "description": "Currently each workspace index also includes index data of repository wide data (e.g. version nodes under jcr:system). There are several drawbacks with this approach:\n\n- indexing is duplicated and does not scale when using a lot of workspaces\n- workspaces cannot be 'put to sleep' when they are not actively used.\n\nThe repository should have an additional index for system data, which includes: versioning and nodetype representation in content. Basically data under /jcr:system.\n\nQueries issued on a workspace will then use two index to execute the query: the workspace index and the system index.",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "JCR-257",
+    "issuetypeClassified": "RFE",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Minor",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "Use separate index for jcr:system tree",
+    "systemSpecification": false,
+    "version": "0.9"
+}

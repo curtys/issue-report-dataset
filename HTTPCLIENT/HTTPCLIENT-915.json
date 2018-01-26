@@ -1,0 +1,71 @@
+{
+    "comments": [
+        {
+            "author": "Ortwin Gl\u00fcck",
+            "body": "I think a simple Object is enough. If you need name/value pairs you can store a Map there. Access to the object should be synchronized to or use a volatile field.",
+            "date": "2010-02-19T09:44:21.042+0000",
+            "id": 0
+        },
+        {
+            "author": "dave irving",
+            "body": "> I think a simple Object is enough. If you need name/value pairs you can \n> store a Map there. \n\nI disagree... Unfortunately this introduces coupling between disparate clients.\nWhat happens if I write a \"CookiePerConnectionInterceptor\" which wants to put a CookieStore in the connection.\n\nSome other interceptor (written by someone else / another project etc) decides that It would like to put a Map of name values pairs in instead.\n\nOops - now the two can't work together.\n\nThe motivation for using an attribute based approach is that it's easy to scope your usage of it.",
+            "date": "2010-02-19T11:04:34.084+0000",
+            "id": 1
+        },
+        {
+            "author": "Ortwin Gl\u00fcck",
+            "body": "I see your point. Anyway I think it's a bit questionable design. This basically introduces global variables, very well comparable with thread-local variables. We all know where that leads if you start passing all sorts of information around that way. Better keep local Maps with the Connection as the (weak ref) key. You can better controll access to those maps individually.",
+            "date": "2010-02-19T11:25:07.184+0000",
+            "id": 2
+        },
+        {
+            "author": "dave irving",
+            "body": "> Better keep local Maps with the Connection as the (weak ref) key. You can \n> better controll access to those maps individually.\n\nThats quite a PITA just to get connection specific attributes.\n\n> I see your point. Anyway I think it's a bit questionable design. This basically introduces \n> global variables, very well comparable with thread-local variables.\n\nI'd say its a pretty well trodden ground: HttpContext?",
+            "date": "2010-02-19T11:28:43.859+0000",
+            "id": 3
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "I also see potential issues with the connection bound state. HTTP connections are meant to be stateless. They can be pooled and re-used within a completely different user / security context. If a connection contains attributes that are user specific / security sensitive, all sorts of issues may arise, very much like with thread local variables. However, you already have this problem with NTLM and SSL connections anyway. So, this feature should be used with caution, but we should still provide support for it.\n\nOleg",
+            "date": "2010-02-19T11:47:19.057+0000",
+            "id": 4
+        },
+        {
+            "author": "dave irving",
+            "body": "I completely agree with you, Oleg. \n\nThis feature certainly would have scope for misunderstanding / misuse - and I'd guess javadocs should point out what it's there for, and what it's not. \n\nMy actual use case here is Connection specific cookies (Appears to have been needed by other users too).\n\nIf there are concerns that providing a connection context interface could possibly lead to confusion (e.g. clients not making the distinction between it and HttpContext, or not realising that 99% of the time they shouldn't be attaching state to connections), I'd be equally happy with any other solution that allows this use case to be met without resorting to the currently required reflection hacks:\n\nAny of:\n\n- Provide a a configuration parameter explicity for this case \"CONNECTION_ISOLATED_COOKIES\" or somesuch\n- If a user implements a custom connection / operator / manager etc, provide them with some way to actually get hold of their custom connection implementation during request execution without requiring the use of reflection\n\nOverall though, I tend to favour the connection attributes approach:\n\n- Obviates the need to write custom connection / operator / manager classes just to provide connection state (which is needed in some scenarios, e.g, this use case)\n- Is less dangerous than exposing unwrapped connections during request execution (which could expose circumvention of pooling etc)",
+            "date": "2010-02-19T12:00:56.248+0000",
+            "id": 5
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "How about this? I made both DefaultClientConnection and AbstractClientConnAdapter implement HttpContext. This enables connections managed by HttpClient carry additional attributes / state. I reused HttpContext for simplicity.  We could also create a special interface for that.\n\nPlease review and let me know what you think.\n\nOleg",
+            "date": "2010-02-19T12:39:30.133+0000",
+            "id": 6
+        },
+        {
+            "author": "dave irving",
+            "body": "(Non binding) +1 from me. Looks perfect. \n\nThanks so much for looking in to this so quickly.\n\nDave",
+            "date": "2010-02-19T12:51:56.350+0000",
+            "id": 7
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Patch checked in.\n\nOleg",
+            "date": "2010-02-22T18:47:53.249+0000",
+            "id": 8
+        }
+    ],
+    "component": "HttpClient (classic)",
+    "description": "It would be nice to have a way to attach user defined attributes to a connection.\nIdeally it'd be nice if such support could be added to HttpClientConnection, but understandably this may not be possible due to back-compatibility issues.\nSo, we could have something like HttpConnectionContext perhaps (or similar) with:\n\nHttpConnectionContext#setAttribute(String name, Object value)\nObject HttpConnectionContext#getAttribute(String name)\n\nThis would be made available in the HttpContext of a request (like the connection is today):\n\nHttpConnectionContext connectionContext = (HttpConnectionContext) httpContext.getAttribute(ExecutionContext.HTTP_CONNECTION_CONTEXT);\n\nThis would make a few things much cleaner to implement than they are today: The most obvious being my current use case of wanting connection isolated cookies.\n\nCurrently to achieve this goal we need to provide custom client connection + connection operator + connection manager implementations. Then there is no clean way to currently obtain the actual connection instance created by a custom operator in the HttpContext: As it's wrapped by the connection pool and #getWrappedConnection is protected - so we need to resort to reflection in interceptors.\n\nProviding a clean mechanism for attaching user defined attributes to a connection instance as described above would make such implementations far far simpler.\n",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "HTTPCLIENT-915",
+    "issuetypeClassified": "RFE",
+    "issuetypeTracker": "RFE",
+    "priority": "Minor",
+    "product": "HTTPCLIENT",
+    "project": "HTTPCLIENT",
+    "summary": "Provide a clean mechanism to attatch user define attributes to connections",
+    "systemSpecification": true,
+    "version": "4.0.1"
+}

@@ -1,0 +1,107 @@
+{
+    "comments": [
+        {
+            "author": "Jukka Zitting",
+            "body": "Sounds reasonable. +1 from me.",
+            "date": "2005-09-30T07:25:50.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Edgar Poce",
+            "body": "+1 from me too.  \nfabrizio,  I've been lurking for a while in the maven list and I read you joined the devs recently. congratulations and thanks for your help ;).",
+            "date": "2005-09-30T07:43:09.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "Generally I'm in favour for moving the main module in a subdirectory, so count me as a +1.\n\nI have two minor concerns / questions though:\n\n- Will this change cause any trouble when we generate the website with maven? Remember we run into issues when we had the sub project structure (api, commons, core).\n\n- Repeating the project name in the repository path seems a bit awkward to me. But I have to admit that I don't really have a better name. core, main, repository, jcr are crossing my mind, but as I said, not one of them seems to be first choice.",
+            "date": "2005-09-30T18:08:05.000+0000",
+            "id": 2
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "How about just dropping the contrib folder to http://svn.apache.org/repos/asf/incubator/jackrabbit/contrib and keeping the trunk as it is now?",
+            "date": "2005-09-30T19:55:07.000+0000",
+            "id": 3
+        },
+        {
+            "author": "fabrizio giustina",
+            "body": "> - Will this change cause any trouble when we generate the website with maven? Remember we run into issues when we had the sub project structure (api, commons, core). \nNo, this should not break anything in the site (since at the moment no site is generated for contrib)\n\n> - Repeating the project name in the repository path seems a bit awkward to me.\nyes, but the project dir should have the same name as the artifact id in maven. And \"jackrabbit\" is a good name for the main artifact.\n\n> How about just dropping the contrib folder to http://svn.apache.org/repos/asf/incubator/jackrabbit/contrib and keeping the trunk as it is now?\nyou can't have a trunk, tags, and branches for contrib in this way (you should create a \"jackrabbit/contrib/trunk\" dir at least... but I would prefer the first solution.",
+            "date": "2005-09-30T20:06:10.000+0000",
+            "id": 4
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "There are at least some tools that expect the tag and branch directories to be at ../tags and ../branches from the main project directory (trunk). Keeping the main directory where it is now also minimizes the disruption for existing checkouts and build environments.\n\nI also don't believe we should ever need tags or branches for the contrib stuff. The contrib projects should be graduated into independent projects if they start having their own release cycles with the associated tags and brances.\n\nAnd while we're at it, we could take the opportunity to rename \"contrib\" to \"sandbox\" as already discussed a few times on the mailing list.\n\nSo, I'd like to do the following to resolve this issue:\n\n    svn move -m 'JCR-227: Move contrib one level up and rename it to sandbox' \\\n        https://svn.apache.org/repos/asf/incubator/jackrabbit/trunk/contrib \\\n        https://svn.apache.org/repos/asf/incubator/jackrabbit/sandbox\n\nI think this solves the main problems (checking out the entire tree / troubles with nested projects) while minimizing the changes for existing checkouts and project documentation.",
+            "date": "2005-10-07T05:21:05.000+0000",
+            "id": 5
+        },
+        {
+            "author": "Tobias Bocanegra",
+            "body": "moving the contribs outof the trunk is not a good idea. as you mentioned, some tools expect the trunk, tags and branches directories (imo, a SNV repository, not following the suggested trunk, tags, branches structure is corrupt) and since the contribs are currently tight to the jackrabbit version, it also makes sense to tag/branch them together with jackrabbit.\nfurthermore, the stuff in contrib is not just 'playground' stuff, but subproject people use (rmi, jdbcpm, etc). so renaming this to sandbox feels a bit awkward.\n\n+1 for moving the main source to a sub directory (eg: core)\n\n\n",
+            "date": "2005-10-07T17:12:29.000+0000",
+            "id": 6
+        },
+        {
+            "author": "fabrizio giustina",
+            "body": "I agree with Tobias, not having a /trunk for contrib is not a good solution...\nI still prefer the first solution, moving the core module to a subdirectory. Btw, the maven scm plugin supports a different svn layout, you can specify there the \"/tags\" directory is expected using the \"maven.scm.svn.tag.base\" property.",
+            "date": "2005-10-07T17:50:52.000+0000",
+            "id": 7
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "I seem to have the minority opinion. So, a revised suggestion based on Fabrizios original proposal:\n\n    svn mkdir jackrabbit\n    for DIR in `ls | grep -v jackrabbit | grep -v contrib`; do\n        svn move $DIR jackrabbit\n    done\n    # edit the README.txt and other documents accordingly\n    svn commit -m 'JCR-227: Move the main project module to a subdirectory'\n",
+            "date": "2005-10-07T18:12:55.000+0000",
+            "id": 8
+        },
+        {
+            "author": "Edgar Poce",
+            "body": "> furthermore, the stuff in contrib is not just 'playground' stuff, but subproject people use (rmi, jdbcpm, etc). \n> so renaming this to sandbox feels a bit awkward. \n\nIn many apache projects the sandbox is not just a 'playground', it's a place for preparing projects for inclusion in a release, either in the main project or as an independent library.  Then I think it's a good idea to rename contrib to sandbox and move out those projects that are candidates to be included in the first release. Creating a sandbox will give users a better idea of the current state of each subproject.\n\n> The contrib projects should be graduated into independent projects if they start having their own \n> release cycles with the associated tags and brances. \n\nWell, I'm not sure whether each subproject should have its own release cycle. It might lead to fiefdoms and lack of support in some subprojects. I mean that if each subproject has its own release cycle the maintainer of project A wouldn't care about fixing bugs of project B. I prefer a relasease that include the core and subprojects, see option A) below. \nNote that it doesn't mean that it will be distributed as a single jar, a distribution layout may include many libraries.\n\nA binary distribution \n/bin\n  start-rmiserver.bat\n  start-webdavserver.bat\n  stop-rmiserver.bat\n  stop-webdavserver.bat\n ....sh\n/ext\n  textfilters.jar\n/doc\n ...\n/lib\n  jackrabbit-1.0.jar\n  jcr-rmi-1.0.jar\n  jcr-server-1.0.jar\n  dependency-....jar\n  ....\n\n\nregarding svn layout I prefer to keep it as standard as possible \nsee http://svnbook.red-bean.com/en/1.1/ch05s04.html#svn-ch-5-sect-6.1\nWith unified release cycle\nA)\n/jackrabbit\n    /branches\n    /tags\n    /trunk\n      /core\n      /jcr-rmi\n      /jcr-server\n      /sandbox\n        /...\n\nAnd if there's consensus for independent relase cycles, I think we should keep it standard too\nB)\n/jackrabbit\n  /core\n    /branches\n    /tags\n    /trunk\n  /jcr-rmi\n    /branches\n    /tags\n    /trunk\n  /sandbox\n    /branches\n    /tags\n    /trunk\n  /...\n",
+            "date": "2005-10-07T23:46:13.000+0000",
+            "id": 9
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Edgar Poce wrote:\n> Well, I'm not sure whether each subproject should have its own release cycle.\n\nAgreed. My point was that if we end up in such a situation, the subproject should either be integrated in the main release cycle or graduated into a separate project. The Jackrabbit project should only make Jackrabbit releases. :-)\n",
+            "date": "2005-10-08T02:32:55.000+0000",
+            "id": 10
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Any more comments on this issue? There are four main options here, ordered by the impact on existing development environments and documentation.\n\n    a) Do nothing, keep the current svn layout.\n    b) Move .../jackrabbit/trunk/contrib to .../jackrabbit/sandbox. (no tags or brances for sandbox, unless combined with option d)\n    c) Move .../jackrabbit/trunk to .../jackrabbit/trunk/core and leave contrib where it is. (using core instead of jackrabbit to avoid repetition)\n    d) Make separate {trunk,tags,brances} subfolders for .../jackrabbit/core and other project folders.\n\nI'm still in favor of option b, but the majority seems to prefer option c. I'll implement option c on next week unless more opinions are raised.",
+            "date": "2005-10-21T02:32:43.000+0000",
+            "id": 11
+        },
+        {
+            "author": "fabrizio giustina",
+            "body": "c) Move .../jackrabbit/trunk to .../jackrabbit/trunk/core and leave contrib where it is. (using core instead of jackrabbit to avoid repetition) \n\nlast comment: always in favour of c, but using jackrabbit and not core in order to maintain it consistent with the maven artifact id.\nAs a maven user, if I look in svn for the code that has been used to create a jar called \"jackrabbit-1.0.jar\" I will never look in a module called \"core\" ;)\nAnother option is naming it \"jackrabbit-core\" and changing the artifact id again...",
+            "date": "2005-10-21T03:06:02.000+0000",
+            "id": 12
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "fabrizio:\n> last comment: always in favour of c, but using jackrabbit and not core in order to maintain it consistent with the maven artifact id. \n\nOK, .../jackrabbit/trunk/jackrabbit it is then.",
+            "date": "2005-11-02T00:46:05.000+0000",
+            "id": 13
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "The directory structure has now been changed as proposed in the original request.",
+            "date": "2005-11-04T06:42:04.000+0000",
+            "id": 14
+        }
+    ],
+    "component": "maven",
+    "description": "Actually the jackrabbit svn holds the code for the main module in the top level dir\nhttp://svn.apache.org/repos/asf/incubator/jackrabbit/trunk/\nand all the subprojects in subdirectories\nhttp://svn.apache.org/repos/asf/incubator/jackrabbit/trunk/contrib/\n\ngiven this layout is not possible to checkout from svn only the main module (if you get trunk, you get all), and you can't work to different modules using any IDE which doesn't support nested projects (namely Eclipse).\n\nI would like to request moving the main module (that means moving all the files and directories in trunk except \"contrib\") from \nhttp://svn.apache.org/repos/asf/incubator/jackrabbit/trunk/\nto \nhttp://svn.apache.org/repos/asf/incubator/jackrabbit/trunk/jackrabbit\nfollowing the usual organization of maven-based projects and solving these problems...\n\n\n",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "JCR-227",
+    "issuetypeClassified": "REFACTORING",
+    "issuetypeTracker": "",
+    "priority": "Minor",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "move core module to a subdirectory",
+    "systemSpecification": false,
+    "version": ""
+}

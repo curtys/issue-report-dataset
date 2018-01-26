@@ -1,0 +1,41 @@
+{
+    "comments": [
+        {
+            "author": "Daniel Naber",
+            "body": "What exactly does your code look like? Something else must be wrong because I use an index that's committed to CVS without problems (using Lucene 2.0).\n",
+            "date": "2006-07-27T18:56:42.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Eleanor Joslin",
+            "body": "Here's an example.  Compile and run this with lucene-core-2.0.0.jar in the classpath.",
+            "date": "2006-07-28T09:50:16.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "The RAMDirectory class uses the Directory.list() method to create the index input in the constructor. The implementation of FSDirectory returns all containing files of the directory including non lucene files and also all containing directories. \nIn my opinion this method should not return non lucene files and directories for consistency. \nThe problem does only appear if you create a RamDirectory from a existing index.\n\nhere is the patch for the trunk: \n(I also added a try / finally block in the rename() method to close all streams in the case of an exception on the input stream the output stream would remain open.)\nAll test passed, almost no tests in the store package :).\n\n\nIndex: FSDirectory.java\n===================================================================\n--- FSDirectory.java    (revision 426479) \n+++ FSDirectory.java    (working copy) \n@@ -211,9 +211,9 @@\n     }\n   }\n \n-  /** Returns an array of strings, one for each file in the directory. */ \n+  /** Returns an array of strings, one for each lucnene index file in the directory. */ \n   public String[] list() {\n-    return directory.list(); \n+    return directory.list(new IndexFileNameFilter()); \n   }\n \n   /** Returns true iff a file with the given name exists. */\n@@ -296,20 +296,23 @@\n         throw newExc;\n       }\n       finally {\n-        if (in != null) { \n-          try { \n-            in.close(); \n-          } catch (IOException e) { \n-            throw new RuntimeException(\"Cannot close input stream: \" + e.toString(), e); \n+    try{       \n+          if (in != null) { \n+            try { \n+              in.close(); \n+            } catch (IOException e) { \n+              throw new RuntimeException(\"Cannot close input stream: \" + e.toString(), e); \n+            } \n           }\n-        } \n-        if (out != null) { \n-          try { \n-            out.close(); \n-          } catch (IOException e) { \n-            throw new RuntimeException(\"Cannot close output stream: \" + e.toString(), e); \n+    }finally{ \n+          if (out != null) { \n+            try { \n+              out.close(); \n+            } catch (IOException e) { \n+              throw new RuntimeException(\"Cannot close output stream: \" + e.toString(), e); \n+            } \n           }\n-        } \n+    } \n       }\n     }\n   }",
+            "date": "2006-07-28T12:39:44.000+0000",
+            "id": 2
+        },
+        {
+            "author": "Daniel Naber",
+            "body": "Thanks, this has now been fixed in trunk.\n",
+            "date": "2006-07-29T09:54:11.000+0000",
+            "id": 3
+        }
+    ],
+    "component": "",
+    "description": "Lucene won't tolerate foreign files in its index directories.  This makes it impossible to keep an index in a CVS or Subversion repository.\n\nFor instance, this exception appears when creating a RAMDirectory from a java.io.File that contains a subdirectory called \".svn\".\n\njava.io.FileNotFoundException: /home/local/ejj/ic/.caches/.search/.index/.svn\n(Is a directory)\n        at java.io.RandomAccessFile.open(Native Method)\n        at java.io.RandomAccessFile.<init>(RandomAccessFile.java:212)\n        at\norg.apache.lucene.store.FSIndexInput$Descriptor.<init>(FSDirectory.java:425)\n        at org.apache.lucene.store.FSIndexInput.<init>(FSDirectory.java:434)\n        at org.apache.lucene.store.FSDirectory.openInput(FSDirectory.java:324)\n        at org.apache.lucene.store.RAMDirectory.<init>(RAMDirectory.java:61)\n        at org.apache.lucene.store.RAMDirectory.<init>(RAMDirectory.java:86)",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "LUCENE-638",
+    "issuetypeClassified": "RFE",
+    "issuetypeTracker": "BUG",
+    "priority": "Minor",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "Can't put non-index files (e.g. CVS, SVN directories) in a Lucene index directory",
+    "systemSpecification": true,
+    "version": ""
+}

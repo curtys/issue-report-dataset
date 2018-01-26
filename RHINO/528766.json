@@ -1,0 +1,23 @@
+{
+    "comments": [
+        {
+            "author": "hannesw@gmail.com",
+            "body": "I think there was a bug in Rhino in that it didn't accept null or undefined as first argument to Function.prototype.bind(). I just committed a fix for this, and calling Function.prototype.bind() with undefined or null as first argument now has the same effect as with Function.prototype.apply() or Function.prototype.call(), i.e. the bound function is called with the top call scope as this-object. This seems to be consistent with ES5 and V8. \n\nAs far as your test is concerned, the first assertion passes now. However the second and third bind 10 to the this-object and 20 to the first parameter while the second parameter is left undefined, so the tests will still fail. This could be due to changes in ES5 during the spec process. If you make sure both parameters are defined and numeric the test should pass now.",
+            "date": "20101124T20:56:54",
+            "id": 0
+        }
+    ],
+    "component": "Core",
+    "description": "User-Agent:       Mozilla/5.0 (Macintosh; U; Intel Mac OS X 10_6_1; en-us) AppleWebKit/531.9 (KHTML, like Gecko) Version/4.0.3 Safari/531.9\nBuild Identifier: Rhino 1.7 release 3 PRERELEASE 2009 11 14\n\nThis may be an area of ambiguity, or a spec bug; but I'm bringing it up here first\u2026\n\nIf I understand ES5 draft spec correctly, calling bind on a constructor should result in partial application of that constructor without the usual activation object as its first argument\u2014the first argument is curried as the first argument of the constructor.\n\nhttp://www.ecma-international.org/publications/files/drafts/tc39-2009-050.pdf\n\nWith that in mind, I wrote this test case:\n\nhttp://github.com/kriskowal/narwhal/blob/master/tests/commonjs/es5/bind.js#L17-24\n\nBefore Raphael implemented ES5 in Rhino (we still use a release js.jar in our releases), we used a set of monkey-patches to emulate ES5.  This is our implementation of bind:\n\nhttp://github.com/kriskowal/narwhal/blob/refactor/engines/default/lib/global-es5.js#L425-537\n\nWith this implementation, our test works.  When I upgraded to Rhino head, the activation object within the constructor became \"undefined\", consistent with the behavior of a function that is not called as a constructor, which presumably would be the case under the hood if the bind wraps the original constructor without passing an activation object.\n\nIf this is a bug in Rhino, cool.  If Rhino's implementation is consistent with the specification, it calls into question the value of the bind partial application on constructor functions.  It would be good to hear another person's impression, and if necessary I can bring it up on ES-discuss.\n\nReproducible: Always\n\nSteps to Reproduce:\n1. Massage this unit test into a script of your choice, or execute it with Narwhal:\nhttp://github.com/kriskowal/narwhal/blob/master/tests/commonjs/es5/bind.js#L17-24\n2. Replace js.jar with the latest.\n3. Re-run the test\n\nActual Results:  \nError in getting a property of \"undefined\".\n\nExpected Results:  \nA new object constructed with the partially applied arguments.",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "528766",
+    "issuetypeClassified": "OTHER",
+    "issuetypeTracker": "BUG",
+    "priority": "-- normal",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "Function.prototype.bind on a Constructor results in non-constructable function",
+    "systemSpecification": true,
+    "version": "other"
+}

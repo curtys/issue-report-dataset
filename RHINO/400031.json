@@ -1,0 +1,53 @@
+{
+    "comments": [
+        {
+            "author": "kruland@motorola.com",
+            "body": "Created attachment 285116\nSource to reproduce the bug.\n\nThis is exactly the source from Bug 352319 except for the addition of a simple debugger to the context.  The debugger source is included in the tgz.",
+            "date": "20071016T18:16:06",
+            "id": 0
+        },
+        {
+            "author": "kruland@motorola.com",
+            "body": "I have played around with Rhino 1.6R7 and found the following code change to Interpreter.java fixes the problem.  Unfortunately, I don't have a deep enough understanding if this patch is correct or if it breaks anything else.\n\n*** rhino1_6R7-rlg/src/org/mozilla/javascript/Interpreter.java\t2008-02-06 16:05:49.000000000 -0600\n--- rhino1_6R7/src/org/mozilla/javascript/Interpreter.java\t2008-02-06 16:16:41.000000000 -0600\n***************\n*** 4074,4080 ****\n                  // block (\"catch\" implicitly uses NativeWith to create a scope \n                  // to expose the exception variable).\n                  for(;;) {\n!                     if(scope instanceof NativeCall || scope instanceof NativeObject) {\n                          break;\n                      } else {\n                          scope = scope.getParentScope();\n--- 4074,4080 ----\n                  // block (\"catch\" implicitly uses NativeWith to create a scope \n                  // to expose the exception variable).\n                  for(;;) {\n!                     if(scope instanceof NativeCall) {\n                          break;\n                      } else {\n                          scope = scope.getParentScope();\n",
+            "date": "20080207T15:24:30",
+            "id": 1
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "+szegedia@freemail.hu\n\nAttila, can you comment on the proposed patch?",
+            "date": "20080207T17:55:35",
+            "id": 2
+        },
+        {
+            "author": "szegedia@freemail.hu",
+            "body": "I'll need to spend some time on understanding it -- I myself only have incomplete understanding of how interpreter code works, so I'll want to stare a bit at it; probably tomorrow morning (europaish time)",
+            "date": "20080207T18:08:22",
+            "id": 3
+        },
+        {
+            "author": "szegedia@freemail.hu",
+            "body": "I'm looking into this now.",
+            "date": "20080208T13:29:23",
+            "id": 4
+        },
+        {
+            "author": "szegedia@freemail.hu",
+            "body": "Committed a (slightly  modified) patch -- looping just while we're encountering NativeWith. The problem seemed to be that top-level invocation of a Script object (which is also a function) won't get a NativeCall object even when it should be activatable (i.e. because a DebugFrame is created by a debugger for it, or because of a top-level try/catch or with statement.\n\n    Checking in src/org/mozilla/javascript/Interpreter.java;\n    /cvsroot/mozilla/js/rhino/src/org/mozilla/javascript/Interpreter.java,v  <--  Interpreter.java\n    new revision: 1.342; previous revision: 1.341\n\n",
+            "date": "20080208T16:47:35",
+            "id": 5
+        }
+    ],
+    "component": "Core",
+    "description": "User-Agent:       Mozilla/4.0 (compatible; MSIE 6.0; Windows NT 5.1; SV1; .NET CLR 1.1.4322; .NET CLR 2.0.50727)\nBuild Identifier: 1.6R7\n\nI took the example code attached to Bug 352319 and attached a trivial debugger to the context.  When I execute the example code it blows up in Interpreter.enterFrame.\n\n\nReproducible: Always\n\nSteps to Reproduce:\n1.\n2.\n3.",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "400031",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "-- major",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "Fix for Bug 352319 broken when context has debugger attached.",
+    "systemSpecification": true,
+    "version": "other"
+}

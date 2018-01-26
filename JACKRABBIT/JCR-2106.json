@@ -1,0 +1,65 @@
+{
+    "comments": [
+        {
+            "author": "Peter Dettman",
+            "body": "The attached patch for GarbageCollector logs out of the internal SystemSession objects when the user session has logged out, which resolves this for me locally.\n\n",
+            "date": "2009-05-08T17:55:07.217+0000",
+            "id": 0
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "Committed in revision 773555 (trunk)\nThanks a lot for the patch!\n",
+            "date": "2009-05-11T13:36:26.682+0000",
+            "id": 1
+        },
+        {
+            "author": "Peter Dettman",
+            "body": "You're welcome... unfortunately the previous patch was not quite right. The GarbageCollector needs to keep a reference to the session listener or it may be garbage collected (the session only holds weak references to its listeners). I observed this actually occurring in testing on the latest build.\n",
+            "date": "2009-05-11T17:55:25.070+0000",
+            "id": 2
+        },
+        {
+            "author": "Peter Dettman",
+            "body": "Patch against latest build (on top of previous patch). Stores the session listener in a field of GarbageCollector so that it is not collected.\n\nAlso moves the closing of the system sessions from loggedOut() to loggingOut(); it seems more appropriate that the lifetime of those system sessions be bounded by the parent session.\n",
+            "date": "2009-05-11T17:59:42.850+0000",
+            "id": 3
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "Hm, the GarbageCollector object could be garbage collected before the session is closed.\nThat means keeping a hard reference from the GarbageCollector to the listener\nwouldn't help, right?\n\nIt looks like we need a new method GarbageCollector.close(), and a finalize() method\n(in case people forgot to call close()).",
+            "date": "2009-05-12T14:47:41.875+0000",
+            "id": 4
+        },
+        {
+            "author": "Peter Dettman",
+            "body": "Ignore the 2nd patch, I've attached a 3rd that incorporates close/finalize as suggested.",
+            "date": "2009-05-22T06:37:15.414+0000",
+            "id": 5
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "Thanks a lot for the patch!\n\nCommitted in revision 779084 (trunk)",
+            "date": "2009-05-27T10:21:46.601+0000",
+            "id": 6
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Merged to the 1.5 branch in revision 794213.",
+            "date": "2009-07-15T10:14:29.802+0000",
+            "id": 7
+        }
+    ],
+    "component": "jackrabbit-core",
+    "description": "I have a simple garbage collection task that runs periodically. After upgrading to 1.5.5 it started logging a warning shortly after each run:\n\n2009-05-09 03:44:45,480 WARN [org.apache.jackrabbit.core.SessionImpl] - <Unclosed session detected. The session was opened here: >\njava.lang.Exception: Stack Trace\n\tat org.apache.jackrabbit.core.SessionImpl.<init>(SessionImpl.java:239)\n\tat org.apache.jackrabbit.core.SystemSession.<init>(SystemSession.java:76)\n\tat org.apache.jackrabbit.core.SystemSession.create(SystemSession.java:64)\n\tat org.apache.jackrabbit.core.SessionImpl.createDataStoreGarbageCollector(SessionImpl.java:649)\n\nSo it's not my session, but an internally created SystemSession.\n\n\nCode I'm using:\n            getTemplate().execute(new JcrCallback()\n            {\n                public Object doInJcr(Session session)\n                    throws IOException, RepositoryException {\n                    SessionImpl sessionImpl = (SessionImpl)session;\n                    GarbageCollector gc = sessionImpl.createDataStoreGarbageCollector();\n                    gc.scan();\n                    gc.stopScan();\n                    gc.deleteUnused();\n                    return null;\n                }\n            }, true);\n",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "JCR-2106",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Minor",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "SystemSessions created for GarbageCollector are not logged out of",
+    "systemSpecification": true,
+    "version": "1.5.5"
+}

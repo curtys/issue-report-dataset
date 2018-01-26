@@ -1,0 +1,53 @@
+{
+    "comments": [
+        {
+            "author": "Tobias Bocanegra",
+            "body": "fixed.\n\nAuthor: tripod\nDate: Mon Oct  3 05:45:08 2005\nNew Revision: 293324",
+            "date": "2005-10-03T21:45:59.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Marcin Cenkier",
+            "body": "The exception is not thrown, but transaction still doesn't work. Checked out in transaction nodes remain checked out even so there is checkin() method called. So the repository is left in inconsistent state.",
+            "date": "2005-10-03T23:53:42.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Tobias Bocanegra",
+            "body": "yes, but this is another bug. see  JCR-141.\n\nthe following test works for me:\n\n    public void testCheckin() throws Exception {\n        // get user transaction object\n        UserTransaction utx = new UserTransactionImpl(superuser);\n\n        // start transaction\n        utx.begin();\n\n        // add node and save\n        Node n = testRootNode.addNode(nodeName1, testNodeType);\n        n.addMixin(mixVersionable);\n        testRootNode.save();\n\n        n.checkin();\n\n        // commit\n        utx.commit();\n\n        assertFalse(\"Node must be checked-in\", n.isCheckedOut());\n    }",
+            "date": "2005-10-04T00:32:00.000+0000",
+            "id": 2
+        },
+        {
+            "author": "Tobias Bocanegra",
+            "body": "...ok refined the test. within the transaction, the node is still checked out....",
+            "date": "2005-10-04T00:36:13.000+0000",
+            "id": 3
+        },
+        {
+            "author": "Tobias Bocanegra",
+            "body": "Node.isCheckedOut() returns true for a new item. due to the issue described in JCR-237, this is a problem within transactions.",
+            "date": "2005-10-04T01:28:01.000+0000",
+            "id": 4
+        },
+        {
+            "author": "Tobias Bocanegra",
+            "body": "prevously mentioned tests succeed after JCR-237 was fxied.",
+            "date": "2005-10-04T01:34:46.000+0000",
+            "id": 5
+        }
+    ],
+    "component": "jackrabbit-core, transactions, versioning",
+    "description": "When you run a code that takes versionning outside transactions - everything goes ok. But when you run it inside transaction, it fails:\nHere's the stacktrace:\n\n15:41:14,434 ERROR (TransactionalItemStateManager.java:114) -\njava.lang.Exception: Cannot commit transaction.\n[...]\nCaused by: org.apache.jackrabbit.core.state.TransactionException: Unable\nto commit transaction.:\n31f78b39-6422-4ec8-b41e-2571b6807b05/{http://www.jcp.org/jcr/1.0}isCheckedOut\n[...]\nCaused by: org.apache.jackrabbit.core.state.NoSuchItemStateException:\n31f78b39-6422-4ec8-b41e-2571b6807b05/{http://www.jcp.org/jcr/1.0}isCheckedOut\n[...]\n\nWhen you dont checkin the node transaction commits well, but the node is left checked out...",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "JCR-221",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Blocker",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "NoSuchItemStateException if Node.checkin() is invoked within a transaction",
+    "systemSpecification": true,
+    "version": ""
+}

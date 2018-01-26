@@ -1,0 +1,203 @@
+{
+    "comments": [
+        {
+            "author": "igor@mir2.org",
+            "body": "Assigning to self",
+            "date": "20031115T22:45:28",
+            "id": 0
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 135601\nTest case: it fails in interpreted mode\n\nThe test evaluates string of the form  ++(a[++f().x + ++f().x + ... + ++f().x])\nthat will expose recycling of temporaries in interpreter mode when there is\nmore then 255 ++f terms.",
+            "date": "20031115T22:54:49",
+            "id": 1
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 135602\nFirst part: no more temporaries for post ++ and --\n\n\nThis is trivial part since the patch changes IR-Factory to always creates\nToken.INC/Token.DEC nodes for post ++ and --. Previously it happens only for\nchild nodes of ++ or -- where IRFactory.hasSideEffects() returns true but the\nrest of code in Rhino both in interpreter and optimizer modes contained full\nsupport for INC/DEC applied for arbitrary complex lvalue expression. Or did I\nmiss something?",
+            "date": "20031115T23:09:24",
+            "id": 2
+        },
+        {
+            "author": "pschwartau@meer.net",
+            "body": "Igor: thank you for this testcase! I've added it to the JS testsuite:\n\n      mozilla/js/tests/js1_5/Regress/regress-225831.js\n\n\nAs Igor indicates, it currently passes in Rhino compiled mode,\nbut fails in interpreted mode:\n\n\n*-* Testcase js1_5/Regress/regress-225831.js failed:\nBug Number 225831\nSTATUS: Stressing the byte code generator\nFailure messages were:\nFAILED!: [reported from test()] Section 1 of test -\nFAILED!: [reported from test()] Expected value '11', Actual value 'NaN'",
+            "date": "20031116T00:12:38",
+            "id": 3
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 135661\nTest case extension to cover post ++, {}, and [] operations.\n\nThe patch ads 3 more sections to the test case to cover post --, {} and []\noperations. Without the first fix all sections fails, but with the fix applied\nthe session 2 testing post-- passes.",
+            "date": "20031116T18:15:06",
+            "id": 4
+        },
+        {
+            "author": "pschwartau@meer.net",
+            "body": "Igor: thanks, I checked in the extension to the test. But note that\nSpiderMonkey doesn't pass Section 4. The failure looks like this:\n\nExpected value =  '({1:({a:1}), 2:({a:1}), 3:({a:1}), 4:({a:1}),  etc.\n  Actual value =  '({1:{a:1}, 2:{a:1}, 3:{a:1}, 4:{a:1},          etc.\n\n\n\nRhino and SpiderMonkey seem to differ on how toSource() and uneval()\ntreat objects nested inside objects:\n\njs> var obj = { prop:({a:1}) };\n\n\n---------------------------------  RHINO  -----------------------------------\njs> obj.toSource();\n({prop:({a:1})})\n\njs> uneval(obj);\n({prop:({a:1})})\n\n\n------------------------------- SPIDERMONKEY  -------------------------------\njs> obj.toSource();\n({prop:{a:1}})\n\njs> uneval(obj);\n({prop:{a:1}})\n\n\nThat is, SpiderMonkey doesn't put the parens around the inner object.\nWhat should we do? Is this something that SpiderMonkey should change,\nor Rhino?",
+            "date": "20031116T22:14:18",
+            "id": 5
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "I will change Rhino to much SM, so the test should use the version without inner\n(). So the test would be double-edge sword to check both bytecode generation and\ntoSource().",
+            "date": "20031116T22:42:03",
+            "id": 6
+        },
+        {
+            "author": "pschwartau@meer.net",
+            "body": "Igor: thanks. I have checked in v 1.3 of the test, without the inner ()'s:\n\nRCS file: /cvsroot/mozilla/js/tests/js1_5/Regress/regress-225831.js,v\nretrieving revision 1.2\ndiff -r1.2 regress-225831.js\n\n106c106\n< // build string of the form ({1:({a:1}), 2:({a:1}), ... N:({a:1})})\n---\n> // build string of the form ({1:{a:1}, 2:{a:1}, ... N:{a:1}})\n\n111c111\n<     arr[i] = i+\":({a:1}), \";\n---\n>     arr[i] = i+\":{a:1}, \";\n\n113c113\n<   arr[N] = N+\":({a:1})})\";\n---\n>   arr[N] = N+\":{a:1}})\";\n\n\n[//d/JS_TRUNK/mozilla/js/tests/js1_5/Regress] cvs ci regress-225831.js\nChecking in regress-225831.js;\n/cvsroot/mozilla/js/tests/js1_5/Regress/regress-225831.js,v  <--  regress-225831.js\nnew revision: 1.3; previous revision: 1.2\ndone",
+            "date": "20031117T00:49:18",
+            "id": 7
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "I created a branch in CVS templess_bytecode_225831 to put the code for the bug\nto merge it later when ready and committed the above patch there.",
+            "date": "20031117T18:39:54",
+            "id": 8
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "It turned out that usage of dups or similar stack-based constructions require\nproper maintenance of in Interpreter.itsStackDept which is not the case now. It\nis not visible since the only consequence of it is wasted stack space but that\nwill be exposed through stack-based references.",
+            "date": "20031121T13:10:48",
+            "id": 9
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 136047\nDifferent handling of \"if\" and \"?\"\n\nOne of the reasons of stack miscalculations is that current IRFactory reuse the\ncode for \"if\" statement when generation tree for \"?\". Since then/else parts of\n\"?\" places an object to stack while then/else of \"if\" suppose to keep stack the\nsame, so effectively byte code generation end up assuming 2 additional objects\non stack, not one, for each \"?\". \n\nThe problem presents in the optimizer as well, so class files claims more stack\nspace then necessary there also.\n\nPatch handles that via using Token.HOOK for parse subtree representing \"?\" and\nadding code to interpreter/optimizer to process that properly.\n\nPatch also adds missed stack adjustments for &&, ||, __proto__ and __parent__\nin Interpreter.\n\nI will committ the patch to the branch after regression testing.",
+            "date": "20031121T13:35:24",
+            "id": 10
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 136127\ntempless switch\n\nAnother source for stack depth miscalculations is switch code, where stack was\nnot updated to account for IF jump.  The patch resolves via using 2 new byte\ncodes, Icode_DUPSECOND duplicating stack element one below top and\nIcode_IFEQ_POP which would pop additional stack element in case of successful\njump. In this way switch condition will be popped from the stack when done.\n\nTo prevent stack miscalculations, the patch adds explicit checks for expected\nstack change during code generation. The overhead of this self checking should\nbe very low.\n\nThe patch also adds one line fix to optimizer/Codegen to release switch\nregister after code for switches is generated.",
+            "date": "20031122T20:43:12",
+            "id": 11
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 136171\ntempless op=\n\nThe patch changes generation of code for various op= to use dup commands\ninstead of saving lvalue into temporaries and then restoring it from\ntemporaries to store assignment result. In this way more compact code is\ngenerated both for interpreter and optimizer and IRFactory code for op= is\nsimplified since it is no longer necessary to apply optimization of loading\nnumbers and strings twice instead of using temporaries as DUP is the fastest\nway to duplicate even constant values. \n\nThe price for this is the need to support 2 additional node types, SETELEM_OP\nand SETPROP_OP, but most of the code for them is shared with SETELEM and\nSETPROP so the total code bloat is not that big.",
+            "date": "20031123T14:14:53",
+            "id": 12
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 136223\nusings dups for [] and {}\n\nThe patch changes code to generate [] and {} to use dups instead of temporaries\nto get shorter byte code both for interpreter and optimizer. With the patch the\ntest case now passes in the interpreted mode.",
+            "date": "20031124T12:41:26",
+            "id": 13
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 136228\nremoval of unused Node.cloneNode\n\nThe previous patches removes the need to to have Node.cloneNode so the patch\nremoves it.",
+            "date": "20031124T14:52:32",
+            "id": 14
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 136453\ntempless calls in interpreter\n\nThe patch changes interpreter not to use temporaries to calculate both function\nreference and function this for function calls. The patch moved away the code\nto transform parsing tree in NodeTrandformer and instead adds necessary logic\nto interpreter. The code is moved to the OptTransformer so optimizer still uses\nit. \nThe patch changes few special interpreter byte codes that supported function\nthis calculations to place on the stack both function reference and its this.\nIn this way byte code for calls became more compact and faster.\n\nIt seems that direct code generation from non-transformed call subtree would\nshrink generated byte code in the optimizer as well but since various\noptimizations there depends on particular transformed tree structure I left it\nas is since the optimizer handles references properly",
+            "date": "20031128T15:02:35",
+            "id": 15
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 136501\ntempless enum\n\nPatch adds new parse tree node, Token.ENUM_ID, to get id string from\nenumeration object that is used to implement \"for (x in y)\". In this way code\nto generate byte code to store the result of enumNext to compare it with null\nand assign to enum counter becomes unnecessary.",
+            "date": "20031129T19:06:49",
+            "id": 16
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 136524\ntempless catch\n\nCurrently handling of the catch statement involves creation of 2 locals per\ncatch block, one to store catch object and another to hold catch scope during\nits setup. The second usage should use temporary instead since additional\ncatch, finally or with blocks can not appear between the initial creation of\nscope and creation of with object that uses it. So effectively it is a\ntemporary and as previous patches shows it could be eliminated.\n\nThe patch just does that via changing Token.NEWSCOPE nodes into\nToken.CATCH_SCOPE since the former was used only to support catch nodes. The\nnew node is responsible for populating properly the scope objects based on the\nexception thus eliminating the last temporary usage in the Interpreter and\nsimplifying catch parsing trees substantially.",
+            "date": "20031130T01:27:26",
+            "id": 17
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 136546\nusing temporaries, not locals, to hold intermediate results in optimizer\n\n\nThe patch changes omj/optimizer/Block.java to use temporaries instead of locals\nto hold results of common this subexpressions since in the optimizer\ntemporaries are reused while locals are not unless special measures are taken. \n\n\nSince the previous patches changes moved creation of temporaries to static\nmethod in OptTransformer, the change removed the need to pass IRFactory\ninstance around Block and FatBlock and the patch removes it.",
+            "date": "20031130T15:37:33",
+            "id": 18
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 136597\nreuse of locals\n\nTo allow reuse of additional locals that interpreter/optimizer has to allocate\nto support try/catch/finally and for (in) patch adds new parse node node,\nToken.LOCAL_BLOCK to indicate sequence of statements that needs new local. In\nthis way simple stack-like allocation of local slots in the interpreter\nprovides locals reuse and in the optimizer the locals can be treated in the\nsame way as temporaries and does not require initial preallocation.",
+            "date": "20031201T17:13:17",
+            "id": 19
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 136602\nCheck for local overuse\n\nThe patch adds checks in Interpreter to throw an exception if number of locals\nexceeds 256 and switch to use activation if number of variables exceeds 256. In\nthis way silent reuse of locals would be avoided and interpreter limitations\nare exposed earlier.\n\nWithout the the patch js1_5/Regress/regress-226507.js would go to infinite loop\nwhen N there is increased to 257.",
+            "date": "20031201T18:20:34",
+            "id": 20
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 136783\nFix for bug 225831\n\nThe patch adds new parse tree node type, Token.RETURN_POPV, to return the value\nstored by the last Token.POPV and updates interpreter/optimizer to support POPV\nfor functions and the new nodes. With this it in place NodeTransformer changes\ncode to return from finally to first store via POPV the result of the original\nreturn, then execute finally and then return the stored value fixing bug\n225831.\n\nThe patch does not depend on changes to avoid using temporaries during\nexpression evaluation as I initially expected but it does depend on the change\nto use recursion of NodeTransformer which is committed on the bug branch so log\nit here.",
+            "date": "20031204T11:28:01",
+            "id": 21
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 136784\nCumulative patch\n\nCumulative patch to merger to HEAD",
+            "date": "20031204T11:35:24",
+            "id": 22
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "I committed the change",
+            "date": "20031204T17:09:23",
+            "id": 23
+        },
+        {
+            "author": "pschwartau@meer.net",
+            "body": "Verified FIXED.\n\nThe above testcase used to fail in both the compiled and interpreted\nmodes of Rhino. Now it passes in both -",
+            "date": "20031204T19:28:36",
+            "id": 24
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "*** Bug 228446 has been marked as a duplicate of this bug. ***",
+            "date": "20031217T10:04:08",
+            "id": 25
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Trageting as resolved against 1.5R5",
+            "date": "20040213T11:36:24",
+            "id": 26
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "*** Bug 273745 has been marked as a duplicate of this bug. ***",
+            "date": "20041208T17:38:48",
+            "id": 27
+        },
+        {
+            "author": "mguillemot@yahoo.fr",
+            "body": "I don't really understand in which version it is fixed/will be fixed. Target\nmilestone indicates 1.5R5 but I have the problem with 1.6R1.",
+            "date": "20041209T11:23:15",
+            "id": 28
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "(In reply to comment #29)\n> I don't really understand in which version it is fixed/will be fixed. Target\n> milestone indicates 1.5R5 but I have the problem with 1.6R1.\n\nThat was fixed in 1.5R5. What is your test case? For example, the following case\npasses for me in either 1.5R5 or 1.6R1:\n\nvar N = 600;\nvar array = new Array(N);\n\nfor (var i = 0; i != N; ++i) {\n    array[i] = '{index: '+i+', name: \"foo'+i+'\"}';\n}\n\nvar script_text = \"[\"+array.join(',\\n')+\"]\";\n\nvar script = Script(script_text);\nvar tab = script();\n\njava.lang.System.out.println(uneval(tab[N - 1]));\n",
+            "date": "20041209T12:04:35",
+            "id": 29
+        },
+        {
+            "author": "mguillemot@yahoo.fr",
+            "body": "I think that you're right. I'm using js inside htmlunit and I thought that I had\ncorrectly changed my classpath to use version 1.6R1. Testing again it seems to\nwork fine. Sorry for trouble.",
+            "date": "20041209T15:02:45",
+            "id": 30
+        }
+    ],
+    "component": "Core",
+    "description": "Currently to implement operations such as x += y, ++x and object and array\nliterals, {}, [], parser in Rhino generates nodes to hold temporary values.\nInterpreter in Rhino does not support more then 256 temporaries and silently\nrecycles them if their number exceeds 256. The following test case demonstrates\nthis interpreter limitation.\n\nIn principle by changing space taken by temporary index that can be resolved but\nit seems that eliminating such temporary nodes and using various forms of dup\noperations on stack would make generated byte code smaller and faster both for\ninterpreter and optimizer.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "225831",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "BUG",
+    "priority": "-- normal",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "Byte code generation: using dups instead of temporaries",
+    "systemSpecification": false,
+    "version": "other"
+}

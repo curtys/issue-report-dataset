@@ -1,0 +1,239 @@
+{
+    "comments": [
+        {
+            "author": "Jeff Dever",
+            "body": "According to Adrian, the issue causing this bug has been fixed. The test code\nincluded by the orginator of this bug runs with the correct sequence of\nauthorization challenges and authentication responses.  \n\nHowever, there is still an unexplained HttpRecoverable exception when writing\nthe request, not when reading from it, that should be investigated:\n\norg.apache.commons.httpclient.HttpMethodBase processRequest\nINFO: Recoverable exception caught when writing request\n> GET / HTTP/1.1\n> Host: localhost:8987\n> User-Agent: Jakarta Commons-HttpClient/2.0alpha2\n>\n< HTTP/1.1 401 Unauthorized\n< WWW-Authenticate: Basic realm=\"Test Realm\"\n< Response-Id: 199\n< Content-Type: text/html; charset=iso-8859-1\n< Content-Length: 17\n\n< My Response (199)Feb 5, 2003 1:54:30 AM\norg.apache.commons.httpclient.HttpMethodBase processRequest\nINFO: Recoverable exception caught when writing request\n> GET / HTTP/1.1\n> Authorization: Basic Zm9vOmJhcg==\n> Host: localhost:8987\n> User-Agent: Jakarta Commons-HttpClient/2.0alpha2\n>\n< HTTP/1.1 200 OK\n< WWW-Authenticate: Basic realm=\"Test Realm\"\n< Response-Id: 200\n< Content-Type: text/html; charset=iso-8859-1\n< Content-Length: 17\n\n< My Response (200)",
+            "date": "2003-02-05T15:09:05.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Aurelien Pernoud",
+            "body": "I've encountered this bug in 2.0a2 and in the nightly from today (02/13/03), \nand It's a bigger bug than it seems\n\nMy conf : I'm using a MultiThreadedConnectionManager to make lots of request \ntowards one server.\nEach time I need a connection, I use the getConnection(hostConfig) and execute \nthe method using the connection. I always do a releaseconnection in my try() -> \nfinally{} to be sure the connection is really closed.\n\nWith an old nightly (around may 2002), using HttpMultiClient and its \nconnectionmanager, everything was right. With the new release, and the nightly, \neverything goes fine if requests are made one after the other. If two requests \nare made simultaneously, I have many many exceptions of this kind :\n\njava.lang.IllegalStateException: Connection is not open\n\tat org.apache.commons.httpclient.HttpConnection.assertOpen\n(HttpConnection.java:1019)\n\tat org.apache.commons.httpclient.HttpConnection.readLine\n(HttpConnection.java:896)\n\tat org.apache.commons.httpclient.HttpMethodBase.readStatusLine\n(HttpMethodBase.java:1898)\n\tat org.apache.commons.httpclient.HttpMethodBase.readResponse\n(HttpMethodBase.java:1704)\n\tat org.apache.commons.httpclient.HttpMethodBase.processRequest\n(HttpMethodBase.java:2304)\n\tat org.apache.commons.httpclient.HttpMethodBase.execute\n(HttpMethodBase.java:957)\n\nand sometimes I also have the \"INFO: Recoverable exception caught when writing \nrequest\", it depends.\n\nI'll try to make a testcase this afternoon to reproduce it, cause here all I do \nis open many browser and \"refresh\" them :)\n\nI'm afraid this bug isn't over yet.",
+            "date": "2003-02-13T21:08:00.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Aurelien Pernoud",
+            "body": "Created an attachment (id=4858)\nTo reproduce the bug of handling multiple connections and multiple simultaneous requests to same host\n",
+            "date": "2003-02-13T23:26:43.000+0000",
+            "id": 2
+        },
+        {
+            "author": "Aurelien Pernoud",
+            "body": "I created an attachment to reproduce the bug.\n\nIf I understand well how works HttpClient, this attachment should *always* end. \nSometimes it simply blocks (waiting for a connection, even if I did the \nreleaseconnection at the end of my getmethod), sometimes it throws exceptions \nsaying connection isn't open...\n\nI personnaly have to go back to my nightly that used HttpMultiClient, cause \nthis is a major bug for my project, my webapp could wait for a connection for \never :-(",
+            "date": "2003-02-13T23:30:18.000+0000",
+            "id": 3
+        },
+        {
+            "author": "Michael Becke",
+            "body": "It seems that there may be a few things going on.  If you could, please try the\nfollowing:\n\n1 - change the following line in SimpleRequest.run():\n\n  aConnection.releaseConnection();\n\nto:\n\n  method.releaseConnection();\n\n2 - I think there may be something wrong in the implementation of the\nSimpleHttpServer.  Please try running against a real http server.  I tried it\nwill Tomcat running locally.\n\nAfter doing these two things I was able to get everything working reliably. \nPlease let me know how things fare for you.\n\nThanks,\n\nMike",
+            "date": "2003-02-14T03:22:36.000+0000",
+            "id": 4
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Ok, I think I've figured it out.  It seems that calling\nHttpConnection.releaseConnection() is inherently unsafe.  Connections are used\non a per method basis but have no reference to the method they are being used\nby.  Here's a scenario:\n\n1) A method (A) gets a connection from the connectionManager\n2) A is executed\n3) The response from A is read fully and the connection is implicitly released\n4) The released connection is given to another method (B)\n5) Following the execution of A the user code calls\nHttpConnection.releaseConnection()\n6) The connection is released again\n7) B executes but is using a released connection\n\nAs you can see the connection was released twice for the method A.  Currently\nthere is no way for a connection to know that it has already been released from\na particular method.  This is not a problem if the\nHttpMethod.releaseConnection() is always used, since it knows to only release\nits connection once.\n\nSo, for a quick fix, HttpConnection.releaseConnection() should not be used in\nclient code.  I'll try to come up with a solution that fixes it, but we may just\nhave to remove it from public consumption.\n\nMike",
+            "date": "2003-02-14T10:04:16.000+0000",
+            "id": 5
+        },
+        {
+            "author": "Aurelien Pernoud",
+            "body": "Thanks a lot Michael, now all errors I said before are gone.\n\nBut I have new troubles, about stream being closed, that I didn't have with the \nold httpMultiClient. The fact is my app is parsing the stream (XHTML) with \nXerces parser, and I have errors I never add before :\n\njava.lang.NullPointerException: \n\tat org.apache.commons.httpclient.HttpMethodBase.responseBodyConsumed\n(HttpMethodBase.java:2438)\n\tat org.apache.commons.httpclient.HttpMethodBase$1.responseConsumed\n(HttpMethodBase.java:2466)\n\tat org.apache.commons.httpclient.AutoCloseInputStream.notifyWatcher\n(AutoCloseInputStream.java:215)\n\tat org.apache.commons.httpclient.AutoCloseInputStream.checkClose\n(AutoCloseInputStream.java:187)\n\tat org.apache.commons.httpclient.AutoCloseInputStream.read\n(AutoCloseInputStream.java:123)\n\n(and above is called by Xerces Parser reading the stream)\n\nDo you have any idea where it might come from ? It only happens when doing \nmultiple simultaneous requests. One user is ok...\n\nI'm still using the nightly from 13/02",
+            "date": "2003-02-14T18:14:16.000+0000",
+            "id": 6
+        },
+        {
+            "author": "Aurelien Pernoud",
+            "body": "Ok, a quick look at httpmethod.releaseconnection told me :\n\nif (responseStream != null) {\n     try {\n          // FYI - this may indirectly invoke responseBodyConsumed.\n          responseStream.close();\n^^^^^^^^^^^^^^^^^^^^^^^^^^^\n\nSo I told to myself, well, let's remove the releaseconnection() method... But \nit's still there, even removing all the releaseconnection ni my code, I get \nthis exception when multiple requests are made simultenaously...\n\nThx again for your fast answer and help !",
+            "date": "2003-02-14T18:31:39.000+0000",
+            "id": 7
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Created an attachment (id=4878)\nTest MultiThreadedHttpConnectionManager\n",
+            "date": "2003-02-15T01:06:20.000+0000",
+            "id": 8
+        },
+        {
+            "author": "Michael Becke",
+            "body": "I just attached a test version of MultiThreadedHttpConnection manager.  Mind you\nthis code is quite ugly.  This seems to have fixed the problem for me.  Please\ngive this a shot if you can.\n\nMike",
+            "date": "2003-02-15T01:30:17.000+0000",
+            "id": 9
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Created an attachment (id=4908)\nFix patch 1\n",
+            "date": "2003-02-18T05:59:41.000+0000",
+            "id": 10
+        },
+        {
+            "author": "Jeff Dever",
+            "body": "Patch committed.  Please retest and close.",
+            "date": "2003-02-20T09:06:43.000+0000",
+            "id": 11
+        },
+        {
+            "author": "Aurelien Pernoud",
+            "body": "Tested CVS today, works for me.\nBut now it seems I'm encountering HTTPCLIENT-147 about httpclient using 100% CPU :\nhttp://nagoya.apache.org/bugzilla/show_bug.cgi?id=16458\n\nI'll explain the trouble there since httpclient seems to continue working, but \nis using 90% CPU after like half an hour of using.",
+            "date": "2003-02-20T23:46:00.000+0000",
+            "id": 12
+        },
+        {
+            "author": "Aurelien Pernoud",
+            "body": "I've retested my webapp using CVS from yesterday evening, and I still have many \nexceptions of this type :\nError in parsing the \nstatus  line from the response: unable to find line starting with \"HTTP/\n\nI compared my new sources to my old ones that were using HttpMultiClient, \nthey're \"identical\" in term of using httpclient lib. Except the new one is \nusing HttpMultiThreadConnectionManager instead of HttpMultiClient\n\nThe old one never throws HttpException, and in the new one, while testing a \ngreat number of users using Opensta, if I open a browser myself and try to see \nwhat happens, I sometimes have the exception aboved and sometimes streams are \nbeing \"exchanged\" one another (looks like the original request/race bug where a \ngetresponsebodyasstream is not returning the good stream...)",
+            "date": "2003-02-21T22:26:08.000+0000",
+            "id": 13
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Do you have a test case that shows this problem?  The original test you created\nseems to be working correctly. \n\nI have one idea about what might be causing this.  It sounds like you are using\nthe getResponseBodyAsStream() method.  Could you be using this response stream\nafter the method has been released?\n\nMike",
+            "date": "2003-02-21T22:52:20.000+0000",
+            "id": 14
+        },
+        {
+            "author": "Aurelien Pernoud",
+            "body": "I'm currently working on making another test case, with aconnectionmanager to \nkeep a pool of connections, and a servlet to maintain session, cause it seems \nsome requests of my app are made without session in cookies.\nI'm not using getresponseasstream after releasing the connection, here is my \nusing :\n\ntry\n{\n   new Method\n   method.execute(astate,connectionmanager.getconnection())\n   work with the stream\n   return what i have to return\n}\ncatch exception\n{\n   log it\n}\nfinally\n{\n   method.releaseconnection\n}",
+            "date": "2003-02-21T23:24:16.000+0000",
+            "id": 15
+        },
+        {
+            "author": "Aurelien Pernoud",
+            "body": "Created an attachment (id=4970)\nA new testcase\n",
+            "date": "2003-02-22T01:12:06.000+0000",
+            "id": 16
+        },
+        {
+            "author": "Aurelien Pernoud",
+            "body": "Ok I've attached a new test case that shows the trouble. I'm sorry for the \ncode, it's not \"beautiful\", but it should work.\nIn fact I'm trying to reproduce what I'm doing in my webapp in this testcase, \nand the bug shows up, so maybe I'm doing something wrong (I hope I'm not...).\n\nHere the way it works :\n\nMultiple simultaneous requests towars a servlet.\nrequest are this kind : /httpclient/servlet?parameter=i\n\nI use a global state that I initialize at first to make a session with the \nservlet\nAll requests have unique i parameter\n\nThe servlet takes the request, if session is valid -> returns i, else \nreturn \"new session\" or \"session not valid\"\n\nAs the method knows what it asked, it checks if it's what he asked.\nYes -> do nothing\nNo -> print \"I asked for \" myuniqueid \"and got\" responsebodystring\n\nFor few requests, it goes ok, for a lot, there are exceptions, and then you see \nerrors of not getting the good result, you see the http parse exception \"can't \nfind HTTP/\"...\n\nAs I might be doing something wrong, please test this case, and if I'm not \ndoing something wrong, could you include it in a real test case (I don't know \nhow to do testcase yet) ??\n\nThx,\nAurelien",
+            "date": "2003-02-22T01:14:04.000+0000",
+            "id": 17
+        },
+        {
+            "author": "Michael Becke",
+            "body": "I have tried this new test case, but it seems to work fine for me.  I'm running\nthe servet in Tomcat 4.1.18 and have tried it with 1000 concurrent requests. \nDoes this test fail for you?\n\nMike",
+            "date": "2003-02-22T03:24:57.000+0000",
+            "id": 18
+        },
+        {
+            "author": "mike.vannoord",
+            "body": "Created an attachment (id=4975)\nTest case (the original problem, revisited)\n",
+            "date": "2003-02-22T06:19:06.000+0000",
+            "id": 19
+        },
+        {
+            "author": "mike.vannoord",
+            "body": "The original problem (the race condition) still exists, though the reason for \nit may have changed.  Consider this scenario:\n\n1) The Method executes using a connection aquired from the \nSimpleHttpConnectionManager.\n2) The response is read until there is no more data (i.e. InputStream.read() \n== -1).\n3) The connection gets returned to the manager ready to be used again, i.e. no \nsockets/streams are closed.\n4) A new Method submits a request to an HTTP server using the existing \nconnection.\n5) The Method attempts to read the server's response before the server has \nprepared it (its a very inefficient server...not like tomcat ;) )\n6) The connection's InputStream.read() will return -1 and the Method will \nassume the response is invalid (it'll throw the \"HttpRecoverableException: \nError in parsing the status  line from the response: unable to find line \nstarting with \"HTTP/\"\" exception).\n\nHopefully my test case will demonstrate this scenario.  It can quite easily be \nfixed by simply waiting for the response before starting to read it.  \nHttpConnection already has a \"waitForResponse()\" method which could be used \n(although waitForResponse() will seriously burn some CPU cycles if not tweeked \na little).",
+            "date": "2003-02-22T06:36:13.000+0000",
+            "id": 20
+        },
+        {
+            "author": "sam.maloney",
+            "body": "> 6) The connection's InputStream.read() will return -1 and the Method will  \n> assume the response is invalid..... \n \nThis is incorrect. An InputStream will block until the requested amount of data has \nbecome available, or the connection is closed (EOF). (See JDK JavaDoc for \nInputStream). \n \nIf the socket is still connected on both ends, calling (int)read() on the client end will \nblock until one byte is available. It will only return -1 on EOF. ",
+            "date": "2003-02-22T08:57:45.000+0000",
+            "id": 21
+        },
+        {
+            "author": "mike.vannoord",
+            "body": "Thanks, Sam.  You're exactly correct.  If I modify my test case server to \nsimply flush its output rather than close it, everything works perfectly.  \n\nIt begs the question, however, should this client fully support HTTP 1.1 \nservers which don't necessarily maintain a persistent connection?  The HTTP 1.1 \nRFC says the servers \"SHOULD\" meet this requirement, not that they \"MUST\" meet \nit.",
+            "date": "2003-02-25T23:00:37.000+0000",
+            "id": 22
+        },
+        {
+            "author": "Aurelien Pernoud",
+            "body": "Ok now I'm sure my troubles don't come from this anymore, so as I'm the one \nthat reopened it I'll close it !",
+            "date": "2003-02-27T17:35:01.000+0000",
+            "id": 23
+        },
+        {
+            "author": "Erik van Oosten",
+            "body": "The following program produces the bug almost always. It uses the\nutil.concurrent package to let 2 threads start simultaneously.\n\nI tried the program with the nightly build 20030429 and release 2 Alpha 1.\n\nThe program is a rewrite of mike.vannoord@brainna.com's program. But only the\nmain method has been changed.\n\n\nimport java.io.*;\nimport java.net.*;\nimport java.util.*;\nimport org.apache.commons.httpclient.*;\nimport org.apache.commons.httpclient.methods.*;\n\nimport EDU.oswego.cs.dl.util.concurrent.Latch;\n\n/**\n *\n * <br>\n * @version $Revision: $\n */\npublic class HttpClientRaceBug {\n\t/** Source control revision number */\n\tpublic static final String RCS_VERSION = \"$Revision: $\";\n\t\n    public static void main(String[] args) {\n        try {\n            SimpleHttpServer.listen(8987);\n            final HttpClient client = new HttpClient();\n            client.startSession(\"localhost\", 8987);\n            client.getState().setCredentials(\"Test Realm\",  \n                new UsernamePasswordCredentials(\"foo\", \"bar\"));\n\n\t\t\tfinal Latch go = new Latch();\n\t\t\t\n\t\t\tThread thread1 = new Thread(\"1\") {\n\t\t\t\tpublic void run() {\n\t\t\t\t\ttry {\n\t\t\t\t\t\tgo.acquire();\n\t\t                GetMethod meth = new GetMethod();\n\t\t                int lState = client.executeMethod(meth);\n\t\t\t\t\t\tbyte[] aData = meth.getResponseBody();\n\t\t\t\t\t\tSystem.out.println(\"String 1: \" + new String(aData));\n\t\t\t\t\t} catch (Exception ex) {\n\t\t\t\t\t\tex.printStackTrace();\n\t\t\t\t\t}\n\t\t\t\t}\n\t\t\t};\n\t\t\tThread thread2 = new Thread(\"2\") {\n\t\t\t\tpublic void run() {\n\t\t\t\t\ttry {\n\t\t\t\t\t\tgo.acquire();\n\t\t                GetMethod meth = new GetMethod();\n\t\t                int lState = client.executeMethod(meth);\n\t\t\t\t\t\tbyte[] aData = meth.getResponseBody();\n\t\t\t\t\t\tSystem.out.println(\"String 2: \" + new String(aData));\n\t\t\t\t\t} catch (Exception ex) {\n\t\t\t\t\t\tex.printStackTrace();\n\t\t\t\t\t}\n\t\t\t\t}\n\t\t\t};\n\n\t\t\tthread1.start();\n\t\t\tthread2.start();\n\t\t\tThread.sleep( 1000L ); /* sleep 1s */\n\t\t\t\n\t\t\tgo.release();\n\n\t\t\tThread.sleep( 3000L ); /* sleep 3s */\n\n        } catch (Exception e) {\n            e.printStackTrace();\n        }\n    }\n    \n    private static final class SimpleHttpServer implements Runnable {\n        private Socket socket;\n        public SimpleHttpServer(Socket socket) {\n            this.socket = socket;\n        }\n        public static void listen(final int port) {\n            Thread server = new Thread() {\n                public void run() {\n                    try {\n                        ServerSocket ss = new ServerSocket(port);\n                        while (true) {\n                            new Thread(new \n                                SimpleHttpServer(ss.accept())).start();\n                        }\n                    } catch (Exception e) {\n                        e.printStackTrace();\n                    }\n                }\n            };\n            \n            server.setDaemon(true);\n            server.start();\n        }\n        public void run() {\n            try {\n                BufferedReader in = new BufferedReader(new \n                    InputStreamReader(this.socket.getInputStream()));\n                \n                int len = 0;\n                boolean auth = false;\n                String line;\n                while ((line = in.readLine()) != null) {\n                    System.out.println(\"> \" + line);\n                    \n                    if (line.trim().equals(\"\")) {\n                        in.read(new char[len]);\n                        doOutput(auth);\n                        auth = false;\n                        len = 0;\n                        \n                    } else if (line.indexOf(':') > -1) {\n                        StringTokenizer tok = new StringTokenizer(line, \":\");\n                        String key = tok.nextToken().toLowerCase();\n                        if (key.equals(\"content-length\")) {\n                            len = Integer.parseInt(tok.nextToken().trim());\n                        } else if (key.equals(\"authorization\")) {\n                            auth = true;\n                        }\n                    }\n                }\n            } catch (Exception e) {}\n        }\n        private static int count = 0;\n        public void doOutput(boolean authorized) throws IOException {\n            Writer out = new OutputStreamWriter(this.socket.getOutputStream());\n            count++;\n            \n            String id = (count < 100) ? \n                ((count < 10) ? \"00\" + count : \"0\" + count) : \"\" + count;\n            if (authorized) {\n                write(out, \"HTTP/1.1 200 OK\\r\\n\");\n            } else {\n                write(out, \"HTTP/1.1 401 Unauthorized\\r\\n\");\n            }\n            write(out, \"WWW-Authenticate: Basic realm=\\\"Test Realm\\\"\\r\\n\");\n            write(out, \"Response-Id: \" + id + \"\\r\\n\");\n            write(out, \"Content-Type: text/html; charset=iso-8859-1\\r\\n\");\n            write(out, \"Content-Length: 17\\r\\n\\r\\n\");\n            write(out, \"My Response (\" + id + \")\");\n            out.close();\n        }\n        private void write(Writer out, String text) throws IOException {\n            System.out.print(\"< \" + text);\n            out.write(text);\n        }\n    }\n}\n",
+            "date": "2003-04-29T19:56:30.000+0000",
+            "id": 24
+        },
+        {
+            "author": "Aurelien Pernoud",
+            "body": "I think the trouble you have come from the out.close() that closes the \noutputstream instead of simply flushing it...\ntry to change this :\nwrite(out, \"Content-Type: text/html; charset=iso-8859-1\\r\\n\");\nwrite(out, \"Content-Length: 17\\r\\n\\r\\n\");\nwrite(out, \"My Response (\" + id + \")\");\nout.close();\n^^^^^^^^^^^^^^^^^\nwith out.flush(), see it it works then, and close the bug.",
+            "date": "2003-04-29T20:09:19.000+0000",
+            "id": 25
+        },
+        {
+            "author": "Eric Johnson",
+            "body": "Unfortunately for the latest poster, the default connection manager for\nHttpClient is not MultiThreadedConnectionManager, so of course his alteration\nwith multiple threads fails.\n\nIf we do anything for this bug, it would be that we change the default\nHttpClient connection manager to the multi-threaded one, but that has some\npotential bad side effects for code (apparent lock-ups) that does not have the\ndiscipline to ensure that releaseConnection() gets called for all requests.",
+            "date": "2003-04-29T20:15:23.000+0000",
+            "id": 26
+        },
+        {
+            "author": "Erik van Oosten",
+            "body": "Perhaps that can be solved by always creating new connections when the pool of\nconnections is empty. (That is, if it works for a pool.)",
+            "date": "2003-04-29T20:31:39.000+0000",
+            "id": 27
+        },
+        {
+            "author": "Michael Becke",
+            "body": "The MultiThreadedHttpConnectionManager must be used for multi-threading to work.\n Please take a look at the folowing example: \nhttp://cvs.apache.org/viewcvs/jakarta-commons/httpclient/src/examples/MultiThreadedExample.java?rev=1.1&content-type=text/vnd.viewcvs-markup\n\nI am also working on some documentation regarding threading to be added to the\nuser guide.\n\nMike",
+            "date": "2003-04-29T20:35:49.000+0000",
+            "id": 28
+        },
+        {
+            "author": "Erik van Oosten",
+            "body": "Thanks Michael. Using the MultiThreadedHttpConnectionManager works.\n\nI did not close the bug because it does not work with the latest build (20030429).\n",
+            "date": "2003-04-29T20:49:17.000+0000",
+            "id": 29
+        },
+        {
+            "author": "Michael Becke",
+            "body": "It seems to be an issue with the SimpleHttpServer. I tried this code against\nTomcat and Apache running locally and had no trouble.  In particular I believe\nthe call to close the output stream at the end of the response is the culprit. \nRemoving this line fixes things.\n\nI forget where I read this recently but closing the stream explictly can cause\nproblems.  It has something to do with the stream being reset before the data\ncan be read on the client side.\n\nMike",
+            "date": "2003-04-29T22:11:03.000+0000",
+            "id": 30
+        },
+        {
+            "author": "mike.vannoord",
+            "body": "It should be noted that my SimpleHttpServer reports that it is an HTTP 1.1 \nserver, but it doesn't support persistant connections.  So for future \nreference, anybody who wants to use this code ought to change the output header \nto HTTP/1.0 or to simply flush() the output stream, rather than close() it.",
+            "date": "2003-04-29T22:20:20.000+0000",
+            "id": 31
+        },
+        {
+            "author": "Erik van Oosten",
+            "body": "It seems that the problem re-appeared again in my code (even with the multi\nthreaded http connection manager).\nI'll move to using one HttpClient instance per request.\n\n    Erik.\n",
+            "date": "2003-05-13T15:44:46.000+0000",
+            "id": 32
+        },
+        {
+            "author": "Adrian Sutton",
+            "body": "Erik,\nSimply moving to using multiple HttpClient instances isn't a particularly good option as if this bug\nis still causing problems, other people will eventually run into it.  It would be really good if you\ncould take a little time going through the trouble shooting guide at\n\nhttp://jakarta.apache.org/commons/httpclient/troubleshooting.html\n\nand in particular provide the wire trace log.  Also make sure you are using the latest nightly of\nHttpClient and that you aren't using the SimpleHttpServer that was posted in this thread as it was\nthe cause of the problem last time.  Details of your exact setup (JRE version, server you're using \nand a specific test case) are also invaluable in these situations.  While it's quite possible that the\nbug has been reintroduced, most of the people who were seeing this problem are no longer seeing\nit so that suggest the problem is specific to your configuration and we'll need as much detail to \nreproduce it as possible.\n\nRegards,\n\nAdrian Sutton.",
+            "date": "2003-05-13T16:01:24.000+0000",
+            "id": 33
+        },
+        {
+            "author": "Erik van Oosten",
+            "body": "I am sorry for all the fuss I have created so far. Being inspired by Adrian, I\nwent into the matter again, and found out that the bug was in my own code.\n\nThanks for the support.\n    Erik.\n",
+            "date": "2003-05-13T18:43:32.000+0000",
+            "id": 34
+        },
+        {
+            "author": "Erik van Oosten",
+            "body": "I hate concurrency bugs. I am almost ashamed to mention this again, but now we\nactually use the stuff 'en mass', a problem showed up again.\n \nUnfortunaly, turning on the log as described in the 'trouble shooting' did not\nhelp. When logging is turned on the bug no longer appears!\n\nWhat we do see is a number of broken pipes reported by HttpClient. Why this\ncould be the case is unclear to me. The servlet it is talking to, is no where\nnear its maximum capacity. So maybe the problem is no longer a concurreny problem.\n\nHere is some information on the configuration:\n- We are using HttpClient from a servlet (running in Tomcat 4.1.18) to connect\nto another servlet (running in Tomcat 4.0.3). The latter is heavilly tested for\nconcurrency.\n- Both Tomcats run on the same Linux host (Red hat 8.0) with an abundance of\nmemory and CPU power\n- Both Tomcats use the same jdk (jdk1.3_06) but run in a different jvm.\n- We are using the MulitThreadedConnectionManager\n",
+            "date": "2003-05-13T22:54:41.000+0000",
+            "id": 35
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Do any of the methods fail throwing an exception?  If so, what does the error\nlook like?  Which version of HttpClient are you using?  Are you using SSL?  Is\nit possible that the methods complete, but that errors are being printed\ninternally?  In normal use connections will time and you will get broken pipe\nerrors, but this should be handled internally and retried.\n\nMike",
+            "date": "2003-05-13T23:09:16.000+0000",
+            "id": 36
+        }
+    ],
+    "component": "HttpClient (classic)",
+    "description": "If one tries to do multiple request over the same socket connection a race \ncondition occurs in the input/output streams.\neg. \n-- Some request -->\n<- HTTP/1.1 200 OK\n<- Some: Headers\n<- \n<- The body.\n\n-- Next request -->\n<- HTTP/1.1 200 OK\n<- More: Headers\n<- \n<- Some data.\n\nIf the second request is sent, but the second response isn't yet received \nbefore the client starts to try to read it, it'll get \na \"org.apache.commons.httpclient.HttpRecoverableException: Error in parsing the \nstatus  line from the response: unable to find line starting with \"HTTP/\"\" \nexception (it will think \"The body.\" is part of the second response).\n\nThe following code will reproduce the problem:\n\nimport java.io.*;\nimport java.net.*;\nimport java.util.*;\nimport org.apache.commons.httpclient.*;\nimport org.apache.commons.httpclient.methods.*;\n\npublic class HttpClientRaceBug {\n    public static void main(String[] args) {\n        try {\n            SimpleHttpServer.listen(8987);\n            HttpClient client = new HttpClient();\n            client.startSession(\"localhost\", 8987);\n            client.getState().setCredentials(\"Test Realm\",  \n                new UsernamePasswordCredentials(\"foo\", \"bar\"));\n            \n            for (int i = 0; i < 100; i++) {\n                GetMethod meth = new GetMethod();\n                client.executeMethod(meth);\n            }\n        } catch (Exception e) {\n            e.printStackTrace();\n        }\n    }\n    \n    private static final class SimpleHttpServer implements Runnable {\n        private Socket socket;\n        public SimpleHttpServer(Socket socket) {\n            this.socket = socket;\n        }\n        public static void listen(final int port) {\n            Thread server = new Thread() {\n                public void run() {\n                    try {\n                        ServerSocket ss = new ServerSocket(port);\n                        while (true) {\n                            new Thread(new \n                                SimpleHttpServer(ss.accept())).start();\n                        }\n                    } catch (Exception e) {\n                        e.printStackTrace();\n                    }\n                }\n            };\n            \n            server.setDaemon(true);\n            server.start();\n        }\n        public void run() {\n            try {\n                BufferedReader in = new BufferedReader(new \n                    InputStreamReader(this.socket.getInputStream()));\n                \n                int len = 0;\n                boolean auth = false;\n                String line;\n                while ((line = in.readLine()) != null) {\n                    System.out.println(\"> \" + line);\n                    \n                    if (line.trim().equals(\"\")) {\n                        in.read(new char[len]);\n                        doOutput(auth);\n                        auth = false;\n                        len = 0;\n                        \n                    } else if (line.indexOf(':') > -1) {\n                        StringTokenizer tok = new StringTokenizer(line, \":\");\n                        String key = tok.nextToken().toLowerCase();\n                        if (key.equals(\"content-length\")) {\n                            len = Integer.parseInt(tok.nextToken().trim());\n                        } else if (key.equals(\"authorization\")) {\n                            auth = true;\n                        }\n                    }\n                }\n            } catch (Exception e) {}\n        }\n        private static int count = 0;\n        public void doOutput(boolean authorized) throws IOException {\n            Writer out = new OutputStreamWriter(this.socket.getOutputStream());\n            count++;\n            \n            String id = (count < 100) ? \n                ((count < 10) ? \"00\" + count : \"0\" + count) : \"\" + count;\n            if (authorized) {\n                write(out, \"HTTP/1.1 200 OK\\r\\n\");\n            } else {\n                write(out, \"HTTP/1.1 401 Unauthorized\\r\\n\");\n            }\n            write(out, \"WWW-Authenticate: Basic realm=\\\"Test Realm\\\"\\r\\n\");\n            write(out, \"Response-Id: \" + id + \"\\r\\n\");\n            write(out, \"Content-Type: text/html; charset=iso-8859-1\\r\\n\");\n            write(out, \"Content-Length: 17\\r\\n\\r\\n\");\n            write(out, \"My Response (\" + id + \")\");\n            out.close();\n        }\n        private void write(Writer out, String text) throws IOException {\n            System.out.print(\"< \" + text);\n            out.write(text);\n        }\n    }\n}",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "HTTPCLIENT-116",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Critical",
+    "product": "HTTPCLIENT",
+    "project": "HTTPCLIENT",
+    "summary": "Request/Response race condition when doing multiple requests on the same connection.",
+    "systemSpecification": true,
+    "version": ""
+}

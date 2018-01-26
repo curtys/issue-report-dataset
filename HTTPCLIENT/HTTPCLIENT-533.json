@@ -1,0 +1,131 @@
+{
+    "comments": [
+        {
+            "author": "Ortwin Gl\u00fcck",
+            "body": "This is not a bug, but your code is wrong. Please read\nhttp://jakarta.apache.org/commons/httpclient/cookies.html on how to use a cookie\nspec. You may subscribe to the users mailing list for help. This is a bug\nreporting tool and not a support ticketing system.",
+            "date": "2005-11-30T20:04:04.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Bernhard Petri",
+            "body": "(In reply to comment #1)\n> This is not a bug, but your code is wrong. Please read\n> http://jakarta.apache.org/commons/httpclient/cookies.html on how to use a cookie\n> spec. You may subscribe to the users mailing list for help. This is a bug\n> reporting tool and not a support ticketing system.\nI have read the above reference and also the API documentation carefully before\nopening a bug report. I have read both documents again, but either the documents\nare wrong or there is a bug. So please check ist again. \n",
+            "date": "2005-11-30T21:38:37.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Per default HttpClient is configured to use the 'rfc2109' cookie policy. Make\nsure you change it to 'default'\n\nOleg",
+            "date": "2005-11-30T22:02:39.000+0000",
+            "id": 2
+        },
+        {
+            "author": "Ortwin Gl\u00fcck",
+            "body": "Created an attachment (id=17085)\npossible patch\n\nOkay, our docs really state\nCookiePolicy.registerCookieSpec(CookiePolicy.DEFAULT, <Some CookieSpec>);\nbut the preferred way is:\nmethod.getParams().setCookiePolicy(CookiePolicy.RFC_2109);\n\nAnd there actually might be a problem, when using the first variant. I see that\nDefaultHttpParamsFactory sets RFC_2109 hard coded instead of DEFAULT. Why it\ndoes that is obscure to me. The attached patch should take care of it. What do\nyou think, Oleg?",
+            "date": "2005-11-30T22:26:51.000+0000",
+            "id": 3
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "In my opinion HttpClient works as advertised. The default policy kicks in only\nif no policy has been explicitly defined. Per default rfc2109 is set by the\nDefaultHttpParamsFactory. If things are not clear I would very much rather\nchange the docs\n\nOleg",
+            "date": "2005-11-30T22:37:33.000+0000",
+            "id": 4
+        },
+        {
+            "author": "Ortwin Gl\u00fcck",
+            "body": "I somehow agree. But the knowledge about the default spec is now in two places:\n1. CookieSpec class\n2. DefaultHttpParamsFactory class\n\nWhy?",
+            "date": "2005-11-30T22:43:38.000+0000",
+            "id": 5
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "(In reply to comment #6)\n> I somehow agree. But the knowledge about the default spec is now in two places:\n> 1. CookieSpec class\n> 2. DefaultHttpParamsFactory class\n> \n> Why?\n\nWell, because HttpClient 2.0 and 3.0 API is a bloody mess. This said, my general\nrecommendation to avoid problems with HttpClient configuration is very simple:\nif one needs specific behaviour, she should _explicitly_ set the respective HTTP\nparameter, otherwise HttpClient will pick a default at its discretion\n\nOleg",
+            "date": "2005-11-30T22:51:13.000+0000",
+            "id": 6
+        },
+        {
+            "author": "Ortwin Gl\u00fcck",
+            "body": "So you vote for changing the docs?",
+            "date": "2005-11-30T23:00:58.000+0000",
+            "id": 7
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Certainly for the 3.0 release\n\nOleg",
+            "date": "2005-11-30T23:05:30.000+0000",
+            "id": 8
+        },
+        {
+            "author": "Ortwin Gl\u00fcck",
+            "body": "Yeah I agree that for the attached patch it is too late.",
+            "date": "2005-11-30T23:08:54.000+0000",
+            "id": 9
+        },
+        {
+            "author": "Bernhard Petri",
+            "body": "After reading your discussion I have tried the following to implement a\nIGNORE_COOKIES policy:\n-------------------------------------\nHttpMethod method = new GetMethod();\nmethod.getParams().setCookiePolicy(CookiePolicy.IGNORE_COOKIES);\nfinal WebClient webClient = new WebClient();\nfinal URL url = new URL(\"http://de.finance.yahoo.com/q?s=CB3569.SG\");\nfinal HtmlPage page = (HtmlPage) webClient.getPage(url);\n-------------------------------------\nBut this also doesn't work, i.e. I get the same error messages as before.",
+            "date": "2005-12-02T21:39:13.000+0000",
+            "id": 10
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Please produce a wire/context log of the session\n\nOleg",
+            "date": "2005-12-02T21:54:02.000+0000",
+            "id": 11
+        },
+        {
+            "author": "Ortwin Gl\u00fcck",
+            "body": "That's especially weird, because for this there exists a test case.",
+            "date": "2005-12-02T22:13:59.000+0000",
+            "id": 12
+        },
+        {
+            "author": "Bernhard Petri",
+            "body": "Created an attachment (id=17121)\nContext and wire log\n\nI have attached the context and wire log  you wanted.",
+            "date": "2005-12-02T22:25:29.000+0000",
+            "id": 13
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Works for me. See for yourself\n\nTest code run against local Tomcat 5.5.9:\n==========\nHttpClient httpclient = new HttpClient();\nGetMethod httpget = new\nGetMethod(\"http://localhost:8080/servlets-examples/servlet/CookieExample\");\nhttpget.setQueryString(new NameValuePair[] {\n  new NameValuePair(\"cookiename\", \"\"), // invalid name\n  new NameValuePair(\"cookievalue\", \"value\")});\nhttpget.getParams().setCookiePolicy(CookiePolicy.IGNORE_COOKIES);\ntry {\n  httpclient.executeMethod(httpget);\n  System.out.println(httpget.getStatusLine());\n} finally {\n  httpget.releaseConnection();\n}\n\n\nDefault cookie policy / RFC2109\n================================\n[DEBUG] header - >> \"GET\n/servlets-examples/servlet/CookieExample?cookiename=&cookievalue=value\nHTTP/1.1[\\r][\\n]\"\n[DEBUG] header - >> \"User-Agent: Jakarta Commons-HttpClient/3.0-rc4[\\r][\\n]\"\n[DEBUG] header - >> \"Host: localhost:8080[\\r][\\n]\"\n[DEBUG] header - >> \"[\\r][\\n]\"\n[DEBUG] header - << \"HTTP/1.1 200 OK[\\r][\\n]\"\n[DEBUG] header - << \"Server: Apache-Coyote/1.1[\\r][\\n]\"\n[DEBUG] header - << \"Set-Cookie: =value[\\r][\\n]\"\n[DEBUG] header - << \"Content-Type: text/html;charset=ISO-8859-1[\\r][\\n]\"\n[DEBUG] header - << \"Content-Length: 731[\\r][\\n]\"\n[DEBUG] header - << \"Date: Fri, 02 Dec 2005 13:51:40 GMT[\\r][\\n]\"\n[WARN] HttpMethodBase - Invalid cookie header: \"=value\". Cookie name may not be\nblank\n\n\nIgnore cookie policy\n================================\n[DEBUG] header - >> \"GET\n/servlets-examples/servlet/CookieExample?cookiename=&cookievalue=value\nHTTP/1.1[\\r][\\n]\"\n[DEBUG] header - >> \"User-Agent: Jakarta Commons-HttpClient/3.0-rc4[\\r][\\n]\"\n[DEBUG] header - >> \"Host: localhost:8080[\\r][\\n]\"\n[DEBUG] header - >> \"[\\r][\\n]\"\n[DEBUG] header - << \"HTTP/1.1 200 OK[\\r][\\n]\"\n[DEBUG] header - << \"Server: Apache-Coyote/1.1[\\r][\\n]\"\n[DEBUG] header - << \"Set-Cookie: =value[\\r][\\n]\"\n[DEBUG] header - << \"Content-Type: text/html;charset=ISO-8859-1[\\r][\\n]\"\n[DEBUG] header - << \"Content-Length: 731[\\r][\\n]\"\n[DEBUG] header - << \"Date: Fri, 02 Dec 2005 13:51:05 GMT[\\r][\\n]\"\n\nPlease debug WebClient class\n\nOleg",
+            "date": "2005-12-02T22:53:55.000+0000",
+            "id": 14
+        },
+        {
+            "author": "Ortwin Gl\u00fcck",
+            "body": "Created an attachment (id=17156)\nPatch for 3.0 docs\n",
+            "date": "2005-12-06T21:53:06.000+0000",
+            "id": 15
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Patch away, Odi\n\nOleg",
+            "date": "2005-12-06T22:00:30.000+0000",
+            "id": 16
+        },
+        {
+            "author": "Ortwin Gl\u00fcck",
+            "body": "Documentation patch committed.",
+            "date": "2005-12-06T22:19:57.000+0000",
+            "id": 17
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Patch checked in\n\nOleg",
+            "date": "2006-05-31T04:00:19.000+0000",
+            "id": 18
+        }
+    ],
+    "component": "HttpClient (classic)",
+    "description": "I use HtmlUnit to access some quote information. Cookies shall be ignored,so I\nset the default policy to CookiePolicy.IGNORE_COOKIES. Nevertheless I get error\nmessages after starting my program. \n\nThe code reads:\n---------------------------------------\nCookiePolicy.registerCookieSpec(CookiePolicy.DEFAULT, IgnoreCookiesSpec.class);\nfinal WebClient webClient = new WebClient();\nfinal URL url = new URL(\"http://de.finance.yahoo.com/q?s=CB3569.SG\");\nfinal HtmlPage page = (HtmlPage) webClient.getPage(url);\n----------------------------------------\n\nThe error messages are:\n----------------------------------------\nWARNUNG: Cookie rejected: \"$Version=0; PRF=&t=CB3569.SG; $Domain=finance.yahoo.c\nom; $Path=/\". Domain attribute \"finance.yahoo.com\" violates RFC 2109: domain mus\nt start with a dot\n30.11.2005 10:28:20 org.apache.commons.httpclient.HttpMethodBase processResponse\nHeaders\nWARNUNG: Cookie rejected: \"$Version=0; B=7fkoh9l1oqs4h&b=3&s=hb; $Domain=.yahoo.\ncom; $Path=/\". Domain attribute \".yahoo.com\" violates RFC 2109: host minus domai\nn may not contain any dots\n----------------------------------------",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "HTTPCLIENT-533",
+    "issuetypeClassified": "OTHER",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "HTTPCLIENT",
+    "project": "HTTPCLIENT",
+    "summary": "CookiePolicy.registerCookieSpec(CookiePolicy.DEFAULT, <Some CookieSpec>); does not work as documented",
+    "systemSpecification": true,
+    "version": "3.0 RC3"
+}

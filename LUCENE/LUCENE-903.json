@@ -1,0 +1,59 @@
+{
+    "comments": [
+        {
+            "author": "Doron Cohen",
+            "body": "Attached lucene-903.patch change the explanation test in CheckHits to verify that the explanation value matches the explanation details. This new test makes assumptions on the description of an explanation that has multi sub-details, which might be controversial: the description is assumed to comply with one of:\n  - end with \"product of:\"\n  - end with \"sum of:\"\n  - end with \"sum of:\"\n  - contain \"max plus <x> times others\" (where <x> is float)\nWhile this seems to cover all the current scoring combinations, future scorers might not fit in.\nWe can always expand this list of course.\n\nWith this check, TestSimpleExplanations fails for FilteredQuery - testFQ6(). \nFix included.\n\nAlso failing is TestBoostingTermQuery, just because its explanation had no \"product of:\".\nFix included.\n\nAll tests pass.",
+            "date": "2007-06-03T08:55:22.129+0000",
+            "id": 0
+        },
+        {
+            "author": "Doron Cohen",
+            "body": "(explanation validity including for FilteredQuery was handled there.)",
+            "date": "2007-06-03T08:58:45.598+0000",
+            "id": 1
+        },
+        {
+            "author": "Hoss Man",
+            "body": "I have some reservations about this patch.\n\nI think it's fine to set as a goal that all \"core\" query classes should have Explanations where the description accurately describes a mathematical calculation that can be performed on the details to arrive at the value of the Explanation -- which is easy to do since we have the luxury of changing the CHeckHits class to suit our needs anytime we add a new class that has a more \"interesting\" mathematical calculation then we can current account for.\n\nBut we should also try to maintain CheckHIts as a reusable class that clients can use to run basic sanity tests on their own custom Query classes, and holding them to the same standard (when they can't easily modify the string pattern rules in CheckHits) doesn't seem fair.\n\nlemme try to refactor the current patch a bit so that the \"deep\" Explanation testing is optional (and used by the core tests)",
+            "date": "2007-06-04T00:11:31.026+0000",
+            "id": 2
+        },
+        {
+            "author": "Doron Cohen",
+            "body": "> holding them to the same standard (when they can't easily modify \n> the string pattern rules in CheckHits) doesn't seem fair. \n\n> lemme try to refactor the current patch a bit so that the \"deep\" \n> Explanation testing is optional (and used by the core tests) \n\nI agree (and pointed that) the \"deep\" explanation test is imperfect in this regard. But it seems to me that it is the benefit of new query writers to have their new queries explanations tested as thorough as possible. So I am not sure that disabling this test by default (for non core queries) is the right thing to do.\n\nHow do you feel about adding an escape way, allowing one to specify that a certain (part of an) explanation is not to be checked in this manner?\n\nI see two immediate ways to add this: \n- by the explanation text: if the description starts with \"other:\" the explanation is not subject to this \"deep\" check\n- by api: adding a property to Explanation class - disabledDeepCheck - false by default - allows new unique queries to deliberately disable this \"deep\" test.\n",
+            "date": "2007-06-04T01:04:08.223+0000",
+            "id": 3
+        },
+        {
+            "author": "Hoss Man",
+            "body": "in general i'm not fond of the inspecting the string to determine whether the math is correct ... in an ideal world every query would have it's own unit test class and it would have a \"testExplanation\" method that would know exactly what structure (ie: how many sub-details) to expect from an artificially constructed query instance.  the current approach of having big \"explanation\" test classes that validate an explanation by comparing them to the scores is a fairly big hack (and i say that as the guy that added it).\n\nBut i'm okay with the string comparisons as a \"Convenience\" to make it easier for us to test the explanations of the core queries (since so many of them follow very clear patterns) ... but i think we should avoid having any sort of expectation on the string for custom queries (either that they match \"product of\" or that they match \"other:\")\n\nmy main concern is purely with giving people a way to do the same kind of Explanation testing they could do before (that the root value equals the score) even if the details of their explanation don't fit any of the patterns of the existing core queries.  (i'd hate for people to not even do shallow testing of their Explanations just because we don't give them a method for doing so)\n\nthis refactoring...\n \n- makes verifyExplanations a public method in CheckHits that anyone can call\n- adds a \"deep\" boolean option to verifyExplanations\n- adds variants of CheckHits.checkExplanations and the ExplanationAsserter to make the \"deep\" testing optional\n- makes QueryUtils.checkExplanations use the \"deep\" option\n- makes TestExplanations explicitly use deep testing\n\n...at the moment, the \"old\" APIs default to deep==false but i'm on board with changing those to \"true\" if you want to (in theory it's a non-backawards compatible API change, but since it's in src/test we can probably get away with it).\n",
+            "date": "2007-06-04T01:48:00.614+0000",
+            "id": 4
+        },
+        {
+            "author": "Doron Cohen",
+            "body": "Thanks for the review Hoss!\n\nI like with your changes to the patch. \nI modified further:\n - do a \"deep\" check in TestBoostingTermQuery.java\n - remove the call to checkExplanations from TestExplanations.qtest() because \n   that is also called in QueryUtils.checkQuery(). (otherwise it would be done twice.)\n\nI am ok with original checkExplanations() remaining \"shallow\", since all core tests now call the \"deep\" version.\n\nI intend to commit this shortly.\n",
+            "date": "2007-06-04T19:11:22.288+0000",
+            "id": 5
+        },
+        {
+            "author": "Doron Cohen",
+            "body": "committed the last patch, thanks for your help Hoss.",
+            "date": "2007-06-04T20:55:15.982+0000",
+            "id": 6
+        }
+    ],
+    "component": "core/search",
+    "description": "The value of explanation is different than the product of its part if boost > 1.\nThis is exposed after tightening the explanation check (part of LUCENE-446).\n\n",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-903",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Minor",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "FilteredQuery explanation inaccuracy with boost",
+    "systemSpecification": true,
+    "version": "2.2"
+}

@@ -1,0 +1,125 @@
+{
+    "comments": [
+        {
+            "author": "Thomas Mueller",
+            "body": "This patch verifies the integrity just before saving\n(currently it only verifies that added child nodes actually exist).\nThis ensures the persistent state is not corrupt.\n\nAlso, it closes the session if a ConcurrentModificationException occurs.\nThis should reduce the likelihood of problems after a session was used\nby multiple threads (the internal state of the session is anyway corrupt).",
+            "date": "2010-01-13T15:07:20.242+0000",
+            "id": 0
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "What's the performance impact of this patch? E.g. how much time does it take to save 1k added nodes with / without this patch?",
+            "date": "2010-01-13T21:45:37.612+0000",
+            "id": 1
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "According to my test, it didn't have a measurable effect.\n\nI have committed a simple benchmark in revision 899102.\n(my idea is to extend it in the future, and then to run it as part of the integration test;\nbut I didn't add it yet because running the test without checking the result doesn't make sense).\n\nThe result is:\nrun: 4; time: 1270 ms; task: addNodes (without patch)\nrun: 4; time: 1245 ms; task: addNodes (with patch)\n(the difference is within the margin of error; sometimes it's faster sometimes slower)\n\nI guess the only part that could measurable affect performance is \nSharedItemStateManager.checkAddedChildNode, specially persistMgr.exists. \nIt was never called for my test case (when running in debug mode), because\nthe added node always was in the cache.\n",
+            "date": "2010-01-14T08:23:13.202+0000",
+            "id": 2
+        },
+        {
+            "author": "Bart van der Schans",
+            "body": "Could the same problem also exist in 1.5 and 1.6? We have seen sometimes messages about missing child nodes with the consistencyCheck with 1.5.",
+            "date": "2010-01-14T09:21:44.346+0000",
+            "id": 3
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "To verify what versions are affected, just run the test case with the specific version.\nI only ran it with CRX 2.0 so far.",
+            "date": "2010-01-14T09:26:15.578+0000",
+            "id": 4
+        },
+        {
+            "author": "Bart van der Schans",
+            "body": "Running with 1.5 and 10 threads I do see these kind of errors:\n\n\njavax.jcr.InvalidItemStateException: Item cannot be saved because it has beenmodified externally: node /\njava.util.ConcurrentModificationException\n\nI guess these two are expected. And errors like:\n\njavax.jcr.ItemNotFoundException: failed to determine depth of 1d15a661-ad4a-4550-9264-b632f2739dff/{}p23: 1d15a661-ad4a-4550-9264-b632f2739dff/{}p23: 1d15a661-ad4a-4550-9264-b632f2739dff/{}p23\n\tat org.apache.jackrabbit.core.HierarchyManagerImpl.getDepth(HierarchyManagerImpl.java:492)\n\tat org.apache.jackrabbit.core.CachingHierarchyManager.getDepth(CachingHierarchyManager.java:259)\n\tat org.apache.jackrabbit.core.ItemImpl.getDepth(ItemImpl.java:1286)\n\tat org.apache.jackrabbit.core.ItemImpl.internalRemove(ItemImpl.java:801)\n\tat org.apache.jackrabbit.core.ItemImpl.remove(ItemImpl.java:909)\n\tat org.apache.jackrabbit.core.PropertyImpl.setValue(PropertyImpl.java:559)\n\tat org.apache.jackrabbit.core.NodeImpl.setProperty(NodeImpl.java:2308)\n\tat org.apache.jackrabbit.core.MultiThreadTest$1.run(MultiThreadTest.java:54)\n\tat java.lang.Thread.run(Thread.java:619)\nCaused by: org.apache.jackrabbit.core.state.NoSuchItemStateException: 1d15a661-ad4a-4550-9264-b632f2739dff/{}p23\n\tat org.apache.jackrabbit.core.state.SessionItemStateManager.getItemState(SessionItemStateManager.java:185)\n\tat org.apache.jackrabbit.core.HierarchyManagerImpl.getItemState(HierarchyManagerImpl.java:150)\n\tat org.apache.jackrabbit.core.HierarchyManagerImpl.getDepth(HierarchyManagerImpl.java:480)\n\t... 8 more\n\n",
+            "date": "2010-01-14T10:44:44.781+0000",
+            "id": 5
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "Hi Bart\n\nThose exceptions are expected currently. I tlooks like you set IGNORE_ERRORS to false (right?), otherwise you shouldn't see the stack traces (you should only see one line per exception).\n\nThe 'real' problem (what this bug is about) is that even after restarting the repository, a node can no longer be deleted. That means the persisted state (the data stored in the persistence manager) of the repository is corrupt: a node refers to a child node that doesn't exist.\n\nI suggest to reset IGNORE_ERRORS (to true) and let the test case run until it's finished (it will take a few minutes). If you don't see a stack trace then everything is fine.\n",
+            "date": "2010-01-14T10:56:42.210+0000",
+            "id": 6
+        },
+        {
+            "author": "Bart van der Schans",
+            "body": "Hi Thomas,\n\nI ran the test with IGNORE_ERRORS to true, but I added a line to print the stacktraces after the  System.out.println(e); in the IGNORE_ERRORS block. \n\nI do understand the 'real' problem and we have seen that situation on some production servers. But we also do have some custom code to handle virtual nodes which could results in a same kind of error, so I don't want to blame jackrabbit code unjustified ;-)\n\nI've ported the patch to 1.5 (I guess 1.6 isn't that different for these parts of the code) and I don't see the NoSuchItemStateExceptions any more. It does hit the extra check in the EventStateCollection:\n\njavax.jcr.RepositoryException: Unable to update item: node /: Node 1f273949-2dda-45f3-8f30-916424a4de30 must be changed as well.: Node 1f273949-2dda-45f3-8f30-916424a4de30 must be changed as well.\n\tat org.apache.jackrabbit.core.ItemImpl.save(ItemImpl.java:1119)\n\tat org.apache.jackrabbit.core.SessionImpl.save(SessionImpl.java:858)\n\tat org.apache.jackrabbit.core.MultiThreadTest$1.run(MultiThreadTest.java:53)\n\tat java.lang.Thread.run(Thread.java:619)\nCaused by: org.apache.jackrabbit.core.state.ItemStateException: Node 1f273949-2dda-45f3-8f30-916424a4de30 must be changed as well.\n\tat org.apache.jackrabbit.core.observation.EventStateCollection.createEventStates(EventStateCollection.java:388)\n\tat org.apache.jackrabbit.core.state.SharedItemStateManager$Update.begin(SharedItemStateManager.java:694)\n\tat org.apache.jackrabbit.core.state.SharedItemStateManager.beginUpdate(SharedItemStateManager.java:1106)\n\tat org.apache.jackrabbit.core.state.SharedItemStateManager.update(SharedItemStateManager.java:1136)\n\tat org.apache.jackrabbit.core.state.LocalItemStateManager.update(LocalItemStateManager.java:351)\n\tat org.apache.jackrabbit.core.state.XAItemStateManager.update(XAItemStateManager.java:356)\n\tat org.apache.jackrabbit.core.state.LocalItemStateManager.update(LocalItemStateManager.java:326)\n\tat org.apache.jackrabbit.core.state.SessionItemStateManager.update(SessionItemStateManager.java:313)\n\tat org.apache.jackrabbit.core.ItemImpl.save(ItemImpl.java:1113)\n\t... 3 more\n\n\n",
+            "date": "2010-01-14T11:28:18.101+0000",
+            "id": 7
+        },
+        {
+            "author": "Bart van der Schans",
+            "body": "backport of patch-2456.txt",
+            "date": "2010-01-14T11:29:19.724+0000",
+            "id": 8
+        },
+        {
+            "author": "Bart van der Schans",
+            "body": "Running with 2 threads with different sessions and the same node I do see the following error with the patch applied to 1.5:\n\norg.apache.jackrabbit.core.state.ItemStateException: Trying to add a non-existing child node: b89abbae-4929-42ec-972e-4d60b51e27d1\n\tat org.apache.jackrabbit.core.state.SharedItemStateManager$Update.checkAddedChildNode(SharedItemStateManager.java:988)\n\tat org.apache.jackrabbit.core.state.SharedItemStateManager$Update.checkAddedChildNodes(SharedItemStateManager.java:971)\n\tat org.apache.jackrabbit.core.state.SharedItemStateManager$Update.begin(SharedItemStateManager.java:575)\n\tat org.apache.jackrabbit.core.state.SharedItemStateManager.beginUpdate(SharedItemStateManager.java:1106)\n\tat org.apache.jackrabbit.core.state.SharedItemStateManager.update(SharedItemStateManager.java:1136)\n\tat org.apache.jackrabbit.core.state.LocalItemStateManager.update(LocalItemStateManager.java:351)\n\tat org.apache.jackrabbit.core.state.XAItemStateManager.update(XAItemStateManager.java:356)\n\tat org.apache.jackrabbit.core.state.LocalItemStateManager.update(LocalItemStateManager.java:326)\n\tat org.apache.jackrabbit.core.state.SessionItemStateManager.update(SessionItemStateManager.java:313)\n\tat org.apache.jackrabbit.core.ItemImpl.save(ItemImpl.java:1113)\n\tat org.apache.jackrabbit.core.SessionImpl.save(SessionImpl.java:858)\n\tat org.apache.jackrabbit.core.MultiThreadTest$1.run(MultiThreadTest.java:58)\n\tat java.lang.Thread.run(Thread.java:619)\n\nSo it looks like the patch prevents the persistent state from getting corrupt.\n\n",
+            "date": "2010-01-14T14:40:06.871+0000",
+            "id": 9
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "My original patch broke some version manager tests (for example org.apache.jackrabbit.test.api.version.ConfigurationsTest.testConfigurationsPath). I just  made the test pass, and didn't try to understand what this test does exactly, and why the VersionManagerImpl does seem to store non-existing child nodes.\n\nUnless somebody objects, I will commit this patch later today.",
+            "date": "2010-01-18T15:37:56.064+0000",
+            "id": 10
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "I think those are the child node entries that link from each workspace into the version storage.\n\nTobi might know more about those and if the current list you have in checkAddedChildNode() is complete. ",
+            "date": "2010-01-18T20:29:17.848+0000",
+            "id": 11
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "According to Tobi, the three nodes (VERSION_STORAGE_NODE_ID, ACTIVITIES_NODE_ID, NODETYPES_NODE_ID) are the only (virtual) child nodes that may exist. So this is fixed.",
+            "date": "2010-01-19T09:20:10.652+0000",
+            "id": 12
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "The patch for 1.5 (if still needed) is out of date now (it does not deal with the three system nodes).\nThe ConfigurationsTest should fail if the patch is applied.",
+            "date": "2010-01-19T09:26:03.429+0000",
+            "id": 13
+        },
+        {
+            "author": "Bart van der Schans",
+            "body": "Thanks for the heads up. I will create a new patch for 1.5 based on the patch-2456-b.txt patch. ",
+            "date": "2010-01-19T12:53:23.087+0000",
+            "id": 14
+        },
+        {
+            "author": "Bart van der Schans",
+            "body": "Backport to 1.6 of the updated patch.",
+            "date": "2010-04-28T13:08:27.299+0000",
+            "id": 15
+        },
+        {
+            "author": "Bart van der Schans",
+            "body": "The patch also applies to the 1.5 branch.",
+            "date": "2010-04-28T13:12:37.372+0000",
+            "id": 16
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "I committed the backported patch to the 1.6 branch in revision 948488 and backported/merged the changes further to the 1.4 branch in revision 948495.",
+            "date": "2010-05-26T16:39:44.736+0000",
+            "id": 17
+        }
+    ],
+    "component": "jackrabbit-core",
+    "description": "After concurrent write operations using the same session, the repository can get corrupt, meaning a ItemNotFoundException is thrown when trying to remove a node.\n\nConcurrent write operations are not supported, however I believe the persistent state of the repository should not be get corrupt.\n\nOne way to solve this problem is to synchronize on the session internally.",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "JCR-2456",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "Repository is corrupt after concurrent changes with the same session",
+    "systemSpecification": true,
+    "version": "1.5.7, 2.0-beta5"
+}

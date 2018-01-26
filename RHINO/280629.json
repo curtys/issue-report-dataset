@@ -1,0 +1,35 @@
+{
+    "comments": [
+        {
+            "author": "igor@mir2.org",
+            "body": "To be precise: prior Rhino 1.6R1 the main Main class in the debugger extended\njavax.swing.JFrame and so all methods from JFrame were available. In Rhino 1.6R1\ndebugger underwent reorganization to support debugging of independent Rhino\nruntimes and as the result Main class extends just Object and so dispose method\nis no longer available.\n\nFor compatibility with the previous Rhino releases few methods from JFrame were\nadded to Main during pre-release testing, but dispose was not on that list. So I\nadd it now.\n\nNote also that dispose method in 1.5R5 would not break the association between\nRhino runtime and the debugger objects so even after the method call scripts\nwould continue to be executed in much slower debugging mode. ",
+            "date": "20050201T20:34:55",
+            "id": 0
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 173103\nCompatibility patch to add Main.dispose",
+            "date": "20050201T20:39:52",
+            "id": 1
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "I committed the fix",
+            "date": "20050201T20:41:40",
+            "id": 2
+        }
+    ],
+    "component": "Core",
+    "description": "User-Agent:       Mozilla/4.0 (compatible; MSIE 6.0; Windows NT 5.1; .NET CLR 1.1.4322)\nBuild Identifier: \n\nWe use the rhino debugger as part of a bigger process and just upgraded from \n1.5 to 1.6\n\nIn version 1.5 there used to be an API Main.dispose() that closes the UI and \nits threads.\n\nSomewhere along the line the API disappeared and now the only possible way to \nclose\nthe debugger is with System.exit(). The problem is that we need to keep the JVM \nto run well after\nthe debugger is used and currently when the program exits it hangs waiting for \nthe debuggers (we sometime start several of those)\nwindows to close.\n\nCurrently we modified the code of org.mozilla.javascript.tools.debugger.Main\nto include at line 248:\n\npublic void close()\n    {\n      debugGui.dispose();\n    }\n    \n\n\nReproducible: Always\n\nSteps to Reproduce:\nstart the debugger in the following way:\n\n    mDebugger = new org.mozilla.javascript.tools.debugger.Main(\"JavaScript \nDebugger\");\n\n    mDebugger.attachTo(ContextFactory.getGlobal());\n\n    // Inform the debugger of the global execution scope\n    mDebugger.setScopeProvider(new ScopeProvider()\n    {\n      public Scriptable getScope()\n      {\n        return mRootScope;\n      }\n    });\n    mDebugger.pack();\n    mDebugger.setSize(800, 600);\n    mDebugger.setVisible(true);\n\nActual Results:  \nThe program can never exit and waits for the debugger window. And there is now \nway to close it using API.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "280629",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "-- normal",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "When using the debugger within another program the only way to close it is kill the JVM (System.exit(0))",
+    "systemSpecification": true,
+    "version": "other"
+}

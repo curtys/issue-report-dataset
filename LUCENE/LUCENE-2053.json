@@ -1,0 +1,77 @@
+{
+    "comments": [
+        {
+            "author": "Uwe Schindler",
+            "body": "Here are some names for Exceptions:\n\n- UnexpectedInterruptException extends RuntimeException\n- IndexerInterruptedException extends RuntimeException\n- IndexWriterInterruptedException extends RuntimeException\n- SmartInterruptedException (just a joke)\n\nAnother possibility would be to use IOException as super class, this would enable users to catch it without changing code and they will correctly log the message and not fallback to default RuntimeException catch in JVM.\n\nThe patch is easy, you have to just find all Thread.interrupt() calls or catch InterruptedException in the code.",
+            "date": "2009-11-12T12:36:39.452+0000",
+            "id": 0
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "How about ThreadInterruptedException?  Maybe under oal.util?\n\nI wouldn't restrict the name/scope to indexing.  Sure, maybe today you can't Thread.interrupt a Lucene search, but maybe in the future we'll allow that and then this same exception should be thrown.\n\nI think it's cleaner to extend RuntimeException.  Right now (2.9) you get a RuntimeException, so extending IOException instead is more of a back compat break.\n\nI just wish InterruptedException had been non-checked from the get-go...",
+            "date": "2009-11-12T13:04:25.403+0000",
+            "id": 1
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "So I think we go with RuntimeException.\n\n- ThreadInterruptedException\n- UnexpectedInterruptedException\n- UncheckedInterruptedException\n\n...",
+            "date": "2009-11-12T13:17:36.196+0000",
+            "id": 2
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "OK I'll go with ThreadInterruptedException!  I'll wait a while just in case someone has a violent reaction to that name ;)",
+            "date": "2009-11-12T15:48:59.089+0000",
+            "id": 3
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Attached patch.",
+            "date": "2009-11-13T11:32:49.317+0000",
+            "id": 4
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Reopening to address buggy intermittent test failure...",
+            "date": "2009-11-15T13:00:41.719+0000",
+            "id": 5
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Attached my current approach for fixing the test.\n\nIncludes a silly workaround to not let an interrupted thread hit the class loader.  Weird....\n\n",
+            "date": "2009-11-15T13:37:07.423+0000",
+            "id": 6
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Patch looks good, even I do not understand it completely.",
+            "date": "2009-11-15T16:36:36.809+0000",
+            "id": 7
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "OK I'll commit shortly.\n\nBasically, with the patch the test is now more careful: the main thread issues the interrupt, and then waits for the child thread to confirm it handled the exception.  This way the main thread won't send another interrupt until the child thread is done handling the last one.",
+            "date": "2009-11-15T18:17:24.413+0000",
+            "id": 8
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "OK, trying again!",
+            "date": "2009-11-15T18:38:20.071+0000",
+            "id": 9
+        }
+    ],
+    "component": "core/index",
+    "description": "This is the 3.0 followon from LUCENE-1573.  We should throw a dedicated exception, not just RuntimeException.\n\nRecent discussion from java-dev \"Thread.interrupt()\" subject: http://www.lucidimagination.com/search/document/8423f9f0b085034e/thread_interrupt",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-2053",
+    "issuetypeClassified": "OTHER",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Minor",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "When thread is interrupted we should throw a clear exception",
+    "systemSpecification": true,
+    "version": ""
+}

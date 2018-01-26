@@ -1,0 +1,107 @@
+{
+    "comments": [
+        {
+            "author": "Robert Muir",
+            "body": "patch for core tests only, all tests pass.",
+            "date": "2010-09-13T11:18:53.286+0000",
+            "id": 0
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Why not simply extend the org.junit.Assert class? This would remove use of deprecated old JUnit3 Framework completely?",
+            "date": "2010-09-13T11:59:57.539+0000",
+            "id": 1
+        },
+        {
+            "author": "Robert Muir",
+            "body": "bq. Why not simply extend the Assert abstract class? This would remove use of deprecated old JUnit3 Framework completely?\n\nI would like to do this under a different issue.\n\nWe cannot do this, until all assertEquals(float, float) are changed to use epsilons, for example.\n\nBy extending Assert, we can catch all the places we don't use epsilons and fix them, which\nis a great improvement, but out of scope of this issue.",
+            "date": "2010-09-13T12:02:06.568+0000",
+            "id": 2
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "I am just afraid of extending form the old JUnit Testcase. We can simply add @Deprecated methods to asser floats without epsilon, that we can then remove.\n\nSo extend Assert and the add missing static methods for compatibility.",
+            "date": "2010-09-13T12:04:10.527+0000",
+            "id": 3
+        },
+        {
+            "author": "Robert Muir",
+            "body": "bq. I am just afraid of extending form the old JUnit Testcase.\n\nwe already extend this! Have you looked at LuceneTestCase lately?\n\nbq. So extend Assert and the add missing static methods for compatibility.\n\nPlease, i would like to keep the epsilon stuff out of this issue. All tests pass the way it is now, there is no\nproblem.\n\nWe can fix epsilons in a followup issue, and then use no junit3 code at all... as I said its a great improvement, but not necessary to mix in with this change.\n\nBy doing both at once, if somethign goes wrong, it will be more difficult to debug. Lets keep the scope under control.",
+            "date": "2010-09-13T12:12:33.473+0000",
+            "id": 4
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Here the patch, so LuceneTestCaseJ4 only extends Assert without importing extra crap. The double/float API of old Junit3 is emulated using static overrides. After applying patch do a ant clean, else you will get lining errors.",
+            "date": "2010-09-13T12:59:50.270+0000",
+            "id": 5
+        },
+        {
+            "author": "Robert Muir",
+            "body": "updated patch, with all of lucene/solr and including uwe's stuff.\n\nall tests pass.",
+            "date": "2010-09-13T13:55:20.942+0000",
+            "id": 6
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "This is great Robert!  Patch works for me (except for bizarre hang in Solr's TestSolrCoreProperties, apparently only on my machine, that's pre-existing).",
+            "date": "2010-09-13T16:43:30.586+0000",
+            "id": 7
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Looks good, this is a really good step forwards. We can write old-style tests, butuse JUnit4 and can optionally add the @BeforeClass and so on :-)",
+            "date": "2010-09-13T17:03:01.230+0000",
+            "id": 8
+        },
+        {
+            "author": "Robert Muir",
+            "body": "bq. We can write old-style tests, butuse JUnit4 and can optionally add the @BeforeClass and so on \n\nYeah i've never understood why Junit4 requires all these static imports and annotations... i just care about @BeforeClass!\n",
+            "date": "2010-09-13T17:11:05.350+0000",
+            "id": 9
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Some small fixes in reflection inspection:\n- exclude static and abstract methods\n- check native return type",
+            "date": "2010-09-13T18:08:22.353+0000",
+            "id": 10
+        },
+        {
+            "author": "Robert Muir",
+            "body": "thanks Uwe, i can merge this into the 3x backport too.",
+            "date": "2010-09-13T18:12:38.996+0000",
+            "id": 11
+        },
+        {
+            "author": "Robert Muir",
+            "body": "OK, i didnt merge the reflection fixes yet, but i backported the patch to 3x.\n\nCommitted revision 996611, 996630 (3x).\n\nWill mark the issue resolved when Uwe is out of reflection hell :)",
+            "date": "2010-09-13T18:24:19.563+0000",
+            "id": 12
+        },
+        {
+            "author": "Robert Muir",
+            "body": "OK i merged back all of Uwe's improvements. Thanks for the help Uwe.\n\nI think now in future issues we can clean up and improve this test case a lot.\nI felt discouraged from doing so with the previous duplication...",
+            "date": "2010-09-13T20:08:55.164+0000",
+            "id": 13
+        },
+        {
+            "author": "Grant Ingersoll",
+            "body": "Bulk close for 3.1",
+            "date": "2011-03-30T15:50:10.849+0000",
+            "id": 14
+        }
+    ],
+    "component": "general/test",
+    "description": "We added Junit4 support, but as a separate test class.\n\nSo unfortunately, we have two separate base classes to maintain: LuceneTestCase and LuceneTestCaseJ4.\nThis creates a mess and is difficult to manage.\n\nInstead, I propose a single base test class that works both junit3 and junit4 style.\n\nI modified our LuceneTestCaseJ4 in the following way:\n* the methods to run are not limited to the ones annotated with @Test, but also any void no-arg methods that start with \"test\", like junit3. this means you dont have to sprinkle @Test everywhere.\n* of course, @Ignore works as expected everywhere.\n* LuceneTestCaseJ4 extends TestCase so you dont have to import static Assert.* to get all the asserts.\n\nfor most tests, no changes are required. but a few very minor things had to be changed:\n* setUp() and tearDown() must be public, not protected.\n* useless ctors must be removed, such as TestFoo(String name) { super(name); }\n* LocalizedTestCase is gone, instead of\n{code}\npublic class TestQueryParser extends LocalizedTestCase {\n{code}\nit is now\n{code}\n@RunWith(LuceneTestCase.LocalizedTestCaseRunner.class)\npublic class TestQueryParser extends LuceneTestCase {\n{code}\n* Same with MultiCodecTestCase: (LuceneTestCase.MultiCodecTestCaseRunner.class}\n\nI only did the core tests in the patch as a start, and i just made an empty LuceneTestCase extends LuceneTestCaseJ4.\n\nI'd like to do contrib and solr and rename this LuceneTestCaseJ4 to only a single class: LuceneTestCase.\n",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-2642",
+    "issuetypeClassified": "OTHER",
+    "issuetypeTracker": "OTHER",
+    "priority": "Major",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "merge LuceneTestCase and LuceneTestCaseJ4",
+    "systemSpecification": true,
+    "version": ""
+}

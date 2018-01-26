@@ -1,0 +1,197 @@
+{
+    "comments": [
+        {
+            "author": "igor@mir2.org",
+            "body": "Do you use the default compile-to-jvm-classes mode in Rhino? In that case the\nstandard Java printStackTrace should provide information about error locations\nin script.\n\nOn the other hand if you use pure interpretation (optimization level == -1),\nthen Java printStackTrace is useless indeed.",
+            "date": "20041213T19:49:59",
+            "id": 0
+        },
+        {
+            "author": "szegedia@freemail.hu",
+            "body": "Well, our production system is using Rhino in interpreted mode, since it relies \non continuations. A detailed stack trace would be nice indeed. I understand it \nmight be hard to generate, as several invocations of Interpreter.interpret() can \nbe on the Java stack, interweaved with calls to Java methods on host objects \nthat call back into interpreted JavaScript functions, so it's possible this call \nstack should be maintained in a thread local. Now, instad of updating it on each \nmethod call, an optimization would be to actually only maintain a stack of top \nframes for Interpreter.interpret() invocations when they transition into Java \ncode - the top frame in Interpreter().interpret() call would get pushed on it \nprior to calling a native Java function, and popped from it upon return. On \nexception, the current interpret() would first generate a trace from its own \nframes walking the parentFrame chain starting from its top frame, and then do \nthe same for all the other top frames found on the thread local stack.",
+            "date": "20050201T14:21:57",
+            "id": 1
+        },
+        {
+            "author": "szegedia@freemail.hu",
+            "body": "Just a heads-up, I've started working on this; should be done soon. I think I \nfound an elegant way to embed the functionality.",
+            "date": "20050209T10:40:05",
+            "id": 2
+        },
+        {
+            "author": "szegedia@freemail.hu",
+            "body": "Created attachment 173850\nImplementation for the full JavaScript stack trace in Java stack trace",
+            "date": "20050209T15:04:03",
+            "id": 3
+        },
+        {
+            "author": "szegedia@freemail.hu",
+            "body": "Created attachment 173851\nA small testcase showing the new functionality\n\nPlace it into a package named \"test\"",
+            "date": "20050209T15:05:40",
+            "id": 4
+        },
+        {
+            "author": "szegedia@freemail.hu",
+            "body": "Created attachment 173853\nOutput of the test program\n\nYou can see two JavaScript stack trace elements:\n\n...\nat script(bar:3)\n...\nat script(foo:2)\n...\n\nbelonging to two nested invocations of the interpreter interleaved with Java\nstack trace elements.",
+            "date": "20050209T15:08:05",
+            "id": 5
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "To observations about the patch:\n\n1. It introduces the dependency on JDK 1.4 via direct call to\nThroawable.initCause(). Please avoid it. \n\n2. It makes constructions of RhinoException instances significantly heavier even\nwhen users use class compiler. I think storing just reference to CallFrameHolder\nduring construction should be enough to print the stack trace if necessary.\n\n\n",
+            "date": "20050209T18:43:04",
+            "id": 6
+        },
+        {
+            "author": "szegedia@freemail.hu",
+            "body": "(In reply to comment #7)\n> To observations about the patch:\n> \n> 1. It introduces the dependency on JDK 1.4 via direct call to\n> Throawable.initCause(). Please avoid it. \n> \n\nI had to add it so the stack trace is recreated in order for the causes to be \nreflected in the annotated stack trace as well. I further inspected where is it \ncalled from, and I can get around it by making captureJavaScriptStackTrace() \npackage-private, and make sure it's called from Kit.initCause when it is invoked \nwith a RhinoException.\n\n> 2. It makes constructions of RhinoException instances significantly heavier \neven\n> when users use class compiler. I think storing just reference to \nCallFrameHolder\n> during construction should be enough to print the stack trace if necessary.\n\nMy only problem with that is that the locations CallFrame objects point (and \nactually the CallFrame objects referred to in the CallFrameHolder) at the time \nthe exception is printed can be significantly different than when the exception \nwas created. As a remedy for class compiler case, the \ncaptureJavaScriptStackTrace() could check for cx.interpreterLineCounting == null \nand shortcut the whole dump-to-string-writer business.\n\nHope it'll be acceptable with these changes.",
+            "date": "20050209T20:02:07",
+            "id": 7
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "(In reply to comment #8)\n> > 2. It makes constructions of RhinoException instances significantly heavier \n> even\n> > when users use class compiler. I think storing just reference to \n> CallFrameHolder\n> > during construction should be enough to print the stack trace if necessary.\n> \n> My only problem with that is that the locations CallFrame objects point (and \n> actually the CallFrame objects referred to in the CallFrameHolder) at the time \n> the exception is printed can be significantly different than when the exception \n> was created.\n\nBut then both holder and frame can be stored or the holder can be cloned to get\na frozen copy. Not all exceptions get their stack trace printed and it does not\nsound right to execute all the code to produce a string with nicely formated trace.\n\n> \n> Hope it'll be acceptable with these changes.\n\nSure.\n",
+            "date": "20050209T20:58:24",
+            "id": 8
+        },
+        {
+            "author": "szegedia@freemail.hu",
+            "body": "Created attachment 173902\nAnother take, now with freezing frames\n\nOkay, I think I understood the concept of freezing call frames and call frame\nholders objects and cloning them on-demand. Here's a new version that should\nkeep the lightweight construction of the exception - only the frame holder is\nstored, with all holders and frames reachable from it frozen. I'll attach a new\ntestcase where the trace is printed from an entirely different interpreter\nsession, and it works nicely. I even managed to make the printing process as\nlightweight as possible, by implementing a special filtering PrintStream and\nPrintWriter for the purpose, so no buffering/reparsing of the printed stack\ntrace is required.",
+            "date": "20050209T23:38:58",
+            "id": 9
+        },
+        {
+            "author": "szegedia@freemail.hu",
+            "body": "Created attachment 173904\nA small testcase showing the functionality",
+            "date": "20050209T23:40:04",
+            "id": 10
+        },
+        {
+            "author": "szegedia@freemail.hu",
+            "body": "Created attachment 173905\nOutput of the test program",
+            "date": "20050209T23:41:05",
+            "id": 11
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "(In reply to comment #10)\n> Created an attachment (id=173902) [edit]\n> Another take, now with freezing frames\n> \n> Okay, I think I understood the concept of freezing call frames and call frame\n> holders objects and cloning them on-demand. Here's a new version that should\n> keep the lightweight construction of the exception - only the frame holder is\n> stored, with all holders and frames reachable from it frozen. \n\nYou do not need to freeze frames! Your code to print stack trace just uses idata\nand parentFrame, but that would not change during the following calculations in\nthe Interpreter.interpret. In fact, to print stack trace you just need the heads\nof CallFrame chains from each Interpreter invocation on Java stack. So it seems\nthe exception constructor can  calculate the depth of CallFrameHolder chain,\nallocate CallFrame array, fill it with heads of CallFrame chains and store that\nin the exception.",
+            "date": "20050210T00:11:22",
+            "id": 12
+        },
+        {
+            "author": "szegedia@freemail.hu",
+            "body": "Created attachment 173940\nImprovement over the last one - eliminated nearly duplicated code for PrintWriter/PrintStream\n\nI improved the last night's version slightly. There are no longer two separate\nclasses for printing the stack trace (one PrintStream subclass and one\nPrintWriter subclass) with nearly identical code. I kept only the PrintWriter\none, and when printing to a PrintStream is required, I wrap it in an output\nstream writer and print writer first. I really wish Sun engineered PrintStream\nand PrintWriter so that they implement a common interface declaring all of\ntheir print...() method. Actually, I'm not the only one to wish for this as\nwitnessed on: http://bugs.sun.com/bugdatabase/view_bug.do?bug_id=5035587",
+            "date": "20050210T08:41:11",
+            "id": 13
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "(In reply to own comment #13)\n> (In reply to comment #10)\n> > Created an attachment (id=173902) [edit] [edit]\n> > Another take, now with freezing frames\n> > \n> > Okay, I think I understood the concept of freezing call frames and call frame\n> > holders objects and cloning them on-demand. Here's a new version that should\n> > keep the lightweight construction of the exception - only the frame holder is\n> > stored, with all holders and frames reachable from it frozen. \n> \n> You do not need to freeze frames! Your code to print stack trace just uses idata\n> and parentFrame,\n\nThat is, of cause, wrong, since the code uses pcSourceLineStart which would\nchange. So with the above it is necessary to capture array of lines per each\nInterpreterFarme that with CallFrame linked list would provide stack trace\ninformation. \n\nNow that does not sound particularly better then frame freezing since the later\nwould avoid allocating of any objects if there are no exception handlers in the\nInterpreter.interpret.\n\nOn the other hand the exception origin information may only change if the\nexception is caught in Interpreter.interpret or bellow. If the catch handler\nbelongs to the Java code, then its execution would not change the interpreter\ndata in all practical cases. And if it is Interpreter.interpreter that prepares\nto execute catch code in JS, then it can explicitly force construction of stack\ninformation.\n\nThus the idea would be in the exception constructor to store only the current\nCallFrameHolder. Then the exception should contain a method to force creation of\nstack trace. Interpreter would call the method when preparing to execute the\ncatch handler in the script. Rhino embedding may also call this method if it\ncatches RhinoException and plans to do something smart with it besides printing\nstack-related information immediately.",
+            "date": "20050210T08:49:30",
+            "id": 14
+        },
+        {
+            "author": "szegedia@freemail.hu",
+            "body": "(In reply to comment #15)\n> \n> On the other hand the exception origin information may only change if the\n> exception is caught in Interpreter.interpret or bellow. If the catch handler\n> belongs to the Java code, then its execution would not change the interpreter\n> data in all practical cases. And if it is Interpreter.interpreter that \nprepares\n> to execute catch code in JS, then it can explicitly force construction of \nstack\n> information.\n> \n> Thus the idea would be in the exception constructor to store only the current\n> CallFrameHolder. Then the exception should contain a method to force creation \nof\n> stack trace. Interpreter would call the method when preparing to execute the\n> catch handler in the script. Rhino embedding may also call this method if it\n> catches RhinoException and plans to do something smart with it besides \nprinting\n> stack-related information immediately.\n\nWell, I'm not seeing this either as being particularly better than frame \nfreezing. There's again the issue of an exception stack trace being generated \nforcibly even if it might happen that it will never be printed. Also, it exposes \nan implementation detail to an \"advanced\" embedder - he must remember to call \nthe generator method. Granted, this can only be an issue if the embedder happens \nto call an interpreted function/script from the catch block. Frame freezing code \ntakes care of all corner cases in a self-contained way, and I don't think \nthere's a big cost difference between taking a snapshot of locations for the \nstack trace in the interpreter catch handler vs. making clones of frames in the \ninterpreter if it recovers from the exception. Especially since the code for \nmanagement of freezing is already in place, and doing a forcible capture would \nrequire RhinoException to cache a string containing the printed trace. \nTherefore, frame freezing looks like a more elegant solution to me, but then I'm \na rather new to the Rhino code and I accept that you have more insight into it.",
+            "date": "20050210T09:42:06",
+            "id": 15
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "(In reply to comment #16)\n> Well, I'm not seeing this either as being particularly better than frame \n> freezing.\n\nFrame freezing would lead to frame cloning if the exception is caught inside\nInterpreter.interpret and this is not exactly cheap operation. With a few nested\nscript frames on top of try /catch in JS generating the stack may be cheaper\nthen cloning the frames. \n\n> There's again the issue of an exception stack trace being generated \n> forcibly even if it might happen that it will never be printed. \n> Also, it exposes \n> an implementation detail to an \"advanced\" embedder - he must remember to call \n> the generator method. Granted, this can only be an issue if the embedder happens \n> to call an interpreted function/script from the catch block.\n\nThat would not affect the capturing information. The only case when it would\nmatter is when the handler would return somehow the exeception object back to\nthe script before printing the stack trace. But that require to wrap execption\nbefore sending it to JS and Rhino can call the method itself in the wrapping\ncode. Since code to generate the catch object for native exception would go\nthrough the same path, it would add that forcefull stack creation only in one place.\n\n> Frame freezing code \n> takes care of all corner cases in a self-contained way.\n\nRight, but that requires a lot more code then the original patch and that does\nnot seems justifiable.\n\n> and I don't think \n> there's a big cost difference between taking a snapshot of locations for the \n> stack trace in the interpreter catch handler vs. making clones of frames in the \n> interpreter if it recovers from the exception. Especially since the code for \n> management of freezing is already in place, and doing a forcible capture would \n> require RhinoException to cache a string containing the printed trace. \n> Therefore, frame freezing looks like a more elegant solution to me, but then I'm \n> a rather new to the Rhino code and I accept that you have more insight into it.\n\n",
+            "date": "20050210T11:45:06",
+            "id": 16
+        },
+        {
+            "author": "szegedia@freemail.hu",
+            "body": "Created attachment 173956\nYet another try without frame freezing\n\nOkay, here's another try - no frame freezing,\nRhinoException.generateStackTrace() called when a frame was found that can\nhandle the exception, just before StateLoop is continued. generateStackTrace()\nalso called in printStackTrace() (does nothing if it was already called before)\nso it handles the case where the exception bubbles up into Java code where the\ntrace is printed without it ever being handled at all in the interpreter.\n\nHow does it look now?",
+            "date": "20050210T13:55:43",
+            "id": 17
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Comment on attachment 173956\nYet another try without frame freezing\n\n> \n>             for (;;) {\n>                 if (exState != EX_NO_JS_STATE) {\n>                     boolean onlyFinally = (exState != EX_CATCH_STATE);\n>                     indexReg = getExceptionHandler(frame, onlyFinally);\n>                     if (indexReg >= 0) {\n>+                        if(throwable instanceof RhinoException) {\n>+                            ((RhinoException)throwable).generateStackTrace();\n>+                        }\n>                         // We caught an exception, restart the loop\n>                         // with exception pending the processing at the loop\n>                         // start\n>                         continue StateLoop;\n>                     }\n\nThat is not right as it would force stack trace for finally as well and would\nmiss the case of class compiler between interpreter frames. I suggest to put\nthe check to WrapFactory before calls to WrapFactory.wrapAsJavaObject.\n\nOtherwise the patch is OK.",
+            "date": "20050210T16:11:14",
+            "id": 18
+        },
+        {
+            "author": "djgredler@gmail.com",
+            "body": "I just wanted to send a big \"Thank You\" to Attila for working on this! Much\nappreciated!",
+            "date": "20050210T19:42:34",
+            "id": 19
+        },
+        {
+            "author": "szegedia@freemail.hu",
+            "body": "(In reply to comment #20)\n> I just wanted to send a big \"Thank You\" to Attila for working on this! Much\n> appreciated!\n\nWell, I thank you for the appreciation. However, I've come under a rather heavy \nload on my pay job, so I'm not sure if I can keep working on it. If it really \nonly requires a finishing touch or two, maybe Igor can take it over. Lacking \nthis, I might be able to return to it in, like, two weeks.",
+            "date": "20050213T15:02:23",
+            "id": 20
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 174490\nDuplicate only mutable information etc.\n\nChanges from the previous version:\n\n1. In the new version RhinoException constructor duplicates the information\nthat can change during the following execution. Then the captured immune data\nare used to augment the native stack trace with script information when\nrequested.\n\nIn particular the patch stores in RhinoException the array of top CallFrame\ninstances from each interpreter invocation and array of\nCallFrame.pcSourceLineStart from all CallFrame instances from all interpreter\ninvocations. It is relatively lightweight and should not impose noticable\nperformace penalty if stack is not printed.\n\n2. I replaced CallFrameHolder by a stack of top frames from each interpreter\ninvocation. In this way there is no need to create an additional object per\neach interpreter invocation and creation of array of top frames is simplified.\n\n3. The previous version depended on the fact that JVM would call\nPrintWriter.println() to print stack entries. Since there is no any guaranty\nthat it would stay that way on any JVM where Rhino could run, I changed that to\nexplicit parsing of the stack trace. To make life even I renamed the\ninterpreter loop routine to interpreterLoop to have a simple tag to look for.",
+            "date": "20050216T16:28:46",
+            "id": 21
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 174503\nBetter stack trace\n\n1. Stack trace includes function name when available.\n\n2. Patch tries to decrease the number of various Interpreter.interpret calls\nbefore the real interpretation can start. It makes the interpreter\ninitialization slightly faster and stack trace looks more clear.",
+            "date": "20050216T18:33:03",
+            "id": 22
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 174504\nTest output with the last patch",
+            "date": "20050216T18:36:01",
+            "id": 23
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "I committed the last patch.",
+            "date": "20050216T19:58:29",
+            "id": 24
+        },
+        {
+            "author": "szegedia@freemail.hu",
+            "body": "Created attachment 175806\nPatch for wrapping unchecked exceptions from Java method invocations\n\nRecently we had a problem with a NPE occurring in a Java method - it wasn't\nwrapped into WrappedException and subsequently we did not see the interpreter\nscript stack traces. This is because unchecked throwables aren't wrapped into\nInvocationTargetException. I changed the relevant code in MemberBox.java to\nwrap all exceptions (checked and unchecked) into WrappedException. BTW, this is\nnow consistent with how JavaMembers.get() and JavaMembers.put() work - they\nalso wrap all exceptions into WrappedException, not just\nInvocationTargetException.",
+            "date": "20050228T09:58:02",
+            "id": 25
+        },
+        {
+            "author": "szegedia@freemail.hu",
+            "body": "Created attachment 175807\nPatch for wrapping unchecked exceptions from Java method invocations\n\nSorry, uploaded a wrong file previously",
+            "date": "20050228T10:00:29",
+            "id": 26
+        },
+        {
+            "author": "szegedia@freemail.hu",
+            "body": "Hm... For some reason, before I added the patch Bugzilla showed me an option to \nreopen the bug, now it doesn't.",
+            "date": "20050228T10:01:37",
+            "id": 27
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "I committed the last patch.",
+            "date": "20050228T12:39:15",
+            "id": 28
+        },
+        {
+            "author": "szegedia@freemail.hu",
+            "body": "Created attachment 182046\nPatch for adding a \"rhinoException\" property to error objects\n\nThe wrapped exception carrying the embedded script stack trace can become\ninaccessible to the calling Java code if the script catches and rethrows\nexceptions. I.e.\n----------------------------------------------------\ntry\n{\n    new java.io.FileInputStream(\"nonexistant file\");\n}\ncatch(e)\n{\n    throw e;\n}\n----------------------------------------------------\n\nThe Java code invoking the interpreter won't be able to retrieve the\nWrappedException that carries the script stack trace. It can only retrieve the\nunderlying e.javaException using code similar to this:\n\n----------------------------------------------------\nThrowable terminationCause;\ntry\n{\n    script.exec(cx, scope);\n}\ncatch(JavaScriptException e)\n{\n    terminationCause = e;\n    Object val = e.getValue();\n    if(val instanceof Scriptable)\n    {\n\tObject njo = ScriptableObject.getProperty(((Scriptable)val),\n\"javaException\");\n\tif(njo instanceof NativeJavaObject)\n\t{\n\t    val = njo;\n\t}\n\tif(val instanceof NativeJavaObject)\n\t{\n\t    Object t = ((NativeJavaObject)val).unwrap();\n\t    while(t instanceof InvocationTargetException)\n\t    {\n\t\tt = ((InvocationTargetException)t).getCause();\n\t    }\n\t    if(t instanceof Throwable)\n\t    {\n\t\tterminationCause = (Throwable)t;\n\t    }\n\t}\n    }\t \n}\ncatch(Throwable t)\n{\n    terminationCause = t;\n}\n----------------------------------------------------\n\nI'm attaching a patch that'd add another property to the JavaScript error\nobject, named \"rhinoException\" that'd contain the originating RhinoException.\nIn my above code that attempts to extract the underlying exception from the\nJavaScriptException, I could then obtain the RhinoException by calling\nScriptableObject.getProperty with \"rhinoException\" instead of \"javaException\".\nThat way, I could still properly log exceptions with script stack trace even\nwhen the script does a try-catch-rethrow.",
+            "date": "20050428T10:45:41",
+            "id": 29
+        }
+    ],
+    "component": "Core",
+    "description": "It would be nice to have a JavaScript stack trace in exceptions thrown by Rhino,\nmaybe in EcmaError. Right now EcmaError has sourceName, lineNumber, columnNumber\nand lineSource, but it would be nice to have this data for each call on the\nstack at the time of the error. This would make it much easier for applications\nthat embed Rhino to debug their problems.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "274467",
+    "issuetypeClassified": "OTHER",
+    "issuetypeTracker": "RFE",
+    "priority": "-- enhancement",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "Add JavaScript stack trace to exceptions",
+    "systemSpecification": true,
+    "version": "1.6R1"
+}

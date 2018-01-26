@@ -1,0 +1,47 @@
+{
+    "comments": [
+        {
+            "author": null,
+            "body": "This is a bit mysterious, as neither host.jsp nor the \nEdit/Add/SaveHostAction.java files have changed in more than six months.  I'll \nhave to dig a bit deeper it seems ;)",
+            "date": "20040927T22:58:55",
+            "id": 0
+        },
+        {
+            "author": null,
+            "body": "You must have some weird configuration error, because it works for me.  I'm \nunable to reproduce your issue.\n\nHere are the steps I took and other details:\n- Download jakarta-tomcat-5.0.28.zip from the Jakarta binaries download page, \nunzip to c:\\ (I'm running Windows XP SP2, Sun JDK 1.4.2_04).\n- Edit conf/tomcat-users.xml to add an admin user, startup the server using \nstatup.bat.\n- Go to the Administration link, login to the admin webapp, click around \nserver, service, host (in fact I clicked on every link I could find, all \nworked).\n- I even add a brand new host, saved, committed changed, then deleted, no \nproblem.  Same with adding a service.\n\nI suggest you use the tomcat-user mailing list to ask for help if you do a \nclean installation and still get this issue.",
+            "date": "20040927T23:03:53",
+            "id": 1
+        },
+        {
+            "author": null,
+            "body": "Created attachment 17533\nuse the domain parameter instead of TomcatTreeBuilder.DEFAULT_DOMAIN\n\nthis bug is caused by the following method in \norg.apache.webapp.admin.Lists.java class\n\nThe method is : \n\npublic static String getAdminAppService (MBeanServer mbserver, String domain,\nHttpServletRequest\nrequest)\n\tthrows Exception {\n\n\tString adminDomain = TomcatTreeBuilder.DEFAULT_DOMAIN;\n\t// Get the admin app's service name\n\tStringBuffer sb = new StringBuffer(adminDomain);\n\tsb.append(\":type=Service,*\");\n\tObjectName search = new ObjectName(sb.toString());\n\t // other parts\n\treturn service;\n\n    }\n\nas you can see it always uses the TomcatTreeBuilder.DEFAULT_DOMAIN to find the\nservice. but this value is hard coded as \"Catalina\"\n\nso if someone rename the Engine name(defuaul Catalina) in server.xml it causes\nthis error.\n\nsome we have to use the domain paramenter as follows\n StringBuffer sb = new StringBuffer(domain);",
+            "date": "20060130T05:55:14",
+            "id": 2
+        },
+        {
+            "author": null,
+            "body": "Blake, does Amila's patch fix your issue?\n\nThe relevant code is still intact in the 5.5 branch as of 5.5.16, so this is not\njust a 5.0 issue.",
+            "date": "20060414T15:16:13",
+            "id": 3
+        },
+        {
+            "author": null,
+            "body": "This has been fixed in 5.5.x and will be included in 5.5.19 onwards.\n\nThanks for the report and the patch.",
+            "date": "20060907T02:44:28",
+            "id": 4
+        }
+    ],
+    "component": "Webapps:Administration",
+    "description": "when a service is clicked on in the left navigaiton frame:\nHTTP Status 500 - \n\n--------------------------------------------------------------------------------\n\ntype Exception report\n\nmessage \n\ndescription The server encountered an internal error () that prevented it from \nfulfilling this request.\n\nexception \n\njavax.servlet.ServletException: Define tag cannot set a null value\n\torg.apache.jasper.runtime.PageContextImpl.doHandlePageException\n(PageContextImpl.java:825)\n\torg.apache.jasper.runtime.PageContextImpl.handlePageException\n(PageContextImpl.java:758)\n\tadmin.service.service_jsp._jspService(service_jsp.java:864)\n\torg.apache.jasper.runtime.HttpJspBase.service(HttpJspBase.java:94)\n\tjavax.servlet.http.HttpServlet.service(HttpServlet.java:802)\n\torg.apache.struts.action.RequestProcessor.doForward\n(RequestProcessor.java:1069)\n\torg.apache.struts.action.RequestProcessor.processForwardConfig\n(RequestProcessor.java:455)\n\torg.apache.struts.action.RequestProcessor.process\n(RequestProcessor.java:279)\n\torg.apache.struts.action.ActionServlet.process(ActionServlet.java:1482)\n\torg.apache.struts.action.ActionServlet.doGet(ActionServlet.java:507)\n\tjavax.servlet.http.HttpServlet.service(HttpServlet.java:689)\n\tjavax.servlet.http.HttpServlet.service(HttpServlet.java:802)\n\n\nroot cause \n\njavax.servlet.jsp.JspException: Define tag cannot set a null value\n\torg.apache.struts.taglib.bean.DefineTag.doEndTag(DefineTag.java:272)\n\tadmin.service.service_jsp._jspService(service_jsp.java:253)\n\torg.apache.jasper.runtime.HttpJspBase.service(HttpJspBase.java:94)\n\tjavax.servlet.http.HttpServlet.service(HttpServlet.java:802)\n\torg.apache.struts.action.RequestProcessor.doForward\n(RequestProcessor.java:1069)\n\torg.apache.struts.action.RequestProcessor.processForwardConfig\n(RequestProcessor.java:455)\n\torg.apache.struts.action.RequestProcessor.process\n(RequestProcessor.java:279)\n\torg.apache.struts.action.ActionServlet.process(ActionServlet.java:1482)\n\torg.apache.struts.action.ActionServlet.doGet(ActionServlet.java:507)\n\tjavax.servlet.http.HttpServlet.service(HttpServlet.java:689)\n\tjavax.servlet.http.HttpServlet.service(HttpServlet.java:802)\n\n\nnote The full stack trace of the root cause is available in the Apache \nTomcat/5.0 logs.\n\n\n--------------------------------------------------------------------------------\n\nApache Tomcat/5.0\n\n************************************************************\n************************************************************\n************************************************************\n\nwhen a host is clicked on on the left navigation frame:\n\nHTTP Status 500 - \n\n--------------------------------------------------------------------------------\n\ntype Exception report\n\nmessage \n\ndescription The server encountered an internal error () that prevented it from \nfulfilling this request.\n\nexception \n\njava.lang.NullPointerException\n\torg.apache.struts.taglib.logic.CompareTagBase.condition\n(CompareTagBase.java:179)\n\torg.apache.struts.taglib.logic.NotEqualTag.condition\n(NotEqualTag.java:90)\n\torg.apache.struts.taglib.logic.ConditionalTagBase.doStartTag\n(ConditionalTagBase.java:218)\n\tadmin.host.host_jsp._jspService(host_jsp.java:450)\n\torg.apache.jasper.runtime.HttpJspBase.service(HttpJspBase.java:94)\n\tjavax.servlet.http.HttpServlet.service(HttpServlet.java:802)\n\torg.apache.struts.action.RequestProcessor.doForward\n(RequestProcessor.java:1069)\n\torg.apache.struts.action.RequestProcessor.processForwardConfig\n(RequestProcessor.java:455)\n\torg.apache.struts.action.RequestProcessor.process\n(RequestProcessor.java:279)\n\torg.apache.struts.action.ActionServlet.process(ActionServlet.java:1482)\n\torg.apache.struts.action.ActionServlet.doGet(ActionServlet.java:507)\n\tjavax.servlet.http.HttpServlet.service(HttpServlet.java:689)\n\tjavax.servlet.http.HttpServlet.service(HttpServlet.java:802)\n\n\nnote The full stack trace of the root cause is available in the Apache \nTomcat/5.0 logs.\n\n\n--------------------------------------------------------------------------------\n\nApache Tomcat/5.0",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "31339",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "P3 major",
+    "product": "Tomcat 5",
+    "project": "TOMCAT",
+    "summary": "admin app throwing struts exceptions",
+    "systemSpecification": false,
+    "version": "5.0.28"
+}

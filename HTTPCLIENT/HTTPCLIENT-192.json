@@ -1,0 +1,107 @@
+{
+    "comments": [
+        {
+            "author": "Bin Chen",
+            "body": "Created an attachment (id=5931)\nFix in ConnectMethod\n",
+            "date": "2003-04-22T04:52:02.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Bin Chen",
+            "body": "Correction:\n\nOur fix actually moved addRequestHeaders to the top of the loop of \nprocessRequest method in HttpMethodBase.  The change in execute method is \nrelated to a different problem.",
+            "date": "2003-04-22T04:58:02.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Bin Chen",
+            "body": "Created an attachment (id=5947)\naddRequestHeaders in HttpMethodBase.processRequest\n",
+            "date": "2003-04-22T20:58:35.000+0000",
+            "id": 2
+        },
+        {
+            "author": "Bin Chen",
+            "body": "Created an attachment (id=5948)\nRemove addRequestHeaders from HttpMethodBase.writeRequestHeaders\n",
+            "date": "2003-04-22T21:00:45.000+0000",
+            "id": 3
+        },
+        {
+            "author": "Bin Chen",
+            "body": "Proposed fix for duplicate cookies during NTLM proxy negotiation:\n\nOur fix is to use a state flag in HttpMethodBase: inProxyAuthenticationRetry.  \nThe flag will default to false at start of execute.  It is to be set to true \nwhen retrying with credentials.  When the flag is true, only proxy \nauthentication headers are added in the addRequestheaders method. We also used \nthe same flag for another bug fix related to NTLM authentication (will be \nreported later).",
+            "date": "2003-04-22T21:22:22.000+0000",
+            "id": 4
+        },
+        {
+            "author": "Bin Chen",
+            "body": "Created an attachment (id=5949)\nCheck inProxyAuthenticationRetry in addRequestHeaders\n",
+            "date": "2003-04-22T21:27:34.000+0000",
+            "id": 5
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "I did not yet have time to carefully read through the description of the \nproblem. I'll get back to as soon as I have done so. Meanwhile, could you \nplease produce the wire log of the HTTP communication that demonstrates the \nproblem? Another kind request is to submit patches in diff format\n\nOleg",
+            "date": "2003-04-22T21:29:23.000+0000",
+            "id": 6
+        },
+        {
+            "author": "Bin Chen",
+            "body": "Created an attachment (id=5950)\nSet inProxyAuthenticationRetry to true in HttpMethodBase.processAuthenticationResponse\n",
+            "date": "2003-04-22T21:29:49.000+0000",
+            "id": 7
+        },
+        {
+            "author": "Bin Chen",
+            "body": "Created an attachment (id=5951)\ninitialize inProxyAuthenticationRetry in HttpMethodBase.execute\n",
+            "date": "2003-04-22T21:32:27.000+0000",
+            "id": 8
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Created an attachment (id=5955)\nPatch (take 1)\n",
+            "date": "2003-04-22T22:37:18.000+0000",
+            "id": 9
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "The duplicate cookie bug has been fixed just a short while ago. Authentication \nheaders, however, were apparently overlooked. Many thanks for pointing it out. \nThe patch should address the problem\n\nOleg\n\n",
+            "date": "2003-04-22T22:43:33.000+0000",
+            "id": 10
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Patch applied. Please re-test your application against the most recent CVS\nsnapshot. If the patch does not fix the problem for you, just reopen the case.\nWire log will be highly appreciated\n\nOleg",
+            "date": "2003-04-23T00:29:52.000+0000",
+            "id": 11
+        },
+        {
+            "author": "Bin Chen",
+            "body": "New Problem:\n\nWhile the fix did solve the duplicate cookie problem, it created another one.  \nIt accidentally remvoed the cookie header application has added through \nPostMethod.addRequestHeader call.  Our application need to add cookie in some \ncase and we have been using addRequestHeader to do it.  ",
+            "date": "2003-04-28T23:36:50.000+0000",
+            "id": 12
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Just add your cookie to the HttpState instance associated with your HttpClient\ninstance. That's it\n\nOleg",
+            "date": "2003-04-28T23:41:44.000+0000",
+            "id": 13
+        },
+        {
+            "author": "Bin Chen",
+            "body": "Created an attachment (id=6054)\nLog file indicating that the cookie header added by app was not sent.\n",
+            "date": "2003-04-28T23:42:30.000+0000",
+            "id": 14
+        }
+    ],
+    "component": "HttpClient (classic)",
+    "description": "When negotiating proxy servers or during write-failure retries, the httpClient \nadds duplicate request headers to each retry.  The result is that each header \nis duplicated multiple times (number of retries).  This only impact the headers \nthat allow multiple values (the others were prevented byt the code).  In  \nParticular, it affects \"cookie\" header.  It happens more often when going \nthrough proxy server with tunnelling connections (https), but also happens on \nhttp on NTLM proxy server (need multiple round trips to get authenticated).\n\nSteps to Reproduce:\nSetup a client application to go to a website that requires going through a \nproxy server that supports tunnelling for https connections and authenticate \nusers (Basic and/or NTLM).  The website also need to support keep-alive and \nsupport https. Initilize the HttpState with a cookie. Turn httpClient \nlogging \"wire, debug and trace\" logging on.  Set the proxy credential with \nvalid user id and password.\n\nThen run the application against any url on the website.\n\nTest Results and fixes:\n1. When connect to https through a (Netscape/Basic auth) proxy that does \nthe \"tunnelling\", the initial \"CONNECT\" adds the cookie header once.  The proxy \nreturns the 407.  Then the code will use the proxy credential to do \nthe \"CONNECT\" again.  After successful connection (200), the code will do the \nproper \"POST\".  The httpClient code adds the same cookie one more time in here.\n\nThis case was caused by the wrapper class ConnectMethod using the wrapped \nmethod \"addRequestHeaders\" to build headers for the \"CONENCT\".  It can be fixed \nby having the ConnectMethod only adds headers it needs (\"addHostRequestHeader\" \nand \"addProxyAuthorizationRequestHeader\").\n\n2. When connect to http through proxy.  The client first sends a \"POST\" without \nproxy credentials, and gets a 407 back.  The cookie header is added before that \nhappens.  Then (loop in the HttpMethodBase.execute) the client will retry \nthe \"POST\" with the credentials (the logic require to have a response header to \nsubmit credentials).  In the retry, the cookie is added again \n(addRequestHeaders is called inside the writeRequest).\n\n3. When using kee-alive with no-proxy on http, if the connection times out, the \nnext call of the method will get a socket error on write.  The retry loop in \nthe processRequest method will retry the request again.  It will add the cookie \nagain.  To deal with both case 2 and 3, the addRequestHeadres call need to be \nmoved up to the beginning of the HttpMethodBase.execute.  We tested this \napproach and it worked for us.\n\n4. When negotiating NTLM proxy for https, multiple round trips are needed to \nget user authenticated.  The same ConnectMethod instance is used.  So the \nadding of the proxy authenticate headers need to be done with the ConnectMethod \ninstance (vs. the wrapped method for Host header).  Otherwise, the \nAuthenticator class would not be able to find the information for \nauthenticating user.\n\n\nI will send in our suggested fixes later.\n\nBuild: This is based on 0307 nightly build.  We run into some other problems \nwhen trying the 0410 nightly build.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "HTTPCLIENT-192",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "HTTPCLIENT",
+    "project": "HTTPCLIENT",
+    "summary": "Duplicate request headers when connect through proxies",
+    "systemSpecification": true,
+    "version": "2.0 Beta 2"
+}

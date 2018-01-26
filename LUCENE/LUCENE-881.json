@@ -1,0 +1,53 @@
+{
+    "comments": [
+        {
+            "author": "Michael Busch",
+            "body": "The problem here is that QueryParser.escape() does not escape | and &. This should be easy to fix, I'll submit a patch soon.",
+            "date": "2007-05-17T16:29:57.347+0000",
+            "id": 0
+        },
+        {
+            "author": "Yonik Seeley",
+            "body": "Sorry, I don't quite understand the problem.  Could someone provide an actual query string that should work but doesn't?  \"||\" is reserved since it means OR, AFAIK.",
+            "date": "2007-05-17T16:43:22.987+0000",
+            "id": 1
+        },
+        {
+            "author": "Michael Busch",
+            "body": "You are right Yonik, || is reserved.\n\nThe QueryParser itself works correctly:\n\n\"|| test ||\" yields a ParseException, which is correct because in this case || means OR\n\"\\|\\| test \\|\\|\" yields \"|| test ||\", this is correct, too, because the two | are escaped\n\n\nThe problem here is the escape() method:\n\n  /**\n   * Returns a String where those characters that QueryParser\n   * expects to be escaped are escaped by a preceding <code>\\</code>.\n   */\n  public static String escape(String s);\n\nIt escapes chars like +, -, ! and so on. Example:\n\nescape(\"++ test ++\") yields \"\\+\\+ test \\+\\+\"\n\nbut\n\nescape(\"|| test ||\") yields \"|| test ||\".\n\nI believe to be consistent escape() should escape the two chars | and & as well, no?",
+            "date": "2007-05-17T17:18:04.823+0000",
+            "id": 2
+        },
+        {
+            "author": "Yonik Seeley",
+            "body": "> escape() should escape the two chars | and & as well, no?\n\nAgree.",
+            "date": "2007-05-17T18:10:16.101+0000",
+            "id": 3
+        },
+        {
+            "author": "Michael Busch",
+            "body": "Patch with additional unit tests.\n\nAll tests pass.",
+            "date": "2007-05-18T17:34:46.314+0000",
+            "id": 4
+        },
+        {
+            "author": "Michael Busch",
+            "body": "I just committed this patch. Thank you for finding this bug, Slobodan!",
+            "date": "2007-05-23T04:55:46.555+0000",
+            "id": 5
+        }
+    ],
+    "component": "core/queryparser",
+    "description": "There is a problem with query parser when search string starts/ends with ||.  When string contains || in the middle like 'something || something' everything runs without a problem.\n\nPart of code: \n  searchText = QueryParser.escape(searchText);\n  QueryParser parser = null;\n  parser = new QueryParser(fieldName, new CustomAnalyser());\n  parser.parse(searchText);\n\nCustomAnalyser class extends Analyser. Here is the only redefined method: \n\n    @Override\n    public TokenStream tokenStream(String fieldName, Reader reader) {\n      return new PorterStemFilter( (new StopAnalyzer()).tokenStream(fieldName, reader));\n    }\n\nI have tested this on Lucene 2.1 and latest source I have checked-out from SVN (Revision 538867) and in both cases parsing exception was thrown.\n\nPart of Stack Trace (Lucene - SVN checkout - Revision 538867):\nCannot parse 'someting ||': Encountered \"<EOF>\" at line 1, column 11.\nWas expecting one of:\n    <NOT> ...\n    \"+\" ...\n    \"-\" ...\n    \"(\" ...\n    \"*\" ...\n    <QUOTED> ...\n    <TERM> ...\n    <PREFIXTERM> ...\n    <WILDTERM> ...\n    \"[\" ...\n    \"{\" ...\n    <NUMBER> ...\n    \n org.apache.lucene.queryParser.ParseException: Cannot parse 'someting ||': Encountered \"<EOF>\" at line 1, column 11.\nWas expecting one of:\n    <NOT> ...\n    \"+\" ...\n    \"-\" ...\n    \"(\" ...\n    \"*\" ...\n    <QUOTED> ...\n    <TERM> ...\n    <PREFIXTERM> ...\n    <WILDTERM> ...\n    \"[\" ...\n    \"{\" ...\n    <NUMBER> ...\n    \n        at org.apache.lucene.queryParser.QueryParser.parse(QueryParser.java:150)\n\n\nPart of Stack Trace (Lucene 2.1):\nCannot parse 'something ||': Encountered \"<EOF>\" at line 1, column 12.\nWas expecting one of:\n    <NOT> ...\n    \"+\" ...\n    \"-\" ...\n    \"(\" ...\n    \"*\" ...\n    <QUOTED> ...\n    <TERM> ...\n    <PREFIXTERM> ...\n    <WILDTERM> ...\n    \"[\" ...\n    \"{\" ...\n    <NUMBER> ...\n    \n org.apache.lucene.queryParser.ParseException: Cannot parse 'something ||': Encountered \"<EOF>\" at line 1, column 12.\nWas expecting one of:\n    <NOT> ...\n    \"+\" ...\n    \"-\" ...\n    \"(\" ...\n    \"*\" ...\n    <QUOTED> ...\n    <TERM> ...\n    <PREFIXTERM> ...\n    <WILDTERM> ...\n    \"[\" ...\n    \"{\" ...\n    <NUMBER> ...\n    \n        at org.apache.lucene.queryParser.QueryParser.parse(QueryParser.java:149)\n\n\n",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-881",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Trivial",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "QueryParser escaping/parsin issue with strings starting/ending with ||",
+    "systemSpecification": true,
+    "version": "2.1, 2.2"
+}

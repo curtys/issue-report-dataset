@@ -1,0 +1,155 @@
+{
+    "comments": [
+        {
+            "author": "Toru Matsuzawa",
+            "body": "patch attached.",
+            "date": "2007-08-07T13:32:09.326+0000",
+            "id": 0
+        },
+        {
+            "author": "Otis Gospodnetic",
+            "body": "I don't fully understand the problem report.  What problem are you seeing and does the unit test you included in the patch (thank you!) cover that case?\n",
+            "date": "2008-02-17T09:13:53.823+0000",
+            "id": 1
+        },
+        {
+            "author": "Koji Sekiguchi",
+            "body": "The current CJKTokenizer returns a redundant empty string at the end of token stream when it tokenizes CJK characters.\n\nString str = \"C1C2C3\";\nTokenizer tokenizer = new CJKTokenizer( new StringReader( str ) );\nfor( Token token = tokenizer.next(); token != null; token = tokenizer.next() )\n    System.out.println( \"token = \\\"\" + token.termText() + \"\\\"\" );\n\nThis should be:\n\ntoken = \"C1C2\"\ntoken = \"C2C3\"\n\nbut the current CJKTokenizer outputs:\n\ntoken = \"C1C2\"\ntoken = \"C2C3\"\ntoken = \"\"\n\nThe attached test case reproduce this problem and the patch solves it.",
+            "date": "2008-02-17T15:09:49.519+0000",
+            "id": 2
+        },
+        {
+            "author": "Koji Sekiguchi",
+            "body": "I attached Solr analysis screen to show the problem and the result of the patch.",
+            "date": "2008-07-30T16:36:49.984+0000",
+            "id": 3
+        },
+        {
+            "author": "Steve Rowe",
+            "body": "Hi Koji,\n\nThe test class in your patch is a nice addition.\n\nbq. There is no problem in CJKAnalyzer. \n\nThe only reason that CJKAnalyzer doesn't have this problem is that the empty string is one of the stopwords it filters out from CJKTokenizer's output!\n\nThe following part of your patch appears to address a problem that you haven't covered in your comments - is this so?  If it is a problem separate from the empty-string issue, can you describe the effects of this change?:\n\n{code:java}\n@@ -175,8 +175,9 @@\n                             length = 0;\n                             preIsTokened = false;\n \n-                            break;\n+                            continue;\n                         } else {\n+                            tokenType = \"double\";\n                             break;\n                         }\n                     }\n{code}\n\n\nThe other part of your patch reads:\n\n{code:java}\n@@ -236,8 +237,13 @@\n             }\n         }\n \n-        return new Token(new String(buffer, 0, length), start, start + length,\n+        String tokenString = new String(buffer, 0, length) ;\n+        if( dataLen == -1 && \"\".equals(tokenString)) {\n+          return null ;\n+        } else {\n+          return new Token(tokenString, start, start + length,\n                          tokenType\n                         );\n+        }\n{code}\n\nWouldn't it be simpler/clearer to test {{length}} for zero instead of constructing a String and testing it for equality with the empty string?:\n\n{code:java}\nif (length > 0) {\n  String tokenString = new String(buffer, 0, length);\n  return new Token(tokenString, start, start + length, tokenType);\n} else {\n  return null;\n}\n{code}\n",
+            "date": "2008-07-30T18:38:30.698+0000",
+            "id": 4
+        },
+        {
+            "author": "Koji Sekiguchi",
+            "body": "Hi Steven,\n\nbq. The test class in your patch is a nice addition.\n\nThanks, but the attached patch was written by Toru. :D\nMatsuzawa-san, can you follow up the comments?",
+            "date": "2008-07-30T22:27:56.535+0000",
+            "id": 5
+        },
+        {
+            "author": "Steve Rowe",
+            "body": "Sorry Toru, I saw Koji's two most recent comments on the issue and assumed that he was the reporter, and didn't scroll up and check :(.",
+            "date": "2008-07-30T22:37:17.880+0000",
+            "id": 6
+        },
+        {
+            "author": "Toru Matsuzawa",
+            "body": "Thank you for Sekiguchi-san and Steven comment. \nI am sorry for slow comment . \n\n{quote}\nThe following part of your patch appears to address a problem that you haven't covered in your comments - is this so? If it is a problem separate from the empty-string issue, can you describe the effects of this change?:\n{quote}\nIn current CJKTokenizer, \"C3\" becomes \"Single\" of non-ascii as shown by the following examples. \n{noformat} \n// C1C2C3 is non-ascii\nString str = \"C1C2abcC3def\" ;\nTokenizer tokenizer = new CJKTokenizer( new StringReader( str ) );\nfor( Token token = tokenizer.next(); token != null; token = tokenizer.next() )\nSystem.out.println( \"token=\\\"\" + token.termText() + \"\\\"\" + \" type=\\\"\"+ token.type() + \"\\\"\");\n{noformat} \ncurrent CJKTokenizer outputs:\n{noformat} \ntoken=\"C1C2\" type=\"double\"\ntoken=\"\" type=\"single\"\ntoken=\"abc\" type=\"single\"\ntoken=\"C3\" type=\"single\"\ntoken=\"def\" type=\"single\"\n{noformat} \napplying patch:\n{noformat} \ntoken=\"C1C2\" type=\"double\"\ntoken=\"C2\" type=\"double\"\ntoken=\"abc\" type=\"single\"\ntoken=\"C3\" type=\"double\"\ntoken=\"def\" type=\"single\"\n{noformat} \n\n{quote}\nWouldn't it be simpler/clearer to test length for zero instead of constructing a String and testing it for equality with the empty string?:\n{quote}\nI think that your correction is better. ",
+            "date": "2008-09-25T02:55:11.917+0000",
+            "id": 7
+        },
+        {
+            "author": "Steve Rowe",
+            "body": "bq. I think that your correction is better. \n\nCool, the LUCENE-973.patch file incorporates this change - I had to add a recursion in order to handle this properly.\n\nAlso:\n\n# Added a test for a single CJK character stream\n# Sync'd with the current trunk (mostly reusable Token changes)\n# Cleaned up formatting a little\n# Switched token types to be constant ints instead of hard-coded strings\n\nNote that this patch is nice not just because of the bug it fixes, but also (mainly?) because of the unit tests it adds -- currently CJKTokenizer has no tests.",
+            "date": "2008-09-25T21:45:10.884+0000",
+            "id": 8
+        },
+        {
+            "author": "Koji Sekiguchi",
+            "body": "A patch attached which uses unicode character representations ('\\uNNNN' style) to avoid Japanese characters in the test code.",
+            "date": "2008-10-20T02:46:22.106+0000",
+            "id": 9
+        },
+        {
+            "author": "Mark Miller",
+            "body": "You guys looking for this for 2.9?\n\nIf so, any volunteers? If I assign myself any more, I won't likely get to them all.",
+            "date": "2009-06-15T16:45:09.688+0000",
+            "id": 10
+        },
+        {
+            "author": "Steve Rowe",
+            "body": "+1 from me for inclusion in 2.9.\n\nMark, as you wrote a couple of hours ago on java-dev, in response to Robert Muir's complaint about the lack of tests in contrib:\n\nbq. we should probably push for tests or write them before committing more often.\n\nHere's a chance to improve the situation: this issue adds a test to a contrib module where there currently are none!",
+            "date": "2009-06-15T21:11:00.711+0000",
+            "id": 11
+        },
+        {
+            "author": "Robert Muir",
+            "body": "very nice. although it might be a tad trickier to convert to the new API, anything with tests is easier!\n\nin other words, i have the existing cjktokenizer converted, but whose to say I did it right :)\n",
+            "date": "2009-06-15T21:19:00.733+0000",
+            "id": 12
+        },
+        {
+            "author": "Mark Miller",
+            "body": "So the latest patch is ready to go in? I guess I could take this one then.",
+            "date": "2009-06-16T14:52:39.728+0000",
+            "id": 13
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "I'll take it Mark!  Fixes a bug and adds tests for CJKAnalyzer/Tokenizer where there were none before.... big step forward!",
+            "date": "2009-06-16T15:01:13.740+0000",
+            "id": 14
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Does anyone know if the added recursive call to next() is \"bounded\"?  Ie, is there any way that the next() method could hit length==0 an unbounded number of times in a row (for some \"unlucky\" input text)?  I don't want to run out of stack...",
+            "date": "2009-06-16T15:57:25.095+0000",
+            "id": 15
+        },
+        {
+            "author": "Robert Muir",
+            "body": "sounds like another good test case, add a few thousand 0-length tokens to the stream and see what happens...",
+            "date": "2009-06-16T16:02:29.629+0000",
+            "id": 16
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Well, my question is: is there any input text that would cause an arbitrary number of such 0-length tokens in a row?\n\nEg the original cause of that was just at the boundary of two byte character and one byte character... so if that's the only case that hits 0-length token, then we are OK.  But if there are other cases, such that one could chain any number of such tokens in sequence, we're not, and we have to translate recursion into iteration.\n",
+            "date": "2009-06-16T16:07:41.148+0000",
+            "id": 17
+        },
+        {
+            "author": "Robert Muir",
+            "body": "Michael i don't see anything obvious, but a test case for two byte char + one byte char + [tons of english text and/or whitespace and/or punctuation] would make me feel better\n",
+            "date": "2009-06-16T16:16:04.644+0000",
+            "id": 18
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Or... how about we just switch to iteration not recursion?  I attached a patch w/ that change...",
+            "date": "2009-06-16T16:25:25.519+0000",
+            "id": 19
+        },
+        {
+            "author": "Steve Rowe",
+            "body": "bq. Or... how about we just switch to iteration not recursion? I attached a patch w/ that change... \n\n+1 from me - thanks, Mike!",
+            "date": "2009-06-16T16:32:35.624+0000",
+            "id": 20
+        },
+        {
+            "author": "Robert Muir",
+            "body": "michael, thanks. ",
+            "date": "2009-06-16T16:33:53.046+0000",
+            "id": 21
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "OK I will commit shortly!  Another one down!\n\nThanks for persisting on this Toru, Koji, Steven, Mark, Robert... this one was open for far toooo long.",
+            "date": "2009-06-16T16:35:52.904+0000",
+            "id": 22
+        }
+    ],
+    "component": "modules/analysis",
+    "description": "The \"\" string returns as Token in the boundary of two byte character and one byte character. \n\nThere is no problem in CJKAnalyzer. \nWhen CJKTokenizer is used with the unit, it becomes a problem. (Use it with \nSolr etc.)",
+    "hasPatch": true,
+    "hasScreenshot": true,
+    "id": "LUCENE-973",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Minor",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "Token of  \"\" returns in CJKTokenizer + new TestCJKTokenizer",
+    "systemSpecification": true,
+    "version": "2.3"
+}

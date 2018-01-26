@@ -1,0 +1,143 @@
+{
+    "comments": [
+        {
+            "author": "Michael McCandless",
+            "body": "Great catches Shai -- thanks for the thorough review!\n\nbq. Since the wrapped Collector may support out-of-order collection, the document IDs cached may be out-of-order (depends on the Query) and thus replay(Collector) will forward document IDs out-of-order to a Collector that may not support it.\n\nAhh... maybe we throw IllegalArgExc if the replay'd collector requires\nin-order but the first pass collector didn't?\n\nbq. It does not clear cachedScores + cachedSegs upon exceeding RAM limits\n\nHmm, I think it does clear cachedScores?  (But not cachedSegs).\n\nbq. I think that instead of comparing curScores to null, in order to determine if scores are requested, we should have a specific boolean - for clarity\n\nThat sounds great!\n\nbq. This check \"if (base + nextLength > maxDocsToCache)\" (line 168) can be relaxed? E.g., what if nextLength is, say, 512K, and I cannot satisfy the maxDocsToCache constraint, but if it was 10K I would? Wouldn't we still want to try and cache them?\n\nOh you mean for the last \"chunk\" we could alloc right up to the limit?\nGood!\n\nbq. The TODO in line 64 (having Collector specify needsScores()) \u2013 why do we need that if CachingCollector ctor already takes a boolean \"cacheScores\"? I think it's better defined explicitly than implicitly?\n\nYes, I think we should keep the explicit boolean (cacheScores), but eg\nyou could mess up (pass cacheScores = false but then pass a collector\nthat calls .score()) -- that's why I added to TODO.  Ie, it'd be nice\nif we could \"verify\" that the collector agrees we don't need scores.\n\nI think there were other places in Lucene where knowing this up front\ncould help us... can't remember the details.\n\nbq. Let's introduce a factory method for creating a specialized version if scoring is requested / not (i.e., impl the TODO in line 189)\n\n+1\n\nbq. I think it's a useful collector, which stands on its own and not specific to grouping. Can we move it to core?\n\n+1\n\n{quote}\nHow about using OpenBitSet instead of int[] for doc IDs?\nIf the number of hits is big, we'd gain some RAM back, and be able to cache more entries\nNOTE: OpenBitSet can only be used for in-order collection only. So we can use that if the wrapped Collector does not support out-of-order\n{quote}\n\nHmm but if the number of hits is small we spend un-needed RAM/CPU,\nbut, then that tradeoff is maybe OK?  I'm just worried about indices\nw/ lots of docs... we could also \"upgrade\" to a bit set part way\nthrough, since it's so clear where the cutoff is.\n\nbq. Do you think we can modify this Collector to not necessarily wrap another Collector? We have such Collector which stores (in-memory) all matching doc IDs + scores (if required). Those are later fed into several processes that operate on them (e.g. fetch more info from the index etc.). I am thinking, we can make CachingCollector optionally wrap another Collector and then someone can reuse it by setting RAM limit to unlimited (we should have a constant for that) in order to simply collect all matching docs + scores.\n\nI'd actually rather not have the constant -- ie, I don't want to make\nit easy to be unlimited?  It seems too dangerous... I'd rather your\ncode has to spell out 10*1024 so you realize you're saying 10 GB (for\nexample).\n\nbq. I think a set of dedicated unit tests for this class alone would be good.\n\n+1\n\nAwesome feedback!!  Are you planning to work up a patch for these...?\n",
+            "date": "2011-05-15T16:43:59.530+0000",
+            "id": 0
+        },
+        {
+            "author": "Shai Erera",
+            "body": "bq. Hmm, I think it does clear cachedScores? (But not cachedSegs).\n\nSorry, I meant curScores.\n\nbq. +1 (on move to core)\n\nI will start w/ \"svn mv\" this to core, so that later patches on this issue will be applied easily. Moving to core has nothing to do w/ resolving the other issues.\n\nbq. we could also \"upgrade\" to a bit set part way through, since it's so clear where the cutoff is\n\nyou're right, but cutting off to OBS is dangerous, b/c by doing that we:\n# Suddenly halt search when we create and populate OBS\n# Lose the ability to support out-of-order docs (in fact, depending on the mode and how the query was executed so far, we might not even be able to do the cut-off at all).\nSo I prefer that we make that decision up front, perhaps through another parameter to the factory method.\n\nbq. but eg you could mess up (pass cacheScores = false but then pass a collector that calls .score())\n\nOh I see, so this TODO is about the use of cachedScorer (vs. just delegating setScorer to other). I agree.\n\nBTW, this version of cachedScorer is very optimized and clean, but we do have ScoreCachingWrappingScorer which achieves the same goal, only w/ 1-2 more 'if'. Perhaps we should reuse it? But then again, for the purpose of this Collector, cachedScorer is the most optimized it can be.\n\nbq. ie, I don't want to make it easy to be unlimited? It seems too dangerous... I'd rather your code has to spell out 10*1024 so you realize you're saying 10 GB (for example).\n\nWhat if you run w/ 16GB Heap? ;)\n\nBut ok, I don't mind, we can spell it out clearly in the jdocs.\n\nbq. Are you planning to work up a patch for these...?\n\nI think so. I'll try to squeeze it in my schedule in the next couple of days. If I see I don't get to it, I'll update the issue.\n",
+            "date": "2011-05-15T17:06:06.151+0000",
+            "id": 1
+        },
+        {
+            "author": "Shai Erera",
+            "body": "bq. I will start w/ \"svn mv\" this to core\n\nOr, we can iterate on all the changes here, then do the svn move as part of the commit. Both work for me.",
+            "date": "2011-05-15T17:08:03.209+0000",
+            "id": 2
+        },
+        {
+            "author": "Shai Erera",
+            "body": "Patch includes the bug fixes + test. Still none of the items I listed after 'Also ...'. I plan to tackle that next, in subsequent patches.\n\nQuestion -- perhaps we can commit these changes incrementally? I.e., after we iterate on the changes in this patch, if they are ok, commit them, then do the rest of the stuff? Or a single commit w/ everything is preferable?\n\nMike, there is another reason to separate Collector.needsScores() from cacheScores -- it is possible someone will pass a Collector which needs scores, however won't want to have CachingCollector 'cache' them. In which case, the wrapped Collector should be delegated setScorer instead of cachedScorer.\n\nI will leave Collector.needsScores() for a different issue though?",
+            "date": "2011-05-16T11:59:45.653+0000",
+            "id": 3
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Patch looks awesome Shai!\n\nOnly thing is: I would be careful about directly setting those private fields of the cachedScorer; I think (not sure) this incurs an \"access\" check on each assignment.  Maybe make them package protected?  Or use a setter?\n\nbq. Question \u2013 perhaps we can commit these changes incrementally?\n\n+1 - progress not perfection!  These changes are great.\n\n{quote}\nMike, there is another reason to separate Collector.needsScores() from cacheScores \u2013 it is possible someone will pass a Collector which needs scores, however won't want to have CachingCollector 'cache' them. In which case, the wrapped Collector should be delegated setScorer instead of cachedScorer.\n{quote}\n\nAhh good point, because the 2nd pass collector may not need the scores.  So on the first pass we'd have to forward the .score() request to the wrapped collector but not cache it.\n\nbq. I will leave Collector.needsScores() for a different issue though?\n\n+1\n\nThanks for iterating on this Shai!",
+            "date": "2011-05-16T12:30:39.772+0000",
+            "id": 4
+        },
+        {
+            "author": "Shai Erera",
+            "body": "bq. Only thing is: I would be careful about directly setting those private fields of the cachedScorer; I think (not sure) this incurs an \"access\" check on each assignment. Maybe make them package protected? Or use a setter?\n\nGood catch Mike. I read about it some and found this nice webpage which explains the implications (http://www.glenmccl.com/jperf/). Indeed, if the member is private (whether it's in the inner or outer class), there is an access check. So the right think to do is to declare is protected / package-private, which I did. Thanks for the opportunity to get some education !\n\nPatch fixes this. I intend to commit this shortly + move the class to core + apply to trunk. Then, I'll continue w/ the rest of the improvements.",
+            "date": "2011-05-16T15:30:26.475+0000",
+            "id": 5
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Patch looks great Shai -- +1 to commit!!\n\nYes that is very sneaky about the private fields in inner/outer classes -- it's good you added a comment explaining it!",
+            "date": "2011-05-16T16:37:51.413+0000",
+            "id": 6
+        },
+        {
+            "author": "Shai Erera",
+            "body": "Committed revision 1103870 (3x).\nCommitted revision 1103872 (trunk).\n\nWhat's committed:\n* Move CachingCollector to core\n* Fix bugs\n* Add TestCachingCollector\n* Some refactoring\n\nMoving on to next proposed changes.",
+            "date": "2011-05-16T20:30:43.522+0000",
+            "id": 7
+        },
+        {
+            "author": "Shai Erera",
+            "body": "Patch against 3x which:\n\n* Adds factory method to CachingCollector, specializing on cacheScores\n* Clarify Collector.needScores() TODO\n\nThere are two remaining issues, let's address them after we iterate on this patch.",
+            "date": "2011-05-17T11:38:10.512+0000",
+            "id": 8
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Patch looks great!  But, can we rename curupto -> curUpto (and same for curbase)?  Ie, so it matches the other camelCaseVariables we have here...\n\nThank you!",
+            "date": "2011-05-17T16:09:05.532+0000",
+            "id": 9
+        },
+        {
+            "author": "Shai Erera",
+            "body": "Committed revision 1104680 (3x).\nCommitted revision 1104683 (trunk).",
+            "date": "2011-05-18T04:00:48.231+0000",
+            "id": 10
+        },
+        {
+            "author": "Shai Erera",
+            "body": "There are two things left to do:\n\n(1) Use bit set instead of int[] for docIDs. If we do this, then it means the Collector cannot support out-of-order collections (which is not a big deal IMO). It also means for large indexes, we might consume more RAM than int[].\n\n(2) Allow this Collector to stand on its own, w/o necessarily wrapping another Collector. There are several ways we can achieve that:\n* Take a 'null' Collector and check other != null. Adds an 'if' but not a big deal IMO. Also, acceptDocsOutOfOrder will have to either return false (or true), or we take that as a parameter.\n* Take a 'null' Collector and set this.other to a private static instance of a NoOpCollector. We'll still be delegating calls to it, but hopefully it won't be expensive. Same issue w/ out-of-order\n* Create two specialized variants of CachingCollector.\n\nPersonally I'm not too much in favor of the last option - too much code dup for not much gain.\n\nThe option I like the most is the 2nd (introducing a NoOpCollector). We can even introduce it as a public static member of CachingCollector and let users decide if they want to use it or not. For ease of use, we can still allow 'null' to be passed to create().\n\nWhat do you think?",
+            "date": "2011-05-18T06:51:44.675+0000",
+            "id": 11
+        },
+        {
+            "author": "Shai Erera",
+            "body": "Patch against 3x:\n* Adds a create() to CachingCollector which does not take a Collector to wrap. Internally, it creates a no-op collector, which ignores everything.\n* Javadocs for create()\n* matching test.",
+            "date": "2011-05-18T10:42:40.094+0000",
+            "id": 12
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "The committed CHANGES has typo (reply should be replay).",
+            "date": "2011-05-18T10:50:29.013+0000",
+            "id": 13
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Patch to allow no wrapped collector looks good!  I wonder/hope hotspot can realize those method calls are no-ops...\n\nMaybe change TestGrouping to randomly use this ctor?  Ie, randomly, you can use caching collector (not wrapped), then call its replay method twice (once against 1st pass, then against 2nd pass, collectors), and then assert results like normal.  This is also a good verification that replay works twice...\n\nOn the OBS, it makes me nervous to just always do this; I'd rather have it cutover at some point?  Or perhaps it's an expert optional arg to create, whether it should back w/ OBS vs int[]?\n\nOr, ideally... we make a bit set impl that does this all under the hood (uses int[] when there are few docs, and \"ugprades\" to OBS once there are \"enough\" to justify it...), then we can just use that bit set here.",
+            "date": "2011-05-18T10:55:36.506+0000",
+            "id": 14
+        },
+        {
+            "author": "Shai Erera",
+            "body": "bq. The committed CHANGES has typo (reply should be replay).\n\nThanks, will include it in the next commit.\n\nbq. I'd rather have it cutover at some point\n\nThis can only be done if out-of-order collection wasn't done so far, because otherwise, cutting to OBS will take cached doc IDs and scores out of sync.\n\nbq. we make a bit set impl that does this all under the hood (uses int[] when there are few docs, and \"ugprades\" to OBS once there are \"enough\" to justify it...)\n\nThat's a good idea. I think we should leave the OBS stuff for another issue. See first how this performs and optimize only if needed.\n\nI'll take a look at TestGrouping.",
+            "date": "2011-05-18T12:39:26.144+0000",
+            "id": 15
+        },
+        {
+            "author": "Shai Erera",
+            "body": "Patch adds random to TestGrouping and fixes the CHANGES typo.\n\nMike, TestGrouping fails w/ this seed: -Dtests.seed=7295196064099074191:-1632255311098421589 (it picks a no wrapping collector).\n\nI guess I didn't insert the random thing properly. It's the only place where the test creates a CachingCollector though. I noticed that it fails on the 'doCache' but '!doAllGroups' case.\n\nCan you please take a look? I'm not familiar with this test, and cannot debug it anymore today.",
+            "date": "2011-05-18T15:21:02.424+0000",
+            "id": 16
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Patch.\n\nI think I fixed TestGrouping to exercise the \"no wrapped collector\" and \"replay twice\" case for CachingCollector.",
+            "date": "2011-05-18T15:49:01.443+0000",
+            "id": 17
+        },
+        {
+            "author": "Shai Erera",
+            "body": "Thanks Mike. Seems that TestGrouping is indeed fixed.\n\nCommitted revision 1124378 (3x).\nCommitted revision 1124379 (trunk).\n\nResolving this. We can tackle OBS and other optimizations in subsequent issues if the need arises.\n\nThanks Mike !",
+            "date": "2011-05-18T18:52:10.851+0000",
+            "id": 18
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Thanks Shai -- this is awesome progress!",
+            "date": "2011-05-18T20:15:59.340+0000",
+            "id": 19
+        },
+        {
+            "author": "Robert Muir",
+            "body": "Bulk closing for 3.2",
+            "date": "2011-06-03T16:37:20.180+0000",
+            "id": 20
+        }
+    ],
+    "component": "core/search",
+    "description": "CachingCollector (introduced in LUCENE-1421) has few issues:\n# Since the wrapped Collector may support out-of-order collection, the document IDs cached may be out-of-order (depends on the Query) and thus replay(Collector) will forward document IDs out-of-order to a Collector that may not support it.\n# It does not clear cachedScores + cachedSegs upon exceeding RAM limits\n# I think that instead of comparing curScores to null, in order to determine if scores are requested, we should have a specific boolean - for clarity\n# This check \"if (base + nextLength > maxDocsToCache)\" (line 168) can be relaxed? E.g., what if nextLength is, say, 512K, and I cannot satisfy the maxDocsToCache constraint, but if it was 10K I would? Wouldn't we still want to try and cache them?\n\nAlso:\n* The TODO in line 64 (having Collector specify needsScores()) -- why do we need that if CachingCollector ctor already takes a boolean \"cacheScores\"? I think it's better defined explicitly than implicitly?\n\n* Let's introduce a factory method for creating a specialized version if scoring is requested / not (i.e., impl the TODO in line 189)\n\n* I think it's a useful collector, which stands on its own and not specific to grouping. Can we move it to core?\n\n* How about using OpenBitSet instead of int[] for doc IDs?\n** If the number of hits is big, we'd gain some RAM back, and be able to cache more entries\n** NOTE: OpenBitSet can only be used for in-order collection only. So we can use that if the wrapped Collector does not support out-of-order\n\n* Do you think we can modify this Collector to not necessarily wrap another Collector? We have such Collector which stores (in-memory) all matching doc IDs + scores (if required). Those are later fed into several processes that operate on them (e.g. fetch more info from the index etc.). I am thinking, we can make CachingCollector *optionally* wrap another Collector and then someone can reuse it by setting RAM limit to unlimited (we should have a constant for that) in order to simply collect all matching docs + scores.\n\n* I think a set of dedicated unit tests for this class alone would be good.\n\nThat's it so far. Perhaps, if we do all of the above, more things will pop up.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-3102",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Minor",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "Few issues with CachingCollector",
+    "systemSpecification": true,
+    "version": ""
+}

@@ -1,0 +1,107 @@
+{
+    "comments": [
+        {
+            "author": "Adrian Sutton",
+            "body": "Oleg,\nWere you working on this or should I take a look at it?  I already have some \ncode for this that could be fairly easily updated to the current HttpClient.\n\nOne question that remains for me is what the new search order should be.  The \ntwo most obvious answers to me are:\n\n1. Expect to always get a realm and a host or null for both and just provide \nbackwards compatibility for setting just the realm.  The search order would \nthen be:\na. realm & host\nb. realm\nc. null\n\n2. Provide maximum flexibility.  I'd imagine the search order to then be:\na. realm & host\nb. host\nc. realm\nd. null\nThough the order of searching for host and realm is quite arbitrary, I've \ngenerally found that people know what host they are connecting to better than \nthey know the realm.  Also, there is the security consideration of sending the \ncredentials to the wrong host.  I don't have any particular preference for the \norder though.\n\nSorry if I missed part of the discussion of this on-list.",
+            "date": "2003-03-31T16:25:05.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Adrian\n\nI have already started working on this bug. However, if you feel like taking the\nlead, just let me know. \n\nCredentials matching algorithm is exactly the sticking point. I have been\nthinking whether we should make an assumption of an authentication realm being\nrelated to just one host or should we assume that it could span across several\nhosts in a domain? For instance, should myhost.mydomain.com match .mydomain.com\nwhen picking credentials for an authentication realm? Let me know what is your\ntake on this.\n\nHere's how I see the search order: \n\n<code>null</code> host should match any host. <code>null</code> realm should\nmatch any realm. \n\nWe start searching by trying to find an exact match 'realm@host'. If that yields\nno results, 'null@host' should be tried next, followed by 'realm@null' if\nunsuccessful. If none of this results in a match, default credentials\n'null@null' should be used.\n\nIt's not the most elegant or intuitive scheme, but it is the only one I can\nthink of which would allow us to stay backward-compatible. \n\nOleg",
+            "date": "2003-04-01T03:03:18.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Adrian Sutton",
+            "body": "Oleg,\nI've moved the code I have over to the latest HttpClient and from memory it matches the search pattern you've outlined below.  It doesn't consider host.domain.com to be the same as .domain.com and I generally feel that doing so would be too much overhead for little gain.  We could add this functionality easily enough in the future if requested anyway without breaking compatibility (semantic compatibility would be maintained by only matching domains with the . in front so it wouldn't match by accident).\n\nUnfortunately, the code is at home and I'm at work so I won't be able to post it until tonight.  The code is simple anyway so feel free to go ahead and just use what you have or write your own in the mean time anyway.  Generally though it may be better if you focus on the more technical issues where your level of knowledge of HttpClient is required.",
+            "date": "2003-04-01T06:54:05.000+0000",
+            "id": 2
+        },
+        {
+            "author": "Adrian Sutton",
+            "body": "Created an attachment (id=5585)\nPatch take 1 for review.\n",
+            "date": "2003-04-01T17:05:07.000+0000",
+            "id": 3
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Adrian\nI think it is a good start. At the moment I have two comments to throw at you:\n\n1.) Since there's no way around adding an extra parameter for the\nHttpAuthenticator#authenticate method, why not passing a reference to\nHttpConnection instead of just a String that represents a host name?\n\npublic static boolean HttpAuthenticator#authenticate(\n  AuthScheme authscheme, \n  HttpMethod method, \n  HttpConnection conn,\n  HttpState state)\n\nWe might need additional stuff (for instance, we might need 'virtual' host name\nin the future) that can be obtained from HttpConnection\n\n2.) Lower-cased concatenated host name and realm are inadequate as a realm map\nkey for the reason pointed out by Chris Brown. RFC 2617 does not impose any\nformat for the authentication realm. It's just a quoted string that may contain\nany sequence of characters. There's no way to differentiate credentials for the\n\"admin.apache.org\" host and \"admin.apache.org\" realm under existing mapping\nscheme, with would leave HttpClient open to exploits. The solution to this\nproblem is to use a dedicated class as a mapping key rather than just a string.\nI already whipped up a simple class called HttpAuthRealm that can cover this\nrole. You'll find it attached to this bug report. It is still quite raw, so\nproceed with caution\n\nOtherwise, the patch looks good\n\nOleg",
+            "date": "2003-04-02T00:04:29.000+0000",
+            "id": 4
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Created an attachment (id=5586)\nProposed credentials mapping key implementation\n",
+            "date": "2003-04-02T00:07:31.000+0000",
+            "id": 5
+        },
+        {
+            "author": "Adrian Sutton",
+            "body": "Oleg,\nQuite right on point one, I've now changed passing the host in to passing the \nconnection in.\n\nAlso right on point two, I'm just finishing off cleaning up the class you sent \nbut have to go to work so will finish it off and post an updated patch \ntonight.  Since I'm generally paranoid about legal matters, it would be good \nto get a copy of that class with the Apache license already at the top of it, \nsince just adding it myself seems a little dodgy.  I'm happy to just add it if \npeople are happy with that though.\n\nI've also fixed up a few comments that I'd missed in my original patch.",
+            "date": "2003-04-03T05:35:57.000+0000",
+            "id": 6
+        },
+        {
+            "author": "Adrian Sutton",
+            "body": "Hmm, I believe I've just experienced a solid teaching in basic Java...  There \nwere a couple of problems with the class Oleg sent through that took me quite \na while to work out.  Firstly, when I switched to using it, the credential \nmatching routine didn't work.  Turns out that equals will return true in cases \nwhere the hashCodes don't match (particularly the case where one object has a \nnull realm and the other doesn't).  So the comparison logic has to remain in \nHttpState by trying a HttpAuthRealm with host and realm, then with null realm, \nthen with null host then with both null.\n\nSecondly, my test case for the spoofed realm exploit Chris Brown pointed out \nstill failed.  The reason is because HashMap only compares the hashCodes of \nthe objects and never consults equals.  The hashCode did not include the realm \nif it was null (and likewise for the domain).  This then resulted in:\n\nnew HttpAuthRealm(null, \"admin.apache.org\").hashCode() == new HttpAuthRealm\n(\"admin.apache.org\", null)\n\ncoming down to \"admin.apache.org\".hashCode() == \"admin.apache.org\".hashCode() \nwhich of course returns true.  I've now modified the class to always add the \nhost and realm regardless of whether they are null or not.  Thus the \ncomparison for the above case becomes:\n\n\"nulladmin.appache.org\".hashCode() == \"admin.apache.orgnull\".hashCode() and \navoids the exploit.  (Notice that titling the realm \"admin.apache.orgnull\" \nwould not help either since it would become \"nulladmin.apache.org\").\n\nSince the whole process is now effectively back to String comparisons I've \nremoved the use of HttpAuthRealm again and all tests still pass (including the \nspoof vulnerability test).",
+            "date": "2003-04-03T18:26:40.000+0000",
+            "id": 7
+        },
+        {
+            "author": "Adrian Sutton",
+            "body": "Created an attachment (id=5620)\nPatch take 2.\n",
+            "date": "2003-04-03T18:29:05.000+0000",
+            "id": 8
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Adrian, \nI believe replacing HashMap class with ArrayList and implementing our own \ncredentials lookup routine would be a better solution. I am afraid there still \ncan be situations when credentials may get sent to a server they are not \nintended for (host: '', realm: 'nullwhatver')\n\nOleg",
+            "date": "2003-04-03T19:16:01.000+0000",
+            "id": 9
+        },
+        {
+            "author": "Adrian Sutton",
+            "body": "Mike is of course right, HashMap does use equals as the final comparison \nmethod (but if o.equals(o1) then o.hashCode() == o1.hashCode() must hold true \nor it will never get to that stage).  Which leaves me baffled as to why the \ntest case was failing.  Even more baffling is that when I change the code back \nto what I thought I had before it all works and all test cases pass.  I'll \nattach the latest patch, could someone give it a good testing because I'm \nreally quite confused now.\n\nIn the mean time, I think I ought to head to bed.",
+            "date": "2003-04-03T21:06:26.000+0000",
+            "id": 10
+        },
+        {
+            "author": "Adrian Sutton",
+            "body": "Created an attachment (id=5623)\nPatch take 3.\n",
+            "date": "2003-04-03T21:06:48.000+0000",
+            "id": 11
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Adrian, The patch looks good to me. I have introduced some minor variations, \nbasically just a few optimizations and clean-ups. If nobody complains loudly, \nI'll submit the patch on Sunday. The newest patch will be attached shortly\n\nOleg",
+            "date": "2003-04-04T17:38:29.000+0000",
+            "id": 12
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Created an attachment (id=5644)\nPatch take 4\n",
+            "date": "2003-04-04T17:39:02.000+0000",
+            "id": 13
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "The patch has been applied. \n\nThe new HttpState API is currently far from being optimal. I frequently\nmistakenly mix up host and realm parameters to HttpState#setCredentials(String,\nString, Credentials) method. Better API is needed in the future.\n\nOleg",
+            "date": "2003-04-08T03:56:55.000+0000",
+            "id": 14
+        }
+    ],
+    "component": "HttpClient (classic)",
+    "description": "It seems that one needs a separate HttpState per client per host: from the \njavadocs, if (by coincidence or by design) more than one host uses the same \nrealm name, such as \"Private\", then there's an unresolvable conflict, as \nHttpState can only store one set of credentials for a given name...\n\nAccording to Oleg Kalnichevski, it is plausible just to extend the HttpState \nclass with additional methods that would require host to be specified along the\nauthentication realm when dealing with credentials.\n\nSee postings on \"Commons HttpClient Project\" mailing list for more info (dated \n21/03/2003).",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "HTTPCLIENT-175",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Critical",
+    "product": "HTTPCLIENT",
+    "project": "HTTPCLIENT",
+    "summary": "HttpState cannot differentiate credentials for different hosts with same Realm names",
+    "systemSpecification": true,
+    "version": "2.0 Alpha 3"
+}

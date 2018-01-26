@@ -1,0 +1,65 @@
+{
+    "comments": [
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Mohammad,\nI did not forget about this one. But again (as pain in the rear as I can be), I\nam not sure it this bug warrants a fix for 2.0 for the following reason: bugs\nlike that are horribly difficult to test comprehensively and 2.0 architecture is\ntoo convoluted not to stand a risk of breaking something else while trying to\nfix this bug. Am I getting too paranoid? Anyone seeing the situation differently?\n\nI'll happily provide a fix for CVS HEAD, though.\n\nOleg",
+            "date": "2003-12-17T22:56:50.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Mohammad Rezaei",
+            "body": "You know the code much better than I do. I'll trust your judgement and therefore\nhave no objection to seeing this fix in 2.1.\n\nThanks\nMoh",
+            "date": "2003-12-17T23:03:15.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Ortwin Gl\u00fcck",
+            "body": "I do not favour a 2.0 patch either as I am pretty sure you can easily handle\nthis situation outside HttpClient by catching the exception and forceClose the\nconnection.",
+            "date": "2003-12-17T23:06:21.000+0000",
+            "id": 2
+        },
+        {
+            "author": "Sven",
+            "body": "So how can somebody close a connection if he cannot get the ConnectionObject\nwithout restructuring the whole code?\nI'm only using the executeMethod()-method and i don't see any way of getting the\nHttpConnection-object that's used.\nYour suggestion would also workaround my \"HttpClient finished downloads even if\nthere are gigabytes to download\"-problem too.\n\nBut after all it's still a workaround.",
+            "date": "2003-12-17T23:22:19.000+0000",
+            "id": 3
+        },
+        {
+            "author": "Mohammad Rezaei",
+            "body": "Sven, that was my problem exactly. Currently, my workaround is to subclass the\nmethod and add the try/catch blocks in the writeRequest method. At that point,\nthe connection is available.\nMike, what exactly is \"forceClose\"? The only reference I see to it are a couple\nof test cases that send \"Connection: close\" headers, which is not appropriate in\nthis case.\n\nThanks\nMoh",
+            "date": "2003-12-17T23:26:04.000+0000",
+            "id": 4
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Mohammad,\nYour strategy is absolutely correct: subclass PostMethod, provide try catch\nblock in execute method, call HttpMethodBase#setForceCloseConnection(true)\nor/and simply close the connection that you get as a parameter to the method.\n\nOleg",
+            "date": "2003-12-17T23:38:04.000+0000",
+            "id": 5
+        },
+        {
+            "author": "Michael Becke",
+            "body": "I agree this is something that we should add.  As for where to add it, I'm not\nsure.  We should definitely take care of it in CVS HEAD, but I'm wondering if we\nshould include the connection.close() as part of HTTPCLIENT-302.  My thinking being\nthat if we're releasing the connection anyway, what harm will closing it cause?\n   Like Oleg though, I'm quite wary about changing this so late.\n\nI suggest we come up with a patch quickly, that we can test in the next few\ndays.  If after a few days of testing we feel confident that all is working, we\nshould include it in rc3.  If we have any trouble, the change should be backed\nout and left until after 2.0 final.  How does everyone feel about this?\n\nFor Moh's workaround I think calling connection.close() is probably better than\nsetting via HttpMethodBase#setForceCloseConnection(true).  Setting forceClose\nonly closes the connection after the response body has been consumed.\n\nMike",
+            "date": "2003-12-18T02:31:05.000+0000",
+            "id": 6
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "The patch for the HTTPCLIENT-302 should have taken care of this one too. \n\nOleg",
+            "date": "2004-01-13T07:09:48.000+0000",
+            "id": 7
+        }
+    ],
+    "component": "HttpClient (classic)",
+    "description": "If an application level IOException or RuntimeException occurs, the underlying\nsocket will be in an undetermined state. In many cases, this will lead to zombie\nconnections in the pool that do not respond properly.\n\nSimple example: uploading a file via POST. If we promise the server 1MB of data.\nShortly after starting the transfer an IOException occurs (e.g. the NFS server\nthe file was residing on stops responding). The connection is returned to the\npool (see HTTPCLIENT-302) but the the server is still expecting close to 1MB of data\non that socket. The next request on that socket (e.g. a GET) will send the HTTP\nheader but  the server thinks the header is part of the old stream and doesn't\nrespond.",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "HTTPCLIENT-307",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "HTTPCLIENT",
+    "project": "HTTPCLIENT",
+    "summary": "An IOException or RuntimeException leaves the underlying socket in an undetermined state",
+    "systemSpecification": false,
+    "version": "2.0 Beta 2"
+}

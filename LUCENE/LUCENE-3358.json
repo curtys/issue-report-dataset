@@ -1,0 +1,71 @@
+{
+    "comments": [
+        {
+            "author": "Robert Muir",
+            "body": "Remember, things in StandardTokenizer are only bugs if they differ from http://unicode.org/cldr/utility/breaks.jsp\n\nBut in the hiragana case, thats definitely a bug in the jflex grammar, because we shouldn't be splitting a base character from its combining mark here.",
+            "date": "2011-08-03T10:47:42.063+0000",
+            "id": 0
+        },
+        {
+            "author": "Robert Muir",
+            "body": "The rules are wrong here for Han also.",
+            "date": "2011-08-03T12:53:24.491+0000",
+            "id": 1
+        },
+        {
+            "author": "Robert Muir",
+            "body": "here's a patch: without re-generation or backwards compat yet.\n\nwe should fix the URL+Email one also, and add backwards for both.",
+            "date": "2011-08-03T12:57:09.883+0000",
+            "id": 2
+        },
+        {
+            "author": "Steve Rowe",
+            "body": "+1 Robert's patch looks good.",
+            "date": "2011-08-03T17:43:03.088+0000",
+            "id": 3
+        },
+        {
+            "author": "Robert Muir",
+            "body": "Here's a patch with sophisticated backwards.\n\nI'd like to commit this and open a followup issue for the URL+Email one, that one is more complicated and needs to first be ported to Standard's interface.",
+            "date": "2011-08-04T19:43:09.625+0000",
+            "id": 4
+        },
+        {
+            "author": "Steve Rowe",
+            "body": "+1 to commit.  \n\nI applied the patch, then ran 'ant jflex' and 'ant test' in {{modules/analysis/common/}}.  All succeeded.",
+            "date": "2011-08-04T20:40:21.124+0000",
+            "id": 5
+        },
+        {
+            "author": "Robert Muir",
+            "body": "Thanks Trejkaz!\n\ni opened LUCENE-3361 for the URL+email variant",
+            "date": "2011-08-04T21:07:16.514+0000",
+            "id": 6
+        },
+        {
+            "author": "Trejkaz",
+            "body": "Thanks for such a fast fix! :D  (I will still wait for 3.4 because it will make backwards-compat much simpler.)\n\nI am aware of the Unicode word breaking rules and read the standard through, which is where I discovered that the non-breaking of Katakana was part of the standard (which is why I haven't filed it as a bug or improvement about that as well.)  It is very unfortunate that the Unicode Consortium somehow ended up with a rule which is, quite frankly, undesirable. When I brought the change up with Japanese users, they were 100% against that behaviour, so it's a wonder that the standard got past the Japanese without any objections (I am, of course, assuming that they actually consulted an expert in the language.)  But breaking it up as a separate filter isn't so hard.  It's only a single Unicode area with few combining marks, so the logic is not that difficult and StandardTokenizer even marks the token as katakana for us.\n",
+            "date": "2011-08-05T01:20:20.596+0000",
+            "id": 7
+        },
+        {
+            "author": "Robert Muir",
+            "body": "{quote}\nIt is very unfortunate that the Unicode Consortium somehow ended up with a rule which is, quite frankly, undesirable.\n{quote}\n\nI'm not concerned about this, while your users may not like it, I think we should stick by the Standard for these reasons:\n# its not desirable to deviate from the standard here, anyone can customize the behavior to do what they want.\n# its not shown that what you say is true, experiments have been done here (see below) and I would say as a default, what is happening here is just fine.\n# splitting this katakana up in some non-standard way leaves me with performance concerns of long postings lists for common terms.\n\n{noformat}\nFor the Japanese collection (Table 4), it is not clear whether bigram generation should have\nbeen done for both Kanji and Katakana characters (left part) or only for Kanji characters\n(right part of Table 4). When using title-only queries, the Okapi model provided the best\nmean average precision of 0.2972 (bigram on Kanji only) compared to 0.2873 when\ngenerating bigrams on both Kanji and Katakana. This difference is rather small, and is even\nsmaller in the opposite direction for long queries (0.3510 vs. 0.3523). Based on these results\nwe cannot infer that for the Japanese language one indexing procedure is always significantly\nbetter than another.\n{noformat}\n\nhttp://citeseerx.ist.psu.edu/viewdoc/summary?doi=10.1.1.111.6738",
+            "date": "2011-08-05T02:13:05.863+0000",
+            "id": 8
+        }
+    ],
+    "component": "",
+    "description": "Lucene 3.3 (possibly 3.1 onwards) exhibits less than great behaviour for tokenising hiragana, if combining marks are in use.\n\nHere's a unit test:\n\n{code}\n    @Test\n    public void testHiraganaWithCombiningMarkDakuten() throws Exception\n    {\n        // Hiragana 'S' following by the combining mark dakuten\n        TokenStream stream = new StandardTokenizer(Version.LUCENE_33, new StringReader(\"\\u3055\\u3099\"));\n\n        // Should be kept together.\n        List<String> expectedTokens = Arrays.asList(\"\\u3055\\u3099\");\n        List<String> actualTokens = new LinkedList<String>();\n        CharTermAttribute term = stream.addAttribute(CharTermAttribute.class);\n        while (stream.incrementToken())\n        {\n            actualTokens.add(term.toString());\n        }\n\n        assertEquals(\"Wrong tokens\", expectedTokens, actualTokens);\n\n    }\n{code}\n\nThis code fails with:\n{noformat}\njava.lang.AssertionError: Wrong tokens expected:<[\u3056]> but was:<[\u3055]>\n{noformat}\n\nIt seems as if the tokeniser is throwing away the combining mark entirely.\n\n3.0's behaviour was also undesirable:\n{noformat}\njava.lang.AssertionError: Wrong tokens expected:<[\u3056]> but was:<[\u3055, \u3099]>\n{noformat}\n\nBut at least the token was there, so it was possible to write a filter to work around the issue.\n\nKatakana seems to be avoiding this particular problem, because all katakana and combining marks found in a single run seem to be lumped into a single token (this is a problem in its own right, but I'm not sure if it's really a bug.)\n",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-3358",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "StandardTokenizer disposes of Hiragana combining mark dakuten instead of attaching it to the character it belongs to",
+    "systemSpecification": true,
+    "version": "3.3"
+}

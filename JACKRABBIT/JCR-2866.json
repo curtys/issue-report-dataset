@@ -1,0 +1,65 @@
+{
+    "comments": [
+        {
+            "author": "Thomas Mueller",
+            "body": "This patch excludes the eventChannel methods from the synchronized block.",
+            "date": "2011-01-19T11:25:17.609+0000",
+            "id": 0
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "This problem should be fixed now.",
+            "date": "2011-01-19T15:12:03.136+0000",
+            "id": 1
+        },
+        {
+            "author": "Sergiy Shyrkov",
+            "body": "Hello Thomas,\n\ndoes this patch also addresses the issue, reported in JCR-2623 , i.e. is it the same problem?\n\nThank you in advance!\n\nKind regards\nSergiy",
+            "date": "2011-01-27T19:56:37.987+0000",
+            "id": 2
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "Yes, I think it's the same issue. I resolved it as a duplicate now.\n\nI found and fixed the issue independently... I should have searched before filing a new bug, sorry. ",
+            "date": "2011-01-28T06:25:33.189+0000",
+            "id": 3
+        },
+        {
+            "author": "Sergiy Shyrkov",
+            "body": "These are good news, thank you!\nAny plans perhaps to backport the patch to 1.5 or 1.6 branch (actually, we are experiencing it also on our projects with Jackrabbit 1.5.0). Or it was already done?",
+            "date": "2011-01-28T08:56:42.521+0000",
+            "id": 4
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "I don't have any plans to backport the fix.\n\nBut I wonder why you still use 1.5 / 1.6. Why don't you upgrade?",
+            "date": "2011-01-28T09:12:50.291+0000",
+            "id": 5
+        },
+        {
+            "author": "Sergiy Shyrkov",
+            "body": "> I don't have any plans to backport the fix.\nGood, I just wanted to know. Thank you!\n\n> But I wonder why you still use 1.5 / 1.6. Why don't you upgrade? \nWe are using the latest 2.2.1 in our current project version (Jahia 6.5), but we have a previous version of the product (Jahia 6.1.1) that is in production and was using 1.5.0 at that time.\n\nWe will see, if it will be two critical for our customers (for now, we had two incidents with deadlock on a cluster startup), we will apply a patch on our own.\n\nThank you for the clarifications!",
+            "date": "2011-01-28T09:40:47.512+0000",
+            "id": 6
+        },
+        {
+            "author": "John Langley",
+            "body": "Another similar question about applicability to different branches. \nWill this fix be applied to the 2.1 branch? We're running 2.1.3 currently. \n\nThanks in advance for clarifications. ",
+            "date": "2011-01-28T17:17:32.668+0000",
+            "id": 7
+        }
+    ],
+    "component": "clustering",
+    "description": "A deadlock can occur when two cluster nodes concurrently register or unregister node types.\n\nReason: \n\nNodeTypeRegistry.registerNodeTypes is synchronized, and calls eventChannel.registered(ntDefs), which calls AbstractJournal.lockAndSync(), which tries to lock AbstractJournal.rwLock.\n\nOn the other hand, AbstractJournal.sync() locks AbstractJournal.rwLock, then calls NodeTypeRecord.process, which calls NodeTypeRegistry.unregisterNodeTypes, which is also synchronized.\n\nPossible solutions: Either \n\n- NodeTypeRegistry doesn't synchronize on the object when calling a eventChannel method,\n\n- or NodeTypeRegistry locks AbstractJournal.rwLock before synchronizing.\n\nThere might be other solutions.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "JCR-2866",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "Cluster: Node type register/unregister deadlock",
+    "systemSpecification": true,
+    "version": ""
+}

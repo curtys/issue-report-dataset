@@ -1,0 +1,59 @@
+{
+    "comments": [
+        {
+            "author": "Alexander Klimetschek",
+            "body": "Looks like the classical \"container or JVM provides different XML implementation (Xerces version)\" than expected, ie. from what is provided in Jackrabbit's lib.",
+            "date": "2008-09-23T11:28:23.989+0000",
+            "id": 0
+        },
+        {
+            "author": "Alexander Klimetschek",
+            "body": "Oh, and Jackrabbit uses/requires xerces version 2.8.1",
+            "date": "2008-09-23T11:36:15.112+0000",
+            "id": 1
+        },
+        {
+            "author": "Jakub Wozniakowski",
+            "body": "Using Sun Java 1.5.0.15",
+            "date": "2008-09-23T11:41:54.225+0000",
+            "id": 2
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Doesn't look like a XML library version issue to me. The failing code in DOMWalker expects the parent of the currently processed XML node to be an element, but in your case it looks like it's the top-level XML document.\n\nWe probably in any case need to fix that in DOMWalker, but I believe you can work around this issue by modifying your node type definition files. If my guess is right, your XML file looks like this:\n\n    <nodeType ...>...</nodeType>\n\nTry wrapping the content in a <nodeTypes/> element, like this:\n\n    <nodeTypes>\n        <nodeType ...>...</nodeType>\n    </nodeTypes>",
+            "date": "2008-09-23T11:57:13.110+0000",
+            "id": 3
+        },
+        {
+            "author": "Jakub Wozniakowski",
+            "body": "Confirmed. \nSurrounding node definitions by <nodeTypes></nodeTypes> is successfull workaround.",
+            "date": "2008-09-23T13:04:23.712+0000",
+            "id": 4
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Fixed the issue in revision 698209 and merged the fix to the 1.4 branch in revision 698210. Thanks for reporting this!",
+            "date": "2008-09-23T16:02:02.149+0000",
+            "id": 5
+        },
+        {
+            "author": "Jakub Wozniakowski",
+            "body": "Extremely quick reaction and fix. Thank you for that.",
+            "date": "2008-09-24T11:56:16.477+0000",
+            "id": 6
+        }
+    ],
+    "component": "jackrabbit-core",
+    "description": "When trying to register node type from XML file using following code:\n\n\t\tJackrabbitNodeTypeManager nodeTypeManager = (JackrabbitNodeTypeManager)workspace.getNodeTypeManager();\n\t\tfor(Resource resource : nodeDefinitions){\n\t\t\tSystem.out.println(\"** registering node:\"+resource);\n\t\t\tnodeTypeManager.registerNodeTypes(resource.getInputStream(), JackrabbitNodeTypeManager.TEXT_XML);\n\t\t}\n\nwe receive such surprise:\n\nCaused by: java.lang.ClassCastException: com.sun.org.apache.xerces.internal.dom.DeferredDocumentImpl\n\tat org.apache.jackrabbit.core.util.DOMWalker.iterateElements(DOMWalker.java:215)\n\tat org.apache.jackrabbit.core.nodetype.xml.NodeTypeReader.getNodeTypeDefs(NodeTypeReader.java:121)\n\tat org.apache.jackrabbit.core.nodetype.NodeTypeManagerImpl.registerNodeTypes(NodeTypeManagerImpl.java:257)\n\tat org.apache.jackrabbit.core.nodetype.NodeTypeManagerImpl.registerNodeTypes(NodeTypeManagerImpl.java:499)\n\tat pl.codeservice.jcr.JcrCustomNodeRegister.registerNodes(JcrCustomNodeRegister.java:41)\n\tat pl.codeservice.jcr.JcrCustomNodeRegister.init(JcrCustomNodeRegister.java:27)\n\t...\n\n\nRegistering nodes by .cnd files works fine.",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "JCR-1755",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Critical",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "ClassCastException when registering custom node by XML file",
+    "systemSpecification": true,
+    "version": "core 1.4.5"
+}

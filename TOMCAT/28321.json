@@ -1,0 +1,83 @@
+{
+    "comments": [
+        {
+            "author": null,
+            "body": "Created attachment 11203\nTomcat stdout.log",
+            "date": "20040409T21:28:42",
+            "id": 0
+        },
+        {
+            "author": null,
+            "body": "Also, I tried the IPlanet->Tomcat test case using\nTomcat 5.0.18.  There was not memory leak.",
+            "date": "20040409T21:30:47",
+            "id": 1
+        },
+        {
+            "author": null,
+            "body": "Created attachment 11220\nJProfiler Heap Snapshot showing path to garbage collection root.",
+            "date": "20040412T22:01:33",
+            "id": 2
+        },
+        {
+            "author": null,
+            "body": "And did you try adding response = null; in JspWriterImpl.recycle to see what\nhappened ?\nI don't quite understand why or how it would really be a problem, though, as the\nreferences will go away sooner or later.",
+            "date": "20040412T22:42:02",
+            "id": 3
+        },
+        {
+            "author": null,
+            "body": "Created attachment 11221\nList of objects in memory",
+            "date": "20040412T22:51:00",
+            "id": 4
+        },
+        {
+            "author": null,
+            "body": "No I didn't want to mess around with the Tomcat code.  I would be happy if I\ncould just turn off JMX completely.",
+            "date": "20040412T22:52:15",
+            "id": 5
+        },
+        {
+            "author": null,
+            "body": "You could try setting:\n  request.registerRequests=false\nin your jk2.properties file.  This will turn off the JMX registration of \nRequests.  \n\n",
+            "date": "20040412T23:11:32",
+            "id": 6
+        },
+        {
+            "author": null,
+            "body": "Turning off the jmx registrations has solved the problem for us.  We were able to\ndo 100k requests with no memory leak.",
+            "date": "20040413T15:26:27",
+            "id": 7
+        },
+        {
+            "author": null,
+            "body": "Bill, did you possibly fix this in 5.0.20?\n\nI am specifically referring to the changelog entry:\n\n  \"Fix JMX Request registration in JK (billbarker)\"\n\nI know that fixed other issues for which I was using\n\n  request.registerRequests=false\n\nRajesh, I would be interested in knowing if 5.0.2x exhibit the same issues in\nyour testing.",
+            "date": "20040413T15:31:22",
+            "id": 8
+        },
+        {
+            "author": null,
+            "body": "There are a couple of other entries in the changelog that are related, but \nyes, this should be fixed in 5.0.20+.\n\nYou still should need to disable request-registration if you are using the JNI \nChannel, since the leak is still there.  Fixing it here requires changes to \nthe native side of the connector as well, since that is the only place that \nknows that a thread has died.\n\nMarking this as FIXED, since it looks like its a dup of the same-old request-\nregistration problem.",
+            "date": "20040413T17:48:10",
+            "id": 9
+        },
+        {
+            "author": null,
+            "body": "*** Bug 28731 has been marked as a duplicate of this bug. ***",
+            "date": "20040502T19:57:51",
+            "id": 10
+        }
+    ],
+    "component": "Jasper",
+    "description": "Server Setup:\niPlanetTM Web Server, Enterprise Edition 6.0\nWindows 2000\nTomcat 5.0.19\n\niPlanet is connected to the Tomcat server using the jk2 connector.\n\nI configured JMeter with 40 threads to repeated request the same JSP over and over.\nAll this JSP did was print out the Total Memory, Free Memory.\nAfter about 5000 requests, Tomcat got an out of memory error.\n\nSame test was done but hitting the tomcat container directly, \nsuccessfully served 15k requests with no memory leak\n\nTest was done again, but instead of IPlanet used Apache 2.  Successfully\nserved 15k requests with no memory leak.\n\nIn the test case using IPlanet, there were continuous error files that\nwere not present in the other test cases:\n\nApr 8, 2004 6:24:57 PM org.apache.jk.common.HandlerRequest decodeRequest\nWARNING: Error registering request\nApr 8, 2004 6:24:57 PM org.apache.jk.common.HandlerRequest invoke\nINFO: Unknown message 0",
+    "hasPatch": false,
+    "hasScreenshot": true,
+    "id": "28321",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "P3 blocker",
+    "product": "Tomcat 5",
+    "project": "TOMCAT",
+    "summary": "Memory Leak",
+    "systemSpecification": true,
+    "version": "5.0.19"
+}

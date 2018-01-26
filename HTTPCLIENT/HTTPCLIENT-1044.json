@@ -1,0 +1,77 @@
+{
+    "comments": [
+        {
+            "author": "Steffen Yount",
+            "body": "Here's the patch",
+            "date": "2011-01-15T02:19:23.458+0000",
+            "id": 0
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Steffen,\n\nWhile PUT methods should be idempotent, in real life often they are not. This change may potentially break existing applications in very nasty ways. My personal preference would be to not apply this change.\n\nOleg",
+            "date": "2011-01-15T08:49:07.933+0000",
+            "id": 1
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Closing as WONTFIX. I would like to keep the default implementation more idiot-proof. Applications whose PUT methods are known to be idempotent can still provide a custom implementation of HttpRequestRetryHandler to have PUT methods retried automatically.\n\nOleg  ",
+            "date": "2011-01-17T15:17:35.807+0000",
+            "id": 2
+        },
+        {
+            "author": "Steffen Yount",
+            "body": "Hi Oleg,\n\nThanks for considering my patch, and sorry for the long turn around in getting back to you.\n\n*** I think there is value in uniform application/non-application of the RFC's rules here:\n\nTo demonstrate what I mean, I believe I can make a statement equally valid to your first comment with respect to the GET method.\n\n\"While GET methods should be limited to actions of retrieval and be idempotent, in real life often they are not. The current implementation may already be breaking existing applications in very nasty ways.\"\n\nSome common examples of GET method usage diverging from spec in this way: html form submissions, RPC based APIs over HTTP, tracking pixel requests, JSONP APIs (hack for cross domain scripting limitations).\n\nI don't think the RFC's idempotence rules should be selectively respected on some HTTP methods and not on others (without really good reasons). \"Do or do not\" as Yoda would say. :-)\n\nThe current implementation retries GET, HEAD, DELETE, OPTIONS, and TRACE assuming idempotence.\n\n\n*** It is better to keep the default implementation more idiot-proof:\n\nI agree with your assessment that assuming idempotence and unintentionally retrying non-idempotent requests can break applications in \"very nasty ways\". \n\nThe nastiest of these ways are in debugging what went wrong, since a) the failure modes that lead to retries are rarely replicated or tested by app developers and b) many novice developers lack the insight to understand the value of idempotent implementations and to identify idempotence/non-idempotence related bugs.\n\nConsidering that automatic retries are optional as far as the RFC is concerned and considering the two points above, I'm on board with your assessment that the default behavior of the DefaultHttpRequestRetryHandler shouldn't be to retry PUT methods automatically.\n\nBut, I also think this reasoning should be taken one step further in the interest of uniformity and idiot-proofing: the default behavior shouldn't be using RFC defined method idempotence to enable/disable automatic retries on any of the HTTP methods.\n\n\n*** Still, I think it would be great for the HttpClient libraries to provide an out of the box HttpRequestRetryHandler that uses the RFC2616's rules for HTTP method idempotence to enable/disable automatic retries.\n\nSure, it is true that I can use a custom implementation of HttpRequestRetryHandler. But the supported behavior I'm asking for here isn't something crazy. It's something that should work in apps that respect the RFC2616's rules for HTTP method idempotence, and it is something that could be provided out of the box. \n\n\n*** I've provided 2 new alternative patches to make changes in this direction, please let me know if either one is acceptable. \n\nThe changes in \"HTTPCLIENT-1044_planB.patch\" are:\n1. Defaulting to not retry GET, HEAD, DELETE, OPTIONS, and TRACE based on assumed idempotence.\n2. Adding a check to prevent resending unrepeatable entities that have already been sent once.\n3. Removing the \"requestSentRetryEnabled\" flag which seemed to be included for specifying entity repeatability and allowed both PUT and POST methods to be resent.\n4. Adding a \"retryIdempotentMethods\" flag in place of the \"requestSentRetryEnabled\" flag. This flag allows GET, HEAD, PUT, DELETE, OPTIONS, and TRACE methods to be resent. (default value: false) \n\nThe changes in \"HTTPCLIENT-1044_planC.patch\" are:\n1. Defaulting to not retry GET, HEAD, DELETE, OPTIONS, and TRACE based on assumed idempotence.\n2. Adding a check to prevent resending unrepeatable entities that have already been sent once.\n3. Adding a new DefaultIdempotentHttpRequestRetryHandler class which does allow GET, HEAD, PUT, DELETE, OPTIONS, and TRACE methods to be resent.\n\nCheers,\n-Steffen",
+            "date": "2011-01-20T02:20:16.429+0000",
+            "id": 3
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "(1) The check for the enclosing entity being repeatable is redundant and unnecessary. The responsibility to decide as to whether or not an entity is repeatable lies with the request director.\n\n(2) There are many ways people can do silly things. I am aware that some web applications can process GET requests in such a manner that effectively renders them non-idempotent. This is however fairly rare. Entity enclosing methods are more likely to cause issues when retried automatically. The default HttpRequestRetryHandler implementation represents a compromise between requirements of the HTTP spec and tolerance to common misbehaviours by real world applications.\n\n(3) I can live with plan C as long as the default HttpRequestRetryHandler implementation remains unchanged and the point (1) is taken into consideration.\n\nOleg",
+            "date": "2011-01-20T09:58:57.120+0000",
+            "id": 4
+        },
+        {
+            "author": "Steffen Yount",
+            "body": "Cool, I see now where the RequestDirector is doing that...\n\nI've uploaded \"HTTPCLIENT-1044_planC_v2.patch\" which implements your suggestions.\n\nIs this the best way for me to submit this change?\n\nThanks,\n-Steffen",
+            "date": "2011-01-20T23:56:36.374+0000",
+            "id": 5
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Yes, it is. \n\nI'll commit the patch as soon as we have some kind of a release plan for 4.2 (or 4.1.1)\n\nOleg ",
+            "date": "2011-01-21T20:12:04.651+0000",
+            "id": 6
+        },
+        {
+            "author": "Steffen Yount",
+            "body": "Great!\n\nThank you,\n-Steffen",
+            "date": "2011-01-22T23:35:27.409+0000",
+            "id": 7
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Steffen\n\nI ended up committing a slightly different implementation conceptually similar to the one proposed by you. Please review:\n\nhttp://svn.apache.org/repos/asf/httpcomponents/httpclient/trunk/httpclient/src/main/java/org/apache/http/impl/client/StandardHttpRequestRetryHandler.java\n\n(*shameless extortion*) Also, feel free to contribute test cases\n\nOleg  ",
+            "date": "2011-02-08T21:08:18.806+0000",
+            "id": 8
+        },
+        {
+            "author": "Steffen Yount",
+            "body": "It looks like the two implementations will produce identical behaviors.\n\nFor the choice of class name I like your name \"StandardHttpRequestRetryHandler\" better.\n\nAlso, I think your choice of positively identifying the idempotent methods rather than checking for not-a-POST like I did, makes the code much cleaner to read... almost self documenting :-)\n\nI'm happy with your implementation.\n\nThank you for spending time on this issue!\n\nWhile, your extortion does make me feel guilty, and I know I would probably be a better programmer if I figured out how to integrate with the test framework, I still don't see myself getting around to writing test cases for this anytime soon... Sorry about that, it's a really busy quarter for me...\n\nCheers and thanks again!\n-Steffen",
+            "date": "2011-02-09T00:56:30.193+0000",
+            "id": 9
+        }
+    ],
+    "component": "HttpClient (classic)",
+    "description": "See attached patch file for a fix:\n\nFix treats PUT requests as idempotent, marking them to be retried when their enclosed HttpEntity is either null or repeatable.\n\n",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "HTTPCLIENT-1044",
+    "issuetypeClassified": "OTHER",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Minor",
+    "product": "HTTPCLIENT",
+    "project": "HTTPCLIENT",
+    "summary": "DefaultHttpRequestRetryHandler is not handling PUT as an idempotent method for retries, though RFC2616 section 9.1.2 clearly defines it to be one.",
+    "systemSpecification": true,
+    "version": "4.0.3, 4.1 Final"
+}

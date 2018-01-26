@@ -1,0 +1,59 @@
+{
+    "comments": [
+        {
+            "author": "S\u00e9bastien Launay",
+            "body": "Patch for the 1.4 branch containing:\n * additional tests for reproducing this bug in DerefTest test case.\n * a fix by rewriting NAryQueryNode#removeOperand(QueryNode) without relying on Object#equals(Object) but on reference comparison.",
+            "date": "2008-06-16T08:52:53.068+0000",
+            "id": 0
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "Affects jackrabbit-core in 1.4.x and jackrabbit-spi-commons in trunk.",
+            "date": "2008-06-16T09:17:12.611+0000",
+            "id": 1
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "Fixed in trunk at revision: 668086\n\nThank you for providing a patch and the detailed analysis.",
+            "date": "2008-06-16T09:25:28.969+0000",
+            "id": 2
+        },
+        {
+            "author": "S\u00e9bastien Launay",
+            "body": "I think this is the same bug as JCR-1075.",
+            "date": "2008-06-16T09:28:19.212+0000",
+            "id": 3
+        },
+        {
+            "author": "S\u00e9bastien Launay",
+            "body": "I would like to have this fix backported to the 1.4 branch, possibly in the next release (1.4.6) as the 1.5 is not planned to be released soon.",
+            "date": "2008-09-29T12:59:00.467+0000",
+            "id": 4
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Merged to the 1.4 branch in revision 700143. This fix will be included in jackrabbit-core 1.4.6.",
+            "date": "2008-09-29T14:53:11.678+0000",
+            "id": 5
+        },
+        {
+            "author": "S\u00e9bastien Launay",
+            "body": "Thanks for the merge.",
+            "date": "2008-09-29T15:14:23.086+0000",
+            "id": 6
+        }
+    ],
+    "component": "jackrabbit-spi-commons, xpath",
+    "description": "If you have the following tree (inspired from DerefTest) :\n+ people\n   + carl (worksfor -> company/microsoft)\n   + frank (worksfor -> company/microsoft)\n+ company\n    + microsoft (eotm -> carl)\n\nThe following queries will be translated to :\n\ntestroot/people/frank/jcr:deref(@worksfor, '*')/jcr:deref(@eotm, '*')\n+ Root node\n+ Select properties: *\n  + PathQueryNode\n    + LocationStepQueryNode:  NodeTest={}testroot Descendants=false Index=NONE\n    + LocationStepQueryNode:  NodeTest={}people Descendants=false Index=NONE\n    + LocationStepQueryNode:  NodeTest={}frank Descendants=false Index=NONE\n    + DerefQueryNode:  NodeTest=* Descendants=false Index=NONE\n    + DerefQueryNode:  NodeTest=* Descendants=false Index=NONE\n=> Matching carl node\n\ntestroot/people/frank/jcr:deref(@worksfor, '*')/jcr:deref(@eotm, '*')[@jcr:uuid]\n+ Root node\n+ Select properties: *\n  + PathQueryNode\n    + LocationStepQueryNode:  NodeTest={}testroot Descendants=false Index=NONE\n    + LocationStepQueryNode:  NodeTest={}people Descendants=false Index=NONE\n    + LocationStepQueryNode:  NodeTest={}frank Descendants=false Index=NONE\n    + LocationStepQueryNode:  NodeTest=* Descendants=false Index=NONE\n    + DerefQueryNode:  NodeTest=* Descendants=false Index=NONE\n      + RelationQueryNode: Op: NOT NULL Prop=@{http://www.jcp.org/jcr/1.0}uuid\n=> Not matching carl node\n\ntestroot/people/frank/jcr:deref(@worksfor, '*')[@jcr:uuid]/jcr:deref(@eotm, '*')[@jcr:uuid]\n+ Root node\n+ Select properties: *\n  + PathQueryNode\n    + LocationStepQueryNode:  NodeTest={}testroot Descendants=false Index=NONE\n    + LocationStepQueryNode:  NodeTest={}people Descendants=false Index=NONE\n    + LocationStepQueryNode:  NodeTest={}frank Descendants=false Index=NONE\n    + DerefQueryNode:  NodeTest=* Descendants=false Index=NONE\n      + RelationQueryNode: Op: NOT NULL Prop=@{http://www.jcp.org/jcr/1.0}uuid\n    + DerefQueryNode:  NodeTest=* Descendants=false Index=NONE\n      + RelationQueryNode: Op: NOT NULL Prop=@{http://www.jcp.org/jcr/1.0}uuid\n=> Matching carl node\n\ntestroot/people/frank/jcr:deref(@worksfor, '*')[@jcr:uuid]/jcr:deref(@eotm, '*')\n+ Root node\n+ Select properties: *\n  + PathQueryNode\n    + LocationStepQueryNode:  NodeTest={}testroot Descendants=false Index=NONE\n    + LocationStepQueryNode:  NodeTest={}people Descendants=false Index=NONE\n    + LocationStepQueryNode:  NodeTest={}frank Descendants=false Index=NONE\n    + DerefQueryNode:  NodeTest=* Descendants=false Index=NONE\n      + RelationQueryNode: Op: NOT NULL Prop=@{http://www.jcp.org/jcr/1.0}uuid\n    + DerefQueryNode:  NodeTest=* Descendants=false Index=NONE\n=> Matching carl node\n\nThis is because XPathQueryBuilder calls NAryQueryNode#removeOperand(QueryNode)\nin order to replace current LocationStepQueryNode with a DerefQueryNode.\n\nNAryQueryNode#removeOperand(QueryNode) uses internally a List and thus\nrelies on Object#equals(Object) for retrieving the object to remove.\n\nBut the equals method is redefined for every QueryNode with a different semantic.\n\nThen, the call to NAryQueryNode#removeOperand(QueryNode) will not remove the\nwanted operand but the first operand returning true after calling equals in\nArrayList#remove(Object).",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "JCR-1650",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "XPathQueryBuilder may not handle multiple jcr:deref correctly",
+    "systemSpecification": true,
+    "version": "1.4, core 1.4.5"
+}

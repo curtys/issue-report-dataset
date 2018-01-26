@@ -1,0 +1,47 @@
+{
+    "comments": [
+        {
+            "author": null,
+            "body": "Created attachment 20251\nRequest and response headers showing the problem\n\nI have attached a log file from Firefix LiveHTTPHeaders showing the problem.\nA static file is requested twice. The first response is a 200 with an ETag\nheader,\nthe second response is a 304 without an ETag header.",
+            "date": "20070523T09:03:45",
+            "id": 0
+        },
+        {
+            "author": null,
+            "body": "I see how to fix this, but I'm not set up to compile Tomcat so someone else will\nhave to make the change and test it.\n\nIn org.apache.catalina.servlets.DefaultServlet, the serveResource method sets an\nETag header when it serves a file with a 200 or 206 response. To get it to add\nthe ETag to 304 responses, this needs to be added:\n response.setHeader(\"ETag\", getETag(resourceAttributes));\nin two places where a a status of 304 (SC_NOT_MODIFIED) is set, in the methods\ncheckIfModifiedSince and checkIfNoneMatch.",
+            "date": "20070601T07:43:20",
+            "id": 1
+        },
+        {
+            "author": null,
+            "body": "(I've changed the Component to \"Catalina\" because none of the more specific\nComponents seem appropriate. If that's wrong, please correct it.)",
+            "date": "20070601T07:45:44",
+            "id": 2
+        },
+        {
+            "author": null,
+            "body": "Thanks for the patch. It has been applied to svn and will be in 5.5.24 and\n6.0.14 onwards.",
+            "date": "20070601T18:01:51",
+            "id": 3
+        },
+        {
+            "author": null,
+            "body": "Tested OK in 5.5.24 release candidate.",
+            "date": "20070615T15:50:45",
+            "id": 4
+        }
+    ],
+    "component": "Catalina",
+    "description": "According to the HTTP spec, if a server includes an ETag header when it sends a\nfile, it must also include the ETag when it sends a 304 (not-modified) response\nfor that file. Tomcat does not do this for static files - if you request a\nstatic file and get a 200 response, the response has an ETag header; but if you\nget a 304 resopnse, the ETag is omitted.\n\nTo reproduce:\n- In a browser, request a static file from Tomcat (e.g. http://localhost/tomcat.gif)\n- Make sure you get a 200 response (force reload or clear browser cache)\n- Examine the response headers (using a browser plugin or whatever) - note that\nthere is an ETag header\n- Request the same file again, getting a 304 (not-modified) response from Tomcat\n- Examine the response headers - note there is no ETag\nThe 304 response should include an ETag header, because the 200 response had one.\n\nSpec reference: RFC 2616 section 10.3.5 says:\n\"304 Not Modified\n[...]\nThe response MUST include the following header fields:\n[...]\n      - ETag and/or Content-Location, if the header would have been sent\n        in a 200 response to the same request\"",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "42497",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "P2 normal",
+    "product": "Tomcat 5",
+    "project": "TOMCAT",
+    "summary": "304 response should consistently include ETag header",
+    "systemSpecification": true,
+    "version": "5.5.23"
+}

@@ -1,0 +1,107 @@
+{
+    "comments": [
+        {
+            "author": "Karl Wettin",
+            "body": "documentation will have to come later... until then see the test cases",
+            "date": "2008-06-30T02:10:00.328+0000",
+            "id": 0
+        },
+        {
+            "author": "Karl Wettin",
+            "body": "This works pretty well, I'll commit it soon.\n\n * javadocs\n * improved default shingle token weights (still not that great)\n\nAlso optimized and refactored some that resulted in nicer looking code in the tests and:\n\n * PrefixAwareTokenFilter\n * PrefixAndSuffixAwareTokenFilter\n * SingleTokenTokenStream\n\n{code:java}\n/**\n * Joins two token streams and leaves the last token of the prefix stream available\n * to be used when updating the token values in the second stream based on that token.\n */\npublic class PrefixAwareTokenFilter extends TokenStream {\n  /** The default implementation adds last prefix token end offset to the suffix token start and end offsets. */\n  public Token updateSuffixToken(Token suffixToken, Token lastPrefixToken) {\n\n{code}\n\n{code:java}\n/** Links two PrefixAndSuffixAwareTokenFilter */  \npublic class PrefixAndSuffixAwareTokenFilter extends TokenStream {\n  public Token updateInputToken(Token inputToken, Token lastPrefixToken) {\n  public Token updateSuffixToken(Token suffixToken, Token lastInputToken) {\n{code}\n\n\n",
+            "date": "2008-07-01T00:47:03.997+0000",
+            "id": 1
+        },
+        {
+            "author": "Steve Rowe",
+            "body": "Hi Karl,\n\nThe classes you introduce here look interesting, but the documentation is very sparse.\n  \nThings I think should be addressed in the documentation:\n\n* Where would you see this stuff being used - on the query side or the indexing side?  Or both? \n* Where would matrix come from in a real-world scenario?  It looks like there are (at least) three mechanisms for constructing the matrix - which one(s) make sense where?\n* What do payloads have to do with the whole thing?  (Looks like weight?  ShingleMatrixFilter.calculateShingleWeight() should be explained at the class level - since it's public, I assume you mean for it to be overridable?)\n* The various ShingleMatrixFilter constructors should have javadoc explaining their use.\n* This class's use of the new flags feature looks interesting - a discussion in the documentation would be useful for future implementations.\n\nA couple of random notes:\n\n* Missing Apache license declarations: PrefixAndSuffixAwareTokenFilter.java and TestPrefixAndSuffixAwareTokenFilter.java\n* Since you only use SingleTokenTokenStream in your tests, and since it likely will only ever be used in tests, I think it should be moved from src/java/ to src/test/.\n* TestShingleMatrixFilter.TokenListStream looks generally useful for testing filters - maybe this could be pulled out as a separate class, maybe into the o.a.l.analysis.miscellaneous package?\n* On line #83 of TestShingleMatrixFilter, it looks like the first assignment to ts could be removed:\n\n{code:java}\n83:   ts = tls;\n84:   ts = new ShingleMatrixFilter(ts, 2, 2, null);\n{code}\n",
+            "date": "2008-07-01T19:52:09.460+0000",
+            "id": 2
+        },
+        {
+            "author": "Karl Wettin",
+            "body": "Thanks for the comments Steve! I'll pop a more documented patch in soon. Here are my replies:\n\n{quote}\nWhere would you see this stuff being used - on the query side or the indexing side?  Or both?\n{quote}\n\nHistorically I've used shingles at both ends to replace phrase queries and to fix word de/composition problems. This implementation was however written to tokenize the 20 news groups data for the cluster example in Mahout.\n\n{quote}\nWhere would matrix come from in a real-world scenario?  It looks like there are (at least) three mechanisms for constructing the matrix - which one(s) make sense where?\n{quote}\n\nFrom a token stream. You need to implement a TokenSettingsCodec to tell the shingle filter how to position an input token in the matrix: in a new column, a new row or in the same row. It is also used to define how to get and set a weight float of a token. \n\n{code:java}\n  /**\n   * Using this codec makes a {@link ShingleMatrixFilter} act like {@linke ShingleFilter}.\n   * It produces the most simple sort of shingles, ignoring token position increments, et c.\n   * \n   * It adds each token as a new column.\n   */\n  public static class OneDimensionalNonWeightedTokenSettingsCodec extends TokenSettingsCodec {\n\n  /**\n   * A codec that creates a two dimensional matrix \n   * by treating tokens from the input stream with 0 position increment \n   * as new rows to the current column.\n   */\n  public static class TwoDimensionalNonWeightedSynonymTokenSettingsCodec extends TokenSettingsCodec {\n\n  /**\n   * A full featured codec not to be used for something serious.\n   *\n   * It takes complete control of \n   * payload for weight\n   * and the bit flags for positioning in the matrix.\n   * \n   * Mainly exist for demonstrational purposes.\n   */\n  public static class SimpleThreeDimensionalTokenSettingsCodec extends TokenSettingsCodec {\n{code}\n\n\n\n{quote} \nWhat do payloads have to do with the whole thing?  (Looks like weight?\nShingleMatrixFilter.calculateShingleWeight() should be explained at the class level - since it's public, I assume you mean for it to be overridable?)\n{quote}\n\nYeah, it's weights. They can be used either at query time or index time. Or both for that sake. You could for instance want to be producing a matrix with all sort of weighted data in synonym space: stems, stems without diactits, source tokens without diacrits, et c. Then you'd expect to see the weight difference in the shingles too. \n\nWeights are turned off by always returning 1f at getWeight and ignore calls to setWeight in your TokenSettingsCodec.  \n\n{quote}\nSince you only use SingleTokenTokenStream in your tests, and since it likely will only ever be used in tests, I think it should be moved from src/java/ to src/test/.\n{quote}\n\nThat's actually a real use case in the test. When replacing phrase queries with shingles you might want to boost the edges by adding (boosted) prefix and suffix tokens at index and query time:\n\n{code:java}\nts = new PrefixAndSuffixAwareTokenFilter(new SingleTokenTokenStream(tokenFactory(\"^\", 1, 100f, 0, 0)), tls, new SingleTokenTokenStream(tokenFactory(\"$\", 1, 50f, 0, 0)));\n\nassertNext(ts, \"^_hello\", 1, 10.049875f, 0, 4);\nassertNext(ts, \"^_greetings\", 1, 10.049875f, 0, 4);\nassertNext(ts, \"hello_world\", 1, 1.4142135f, 0, 10);\nassertNext(ts, \"greetings_world\", 1, 1.4142135f, 0, 10);\nassertNext(ts, \"hello_earth\", 1, 1.4142135f, 0, 10);\nassertNext(ts, \"greetings_earth\", 1, 1.4142135f, 0, 10);\nassertNext(ts, \"hello_tellus\", 1, 1.4142135f, 0, 10);\nassertNext(ts, \"greetings_tellus\", 1, 1.4142135f, 0, 10);\nassertNext(ts, \"world_$\", 1, 7.1414285f, 5, 10);\nassertNext(ts, \"earth_$\", 1, 7.1414285f, 5, 10);\nassertNext(ts, \"tellus_$\", 1, 7.1414285f, 5, 10);\nassertNull(ts.next());\n{code}\n\nAs you can see, the default weight calculating is sort of messed up. I'd prefere to see more impact from the weight of the prefix and the suffix token. It's not too bad though.\n\n{quote}\nThe various ShingleMatrixFilter constructors should have javadoc explaining their use.\n{quote}\n\nI'll do that, but the names of the constructor parameters are rather self explainatory. It would just be a \n\n{quote}\nThis class's use of the new flags feature looks interesting - a discussion in the documentation would be useful for future implementations.\n{quote}\n\nIt's rather terrible, I use the int as a state instead of the intended bitset level. It's just for demonstrational purposes though.\n\n{quote}\nTestShingleMatrixFilter.TokenListStream looks generally useful for testing filters - maybe this could be pulled out as a separate class, maybe into the o.a.l.analysis.miscellaneous package?\n{quote}\n\nOr perhaps the CachingTokenFilter could be rewritten to accept a token collection in the constructor.\n\n\n",
+            "date": "2008-07-02T17:53:09.432+0000",
+            "id": 3
+        },
+        {
+            "author": "Karl Wettin",
+            "body": "new patch mainly contains more javadocs\n",
+            "date": "2008-07-02T19:33:40.686+0000",
+            "id": 4
+        },
+        {
+            "author": "Steve Rowe",
+            "body": "Cool, the added javadocs look great.\n",
+            "date": "2008-07-02T22:07:49.154+0000",
+            "id": 5
+        },
+        {
+            "author": "Karl Wettin",
+            "body": "Committed\n\nThanks again for the input Steve!",
+            "date": "2008-07-02T23:56:41.679+0000",
+            "id": 6
+        },
+        {
+            "author": "Grant Ingersoll",
+            "body": "Despite the fact that we allow contribs to be 1.5, I don't think the analysis package should be 1.5, at least it shouldn't be made 1.5 without some discussion on the mailing list.",
+            "date": "2008-09-03T19:38:52.878+0000",
+            "id": 7
+        },
+        {
+            "author": "Grant Ingersoll",
+            "body": "I'm marking this as a blocker for 2.4 based on the Java 1.5 incompatibilities that were introduced. ",
+            "date": "2008-09-03T19:45:28.122+0000",
+            "id": 8
+        },
+        {
+            "author": "Karl Wettin",
+            "body": "OK. Either remove it or place it in some alternative contrib module? The first chooise is obviously the easiest.",
+            "date": "2008-09-03T21:08:12.573+0000",
+            "id": 9
+        },
+        {
+            "author": "Karl Wettin",
+            "body": "It really is quite a bit of work to downgrade this to 1.4, lots of generics but it also depends on enum.\n\nSo if you don't want 1.5 in contrib/analyzers I vote for simply removing it from trunk now and reintroducing it in the 3.1-dev trunk. \n\n\n       karl",
+            "date": "2008-09-10T11:08:33.465+0000",
+            "id": 10
+        },
+        {
+            "author": "Grant Ingersoll",
+            "body": "I'm almost done w/ a conversion.  Regex is your friend.  As is IntelliJ.",
+            "date": "2008-09-10T13:47:02.832+0000",
+            "id": 11
+        },
+        {
+            "author": "Grant Ingersoll",
+            "body": "Java 1.4 compatible.  Give this a try",
+            "date": "2008-09-10T14:00:08.861+0000",
+            "id": 12
+        },
+        {
+            "author": "Karl Wettin",
+            "body": "Cool, thanks!\n\nThe only thing I could see is that you managed to remove a couple of <pre> tags. \n\nI'll also leave this out of the commit:\n{code:java}\nIndex: contrib/analyzers/src/java/org/apache/lucene/analysis/compound/hyphenation/PatternParser.java\n===================================================================\n--- contrib/analyzers/src/java/org/apache/lucene/analysis/compound/hyphenation/PatternParser.java       (revision 694390)\n+++ contrib/analyzers/src/java/org/apache/lucene/analysis/compound/hyphenation/PatternParser.java       (arbetskopia)\n@@ -267,7 +267,7 @@\n   // EntityResolver methods\n   //\n   public InputSource resolveEntity(String publicId, String systemId)\n-  throws SAXException, IOException {\n+  throws SAXException {\n     return HyphenationDTDGenerator.generateDTD();\n   }\n{code}",
+            "date": "2008-09-11T18:20:23.553+0000",
+            "id": 13
+        },
+        {
+            "author": "Karl Wettin",
+            "body": "JDK downgrade committed. Thanks for the time spent Grant!",
+            "date": "2008-09-11T18:28:11.010+0000",
+            "id": 14
+        }
+    ],
+    "component": "modules/analysis",
+    "description": "Backed by a column focused matrix that creates all permutations of shingle tokens in three dimensions. I.e. it handles multi token synonyms.\n\nCould for instance in some cases be used to replaces 0-slop phrase queries with something speedier.\n\n{code:java}\nToken[][][]{\n  {{hello}, {greetings, and, salutations}},\n  {{world}, {earth}, {tellus}}\n}\n{code}\n\npasses the following test  with 2-3 grams:\n\n{code:java}\nassertNext(ts, \"hello_world\");\nassertNext(ts, \"greetings_and\");\nassertNext(ts, \"greetings_and_salutations\");\nassertNext(ts, \"and_salutations\");\nassertNext(ts, \"and_salutations_world\");\nassertNext(ts, \"salutations_world\");\nassertNext(ts, \"hello_earth\");\nassertNext(ts, \"and_salutations_earth\");\nassertNext(ts, \"salutations_earth\");\nassertNext(ts, \"hello_tellus\");\nassertNext(ts, \"and_salutations_tellus\");\nassertNext(ts, \"salutations_tellus\");\n{code}\n\nContains more and less complex tests that demonstrate offsets, posincr, payload boosts calculation and construction of a matrix from a token stream.\n\nThe matrix attempts to hog as little memory as possible by seeking no more than maximumShingleSize columns forward in the stream and clearing up unused resources (columns and unique token sets). Can still be optimized quite a bit though.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-1320",
+    "issuetypeClassified": "RFE",
+    "issuetypeTracker": "RFE",
+    "priority": "Blocker",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "ShingleMatrixFilter, a three dimensional permutating shingle filter",
+    "systemSpecification": true,
+    "version": "2.3.2"
+}

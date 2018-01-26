@@ -1,0 +1,131 @@
+{
+    "comments": [
+        {
+            "author": "Earwin Burrfoot",
+            "body": "Stab one.\n\nEverything works, except Solr - this fails to compile, and a couple of tests that are commented-out and marked nocommit - these should be converted from DateField to DateUtil or dropped.\n",
+            "date": "2010-11-26T12:55:59.814+0000",
+            "id": 0
+        },
+        {
+            "author": "Earwin Burrfoot",
+            "body": "New patch. Current status:\n* Lucene's deprecations are mostly out. Those, which are still in, are marked with Lucene version when they were deprecated - for future reference.\n* I didn't sift through Solr (and will not), but I fixed it not to use any of Lucene's removed stuff (eg. it builds and passes tests)\n\nWhat has to be done?\n* There are a couple of commented out tests marked with nocommit - these used removed DateField class. If anybody knows how to fix them fast - please do this. If not, I'll get back at them in a couple of days. Or maybe we can just drop them?\n* Version.LUCENE_2x should be dropped, Version.LUCENE_3x - marked as deprecated",
+            "date": "2010-11-27T23:10:14.195+0000",
+            "id": 1
+        },
+        {
+            "author": "Earwin Burrfoot",
+            "body": "New patch.\nVersion 2x dropped, 3x deprecated. Builds/passes tests.",
+            "date": "2010-11-28T01:43:05.546+0000",
+            "id": 2
+        },
+        {
+            "author": "Earwin Burrfoot",
+            "body": "Same, rebased on latest trunk.",
+            "date": "2010-11-28T01:51:19.647+0000",
+            "id": 3
+        },
+        {
+            "author": "Robert Muir",
+            "body": "Lets not allow this patch to get out of date... Earwin i'll try to help with the Solr stuff after i review this monster ",
+            "date": "2010-11-29T02:46:46.956+0000",
+            "id": 4
+        },
+        {
+            "author": "Robert Muir",
+            "body": "Earwin: this is looking really nice at a \"glance\"... i thought you said you weren't going to sift through solr? :) seems like it works here?\n\nis the only remaining issue the two commented out tests that used DateField? In my opinion we could TODO these...\n",
+            "date": "2010-11-29T03:40:14.063+0000",
+            "id": 5
+        },
+        {
+            "author": "Earwin Burrfoot",
+            "body": "bq. i thought you said you weren't going to sift through solr?\nI fixed it to work with de-deprecated Lucene, I didn't remove any of Solr's own deprecations.\n\nbq. is the only remaining issue the two commented out tests that used DateField? In my opinion we could TODO these...\nYes. That's the only remaining issue _known to me_.\nThere are already a ton of similar todo's out there. Not sure I'd like to increase that number, but too lazy currently to do anything about it. We can todo, yeah. :)\n",
+            "date": "2010-11-29T07:20:17.189+0000",
+            "id": 6
+        },
+        {
+            "author": "Robert Muir",
+            "body": "OK, i looked at the patch and i see a few issues, mainly with the analyzer stuff.\n\nso if we are gonna really do the 2-version thing you suggested on the list, unfortunately we cant yet remove anything we deprecated in 3.0 or 3.1, as we still need some of these deprecated classes to support Version_3.0 in 4.0.\n\nYes I am aware some of these classes say in trunk/3.x '@deprecated This will be removed in Lucene 4.0' but this is wrong !\n\nExamples include things like DutchStemmer, which are deprecated in 3.1 (branch_3x), but weren't in 3.0, so we have to keep them?",
+            "date": "2010-11-29T12:42:13.668+0000",
+            "id": 7
+        },
+        {
+            "author": "Earwin Burrfoot",
+            "body": "bq. unfortunately we cant yet remove anything we deprecated in 3.0 or 3.1,\nNot completely true. We can't remove _some_ of the things deprecated in 3.0 or 3.1. _Some other_ we can remove.\n\nI primarily relied on two pointers - something is already deprecated in 3.1, and/or it has \"@deprecated This will be removed in Lucene 4.0\" stanza.\nDon't use the stanza if it's not true! :)\nI also checked things _required to support 3.0 indexes_, and remember leaving some such code intact, but could surely miss something.\n\nPlease, post corrected version of the patch, or name exact things we should preserve.\n",
+            "date": "2010-11-29T13:43:05.562+0000",
+            "id": 8
+        },
+        {
+            "author": "Earwin Burrfoot",
+            "body": "Hmm.. and regarding this exact case.\n\nDutchStemFilter.java had this:\nbq. @deprecated Use {@link SnowballFilter} with {@link org.tartarus.snowball.ext.DutchStemmer} instead, which has the same functionality.\nconsidering the following snippet from DutchStemmer.java:\nbq. The algorithm is an implementation of the <a href=\"http://snowball.tartarus.org/algorithms/dutch/stemmer.html\">dutch stemming</a> algorithm in Martin Porter's snowball project.\nwe can reliably drop DutchStemFilter+DutchStemmer, people will fix their code to use SnowballFilter and happily read their 3.0 indexes.\nNo?",
+            "date": "2010-11-29T13:49:17.975+0000",
+            "id": 9
+        },
+        {
+            "author": "Robert Muir",
+            "body": "{quote}\nwe can reliably drop DutchStemFilter+DutchStemmer, people will fix their code to use SnowballFilter and happily read their 3.0 indexes.\nNo?\n{quote}\n\nThe DutchStemmer might claim that, but it wasnt completely faithful to the algorithm (buggy).\nhere's my example from LUCENE-2055:\n\n{noformat}\nDutchStemFilter passes 98.9% of snowball tests. all bugs were in handling of double consonants:\nexamples:\naangetroffen -> aangetrof expected: aangetroff\nafvoerbonnen -> afvoerbon expected: afvoerbonn\nklommen -> klom expected: klomm\n{noformat}\n\nSo we kept the buggy implementation, for index back compat :(\n",
+            "date": "2010-11-29T13:56:32.496+0000",
+            "id": 10
+        },
+        {
+            "author": "Earwin Burrfoot",
+            "body": "Ok, restore it then and fix deprecation note to \"will drop it in Lucene 5.0\" or something?",
+            "date": "2010-11-29T14:04:30.889+0000",
+            "id": 11
+        },
+        {
+            "author": "Robert Muir",
+            "body": "Earwin, yeah ill update your patch for this stuff... (since i was the culprit!)\n",
+            "date": "2010-11-29T14:49:40.976+0000",
+            "id": 12
+        },
+        {
+            "author": "Robert Muir",
+            "body": "Earwin's patch: I only restored anything necessary for 3.0+ analyzer back compat (along with any back-compat tests).\nAll tests pass... in my opinion the patch is sorely needed!\n\nI think Earwin's suggestion here makes a ton of sense:\n* Lets say you are on Lucene 2.4, when you upgrade to 3.0, it continues to provide you backwards compat via the version constant, but Version.LUCENE_24 becomes is deprecated, so its a deprecation in your code you know you must fix, before you move to 4.0. At your leisure, sometime during the entire 3.0-3.9 or whatever, you migrate to Version.LUCENE_30 and the deprecation goes away.\n* When you move to Lucene 4.0, the Version.LUCENE_24 stuff etc stuff is gone, but its no surprise, because you are guided via deprecations. 4.0 doesnt support 2.x indexes anyway.\n\nSo I'm strongly +1 to committing this 2.3MB patch that removes 100,000 lines of crap from trunk.\n",
+            "date": "2010-11-30T03:31:33.220+0000",
+            "id": 13
+        },
+        {
+            "author": "Ryan McKinley",
+            "body": "+1\n\nThis sort of patch does not have a great shelflife, so lets not let it rot.  If there is anything in question, lets leave it in for now, and can work with smaller patches to fix.\n\nThanks Earwin!",
+            "date": "2010-11-30T04:37:34.621+0000",
+            "id": 14
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "This is awesome work -- thanks Earwin!",
+            "date": "2010-11-30T11:10:49.936+0000",
+            "id": 15
+        },
+        {
+            "author": "Robert Muir",
+            "body": "Committed revision 1040463.\n\nThanks a lot Earwin, this is tedious stuff and the patch was great... (the only issues were from my wrong deprecation notices in analyzers)\nI'll fix these in branch_3.x so people know they are staying aroound till 5.0 for index bw compat reasons.\nwe should also deprecate Version_2.x in branch_3x.\nfinally we should fix the usage of deprecated code in 3.x (e.g. i think solr there needs to be fixed to use IWconfig too).\n\nill see about merging these parts.\n",
+            "date": "2010-11-30T11:32:46.316+0000",
+            "id": 16
+        },
+        {
+            "author": "Robert Muir",
+            "body": "attached is a patch for the branch_3x changes.",
+            "date": "2010-11-30T12:55:52.658+0000",
+            "id": 17
+        },
+        {
+            "author": "Robert Muir",
+            "body": "Committed revision 1040505 for the 3x changes. Thanks again Earwin!",
+            "date": "2010-11-30T13:08:09.460+0000",
+            "id": 18
+        }
+    ],
+    "component": "",
+    "description": "subj.\nAlso, to each remaining deprecation add release version when it first appeared.\n\nPatch incoming.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-2781",
+    "issuetypeClassified": "OTHER",
+    "issuetypeTracker": "OTHER",
+    "priority": "Minor",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "Drop deprecations from trunk",
+    "systemSpecification": true,
+    "version": "4.0-ALPHA"
+}

@@ -1,0 +1,107 @@
+{
+    "comments": [
+        {
+            "author": "Christoph Kiehl",
+            "body": "This patch modifies LazyQueryResultImpl to provide a setter-method for resultFetchSize. I also fixed the class which is used for the Logger and optimized LazyScoreNodeIterator.skip() to only fetch more results if necessary.",
+            "date": "2007-06-27T14:03:18.552+0000",
+            "id": 0
+        },
+        {
+            "author": "Christoph Kiehl",
+            "body": "This patch modifies the previous patch to fix a small bug which caused LazyQueryResultImpl.getResults(int) to be called on each successive call to LazyQueryResultImpl.getNodeIterator()",
+            "date": "2007-06-28T16:37:41.999+0000",
+            "id": 1
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "Thank you for the patch.\n\nWouldn't it be more intuitive to set the resultFetchSize on the Query instance instead of the QueryResult? With your current patch one will call:\n\nQueryManager qm = ...\nQuery q = qm.createQuery(myQuery, Query.XPath);\nQueryResult result = q.execute();\n((LazyQueryResultImpl) result).setResultFetchSize(10);\nNodeIterator nodes = result.getNodes();\n...\n\nI think the following is more intuitive:\n\nQueryManager qm = ...\nQuery q = qm.createQuery(myQuery, Query.XPath);\n((QueryImpl) query).setResultFetchSize(10);\nQueryResult result = q.execute();\nNodeIterator nodes = result.getNodes();\n...",
+            "date": "2007-06-29T13:16:18.996+0000",
+            "id": 2
+        },
+        {
+            "author": "Christoph Kiehl",
+            "body": "QueryImpl is located in org.apache.jackrabbit.core.query and is not lucene specific but resultFetchSize is lucene specific. This is why I chose to provide the setResultFetchSize()-method on a lucene specific class. I think it would be better to have a QueryImpl.setMaxResultSize() instead which could be used by any search engine implementation. In the case of the lucene implementation we could guest resultFetchSize from maxResultSize. Or do you think we should provide a setResultFetchSize() method regardless of how the search engine is implemented?",
+            "date": "2007-06-29T13:24:21.027+0000",
+            "id": 3
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "> QueryImpl is located in org.apache.jackrabbit.core.query and is not lucene specific.\n\nYou are right. I forgot about that.\n\nHow about a generic method like QueryImpl.setOption(String name, String value)?\n\nThe method would then fill a map with the name/value pairs and pass the map to the implementation (lucene) specific query handler in method QueryHandler.createExecutableQuery(...)",
+            "date": "2007-06-29T13:55:57.284+0000",
+            "id": 4
+        },
+        {
+            "author": "Christoph Kiehl",
+            "body": "To be honest I don't like this generic setOption() method. Methods like that tend to transport some configuration options that are not obvious to the user but I have to confess that ((LazyQueryResultImpl) result).setResultFetchSize(10) isn't that obvious either ;)\n\nIf we provide such a  setOption() method I would at least like to provide some constants like \n\nQueryImpl.setOption(LazyQueryResultImpl.RESULT_PREFETCH_SIZE, 123)\n\nwhich doesn't really make things better. I think the main problem is that resultPrefetchSize is not only lucene specific but also specific to LazyQueryResultImpl.\n\nI just got another idea. What do you think of some Timer that checks LazyScoreNodeIterator for activeness and closes the reader if there hasn't been any activity on the iterator for the last say 1 or 2 seconds? If the Iterator is used again the query can still be executed again and the current mechanism could be used. I think in most cases you iterate through the results quite quickly so the reader will only be closed when you are finished. This would eleminate the need to set resultPrefetchSize and would give better performance to most users without configuring anything while taking up a bit more resources.",
+            "date": "2007-06-29T21:40:39.697+0000",
+            "id": 5
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "I completely agree with you that both our suggestions are quite ugly ;)\n\nHere's another idea, we could already anticipate what JSR 283 will most probably specify on the Query interface. See: https://jsr-283.dev.java.net/issues/show_bug.cgi?id=214\n\nWould that work for you?",
+            "date": "2007-07-06T12:46:50.769+0000",
+            "id": 6
+        },
+        {
+            "author": "Christoph Kiehl",
+            "body": "+1\n\nI'll try to provide a patch the next days.",
+            "date": "2007-07-06T17:50:12.070+0000",
+            "id": 7
+        },
+        {
+            "author": "Christoph Kiehl",
+            "body": "I finally made it. Took me a bit more than a few days however ;)\n\nI decided to create a new interface JackrabbitQuery in jackrabbit-api which includes the two methods setOffset() and setLimit() which will probably be part of JCR 2.0. This way you don't have to cast your Query instance to QueryImpl but rather JackrabbitQuery. This hopefully makes it more accessible to users and looks less like a hack. \n\n((QueryImpl) query).setLimit(123)\n\nvs\n\n((JackrabbitQuery) query).setLimit(123)\n\nThis opens the possibility to provide an RMI implementation to support those two methods over RMI as well.\n\nEverything else was quite straight forward. There are two patches: one for jackrabbit-api containing the interface and one for jackrabbit-core containing the actual code changes. WDYT?",
+            "date": "2007-08-04T01:18:26.479+0000",
+            "id": 8
+        },
+        {
+            "author": "Felix Meschberger",
+            "body": "+1\n\nI like the addition to jackrabbit-api. Any other solution would prevent usefullness in environments where access to jackrabbit-core is not possible, such as in a web application running in a different class loader than the repository.",
+            "date": "2007-08-04T11:35:26.211+0000",
+            "id": 9
+        },
+        {
+            "author": "Christoph Kiehl",
+            "body": "committed in revision 563688",
+            "date": "2007-08-07T22:44:24.551+0000",
+            "id": 10
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Nice work!\n\nI'm not 100% sure if we should place JCR 2.0 extensions in jackrabbit-api, after all they are still subject to change and it might well be that the interfaces will change before JCR 2.0 is final. Putting the extensions in jackrabbit-api implies that we are ready to offer backwards compatibility to these new methods even if JCR 2.0 decides to drop them or implement them in some other way. More on dev@ in a  moment...",
+            "date": "2007-08-08T07:03:17.554+0000",
+            "id": 11
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "I'd like to second Jukkas' opinion. We should not introduce new methods in the jackrabbit API for enhancements we expect to be available in JCR 2.0.",
+            "date": "2007-08-14T08:09:02.149+0000",
+            "id": 12
+        },
+        {
+            "author": "Christoph Kiehl",
+            "body": "Okay. What to do now? Based on the discussion on the dev list (http://www.nabble.com/JCR-2.0-extensions-tf4235046.html#a12049594) it seems like everyone agrees that we should start to make the jsr283 api available in Jackrabbit (e.g. in the org.apache.jackrabbit.jsr283 package). Should I remove the JackrabbitQuery interface? But I think we should the push the effort make the jsr283 api availble.",
+            "date": "2007-08-14T08:31:19.251+0000",
+            "id": 13
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "For the time being I suggest we remove the JackrabbitQuery interface and require a client to cast to the implementation class QueryImpl. When we introduce the jsr283 component we can still change introduce the interface again or even wait until the official jcr-2.0.jar is available.",
+            "date": "2007-08-14T13:07:15.471+0000",
+            "id": 14
+        }
+    ],
+    "component": "jackrabbit-core, query",
+    "description": "In our application we have a search which only shows part of a query result. We always know which part of the result needs to be shown. This means we know in advance how many results need to be fetched. I would like to be able to programmatically set resultFetchSize to minimize the number of loaded lucene docs and therefore improve the performance.\nI know it is already possible to the set the resultFetchSize via the index configuration, but this number is fixed and doesn't work well in environments where you use paging for your results because if you set this number too low the query will be executed multiple times and if you set it too high too many lucene docs are loaded.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "JCR-989",
+    "issuetypeClassified": "RFE",
+    "issuetypeTracker": "RFE",
+    "priority": "Minor",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "Modify LazyQueryResultImpl to allow resultFetchSize to be set programmatically",
+    "systemSpecification": true,
+    "version": ""
+}

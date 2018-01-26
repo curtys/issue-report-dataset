@@ -1,0 +1,47 @@
+{
+    "comments": [
+        {
+            "author": "Andrzej Bialecki ",
+            "body": "Test case to illustrate the problem. This happens both in 2.4.0 and trunk, although the patch is from trunk.\n\nUnfortunately, I don't know the reason for this behavior, so I can't provide a fix.",
+            "date": "2008-11-13T22:35:46.658+0000",
+            "id": 0
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "I found the issue.  It was caused by LUCENE-1219 (first released in\n2.4.0), which added a reuse API to Fieldable for binary fields.  When\nloading a field for merging we were failing to set the binaryLength.\nA similar case affected lazy field merging (I extended the test case\nto show it).\n\nThis is a silent data loss bug.  It only affects non-compressed binary\nfields.  Whenever segments are merged such that the segment's fields\nare non-congruent (ie, the same field name was assigned different\nfield numbers across the segments being merged), then binary fields in\nthose segments are all set to 0 length.\n\nI will commit shortly.\n",
+            "date": "2008-11-14T09:51:14.326+0000",
+            "id": 1
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Committed revision 713962 to trunk.\n\nI think we should back-port this for a future 2.4.1.",
+            "date": "2008-11-14T10:03:32.532+0000",
+            "id": 2
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Committed revision 713970 on 2.4 branch.\n\nThanks for reporting this Andrzej!",
+            "date": "2008-11-14T10:31:42.687+0000",
+            "id": 3
+        },
+        {
+            "author": "raz71abb6",
+            "body": "[flights|http://getflightsto.com]\n[baby names|http://childcareforums.com]\n",
+            "date": "2010-10-10T13:54:27.543+0000",
+            "id": 4
+        }
+    ],
+    "component": "core/index",
+    "description": "Scenario:\n\n* create an index with arbitrary content, and close it\n* open IndexWriter again, and add a document with binary field (stored but not compressed)\n* close IndexWriter _without_ optimizing, so that the new document is in a separate segment.\n* open IndexReader. You can read the last document and its binary field just fine.\n* open IndexWriter, optimize the index, close IndexWriter\n* open IndexReader. Now the field is still present (not null) and is marked as binary, but the data is not there - Field.getBinaryLength() returns 0.\n",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-1452",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "Binary field content lost during optimize",
+    "systemSpecification": true,
+    "version": "2.4, 2.9"
+}

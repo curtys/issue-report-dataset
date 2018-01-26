@@ -1,0 +1,167 @@
+{
+    "comments": [
+        {
+            "author": null,
+            "body": "The JNDI context is discarded between restarts, so I doubt that this is the\ncase. I recommend you investigate the issue further.",
+            "date": "20040622T08:09:44",
+            "id": 0
+        },
+        {
+            "author": null,
+            "body": "as I said, the application works correctly (i.e. the new value is picked up) \nwhen the environment value is changed via the Tomcat Admin interface, but does \nnot work when the value is changed by manually editting the web.xml and \nstop/start the application.\n\nSo how can this be an application level problem?\n\nThe only thing I can thing of is that it is somehow related to a Classloader \nissue??? But I am not sure why it would work with the Admin interface then.\n\n\n",
+            "date": "20040622T14:17:30",
+            "id": 1
+        },
+        {
+            "author": null,
+            "body": "also, I found someone else reported the same issue on the mailing list...\n\nhttp://archives.real-time.com/pipermail/tomcat-users/2003-March/103584.html",
+            "date": "20040622T14:21:24",
+            "id": 2
+        },
+        {
+            "author": null,
+            "body": "The code as posted can't be compiled: what's the \"jndi\" variable?\n\nIf you post a complete test case, i.e. a WAR file that I can drop into my \nTomcat installation to reproduce your problem, I'll be glad to look at it.\n\nIn addition, can you please test 5.0.28, the latest stable Tomcat 5.0 release \nat the time of this writing?",
+            "date": "20040920T15:41:49",
+            "id": 3
+        },
+        {
+            "author": null,
+            "body": "Created attachment 12809\nwar file to demonstrate env-entry problem",
+            "date": "20040920T19:46:34",
+            "id": 4
+        },
+        {
+            "author": null,
+            "body": "I have posted the war file. I ran the test against 5.0.28 - no change, problem \nstill exists. Thanks for looking into this.\n\nTo test:\n\ninstall war in server\n\nbrowse to <webserver>/<context>/listenv.jsp\n\n-  the current value of the env-entry should be displayed\n\nchange the web.xml env-entry using some text editor.\n\nreload the context, or allow tomcat to auto reload on change.\n\nbrowse to <webserver>/<context>/listenv.jsp (refresh needs to be performed)\n\n-  the OLD value is still displayed\n\nchange the env-entry using the tomcat 'admin' web interface. post changes.\n\nbrowse to <webserver>/<context>/listenv.jsp (refresh needs to be performed)\n\n-  the NEW value is still displayed\n",
+            "date": "20040920T19:51:05",
+            "id": 5
+        },
+        {
+            "author": null,
+            "body": "Could you please consider the following modification of\norg.apache.catalina.core.NamingContextListener class:\n\nit was:\n\npublic void lifecycleEvent(LifecycleEvent event) {\n...\n            // Binding the naming context to the class loader\n            if (container instanceof Context) {\n                // Setting the context in read only mode\n                ContextAccessController.setReadOnly(getName());\n                try {\n                    ContextBindings.bindClassLoader\n                        (container, container,\n                         ((Container)\ncontainer).getLoader().getClassLoader());\n                } catch (NamingException e) {\n                    log(sm.getString(\"naming.bindFailed\", e));\n                }\n            }\n...\n}\n\nI think, it should be:\n\n\npublic void lifecycleEvent(LifecycleEvent event) {\n...\n            // Binding the naming context to the class loader\n            if (container instanceof Context) {\n\n\n\n               namingResources.addPropertyChangeListener(this);\n\n\n\n                // Setting the context in read only mode\n                ContextAccessController.setReadOnly(getName());\n                try {\n                    ContextBindings.bindClassLoader\n                        (container, container,\n                         ((Container)\ncontainer).getLoader().getClassLoader());\n                } catch (NamingException e) {\n                    log(sm.getString(\"naming.bindFailed\", e));\n                }\n            }\n...\n}\n\n\nThank you,\nIgor",
+            "date": "20041030T06:03:50",
+            "id": 6
+        },
+        {
+            "author": null,
+            "body": "Created attachment 13292\nIf Environment entry is changed using admin app, the change is not visisble in JNDI. Patch to solve this problem",
+            "date": "20041101T14:53:13",
+            "id": 7
+        },
+        {
+            "author": null,
+            "body": "Sorry, this patch is wrong :-( Please do not apply it",
+            "date": "20041101T15:35:28",
+            "id": 8
+        },
+        {
+            "author": null,
+            "body": "The comments from Igor are not correct. It works ok if you change the variable\nvia the admin interface - it does not work if you manually change the web.xml,\nand stop/restart the web application.",
+            "date": "20041101T16:05:11",
+            "id": 9
+        },
+        {
+            "author": null,
+            "body": "Updating version to 5.0.28.",
+            "date": "20041122T17:37:01",
+            "id": 10
+        },
+        {
+            "author": null,
+            "body": "The chances of this getting fixes in Tomcat 5.0.x are now slim.  Can either or\nboth of you test with 5.5.7 (or 5.5.9 which will be out in a couple of days) and\nlet us know if it works or not?  That would be great...",
+            "date": "20050326T04:23:05",
+            "id": 11
+        },
+        {
+            "author": null,
+            "body": "I did a simple test with tomcat 5.5.9. Environment entries are reloaded when \ncontext is reloaded.\n\nBut if I change environment entry in admin application, it is not reloaded. To \nforce application to see new entries user will have to reload context, which is \ndangerous operation.\n\nIt would be great if application would see new value after changing it in admin \napplication too.\n\n(In reply to comment #12)\n> The chances of this getting fixes in Tomcat 5.0.x are now slim.  Can either or\n> both of you test with 5.5.7 (or 5.5.9 which will be out in a couple of days) \nand\n> let us know if it works or not?  That would be great...\n\n",
+            "date": "20050722T07:32:11",
+            "id": 12
+        },
+        {
+            "author": null,
+            "body": "That's pointless: accessing JNDI is costly, and is supposed to be read only in\nthe first place. As a result, webapps should be reading values, etc, in init,\nand that's it.",
+            "date": "20050722T07:59:47",
+            "id": 13
+        },
+        {
+            "author": null,
+            "body": "My original bug, is that if the web.xml file is modified (via text editor, etc.)\nwhile the context is running, and the context is restarted, the container is\nsupposed to detect this and load the new JNDI values.\n\nThis is according to the J2EE specification.\n\nThis does not occur in 5.0. I have not yet tested with the 5.5 release, but\nbased on the fact that nothing has been posted as a direct fix for this, I am\nfairly certain the problem still exists.",
+            "date": "20050722T08:18:10",
+            "id": 14
+        },
+        {
+            "author": null,
+            "body": "As a developer I want to have possiblity to change environment entries without \nrestarting, reloading ... My application should work 24/7 and I do not want to \nrestart or reload application because of I need to change only one parameter.\n\nEnvironment entries are very convinient to store init parameters. And I do not \nwant to change parameters too often. But it would be nice if I could change \nsomething in application parameters without restart.\n\nI can \"change\" environment entries in admin application. What is this feature \nfor, if it do not do anything, just changes value in admin?",
+            "date": "20050722T15:22:57",
+            "id": 15
+        },
+        {
+            "author": null,
+            "body": "This can be done via JMX. Assume you have a webapp called /myapp with a JNDI\nenvironment string called i/need. It can be queried via the JMPXproxy in the\nmanager app. Here's the ouput example:\n\nName:\nCatalina:type=Environment,resourcetype=Context,path=/myapp,host=localhost,name=i/need\nmodelerType: org.apache.catalina.mbeans.ContextEnvironmentMBean\nclassName: org.apache.catalina.deploy.ContextEnvironment\nname: i/need\noverride: false\ntype: java.lang.String\nvalue: less cowbell\n\nSo your search URL would be (unescaped for readability ...)\nhttp://localhost/manager/jmxproxy?qry=Catalina:type=Environment,resourcetype=Context,path=/myapp,host=localhost,name=i/need\n\nAnd can be set via\nhttp://localhost/manager/jmxproxy?set=Catalina:type=Environment,resourcetype=Context,path=/myapp,host=localhost,name=i/need&att=value&val=more+cowbell\n\nMore information:\nhttp://jakarta.apache.org/tomcat/tomcat-5.0-doc/manager-howto.html#What%20is%20JMX%20Proxy%20Servlet\n",
+            "date": "20050722T16:09:49",
+            "id": 16
+        },
+        {
+            "author": null,
+            "body": "Reopening bug. you cannot close as won't fix. your solution is not related to\nthis bug. This is a different bug, in that manual changes made to a web.xml\nfile, are not seen in the JNDI environment after a context restart. This is not\nadhering to the J2EE specification.",
+            "date": "20050722T16:18:19",
+            "id": 17
+        },
+        {
+            "author": null,
+            "body": "Sure I can close the bug ;) This will not be fixed.",
+            "date": "20050722T16:24:41",
+            "id": 18
+        },
+        {
+            "author": null,
+            "body": "Sorry, but you are an idiot, or have very little reading comprehension skills.\n\nThis bug needs to be fixed, it is not J2EE compliant. You do not need to fix the\nrequest in comment #13, that changes are visible in the JNDI context without a\nreload when changes are made via the admin interface. There is not in J2EE that\nstates that a container must update the JNDI context in real-time, but not sure\nthat the feature wouldn't be helpful as Igor has pointed out.",
+            "date": "20050722T16:34:40",
+            "id": 19
+        },
+        {
+            "author": null,
+            "body": "(In reply to comment #20)\n> Sorry, but you are an idiot\n\nThat sounds good to me :)\n\nTo translate since you apparently have very little general comprehension skills,\nthis minor issue will not be fixed in the 5.0.x branch.",
+            "date": "20050722T16:45:54",
+            "id": 20
+        },
+        {
+            "author": null,
+            "body": "How is it a minor issue? Do you run any large, multiple server, sites at all? It\nis fairly common to update deployed application by copying new web.xml files to\nthe deployment directories, and then use the Tomcat weburl to restart the context.\n",
+            "date": "20050722T16:59:30",
+            "id": 21
+        },
+        {
+            "author": null,
+            "body": "Why is this bug not moved to the 5.5 branch then?\n\nThe J2EE specification states that the JNDI variables for an application are\nreloaded during a CONTEXT RESTART. This is the only way for init() methods in a\nservlet to retrieve any changed values.\n\nThis bug is NOT related to Igor's comments where he wants JNDI changes to be\nvisible as they are made.\n\nFor what it is worth, I tested this behavior with Jetty and it works as expected.",
+            "date": "20060919T17:53:10",
+            "id": 22
+        },
+        {
+            "author": null,
+            "body": "Tested against 5.5.x and is still present. I am working on a fix...\n\nNote, I am only considering the original bug report.",
+            "date": "20060920T01:52:52",
+            "id": 23
+        },
+        {
+            "author": null,
+            "body": "This is fixed in svn and will be in 5.5.21 onwards.",
+            "date": "20060921T23:58:00",
+            "id": 24
+        }
+    ],
+    "component": "Catalina",
+    "description": "If environment entries are changed in web.xml, and the application context is \nrestarted, the values in the JNDI context are the old values.\n\nIf the environment entries are changed via the Tomcat 'admin' interface, then \nthe values provided to the context are correct.\n\nThe following code is can be used to check the environment:\n\n        try {\n            InitialContext ic = new InitialContext();\n            NamingEnumeration enum = ic.listBindings(\"java:comp/env\");\n\n            while (enum.hasMore()) {\n                Binding binding = (Binding) enum.next();\n                jndi.setProperty(binding.getName(), \"\" + binding.getObject());\n                System.out.println(\"jndi setting: \" + binding.getName() + \"=\" \n+ binding.getObject());\n            }\n        } catch (NamingException e) {\n            System.err.println(\"unable to read JNDI settings, \" + e);\n        }\n\n\nThe web.xml fragment looks as follows:\n\n\t<env-entry>\n\t\t<env-entry-name>DatabaseURL</env-entry-name>\n\t\t<env-entry-value>jdbc:hsqldb:hsql://localhost</env-entry-value>\n\t\t<env-entry-type>java.lang.String</env-entry-type>\n\t</env-entry>",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "29727",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "P3 normal",
+    "product": "Tomcat 5",
+    "project": "TOMCAT",
+    "summary": "JNDI env-entry not reload when context reloaded",
+    "systemSpecification": false,
+    "version": "Nightly Build"
+}

@@ -1,0 +1,47 @@
+{
+    "comments": [
+        {
+            "author": "hannesw@gmail.com",
+            "body": "Oops, the problem has nothing to do with NativeJavaClass, since JavaAdapter uses the superclass's java.lang.Class instance directly (in JavaAdapter.createAdapterCode()). However, it uses getMethods(), which only returns public methods, so the effect is the same. ",
+            "date": "20070314T11:32:21",
+            "id": 0
+        },
+        {
+            "author": "hannesw@gmail.com",
+            "body": "Created attachment 258676\nTest script for protected java method access\n\nThis script tests access to protected java.util.Hashtable.rehash() method both from a JavaAdapter extending Hashtable, and on a plain Hashtable instance from the outside.",
+            "date": "20070315T15:55:26",
+            "id": 1
+        },
+        {
+            "author": "hannesw@gmail.com",
+            "body": "Created attachment 258677\nPatch to allow access to protected methods in JavaAdapter superclasses\n\nThis patch makes protected methods in JavaAdapter superclasses callable to and overridable by JavaScript code.\n\nThe overriding part is easy, basically I just implemented a JavaAdapter.getOverridableMethods() method that includes protected methods to the list of potentially overridden methods.\n\nThe invokability part is harder, because we can't tell if the JS code trying to invoke a protected method belongs to the JavaAdapter or not (or at least I wouldn't know how to do that, and I think it would be overkill). My solution is to pass a boolean isAdapter argument to the NativeJavaObject constructor that will result in protected methods being exposed to JS in addition to just public ones. Thus, protected methods in JavaAdapter superclasses will be generally available to JS code. To me this seems acceptable. \n\nAdding the isAdapter flag to NativeJavaObject also allowed me to clean up the serialization code, although I haven't tested the new code yet.",
+            "date": "20070315T16:06:09",
+            "id": 2
+        },
+        {
+            "author": "david.odmark@moongatetechnologies.com",
+            "body": "Hello,\n\nI've run into this issue, apart from the JavaAdapter use case. In my case, I want to place the 'this' object on the scope, and call a protected superclass method from a script. For example:\n\nContext context = Context.enter();\nScriptable scope = new ImporterTopLevel(context);\nscope.put(\"test\", scope, this);\n...\nScript script = context.compileString(scriptString, \"PreprocessScript \", 161, null);\nscript.exec(context, scope);\n\nHere 'scriptString' defines a js function that includes a call to 'this': \n\ntest.someProtectedSuperclassMethod();\n\nWhen I run this code, even after applying the above patch, the protected method can't be found (because my call stack quite appropriately constructs a NativeJavaObject with 'isAdapter' = false). Simply changing the WrapFactory.wrapAsJavaObject() method to pass isAdapter as 'true' works fine, but is clearly not appropriate for the general case.\n\nI'd like to propose that the concept of 'isAdapter' not be conflated with the concept of 'exposePrivateSuperclassMethods\". I think what's called for in my use case is some way to either evaluate a script (or exec a compiled script) with the *option* of wrapping my Native Objects such that I can get at the protected members - else some way of placing my java objects on the scope with a hint as to how to wrap them later on when the time comes.\n\nThanks.",
+            "date": "20070503T13:42:46",
+            "id": 3
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "Committed patch:\n\nChecking in src/org/mozilla/javascript/JavaAdapter.java;\n/cvsroot/mozilla/js/rhino/src/org/mozilla/javascript/JavaAdapter.java,v  <--  JavaAdapter.java\nnew revision: 1.105.2.1; previous revision: 1.105\ndone\nChecking in src/org/mozilla/javascript/JavaMembers.java;\n/cvsroot/mozilla/js/rhino/src/org/mozilla/javascript/JavaMembers.java,v  <--  JavaMembers.java\nnew revision: 1.62.2.1; previous revision: 1.62\ndone\nChecking in src/org/mozilla/javascript/NativeJavaClass.java;\n/cvsroot/mozilla/js/rhino/src/org/mozilla/javascript/NativeJavaClass.java,v  <--  NativeJavaClass.java\nnew revision: 1.48.2.1; previous revision: 1.48\ndone\nChecking in src/org/mozilla/javascript/NativeJavaObject.java;\n/cvsroot/mozilla/js/rhino/src/org/mozilla/javascript/NativeJavaObject.java,v  <--  NativeJavaObject.java\nnew revision: 1.78.2.1; previous revision: 1.78\ndone\n",
+            "date": "20070607T11:54:02",
+            "id": 4
+        }
+    ],
+    "component": "Core",
+    "description": "User-Agent:       Mozilla/5.0 (X11; U; Linux i686; de; rv:1.8.1.2) Gecko/20060601 Firefox/2.0.0.2 (Ubuntu-edgy)\nBuild Identifier: \n\nJavaAdapters currently cannot access protected methods declared in their superclasses. Since accessing and overriding protected methods is one key benefit of creating subclasses via JavaAdapters, I think this is something we should get right. \n\nThe problem is that NativeJavaClass only knows about public methods. I guess this is correct for most cases when the class is used from the \"outside\", so the right way to fix it may be to perform/trigger protected method lookup only from the JavaAdapter class.\n\nReproducible: Always",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "373897",
+    "issuetypeClassified": "OTHER",
+    "issuetypeTracker": "BUG",
+    "priority": "-- normal",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "JavaAdapter classes cannot access protected methods in superclass",
+    "systemSpecification": false,
+    "version": "other"
+}

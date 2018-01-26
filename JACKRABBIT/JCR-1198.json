@@ -1,0 +1,95 @@
+{
+    "comments": [
+        {
+            "author": "Kaizer",
+            "body": "Patch for a new method of getObjects(Class, path) in OCM",
+            "date": "2007-11-21T11:07:51.380+0000",
+            "id": 0
+        },
+        {
+            "author": "Christophe Lombart",
+            "body": "Thanks but the unit test failed. Can you review your patch for the  unit test DigesterSimpleQueryTest and add a new one for the new method getObjects",
+            "date": "2007-11-21T22:21:22.800+0000",
+            "id": 1
+        },
+        {
+            "author": "Kaizer",
+            "body": "I have removed the earlier file. I have attached a new zip file JCR-1198.zip which contains the patch (JCR-1198.patch) and also the source files. The patch also includes the test method testGetObjectsByClassNameAndPath which tests the new method added in OCM. In case of any issues in patch let me know. Since we are in different timezones it would take time to respond back to you.\n\nI am not convinced that the code in ObjectContentManager is correct. Extract from my earlier mail so that it is recorded as part of this issue id.\n\n- forming of jcrExpression in ObjectContentManagerImpl instead of QueryManager\n- It will retrieve objects in that path only; basically no objects from child nodes are retrieved.\n\nIdeally in getObjects I would have formed a Query object and called the method of QueryManager to get the jcrExpression. The reason I could not do it right now is because the way query behaves for objects stored directly under that path.\n\nIf there is any other idea or suggestion to change this then let me know and I can contribute a patch.\n",
+            "date": "2007-11-22T06:28:34.149+0000",
+            "id": 2
+        },
+        {
+            "author": "Christophe Lombart",
+            "body": "Patch applied. Thanks. \n\nI changed the jcr expression in the method getObjects otherwise it doesn't work. We have to use \"/\" and not \"//\"\n Let me know if you are agree with that change. I also change the unit test to add more tests. \nTomorrow, I will refactor the getObjects impl to use the Query object.\n\nI would like also to make public the method getObjects(String jcrExpression, String language). What do you think about that ? ",
+            "date": "2007-11-22T23:27:41.429+0000",
+            "id": 3
+        },
+        {
+            "author": "Kaizer",
+            "body": "I had changed the getObjects method to check if the parent path is \"/\" and if so, set it to \"\" so that the expression wouldnt become \"///element\". But if the path is \"some/test\", then the parent path would be \"some\" in which case the jcr expression should be \"some//element\". But if we use \"/\", wouldnt the expression then become \"some/element\"?\n\nIf the getObjects method uses a Query object, we'll again be faced with the same scenario as the way the QueryManagerImpl builds the jcrExpression does not retrieve objects stored directly under the given path. This is why i feel that perhaps it is Jackrabbits implementation that may be incorrect. \n\nYes, i think its a good idea to include the method getObjects(String jcrExpression, String language). \n",
+            "date": "2007-11-23T11:25:49.288+0000",
+            "id": 4
+        },
+        {
+            "author": "Christophe Lombart",
+            "body": "Concerning the Query object, it has to manage the node name to make this kind of query. I will review your patch this week-end.\n\nanyway, the query support in the OCM is not ideal. We should refactor later this part depending the community feedback ",
+            "date": "2007-11-23T11:40:14.203+0000",
+            "id": 5
+        },
+        {
+            "author": "Christophe Lombart",
+            "body": "Kaiser, \n\nI think the problem is solved. Is it ok for you ? \nDid you review the code ? \n\nthanks",
+            "date": "2007-11-27T22:55:32.290+0000",
+            "id": 6
+        },
+        {
+            "author": "Kaizer",
+            "body": "Hi,\n\nI had a look at the code and it does solve our problem. The test case works perfectly fine. It's a good idea to have the node name in the Filter. Ideally i'd have liked the splitting of the path into the scope and the node name that is currently in ObjectContentManager to be part of QueryManagerImpl but i dont think it can be done as then the search would be restricted to that path itself and not its children.\n\nI think this issue can be marked as fixed now.\n\nThanks a lot for your help!\n\nKaizer",
+            "date": "2007-11-28T10:07:59.090+0000",
+            "id": 7
+        },
+        {
+            "author": "Christophe Lombart",
+            "body": "Thanks for the feedback \nFYI, we will maybe refactor the OCM  query implementation depending on the community feedback. ",
+            "date": "2007-11-28T10:19:45.830+0000",
+            "id": 8
+        },
+        {
+            "author": "Kaizer",
+            "body": "Hi,\n\nPlease let me know if we would we be getting this fix as part of release 1.4 as it's very important for my project.\n\nThanks.",
+            "date": "2007-11-29T09:04:29.919+0000",
+            "id": 9
+        },
+        {
+            "author": "Kaizer",
+            "body": "It seems that the original problem still persists. When I verified I checked for objects in that node only and another test case which checked for anywhere in the child. But for query to retrieve objects in current node or anywhere in child (self-or-descendant-axis?) it does not retrieve the objects of current node :-(.\n\nTestGetObjectsAnywhereInPath.patch demonstrates what I have stated above.\n\nIs there a way to form a Query in such a way that it retrieves objects from current node and also from its child nodes.",
+            "date": "2007-12-05T09:18:31.449+0000",
+            "id": 10
+        },
+        {
+            "author": "Kaizer",
+            "body": "This issue seems to be bigger than I thought. Right now objects are retrieved just below one level of the scope set. E.g. after applying the patch TestGetObjectsAnywhereInPath.patch in the method if we change the scope from \"/folder/test/\" to \"/folder/\" it just retrieves 4 objects and does not retrieve the one under /folder/test/test1.\n\nThis has happened after this issue was fixed.\n\nIn QueryManagerImpl.buildJCRExpression method if I change \n        if (((filter.getScope() != null) && (!filter.getScope().equals(\"\")))) {\n            jcrExp += \"/jcr:root\" + filter.getScope() + \"element(\" + filter.getNodeName() + \", \";\n        }\nto\n        if (((filter.getScope() != null) && (!filter.getScope().equals(\"\")))) {\n            if(filter.getNodeName().equals(\"*\") && !filter.getScope().equals(\"//\"))\n                filter.setScope(filter.getScope() + \"/\");\n            jcrExp += \"/jcr:root\" + filter.getScope() + \"element(\" + filter.getNodeName() + \", \";\n        }\nit works fine. Although this looks more like a hack to me but nevertheless all the test cases (including new one) pass.\n\nIf there is a better way to accomplish this (not changing QueryManagerImpl code) then do let me know.",
+            "date": "2007-12-05T12:16:17.595+0000",
+            "id": 11
+        },
+        {
+            "author": "Kaizer",
+            "body": "Changed the fix versions to 1.4 as this is quite critical part for my project",
+            "date": "2007-12-05T12:44:50.456+0000",
+            "id": 12
+        }
+    ],
+    "component": "jackrabbit-ocm",
+    "description": "Hi,\n\nI cannot retrieve list of objects that are directly under the path that they were saved in. I did not know where to simulate this issue and hence I have used DigesterSimpleQueryTest. I have attached the path for the newly added test case testObjectListRetrievalAtBasePath. In case the patch is not up to the mark I have attached the modified file too.\n\nInstead of creating Page in /test if I create it in /sample/test and search in /sample/test it returns nothing but if I search in /sample it would return the object.\n\nAnother important point here is that it is causing issues while retrieving Page class, the other test cases that are retrieving Paragraph class (embedded inside Page class) are still working fine!\n\nRegards,\n\nKaizer",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "JCR-1198",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Critical",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "Issue while loading list of classes at that path itself.",
+    "systemSpecification": true,
+    "version": ""
+}

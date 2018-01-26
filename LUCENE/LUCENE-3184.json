@@ -1,0 +1,65 @@
+{
+    "comments": [
+        {
+            "author": "Robert Muir",
+            "body": "here's a patch, also includes some random speedups to some of these tests.",
+            "date": "2011-06-08T19:52:02.912+0000",
+            "id": 0
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Looks great!  I love the LTC.rarely, usually, atLeast methods :)",
+            "date": "2011-06-08T19:53:49.774+0000",
+            "id": 1
+        },
+        {
+            "author": "Robert Muir",
+            "body": "we can fix the remaining tests to use this stuff as we get around to them.",
+            "date": "2011-06-08T23:40:54.713+0000",
+            "id": 2
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "There are some problems now in nightly builds with OOMs (boith 3.x and trunk). We can do either:\n\n- reduce some nightly settings\n- raise -Xmx if nightly=true, maybe dependent on number of iterations, too?",
+            "date": "2011-06-13T11:13:55.526+0000",
+            "id": 3
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "All OOMs are related to FST usage (mostly the one with the big file and lots of iterations):\n\n- org.apache.lucene.util.fst.TestFSTs.testBigSet\n\nbut also:\n\n- org.apache.lucene.index.TestPerFieldCodecSupport.testStressPerFieldCodec\n- org.apache.lucene.search.TestPhraseQuery.testRandomPhrases",
+            "date": "2011-06-13T11:15:47.845+0000",
+            "id": 4
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "I have also to note, that the tests now take horribly long in nightly. One build took 2 hrs and was finally failing at testBigSet. So it was not even running module/contrib tests, it took 2hrs for test-core in Lucene. Clover did also not run, but it does *not* use nightly or more than one iteration.",
+            "date": "2011-06-13T11:19:34.158+0000",
+            "id": 5
+        },
+        {
+            "author": "Robert Muir",
+            "body": "I think uwe's reported problems are fixed",
+            "date": "2011-10-30T04:31:30.266+0000",
+            "id": 6
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Bulk close after release of 3.5",
+            "date": "2011-11-27T12:29:25.579+0000",
+            "id": 7
+        }
+    ],
+    "component": "",
+    "description": "in LUCENE-3175, the tests were sped up a lot by using reasonable number of iterations normally, but cranking up for NIGHTLY.\nwe also do crazy things more 'rarely' for normal builds (e.g. simpletext, payloads, crazy merge params, etc)\nalso, we found some bugs by doing this, because in general our parameters are too fixed.\n\nhowever, it made the code look messy... I propose some new methods:\ninstead of some crazy code in your test like:\n{code}\nint numdocs = (TEST_NIGHTLY ? 1000 : 100) * RANDOM_MULTIPLIER;\n{code}\n\nyou use:\n{code}\nint numdocs = atLeast(100);\n{code}\n\nthis will apply the multiplier, also factor in nightly, and finally add some random fudge... so e.g. in local runs its sometimes 127 docs, sometimes 113 docs, etc.\n\nadditionally instead of code like:\n{code}\nif ((TEST_NIGHTLY && random.nextBoolean()) || (random.nextInt(20) == 17)) {\n{code}\n\nyou do\n{code}\nif (rarely()) {\n{code}\n\nwhich applies NIGHTLY and also the multiplier (logarithmic growth).\n",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-3184",
+    "issuetypeClassified": "OTHER",
+    "issuetypeTracker": "OTHER",
+    "priority": "Major",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "add LuceneTestCase.rarely()/LuceneTestCase.atLeast()",
+    "systemSpecification": true,
+    "version": ""
+}

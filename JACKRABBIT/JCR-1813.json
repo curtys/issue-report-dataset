@@ -1,0 +1,59 @@
+{
+    "comments": [
+        {
+            "author": "Stephane Landelle",
+            "body": "My bad, my patch writes null records instead of not writing them.\n\nA better solution would consist in:\n\n   - adding the hasUpdates method to ChangeLog\n   - skipping begin and end in\n   org.apache.jackrabbit.core.state.SharedItemStateManager$Update if local has\n   no updates with somehing like:\n\n            if (!local.hasUpdates()) {\n                return;\n            }\n\nSincerely,\n\nStephane Landelle\n\n2008/10/15 Stephane Landelle (JIRA) <jira@apache.org>\n\n",
+            "date": "2008-10-15T15:22:45.802+0000",
+            "id": 0
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Resolved in revision 705938. Thanks for the good report and proposed fix!\n\nI added the ChangeLog.hasUpdates() method as proposed, but used it already in XAItemStateManager instead of SharedItemStateManager to avoid as much extra processing as possible.",
+            "date": "2008-10-18T23:58:16.206+0000",
+            "id": 1
+        },
+        {
+            "author": "Stephane Landelle",
+            "body": "Hello Jukka,\n\nAre you sure the problem is specific to XA transactions?\n\nI guess the same problem happens with local transactions. One might not have\nactual updates to commit, depending on the business code executed inside the\ntransaction.\n\nSo I think every SharedItemStateManager is impacted and that testing if the\nChangeLog has actual updates should be done in the core methods.\n\nAm I wrong somewhere?\n\nBest regards,\n\nStephane Landelle\n\n2008/10/19 Jukka Zitting (JIRA) <jira@apache.org>\n\n",
+            "date": "2008-10-19T15:23:00.231+0000",
+            "id": 2
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Hmm, you're right. I was just thinking about the original use case where a distributed transaction that has no Jackrabbit changes is committed.\n\nReopening this issue so I remember to look at it more before releasing 1.5.0. I guess it would be a good to set up a clustered test case for the following code:\n\n    Session session = repository.login(...);\n    try {\n        session.save();\n    } finally {\n        session.logout();\n    }\n\nThis should at least not cause cluster nodes to fail. It would be nice if it also didn't result in any journal entries.",
+            "date": "2008-10-21T00:33:49.034+0000",
+            "id": 3
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Added the hasUpdates condition for non-transactional updates in revision 708619.\n\nAlso, in revision 708609 I made the journal consumer handle such empty records more gracefully.",
+            "date": "2008-10-28T17:52:07.018+0000",
+            "id": 4
+        },
+        {
+            "author": "Ian Boston",
+            "body": "Will this get applied back to 1.4 ?\n\nI have tried Extending/Replacing ClusterNode to stop it emitting empty journal records with JTA transactions, and because of all the protected, final methods, its not possible. I haven't tried aspects yet, but dont really want to, and analyzing the byte stream going into the DB is just going to be a pain.\n\nIt would be a shame to run from patched/forked version of Jackrabbit.\n\nI also tried 1.5, but it doesn't appear stable enough yet,\n",
+            "date": "2009-03-04T17:18:22.851+0000",
+            "id": 5
+        },
+        {
+            "author": "Ian Boston",
+            "body": "Ignore my previous comment, I have a workarround in the form of a custom (ugly) AppendRecord \nFor anyone else with the same problem it can be found at https://source.sakaiproject.org/contrib/k2/trunk/kernel/src/main/java/org/sakaiproject/kernel/jcr/jackrabbit/journal/ until the 1.4.x series gets updated or we move to 1.5.",
+            "date": "2009-03-05T01:09:21.693+0000",
+            "id": 6
+        }
+    ],
+    "component": "clustering, jackrabbit-core",
+    "description": "During the prepare phase of a XATransaction, XAItemStateManager.prepare calls ShareItemStageManager.beginUpdate that, in case of a ClusterNode, calls ClusterNode.updatePrepared that does a ChangeLogRecord.write().\n\nThis last method is located in ClusterRecord and systematically write the begin and the end of the journal record.\n\nAs a consequence, useless corrupted records are written in the journal everytime a transaction ends without jackrabbit update! This causes polution of the journal, as other cluster nodes try to sync with the corrupted updates and fail doing so as ClusterRecordDeserializer can't deserialize it (the record identifier is empty).\n\nChangeLogRecord (and even other ClusterRecord implementations too) should only write if there's effective updates.\n\nI propose the following solution:\n*) add the following method in Changelog so clients can know if there's effective updates:\n    public boolean hasUpdates() {\n    \treturn !(addedStates.isEmpty() && modifiedStates.isEmpty() && deletedStates.isEmpty() && modifiedRefs.isEmpty());\n    }\n\n*) change ClusterRecord with:\n    public final void write() throws JournalException {\n    \t\n    \tif (hasUpdates()) {\n\t        record.writeString(workspace);\n\t        doWrite();\n\t        record.writeChar(END_MARKER);\n    \t}\n    }\n    \n    protected abstract boolean hasUpdates();\n\n*) implement hasUpdates for every ClusterRecord implementation:\n ----> ChangeLogRecord:\n    protected boolean hasUpdates() {\n    \treturn changes.hasUpdates() || !events.isEmpty();\n    }\n ----> LockRecord and NamespaceRecord:\n    protected boolean hasUpdates() {\n    \treturn true;\n    }\n\n ----> NodeTypeRecord:\n    protected boolean hasUpdates() {\n    \treturn !collection.isEmpty();\n    }\n\nBest regards,\n\nStephane Landelle",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "JCR-1813",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Critical",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "Invalid journal records during XATransactions",
+    "systemSpecification": true,
+    "version": ""
+}

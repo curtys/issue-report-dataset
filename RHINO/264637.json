@@ -1,0 +1,53 @@
+{
+    "comments": [
+        {
+            "author": "szegedia@freemail.hu",
+            "body": "Created attachment 162289\npatch for moving evalScriptFlag from InterpretedFunction class to InterpreterData class",
+            "date": "20041016T11:50:09",
+            "id": 0
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "I committed the patch: it is sufficiently simple not to cause any problems.",
+            "date": "20041017T14:19:27",
+            "id": 1
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 162381\nPatch to remove NativeFunction.(version|argNames|argCount)\n\n\nThe patch replaces version|argNames|argCount fields in NativeFunction by\ngetLanguageVersion()|getParamCount()|getParamAndVarCount()|getParamOrVarName(int\n\nindex) abstract methods.\n\nFor the interpreted mode the methods are then trivially implemented in\nInterpretedFunction using information stored in InterpreterData. \n\nFor the class compilation mode patch adds code to generate methods'\nimplementations using data embedded in the generated class file. In this way\nfor the class compiler the patch not only removes 3 fields from each function\ninstance but also avoids the construction of argNames array replacing the\nbytecode to initialize it by the bytecode to do the switch over var index. \n\nThe patch also replaces extending from NativeFunction in\nNativeScript|NativeRegExpCtor classes by the proper extending from BaseFunction\n\nwhich was a oversight left from pre-1.5R5 reorganization of code generation.",
+            "date": "20041017T14:45:59",
+            "id": 2
+        },
+        {
+            "author": "szegedia@freemail.hu",
+            "body": "(In reply to comment #3)\n> Created an attachment (id=162381)\n> Patch to remove NativeFunction.(version|argNames|argCount)\n> \n\nWow - this indeed sounds as a great improvement. \n\nA coworker who's intensively working on JavaScript apps will probably kick in \nlater today to work with it, so any glaring bugs should become apparent rather \nquickly. I myself have been running some tests with it, and so far it looks \nokay.\n\nNow, risking that I'll come across as becoming too greedy, I assume \n\"functionName\" in BaseFunction could also undergo a similar treatment of being \nreplaced with an abstract getFunctionName() method, couldn't it? The function \nname is either calculable from other data (FieldAndMethods, overloaded case of \nNativeJavaMethod*, NativeJavaConstructor, InterpetedFunction) or fixed \n(NativeRegExpCtor) in lots of subclasses.\n\n[*] Of course, it also has a constructor with explicit name, but that could \nreally be handled by a separate subclass named \"NamedNativeJavaMethod\" or \nsomething similar - note the case of NativeJavaMethod that takes Method[] as \nargument (and by inference, all instances of FieldsAndMethods class) don't need \nthe functionName field as they directly use the Java method name as their name.\n",
+            "date": "20041018T09:09:58",
+            "id": 3
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 171502\nPatch to replace BaseFunction.functionName by BaseFunction.getFunctionName()",
+            "date": "20050117T13:00:18",
+            "id": 4
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "The patch was committed some time ago.",
+            "date": "20050801T10:40:47",
+            "id": 5
+        }
+    ],
+    "component": "Core",
+    "description": "User-Agent:       Opera/7.54 (Windows NT 5.0; U)  [en]\nBuild Identifier: \n\nThe boolean flag \"evalScriptFlag\" in the class InterpretedFunction could be \nmoved to InterpretedData. This would make InterpretedFunction (of which one \ninstance is created per declared function per script execution) lighter, on \nexpense of InterpretedData (of which one instance is created per declared \nfunction per script parsing).\n\nWith support for continuations in 1.6, it is also important to be able to stub \nout as much of the objects representing an interpreted function as possible when \nserializing interim state, and reconnect to the already present shared instances \nupon deserialization. It is therefore important to push as much of the immutable \nstate as possible to InterpreterData class - I will likely follow up with \nproposals for further reductions in InterpretedFunction's base class, \nNativeFunction. \n\nReproducible: Always\nSteps to Reproduce:",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "264637",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "RFE",
+    "priority": "-- enhancement",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "InterpretedFunction memory footprint could be lighter",
+    "systemSpecification": false,
+    "version": "other"
+}

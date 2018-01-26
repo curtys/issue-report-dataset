@@ -1,0 +1,131 @@
+{
+    "comments": [
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Michael,\nI can't reproduce the problem with the current CVS snapshot. What version of\nHttpClient are you using? Make sure it is at least beta-1. Complete wire log\nwould also help.\n\nOleg",
+            "date": "2003-07-01T19:29:34.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Michael Becke",
+            "body": "HttpClient does not look at the HTML content.  It uses the location header as per the RFC.  It seems \nthat this site redirects to itself:\n\nLocation: http://www.stagecoach.co.uk\n\nMike",
+            "date": "2003-07-01T19:32:54.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Michael Mattox",
+            "body": "Ok, I was using the link in the HTML content.  Is it possible to have \nhttpclient not follow a redirect when the redirect is the same as the current \nURL?  This would avoid the problem.\n\n",
+            "date": "2003-07-01T19:35:15.000+0000",
+            "id": 2
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Ok. The problem is perfectly reproducible. Still, I believe that HttpClient\nbehavior is absolutely correct. It just does exactly what it is told to do by\nthe target HTTP server. It is not up to HttpClient to decide whether the target\nURL makes sense or not, as long it is a valid URL. I suggest you disable\nautomatic redirect for that particular URL and implement custom redirect logic\nthat suits your needs. \n\nDoes anyone see it differently?\n\nOleg\n\nPS: I tried hitting the site in question with Galeon and it did not work either.\nI could not care less if the site works with IE",
+            "date": "2003-07-01T20:25:24.000+0000",
+            "id": 3
+        },
+        {
+            "author": "Michael Mattox",
+            "body": "I see it differently although not strongly enough to pursue it.  I see an \nopportunity to prevent httpclient from doing something that doesn't make sense, \nand an opportunity to optimize the performance by preventing 100 GETs.  Overall \nit's not a big deal, we can leave the report as invalid.\n\n\n\n",
+            "date": "2003-07-01T20:33:02.000+0000",
+            "id": 4
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Michael, redirect logic in HttpClient will be completely overhauled in the 2.1\nrelease. We can decide at that point whether HttpClient should follow redirects\nto the same URL or not. I am just not entirely sure if there are no legitimate\nuse scenarios for such redirects.\n\nOleg",
+            "date": "2003-07-01T20:47:59.000+0000",
+            "id": 5
+        },
+        {
+            "author": "Christian Sell",
+            "body": "the spec does mention that a client SHOULD detect and prevent circular redirects",
+            "date": "2003-07-01T21:57:17.000+0000",
+            "id": 6
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "HttpClient DOES prevent circular redirects by keeping a max count on allowed\nautomatic redirects. The question is whether HttpClient should make an\nassumption that a redirect to the same URL will always result in a infinite\nloop. I am not entirely sure this assumption is valid.\n\nOleg",
+            "date": "2003-07-01T22:11:15.000+0000",
+            "id": 7
+        },
+        {
+            "author": "Christian Sell",
+            "body": "there is a difference between limiting the number of redirects and preventing\ncircular redirects. If I do the latter, a redirect to an URL that already\nappeared in the redirect chain will be rejected, even if the max number of\nredirects has not been reached.",
+            "date": "2003-07-01T23:40:57.000+0000",
+            "id": 8
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Christian,\nCan you show me where in the RFC it is stated that redirects to the same\nlocation are not allowed? In my humble opinion, multiple redirects to the same\nlocation != an infinite loop.\n\nOleg",
+            "date": "2003-07-02T00:04:05.000+0000",
+            "id": 9
+        },
+        {
+            "author": "Christian Sell",
+            "body": "ok, heres the quote from section 10.3 in RFC 2616:\n\n\"A client SHOULD detect infinite redirection loops, since such loops generate\nnetwork traffic for each redirection. \nNote: previous versions of this specification recommended a maximum of five\nredirections. Content developers should be aware that there might be clients\nthat implement such a fixed limitation.\"\n\nTo me, DETECTING an infinite loop is something else than limiting the number of\nredirects, as the above remark about previous versions also confirms.\n\nAnd, IMHO, multiple redirects to the same location == an infinite loop (unless\nthe resource at the location has changed in the meantime)\n\n- I hope this issue does not get into an inifite loop ;-) -",
+            "date": "2003-07-02T00:41:43.000+0000",
+            "id": 10
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "I respectfully disagree with your interpretation even though in most of the\ncases it corresponds to what the majority of users may expect to see (including\nmyself). This said, HttpClient is a general purpose HTTP agent and as such\nshould follow the letter of the specification rather than make informed guesses.\nWe are not supposed to invent stuff. Nowhere in the spec 'circular redirects'\nare mentioned. The spec states that an HTTP agent should avoid infinite loops,\nwhich is not the same thing as circular redirects in my opinion.\n\nOleg",
+            "date": "2003-07-02T01:02:05.000+0000",
+            "id": 11
+        },
+        {
+            "author": "Christian Sell",
+            "body": ">The spec states that an HTTP agent should avoid infinite loops,\n>which is not the same thing as circular redirects in my opinion.\n\nIf you want to follow the letter, please do. The letter specifically mentions\nDETECTING an infinite loop, not AVOIDING it. If you limit the redirects you are\nnot detecting anything - after all the loop might end 2 steps after your limit.\n\nChristian",
+            "date": "2003-07-02T01:38:41.000+0000",
+            "id": 12
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "HttpClient does detect and does avoid infinite redirection loops in its present\nimplementation. In the 2.1 release it may optionally handle circular redirection\nloops as well.\n\nOleg",
+            "date": "2003-07-02T01:55:15.000+0000",
+            "id": 13
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Okay gentlemen.  You are essentially both correct.  HttpClient currently works\nfor this case (i.e. does not loop forever and warns the user) however the\nbehavior is sub-optimal.  \n\nLet us revisit this in 2.1 where it may make some sense to detect circular\nredirects.  Case closed for now?\n\nMike",
+            "date": "2003-07-02T02:45:00.000+0000",
+            "id": 14
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Created an attachment (id=11207)\nPatch (take 1)\n",
+            "date": "2004-04-10T22:34:20.000+0000",
+            "id": 15
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "The fix is pretty straightforward. Important notes:\n\n* Circular redirect check is on per default and in lenient mode, is off in\nstrict mode\n\n* Authentication attempts excluded from the redirect count and do not affect the\nmax redirect check.\n\nLet me know if you agree. Feedback welcome\n\nOleg",
+            "date": "2004-04-10T22:44:25.000+0000",
+            "id": 16
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Very nice, looks good to me.  I have only one very minor suggestion.  I would rename \nCIRCULAR_REDIRECTS to ALLOW_CIRCULAR_REDIRECTS, just so that it's more readable on its own.\n\nMike",
+            "date": "2004-04-12T04:21:40.000+0000",
+            "id": 17
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "CIRCULAR_REDIRECTS renamed to ALLOW_CIRCULAR_REDIRECTS. Patch committed.\n\nOleg",
+            "date": "2004-04-12T17:32:59.000+0000",
+            "id": 18
+        }
+    ],
+    "component": "HttpClient (classic)",
+    "description": "I noticed that if the server returns a 302 without a URL in the link, the \nHttpClient follows the empty URL up to the maximum times (100 by default).  \nInstead it should check and if the URL is an empty string it shouldn't try to \nfollow the redirect.\n\n12:18:17,430 [U:          ] [main                ] ERROR \nHttpMethodBase               - Narrowly avoided an infinite loop in execute\n12:18:17,430 [U:          ] [main                ] DEBUG \nURLMonitor                   - Method.execute attempt 1 failed \nhttp://www.stagecoach.co.uk: \norg.apache.commons.httpclient.HttpRecoverableException: Maximum redirects (100) \nexceeded\n12:18:17,430 [U:          ] [main                ] DEBUG \nURLMonitor                   - HttpRecoverableException \n(http://www.stagecoach.co.uk) : \norg.apache.commons.httpclient.HttpRecoverableException: Maximum redirects (100) \nexceeded\n\tat org.apache.commons.httpclient.HttpMethodBase.execute\n(HttpMethodBase.java:1065)\n\tat com.verideon.veriguard.domain.URLMonitor.monitor(URLMonitor.java:189)\n\tat com.verideon.veriguard.domain.URLMonitor.monitor(URLMonitor.java:101)\n\tat com.verideon.veriguard.domain.TestURLMonitor.getPage\n(TestURLMonitor.java:58)\n\tat com.verideon.veriguard.domain.TestURLMonitor.monitorURL\n(TestURLMonitor.java:47)\n\tat com.verideon.veriguard.domain.TestURLMonitor.testMonitorURLStageCoach\n(TestURLMonitor.java:138)\n\tat sun.reflect.NativeMethodAccessorImpl.invoke0(Native Method)\n\tat sun.reflect.NativeMethodAccessorImpl.invoke\n(NativeMethodAccessorImpl.java:39)\n\tat sun.reflect.DelegatingMethodAccessorImpl.invoke\n(DelegatingMethodAccessorImpl.java:25)\n\tat java.lang.reflect.Method.invoke(Method.java:324)\n\tat junit.framework.TestCase.runTest(TestCase.java:154)\n\tat junit.framework.TestCase.runBare(TestCase.java:127)\n\tat junit.framework.TestResult$1.protect(TestResult.java:106)\n\tat junit.framework.TestResult.runProtected(TestResult.java:124)\n\tat junit.framework.TestResult.run(TestResult.java:109)\n\tat junit.framework.TestCase.run(TestCase.java:118)\n\tat junit.framework.TestSuite.runTest(TestSuite.java:208)\n\tat junit.framework.TestSuite.run(TestSuite.java:203)\n\tat org.eclipse.jdt.internal.junit.runner.RemoteTestRunner.runTests\n(RemoteTestRunner.java:392)\n\tat org.eclipse.jdt.internal.junit.runner.RemoteTestRunner.run\n(RemoteTestRunner.java:276)\n\tat org.eclipse.jdt.internal.junit.runner.RemoteTestRunner.main\n(RemoteTestRunner.java:167)\n\nResult with telnet:\n\nGET /\nHTTP/1.1 302 Object moved\nServer: Microsoft-IIS/5.0\nDate: Tue, 01 Jul 2003 10:05:58 GMT\nX-Powered-By: ASP.NET\nLocation: http://www.stagecoach.co.uk\nConnection: Keep-Alive\nContent-Length: 121\nContent-Type: text/html\nSet-Cookie: ASPSESSIONIDCQCSRAAB=IFJJLEADOPDDNNGHLPFBIIIE; path=/\nCache-control: private\n\n<head><title>Object moved</title></head>\n<body><h1>Object Moved</h1>This object may be found <a HREF=\"\">here</a>.</body>\nConnection closed by foreign host.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "HTTPCLIENT-239",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Minor",
+    "product": "HTTPCLIENT",
+    "project": "HTTPCLIENT",
+    "summary": "Redirect 302 to the same URL causes max redirects exception",
+    "systemSpecification": true,
+    "version": ""
+}

@@ -1,0 +1,287 @@
+{
+    "comments": [
+        {
+            "author": "Mohammad Rezaei",
+            "body": "Created an attachment (id=9912)\npossible implementation\n",
+            "date": "2004-01-13T03:28:24.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Ortwin Gl\u00fcck",
+            "body": "IMHO any entity enclosing method (including POST) already is capable of sending\nchunked transfer encoded requests. This can be enabled by calling:\n\nEntityEnclosingMethod::setRequestContentLength(CONTENT_LENGTH_CHUNKED)\n\nThe feature is documented on the above mentioned method.\n\nBut I like the optimization with your 2K buffer!\n\nOdi",
+            "date": "2004-01-16T16:56:37.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Mohammad Rezaei",
+            "body": "The point isn't just chunking. The real point is *streaming*. (of course, you\ncan't have streaming without chunking). We send 100's of MB of data. We simply\ncan't afford to buffer everything upfront. Even if we could afford the memory,\nin terms of raw performance, a full buffered solution is about half the speed of\na streaming solution, because generating 10MB of data is a CPU intensive task.\nWhile the buffer is being created, the network and tbe other side are totally\nidle. With streaming, the client CPU (encoding), the server CPU (decoding) and\nthe network all work simultaneously.\n\nThe above solution was inspired by a thread in the mailing list:\nhttp://nagoya.apache.org/eyebrowse/ReadMsg?listName=commons-httpclient-dev@jakarta.apache.org&msgId=712986\n\nIt just so happens that the solution for streaming is pretty easy, but not very\nuseful without a good chunking implementation.\n\nThanks\nMoh",
+            "date": "2004-01-16T22:35:02.000+0000",
+            "id": 2
+        },
+        {
+            "author": "Ortwin Gl\u00fcck",
+            "body": "Moh,\n\nexcuse me if I am wrong, but the when using chunked transfer encoding with the\ncurrent implementation, the request is *not* buffered. So I still don't\nunderstand why you have a problem with the current behaviour of HttpClient.\nPlease explain that.\n\nOdi",
+            "date": "2004-01-16T22:40:15.000+0000",
+            "id": 3
+        },
+        {
+            "author": "Mohammad Rezaei",
+            "body": "The problem is I need an OutputStream and HttpClient doesn't provide one.\n(HttpUrlConnection does, for example). Simply put, I'm serializing a large\nobject graph and I'm using ObjectOutputStream. There are 3 solutions (as pointed\nout in the mailing list thread):\n1) Buffer everything. As explained above, this is not a viable solution.\n2) Use a PipedInputStream. That requires 2 threads for each send and frankly, is\nnot all that intuitive.\n3) Provide access to the OutputStream; this is the implementation we went with.\n\nSorry if I wasn't clear.\n\nThanks\nMoh\n",
+            "date": "2004-01-16T22:44:49.000+0000",
+            "id": 4
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Mohammad,\nI have to say I find the solution you have presented far from being elegant. I\nreally do not see why BufferedChunkedOutputStream class must be tightly coupled\nwith HttpConnection & HttpState. I personally find this a bit too much of a\nprice to pay for not using chunk-encoding when the entire entity body fits\nwithin the 2K buffer. Is there anything I have missed as well?\n\nOleg",
+            "date": "2004-01-16T22:50:49.000+0000",
+            "id": 5
+        },
+        {
+            "author": "Mohammad Rezaei",
+            "body": "The optimization for small buffers is just that, an optimization. Chunking can\nbe quite wasteful for small payloads, both in terms of total transfered bytes\nand the logic to encode/decode the chunk. As for the coupling to HttpConnection\nand HttpState, I was just trying to be consistent with the current api.\nPractically all write methods in HttpMethodBase take HttpConnection and\nHttpState as parameters.  That's not strictly necessary. In this particular\ncase, we could store those values in StreamedPostMethod and then\nBufferedChunkedOutputStream wouldn't ever get to see those.\n\nI think the real architectural issue here may be that HttpClient assumes all\nheaders must be available before at least some processing is performed on the\nbody. That assumption is not true in this case. There are other cases where that\nassumption makes using HttpClient difficult. For example consider a case where\nyou conditionally compress the payload or not based on size. The content type\ncan't be set until you've decided to go one way or another and that will depend\non processing the body.\n\nI tried to point out the coupling in the initial comment because I agree with\nyou: it is not elegant. I'm not sure there is an elegant solution here.\nHonestly, I dislike the reverse coupling (StreamedPostMethod knowing about\nBufferedChunkedOutputStream) even more. In good servlet implementations (e.g.\nTomcat 5.x, Weblogic) the stream layer is totally transparent. What a servlet\ndoes is not all that different than what HttpClient needs to do. Maybe the\nTomcat architecture would be a good starting point for the 3.0, or at least\nsomething to keep in mind.\n\nBTW, going back to the optimization: some servlet containers do the same.\nWeblogic does. Tomcat does not.\n\nThanks\nMoh\n",
+            "date": "2004-01-16T23:37:55.000+0000",
+            "id": 6
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "> The optimization for small buffers is just that, an optimization. Chunking can\n> be quite wasteful for small payloads, both in terms of total transfered bytes\n> and the logic to encode/decode the chunk.\n\nRight, but not in this particular case, when all the available content (< 2K) is\nsent as one chunk. One does incur an overhead of two headers (for a payload\nchunk and a closing chunk), but IMHO such overhead is negligible.\n\n> I think the real architectural issue here may be that HttpClient assumes all\n> headers must be available before at least some processing is performed on the\n> body.\n\nThe current architecture of HttpClient is simply broken. Period. It is in a dire\nneed of a complete overhaul. But we do try to make things better, not worse,\nuntil we finally get a change to fix the HttpClient fundamentals. The attempt to\nimplement deferred header writing on top of the existing architecture does not\nseem to make things better (at least IMHO)\n\nOleg",
+            "date": "2004-01-17T00:01:24.000+0000",
+            "id": 7
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Mohammad,\nMy previous comment was not intended to discourage you and was not meant to \nmake you think that your contribution was not welcome. Quite the opposite is \nthe case. We certainly want to have the existing ChunkedOutputStream class \nreplaced with your code. If just felt that output optimization based on the \nexisting deficient architecture was not worth the trouble. This problem can be \nrevisited in the course of 4.0 api overhaul. For the 3.0 release I would rather \nprefer a less intrusive approach. Would you be willing to continue working on \nthis patch?\n\nOleg",
+            "date": "2004-01-23T02:13:32.000+0000",
+            "id": 8
+        },
+        {
+            "author": "Mohammad Rezaei",
+            "body": "hah! It takes more than words to discourage me :->\nI've actually been a little busy, but kept this in the back of my mind. The way\nI see it, there are 3 ways to proceed (in order of difficulty, reverse order of\n\"goodness\"):\n1) Forget about refactoring the BufferedChunkedOutputStream and make it an inner\nclass of StreamedPostMethod. This is actually how I wrote the code originally.\n2) Take out the first chunk optimization. This makes BufferedChunkedOutputStream\na simple replacement for the current implementation. See below.\n3) Teach HttpMethodBase how to deal with delaying headers. This may not be too\nbad in time for 2.1 (are we calling that 3.0 now?). I haven't had time to take a\nclose look.\n\nThe reason I'm hesitant about 2 is that HttpClient is used by a wide range of\npeople, most of whom don't care about large POST payloads. The nice thing about\nfirst chunk optimization is that it transparently uses a more widely available\nContent-Length header. There are alot of broken proxies/load\nbalancers/firewalls/webservers out there. It would be nice for a general purpose\nlibrary to use the more common form when it can. There is nothing preventing\npeople from doing their own buffering; this is just a convenience. FYI, for my\npurposes, option 2 will be just fine.\n\nThanks\nMoh",
+            "date": "2004-01-23T02:27:32.000+0000",
+            "id": 9
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Mohammad,\ncan we settle for option 2 for the 3.0 (former 2.1) release? The first chunk\noptimization will be revisited in the course of 4.0 massive API redesign.\n\nOleg",
+            "date": "2004-01-24T00:14:30.000+0000",
+            "id": 10
+        },
+        {
+            "author": "Bruce McHaffie",
+            "body": "Architectural discussion aside, I tried out Moh's classes and found them very \nuseful. I have existing classes that are designed to read from an input stream \nand write to an output stream and Moh's code made it simpler to hook that into \nhttpclient.\n\nSo basically, for my purposes, the following:\ninputstream -> mycode -> httpclient (as an outputstream)\n\nis better than:\n\ninputstream -> mycode -> outputstream -> inputstream -> httpclient\n\nBruce.",
+            "date": "2004-03-05T00:47:29.000+0000",
+            "id": 11
+        },
+        {
+            "author": "David Cowan",
+            "body": "This patch made life much easier for streaming requests.  I am using JDOM to \noutput xml and tried to use Piped Streams without much success to stream \nrequests.  This patch made it much easier to output JDOM to a stream using \nHttpClient",
+            "date": "2004-03-06T05:34:53.000+0000",
+            "id": 12
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Created an attachment (id=10684)\nA different take\n",
+            "date": "2004-03-07T02:03:53.000+0000",
+            "id": 13
+        },
+        {
+            "author": "Michael Becke",
+            "body": "The attached patch is another take on this solution.  It is an attempt to combine this request along with \nOdi's suggestion in <http://nagoya.apache.org/eyebrowse/BrowseList?listName=commons-httpclient-\ndev@jakarta.apache.org&by=thread&from=654699>.  \n\nThis patch is mostly just a proof of concept and still needs quite a bit of work. There are a few areas \nthat I am a little unhappy with.  In particular:\n\n - EntityEnclosingMethod.getRequestBody() and getRequestBodyAsString() are not so nice.\n - Now that content length is moved to the RequestEntity the various content length methods on \nEntityEnclosingMethod are a little questionable.\n\nPlease let me know what you think.\n\nMike",
+            "date": "2004-03-07T02:10:59.000+0000",
+            "id": 14
+        },
+        {
+            "author": "Mohammad Rezaei",
+            "body": "Mike's patch looks good to me. I've attached a direct replacement for\nChunkedOutputStream that buffers writes to avoid tiny chunks.",
+            "date": "2004-03-08T23:18:27.000+0000",
+            "id": 15
+        },
+        {
+            "author": "Mohammad Rezaei",
+            "body": "Created an attachment (id=10705)\nBuffered ChunkedOutputStream\n",
+            "date": "2004-03-08T23:19:20.000+0000",
+            "id": 16
+        },
+        {
+            "author": "Mohammad Rezaei",
+            "body": "To use the buffered ChunkedOutputStream, one change is required: In\nEntityEnclodingMethod, the code:\n\n         if (outstream instanceof ChunkedOutputStream) {\n             ((ChunkedOutputStream) outstream).writeClosingChunk();\n         }\n\nhas to be changed to\n\n         if (outstream instanceof ChunkedOutputStream) {\n             ((ChunkedOutputStream) outstream).finish();\n         }\n\nfinish() flushes the cache as well writes the final chunk. \n\nThanks\nMoh\n",
+            "date": "2004-03-08T23:27:39.000+0000",
+            "id": 17
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Mohammad,\nThe patch looks good to me. However, I'd like to see a few more things done\nbefore the new implementation of the ChunkedOutputStream class can be committed. \n\n* Remove references to deprecated HttpConstants methods. Use corresponding\nmethods of the EncodingUtil class instead\n* Provide at least rudimentary Javadocs.\n* Parameterizable buffer size. Simple\nChunkedOutputStream#ChunkedOutputStream(OutputStream, int) constructor would do fine\n* A SimpleHttpServer based test case would be just great. You may use\nTestBadContentLength test unit as a reference implementation\n* Use unified diff output format (diff -u) against CVS HEAD to produce the patch\nif possible\n\nIf you are constrained in time, I can take over from here. However, I really\nwould like you to see this patch to its logical conclusion\n\nCheers,\n\nOleg",
+            "date": "2004-03-09T01:01:56.000+0000",
+            "id": 18
+        },
+        {
+            "author": "Mohammad Rezaei",
+            "body": "Created an attachment (id=10706)\npatch that includes Oleg's suggestions without the test case\n",
+            "date": "2004-03-09T02:57:13.000+0000",
+            "id": 19
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Mohammad,\nCool. But test cases still need to be provided, as the ChunkedOutputStream class\nhas virtually no test case coverage at all. It's not fun, but it needs to be done. \n\nAgain, I can take it from here, but if you contibuted a few test cases, it would\nbe very welcome.\n\nOleg",
+            "date": "2004-03-09T04:40:59.000+0000",
+            "id": 20
+        },
+        {
+            "author": "Ortwin Gl\u00fcck",
+            "body": "Here is my 2 cts. \nI don't see why buffering needs to be coupled with the chunking logic. I think\nthe same effect can be achieved by just wrapping the stream into a\nBufferedOutputStream, no? (That ugly instanceof problem should be solved anyway).\n\nTwo more things about the patch:\n * please follow the original coding conventions (braces and linebreaks)\n * license terms must be accoring to the ASF - no third-party copyrights please,\nuse @author tag, we will mention \"Goldman Sachs\" in the Obtained-From field in\nthe CVS comment when committing.\n \n\n",
+            "date": "2004-03-09T17:11:40.000+0000",
+            "id": 21
+        },
+        {
+            "author": "Mohammad Rezaei",
+            "body": "Ortwin,\nThe whole point of buffering is to avoid tiny chunks. Here is Sun's code from\nBufferedOutputStream:\n    public synchronized void write(byte b[], int off, int len) throws IOException {\n\tif (len >= buf.length) {\n\t    /* If the request length exceeds the size of the output buffer,\n    \t       flush the output buffer and then write the data directly.\n    \t       In this way buffered streams will cascade harmlessly. */\n\t    flushBuffer();\n\t    out.write(b, off, len);\n\t    return;\n\t}\n\tif (len > buf.length - count) {\n\t    flushBuffer();\n\t}\n\tSystem.arraycopy(b, off, buf, count, len);\n\tcount += len;\n    }\n\nHere are two conditions under which the patch behaves better (let's assume 2048\nbyte buffer):\n1) Buffer has 5 bytes in it, and a request to write 2048 bytes is received.\nBufferedOutputStream would cause 2 chunks to be written, one of length 5, one\n2048. The new ChunkedOutputStream would write a single chunk of size 2053.\n2) Buffer has 5 bytes in it, and a request to write 2047 bytes is received.\nBufferedOutputStream would cause a 5 byte chunk and buffer the rest for later\n(which incurs an unnecessary System.arrayCopy). The new ChunkedOutputStream\nwrites a 2052 byte chunk.\nEssentially, what you get from BufferedOutputStream is a crapshoot. It's\nanywhere from 1 to buf.length (or the size of the passed in request). A chunk of\nlength 1 has 500% overhead. ChunkedOutputStream guarantees a minimum chunk size\n(except for the last chunk).\n\nI'll fix up the copyright and resubmit.\n\nThanks\nMoh",
+            "date": "2004-03-09T22:49:45.000+0000",
+            "id": 22
+        },
+        {
+            "author": "Ortwin Gl\u00fcck",
+            "body": "Okay, now I see. Thanks for explaining this to me. You get my GO :-)",
+            "date": "2004-03-09T23:18:52.000+0000",
+            "id": 23
+        },
+        {
+            "author": "Mohammad Rezaei",
+            "body": "Created an attachment (id=10728)\npatch with correct style and copyright\n",
+            "date": "2004-03-10T03:25:46.000+0000",
+            "id": 24
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "I believe the patch is almost ready. I'll provide a few simple test cases, if\nnobody steps in, and commit the patch in a day or two provided nobody objects. \n\nOleg",
+            "date": "2004-03-10T05:57:26.000+0000",
+            "id": 25
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Works for me...  Any comments on my changes to EntityEnclosingMethod?\n\nMike",
+            "date": "2004-03-10T11:21:41.000+0000",
+            "id": 26
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Created an attachment (id=10750)\nLatest Mohammad's patch + test cases\n",
+            "date": "2004-03-11T04:17:42.000+0000",
+            "id": 27
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "I have added a few test cases to the latest Mohammad's patch. If nobody objects\nI'll commit the patch in 24 hours.\n\nOleg",
+            "date": "2004-03-11T04:18:51.000+0000",
+            "id": 28
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Mike,\nI like the patch but can't help thinking that 2.0 API compatibility code defeats\nthe whole beauty of it. I would rather see all the setRequestBody /\ngetRequestBody* methods removed for good. After all, we are going to ship a\nmajor version upgrade.\n\nOleg",
+            "date": "2004-03-11T06:19:45.000+0000",
+            "id": 29
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Hi Oleg,\n\nKeeping the API compatibility definitely makes things a little nastier here.  The getRequestBody* \nmethods could possibly be removed.  I don't believe they serve much of a purpose in general use.  The \nsetReqestBody* and content length methods should just be deprecated I think.  They are too widely \nused to be removed I think.  They are also much less of a hack.  How does that sound?\n\nMike",
+            "date": "2004-03-11T11:49:35.000+0000",
+            "id": 30
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Hi Mike,\nThat sounds like a good plan. Let us get rid of useless getRequestBody* methods\nand deprecate setRequestBody ones\n\nOleg",
+            "date": "2004-03-11T23:02:07.000+0000",
+            "id": 31
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Mohammad's ChunkedOutputStream patch committed. Many thanks, Mohammad, for this\ncontribution. \n\nOleg",
+            "date": "2004-03-12T05:03:51.000+0000",
+            "id": 32
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Created an attachment (id=11329)\nRequestEntity patch 2\n",
+            "date": "2004-04-26T09:33:56.000+0000",
+            "id": 33
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Attached is above is an updated version of the RequestEntity patch.  This one adds some comments, \nremoves the getRequestBody* methods and deprecates the setContentLength() methods.  I am also \ntempted to move the Content-Type into the RequestEntity, but have not decided for sure yet.  Any \ncomments, suggestions?\n\nMike",
+            "date": "2004-04-26T09:40:30.000+0000",
+            "id": 34
+        },
+        {
+            "author": "Mohammad Rezaei",
+            "body": "Looks great. +1 to apply.",
+            "date": "2004-04-26T22:12:16.000+0000",
+            "id": 35
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "+1 from me. Making Content-Type a propery of the RequestEntity does seem\nreasonable, too.\n\nOleg",
+            "date": "2004-04-27T05:25:08.000+0000",
+            "id": 36
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Patch applied. \n\nI'm going to create a new RFE to cover moving the Content-Type.  I have also removed \nthe deprecated tag on setRequestBody(String) until the content type is moved.\n\nMike",
+            "date": "2004-04-28T09:24:12.000+0000",
+            "id": 37
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Created an attachment (id=11368)\nFollowup patch\n",
+            "date": "2004-04-29T03:17:24.000+0000",
+            "id": 38
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Folks, \n\nI would like to have a few more constructors added to the ByteArrayRequestEntity\n& InputStreamRequestEntity classes, if nobody objects. I would also like to\nsuggest that all concrete classes implementing RequestEntity made immutable.\nThat is, no more parameterless constructors, no more setContent methods. \n\nThe patch also adds StringRequestEntity class in addition to\nByteArrayRequestEntity & InputStreamRequestEntity\n\nLet me know what you think\n\nOleg",
+            "date": "2004-04-29T03:23:55.000+0000",
+            "id": 39
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Hi Oleg,\n\nA few comments:\n\n- The new constructors are good, but there is a problem with the ByteArrayRequestEntity().  It will \nalways result in an exception since it's calling this(null). \n - I have no problem making these classes immutable, but I'm not sure it's really required.  What's the \nmotivation?\n - I think we should wait until we move the Content-Type to add a StringRequestEntity. That way we can \nhandle the charset problems all at once.  I had originally created a StringRequestEntity but left it out for \nthis reason.\n - Could StringRequestEntity.writeRequest() be simplified to:\n\n     Writer writer = null;\n     if (this.charset != null) {\n         writer = new OutputStreamWriter(out, this.charset); \n     } else {\n         writer = new OutputStreamWriter(out); \n     }\n     writer.write(content);\n\nMike\n",
+            "date": "2004-04-29T06:34:41.000+0000",
+            "id": 40
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "> The new constructors are good, but there is a problem with the\nByteArrayRequestEntity().  \n> It will always result in an exception since it's calling this(null). \n\nMy initial intention was to do away with ByteArrayRequestEntity(), but than I\nthought I should discuss it with you first.\n\n>  - I have no problem making these classes immutable, but I'm not sure it's\nreally required.  What's the\n> motivation?\n\nPrimarily in order to avoid throwing IllegalStateException. If parameterless\nconstructors and setContent may leave entity request objects in a inconsistent\nstate, why should they exist in the first place?\n\n>  - I think we should wait until we move the Content-Type to add a\nStringRequestEntity. That way we can \n> handle the charset problems all at once.  I had originally created a\nStringRequestEntity but left it out for \n> this reason.\n\nI have concerns that some JDKs may end up converting the entire String to an\narray of bytes prior to writing into the underlying output stream, which would\nresult in unnecessary waste of memory. I may be a little too pessimistic here,\nthough\n\nMike, just take over those bits that you think make sense and incorporate them\ninto your coming patch.",
+            "date": "2004-04-29T13:59:35.000+0000",
+            "id": 41
+        },
+        {
+            "author": "Ortwin Gl\u00fcck",
+            "body": "Oleg,\n\nOkay with me to make them immutable. This is generally a good design choice.\n\nOrtwin Gl\u00c3\u00bcck",
+            "date": "2004-04-29T14:22:01.000+0000",
+            "id": 42
+        },
+        {
+            "author": "Michael Becke",
+            "body": "> My initial intention was to do away with ByteArrayRequestEntity(), but than I\n> thought I should discuss it with you first.\n\nWhat would we use as a replacement?  The InputStreamReqestEntity?\n\n> Primarily in order to avoid throwing IllegalStateException. If parameterless\n> constructors and setContent may leave entity request objects in a inconsistent\n> state, why should they exist in the first place?\n\nI hear you.  This goes along with the immutability.  Fine with me.\n\n> I have concerns that some JDKs may end up converting the entire String to an\n> array of bytes prior to writing into the underlying output stream, which would\n> result in unnecessary waste of memory. I may be a little too pessimistic here,\n> though\n\nI think we should stay simple here until we run into a potential performance problem.\n\n> Mike, just take over those bits that you think make sense and incorporate them\n> into your coming patch.\n\nOk.  Can do.\n\nMike",
+            "date": "2004-04-30T11:07:49.000+0000",
+            "id": 43
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "> What would we use as a replacement?  The InputStreamReqestEntity?\n\nMike, I apologize for not making myself clear enough. I did not mean the\nByteArrayRequestEntity class itself, but rather its parameterless constructor,\nthe one that causes an exception in my patch.\n\nOleg",
+            "date": "2004-04-30T15:21:31.000+0000",
+            "id": 44
+        }
+    ],
+    "component": "HttpClient (classic)",
+    "description": "This is an RFE with a possible implementation attached. The implementation does\nnot modify any existing code.\n\nWe're using HTTP POST to send a large amount of data with an unknown size. We\ndon't want to buffer the entire request, so we implemented a streaming POST\nmethod. The implementation has 3 classes: StreamedPostMethod,\nBufferedChunkedOutputStream and OutputStreamWriter. The bulk of the code is in\nthe BufferedChunkedOutputStream, which may be a good target for replacing\nChunkedOutputStream from the main distribution.\n\nBufferedChunkedOutputStream has the following charactersitics:\n1) It has an internal 2K buffer. Without the buffer, chunk sizes would be too\nsmall in many cases (e.g. ObjectOutputStream likes to call write(byte[]) with 4\nbyte long arguments). 2K was chosen to minimize the chunk overhead to less than 1%.\n2) If the entire entity body fits within the 2K buffer, it does not use\nchunking. This implies that the headers are only sent out when the first chunk\n(or the entire body) has to be written, but no sooner.\n3) The chunk size is not limited to 2K: if write(byte[]) is called with a large\nargument, the internal buffer and the new request are sent out as a single chunk.\n4) Because of (2) it's tightly coupled to StreamedPostMethod.reallyWriteHeaders.\n5) StreamedPostMethod calls BufferedChunkedOutputStream.finish() to write the\nlast buffer and ending chunk.\n\nBecause of 4 and 5, we didn't want to touch ChunkedOutputStream. Interestingly,\nEntityEnclosingMethod is already tightly coupled to ChunkedOutputStream because\nit has to call writeClosingChunk. There is probably some room for refactoring here.\n\nThe package is just a suggestion; feel free to move the files as appropirate.\nThis code was written against 2.0rc2. We're hoping it will get included in time\nfor the 2.1 release.\n\nTo use the code, you must implement OutputStreamWriter and pass it to\nStreamedPostMethod's constructor. Execute the method as usual.\n\nCaveats: StreamedPostMethod does not implement Expect/continue logic. We had no\nway to test this. It is also strictly for POST. In general, the same methodology\nis applicable to PUT, etc. It should be fairly simple to generalize.\n\nLegal: Goldman, Sachs & Co. is making this code available under the Apache License.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "HTTPCLIENT-309",
+    "issuetypeClassified": "RFE",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Minor",
+    "product": "HTTPCLIENT",
+    "project": "HTTPCLIENT",
+    "summary": "[RFE] Allow streaming of POST methods via chunked transfer encoding.",
+    "systemSpecification": false,
+    "version": "2.0 Beta 2"
+}

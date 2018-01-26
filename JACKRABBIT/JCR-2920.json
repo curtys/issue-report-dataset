@@ -1,0 +1,29 @@
+{
+    "comments": [
+        {
+            "author": "Stefan Guggisberg",
+            "body": "fixed in trunk (#1082620)",
+            "date": "2011-03-17T18:30:05.472+0000",
+            "id": 0
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Merged to the 2.2 branch in revision 1202765.",
+            "date": "2011-11-16T17:02:14.998+0000",
+            "id": 1
+        }
+    ],
+    "component": "jackrabbit-spi2dav",
+    "description": "when using the davex remoting layer (jcr2spi->spi2davex), \nthe following code fragment causes an unexpected RepositoryException:\n\n<snip>\n    Node testNode1 = session.getRootNode().addNode(\"test\", \"nt:folder\");\n\n    Node copyDestination = testNode1.addNode(\"CopyDestination\", \"nt:folder\");\n    testNode1.addNode(\"CopySource\", \"nt:folder\").addNode(\"testCopyCommand\", \"nt:folder\").addNode(\"abc\", \"nt:folder\");\n    session.save();\n    copyDestination.addMixin(\"mix:referenceable\");\n    session.save();\n\n    session.getWorkspace().copy(\"/test/CopySource/testCopyCommand\", \"/test/CopyDestination/testCopyCommand\");\n</snip>\n\n==> Caused by: javax.jcr.RepositoryException: Invalid path:/test/CopyDestination//testCopyCommand\n\tat sun.reflect.NativeConstructorAccessorImpl.newInstance0(Native Method)\n\tat sun.reflect.NativeConstructorAccessorImpl.newInstance(NativeConstructorAccessorImpl.java:39)\n\tat sun.reflect.DelegatingConstructorAccessorImpl.newInstance(DelegatingConstructorAccessorImpl.java:27)\n\tat java.lang.reflect.Constructor.newInstance(Constructor.java:513)\n\tat org.apache.jackrabbit.spi2dav.ExceptionConverter.generate(ExceptionConverter.java:69)\n\tat org.apache.jackrabbit.spi2dav.ExceptionConverter.generate(ExceptionConverter.java:51)\n\tat org.apache.jackrabbit.spi2dav.RepositoryServiceImpl.execute(RepositoryServiceImpl.java:482)\n\tat org.apache.jackrabbit.spi2dav.RepositoryServiceImpl.copy(RepositoryServiceImpl.java:1307)\n\tat org.apache.jackrabbit.spi2davex.RepositoryServiceImpl.copy(RepositoryServiceImpl.java:326)\n\tat org.apache.jackrabbit.jcr2spi.WorkspaceManager$OperationVisitorImpl.visit(WorkspaceManager.java:889)\n\tat org.apache.jackrabbit.jcr2spi.operation.Copy.accept(Copy.java:48)\n\tat org.apache.jackrabbit.jcr2spi.WorkspaceManager$OperationVisitorImpl.execute(WorkspaceManager.java:848)\n\tat org.apache.jackrabbit.jcr2spi.WorkspaceManager$OperationVisitorImpl.access$400(WorkspaceManager.java:793)\n\tat org.apache.jackrabbit.jcr2spi.WorkspaceManager.execute(WorkspaceManager.java:581)\n\tat org.apache.jackrabbit.jcr2spi.WorkspaceImpl.copy(WorkspaceImpl.java:149)\n\t[...]  \n\n\nhowever, the following slightly altered code fragment works as expected:\n\n\n<snip>\n    Node testNode1 = session.getRootNode().addNode(\"test\", \"nt:folder\");\n/*\n    Node copyDestination = testNode1.addNode(\"CopyDestination\", \"nt:folder\");\n    testNode1.addNode(\"CopySource\", \"nt:folder\").addNode(\"testCopyCommand\", \"nt:folder\").addNode(\"abc\", \"nt:folder\");\n    session.save();\n    copyDestination.addMixin(\"mix:referenceable\");\n    session.save();\n*/\n    testNode1.addNode(\"CopyDestination\", \"nt:folder\").addMixin(NodeType.MIX_REFERENCEABLE);\n    Node n = testNode1.addNode(\"CopySource\", \"nt:folder\").addNode(\"testCopyCommand\", \"nt:folder\").addNode(\"abc\", \"nt:folder\");\n    session.save();\n\n    session.getWorkspace().copy(\"/test/CopySource/testCopyCommand\", \"/test/CopyDestination/testCopyCommand\");\n</snip>\n",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "JCR-2920",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "Workspace.copy(src, dest) throws unexpected RepositoryException (\"Invalid path\")",
+    "systemSpecification": true,
+    "version": ""
+}

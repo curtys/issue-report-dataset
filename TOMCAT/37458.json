@@ -1,0 +1,113 @@
+{
+    "comments": [
+        {
+            "author": null,
+            "body": "Suggested fix?",
+            "date": "20051127T23:06:54",
+            "id": 0
+        },
+        {
+            "author": null,
+            "body": "(In reply to comment #1)\n> Suggested fix?\n\nThis is one possible scence to cause an exeption: suppose two threads t1 and t2,\nboth are trying to load a same new class. t1 goes first and hit the line 1630,\ndefinePackage(packageName, entry.manifest, entry.codeBase), and stops before the\nmethod call. Then t2 goes ahead and it can hit the same method call too since\nthe entry.manifest is still not null at that time. And then t2 or t1 continues\nand loads the class and sets entry.manifest at the end. After this, when the\nother thread tries to finish the call to definePackage, an exception will be\nthrown since entry.manifest and entry.codebase have become null now.\n\nI haven't got any good solution so far. One could use a huge sync block to\nprotect the test on entry.manifest and the corresponding later change, but that\nwould make it inefficient. Another alternative is to catch the nullpointer\nexception thrown by definePackage and ignore it if possible.",
+            "date": "20051215T06:34:46",
+            "id": 1
+        },
+        {
+            "author": null,
+            "body": "Fixed in SVN and will be included in 5.5.21 onwards.",
+            "date": "20061030T19:52:04",
+            "id": 2
+        },
+        {
+            "author": null,
+            "body": "Is it possible that the fix has been regressed by the modifications in revision 510801, as the block is now synchronised on \"this\" rather than \"entry\"?\n\nWe have seen what appears to be the same bug occur when using version 5.5.23. The start of the stacktrace we see is\n\njava.lang.NullPointerException\n        at java.lang.Package.isSealed(Package.java:179)\n        at org.apache.catalina.loader.WebappClassLoader.findClassInternal(WebappClassLoader.java:1800)\n        at org.apache.catalina.loader.WebappClassLoader.findClass(WebappClassLoader.java:869)\n        at org.apache.catalina.loader.WebappClassLoader.loadClass(WebappClassLoader.java:1322)\n        at java.lang.ClassLoader.loadClass(ClassLoader.java:299)\n        at java.lang.ClassLoader.loadClass(ClassLoader.java:251)\n        at java.lang.ClassLoader.loadClassInternal(ClassLoader.java:319)\n        at java.lang.Class.forName0(Native Method)\n        at java.lang.Class.forName(Class.java:242)\n        at sun.rmi.server.LoaderHandler.loadClass(LoaderHandler.java:430)\n        at sun.rmi.server.LoaderHandler.loadClass(LoaderHandler.java:165)\n        at java.rmi.server.RMIClassLoader$2.loadClass(RMIClassLoader.java:620)\n        at org.objectweb.jonas.server.RemoteClassLoaderSpi.loadClass(RemoteClassLoaderSpi.java:75)\n        at java.rmi.server.RMIClassLoader.loadClass(RMIClassLoader.java:247)\n        at sun.rmi.server.MarshalInputStream.resolveClass(MarshalInputStream.java:197)\n        at java.io.ObjectInputStream.readNonProxyDesc(ObjectInputStream.java:1544)\n        at java.io.ObjectInputStream.readClassDesc(ObjectInputStream.java:1466)\n ...",
+            "date": "20080326T20:37:00",
+            "id": 3
+        },
+        {
+            "author": null,
+            "body": "Re-opening so I remember to look at this.",
+            "date": "20080327T06:40:02",
+            "id": 4
+        },
+        {
+            "author": null,
+            "body": "There are a couple of odd things about your stack trace.\n\n1. For 5.5.23, line 1800 of WebappClassLoader doesn't call Package.isSealed(). It is around 30 lines later.\n\n2. I don't understand why the NPE is thrown from within java.lang.Package. If pkg was null, I'd expect to see the NPE in WebappClassLoader\n\n3. I have checked the source for 1.4, 1.5 and 1.6 and don't see how Package.isSealed() could throw a NPE.\n\nI have reviewed the patch you referred to and I do not see a code path by which this bug could re-appear.\n\nYou may have found a new bug, in which case a new issue is in order, but the oddities above make me think that the root cause is more likely some other factor in your configuration.\n\nThe best place to get help on this is the users list. Before posting please try a clean 5.5.26 build and also post the OS and JDK you are using. If the discussion there concludes there is a bug, please create a new issue to track it.",
+            "date": "20080327T16:13:56",
+            "id": 5
+        },
+        {
+            "author": null,
+            "body": "(In reply to comment #6)\n> There are a couple of odd things about your stack trace.\n> \n> 1. For 5.5.23, line 1800 of WebappClassLoader doesn't call Package.isSealed().\n> It is around 30 lines later.\n> \nI agree that this seems odd.  I installed a fresh download of 5.5.23 and it started reporting the error as \njava.lang.NullPointerException\n        at java.lang.Package.isSealed(Package.java:179)\n        at org.apache.catalina.loader.WebappClassLoader.findClassInternal(WebappClassLoader.java:1833)\n        at org.apache.catalina.loader.WebappClassLoader.findClass(WebappClassLoader.java:873)\n        at org.apache.catalina.loader.WebappClassLoader.loadClass(WebappClassLoader.java:1326)\n        at java.lang.ClassLoader.loadClass(ClassLoader.java:299)\n...\n\nI also tried a fresh install of 5.5.26 and the line numbers changed to \njava.lang.NullPointerException\n        at java.lang.Package.isSealed(Package.java:179)\n        at org.apache.catalina.loader.WebappClassLoader.findClassInternal(WebappClassLoader.java:1839)\n        at org.apache.catalina.loader.WebappClassLoader.findClass(WebappClassLoader.java:875)\n        at org.apache.catalina.loader.WebappClassLoader.loadClass(WebappClassLoader.java:1330)\n\n\n> 2. I don't understand why the NPE is thrown from within java.lang.Package. If\n> pkg was null, I'd expect to see the NPE in WebappClassLoader\n> \nIt's not pkg that is null, it is entry.codeBase which is null. My fault for posting incorrect line numbers.\n\n> 3. I have checked the source for 1.4, 1.5 and 1.6 and don't see how\n> Package.isSealed() could throw a NPE.\n> \nIt is not the call to Package.isSealed() but the call to Package.isSealed(URL url) which causes the problem: it throws an NPE trying to return \"url.equals(sealBase)\".\n\n> I have reviewed the patch you referred to and I do not see a code path by which\n> this bug could re-appear.\n> \nIn the initial fix for this bug (revision 469360), this section of code was included in a block which was synchronised on \"entry\" which contained a smaller block synchronised on \"this\".  In revision 510801 the synchronisation was changed to synchronise the outer block on \"this\", with no synchronisation on \"entry\".  The problem seems to me to be that although \"entry\" is a local variable, the object it references is obtained externally so two different threads are able to access the same object, and thus one thread is able to set entry.codeBase to null (at line 1853 in 5.5.23) after the other thread has entered the block and committed itself to calling pkg.isSealed(entry.codeBase).\n\n> The best place to get help on this is the users list. Before posting please try\n> a clean 5.5.26 build and also post the OS and JDK you are using. If the\n> discussion there concludes there is a bug, please create a new issue to track\n> it.\n> \nSorry for replying directly here but I thought it was appropriate to reply directly to your comments.  As I say, I see this with a clean 5.5.26 build, running in CentOS release 4.6 (Final) under Java HotSpot(TM) Client VM (build 1.5.0_14-b03, mixed mode, sharing).\n\n",
+            "date": "20080416T22:52:03",
+            "id": 6
+        },
+        {
+            "author": null,
+            "body": "I've looked at the WebappClassLoader source and I can't see how one thread could set entry.codeBase to null whilst another thread calls Package.isSealed since both calls are inside the sync block.\n\nThe only way I could see entry.codeBase being null was if getCanonicalFile() throws an IOE (line 2230 in the latest 5.5.x code).\n\nI notice you are using RMI. I wonder if this is a factor since there does not appear to be any other reports of this issue. I have a vague recollection of issues with RMI and Tomcat installed in a path with spaces. Might this be affecting you?\n\nHow repeatable is this? A simple test case that demonstrates the issue would help significantly.\n\nFinally, where does JOnAS fit in to all of this. Given the lack of duplicate reports, I wonder if this might be an integration issue of some sort?",
+            "date": "20090101T16:25:06",
+            "id": 7
+        },
+        {
+            "author": null,
+            "body": "Created attachment 23066\npatch for WebappClassLoader class of tc6.0.x\n\nI think the issue is caused by missing (entry.loadedClass == null) inside the synchronized block. (Remember the double-checked locking pattern?)\n\nI also wonder if there is a cause for (entry.loadedClass == null) check later in the synchronized block (line 1845, i.e. before calling defineClass()) other than this very bug.\n\nThus the patch. It is against tc6.0.x\n\nI do not remember whether pointer assignments are atomic in current Java, and thus whether it is safe to test for (entry.loadedClass) elsewhere in the code.",
+            "date": "20090101T18:44:06",
+            "id": 8
+        },
+        {
+            "author": null,
+            "body": "Huh, I now have a TestCase that reproduces the issue. I see the same exception as in comment #4.\n\nNo wonder, that it is rare. To encounter this the following conditions must be met:\n1. A SecurityManager should be present\n2. The class that you are loading has to be in a sealed package.\n3. It is a race condition. Several iterations in the TestCase are required.",
+            "date": "20090101T21:17:04",
+            "id": 9
+        },
+        {
+            "author": null,
+            "body": "Created attachment 23067\nTest case file 1: TestWebappClassLoader class.",
+            "date": "20090101T21:59:39",
+            "id": 10
+        },
+        {
+            "author": null,
+            "body": "Created attachment 23068\nTest case file 2: sealed.jar resource file.",
+            "date": "20090101T22:00:16",
+            "id": 11
+        },
+        {
+            "author": null,
+            "body": "To reproduce:\n1. Place TestWebappClassLoader.java and sealed.jar into package org.apache.catalina.loader of TC 6.0 test sources.\n\n2. Use JUnit to run the test case.\n\n3. The following exception is observed:\n\n...\nCaused by: java.lang.NullPointerException\n\tat java.lang.Package.isSealed(Package.java:181)\n\tat org.apache.catalina.loader.WebappClassLoader.findClassInternal(WebappClassLoader.java:1832)\n\tat org.apache.catalina.loader.WebappClassLoader.findClass(WebappClassLoader.java:890)\n\tat org.apache.catalina.loader.TestWebappClassLoader$FindClassThread.run(TestWebappClassLoader.java:48)\n",
+            "date": "20090101T22:07:01",
+            "id": 12
+        },
+        {
+            "author": null,
+            "body": "Thanks for the patch and your analysis. That makes perfect sense.\n\nI have applied your patch to trunk and proposed it for 6.0.x and 5.5.x.\n\nThanks again.",
+            "date": "20090102T06:32:08",
+            "id": 13
+        },
+        {
+            "author": null,
+            "body": "This has been fixed in 6.0.x and will be included in 6.0.19 onwards.",
+            "date": "20090114T16:26:29",
+            "id": 14
+        },
+        {
+            "author": null,
+            "body": "This has been fixed in 5.5.x and will be included in 5.5.28 onwards.",
+            "date": "20090603T14:37:34",
+            "id": 15
+        }
+    ],
+    "component": "Catalina",
+    "description": "In findClassInternal, it is possible that entry.manifest is set to null by \nanother thread right before calling definePackage(packageName, entry.manifest, \nentry.codeBase).",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "37458",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "P2 normal",
+    "product": "Tomcat 5",
+    "project": "TOMCAT",
+    "summary": "Datarace on org.apache.catalina.loader.WebappClassLoader",
+    "systemSpecification": true,
+    "version": "5.5.9"
+}

@@ -1,0 +1,29 @@
+{
+    "comments": [
+        {
+            "author": null,
+            "body": "I think DeltaRequest already has to be in DeltaSession when setAttribute \ncalled before requestCompleted.\nAnd this patch works when a master node starts, DeltaRequest of only the \nsession that the replication has been done from a slave node is initialized.\nThe reliability of the session persistence is raised further. ",
+            "date": "20050221T05:23:02",
+            "id": 0
+        },
+        {
+            "author": null,
+            "body": "I have applied the fix, thanks for bringing this to my attention.",
+            "date": "20050303T15:28:30",
+            "id": 1
+        }
+    ],
+    "component": "Catalina:Cluster",
+    "description": "Whenever I call a JSP, a session is created by the master node(i.e. the node \nreceiving the HTTP req) and replicated to the slave node. \nAnd when the master node is down, the request failover to the slave node.\nHowever, when the master node is enter again in my cluster and the request \nfailback to the master node, only the first request is not replicated to the \nslave node.\nI debug tomcat, and found that when the first repuest calles \nDeltaSession.setAttribute(), DeltaSession.deltaRequest is null(not init)!\nTherefore, I made the following patches. \n\n--- DeltaManager.java.org   2004-08-29 09:14:12.000000000 +0900\n+++ DeltaManager.java   2005-02-14 20:45:21.000000000 +0900\n@@ -455,6 +455,7 @@\n                     session.access();\n                     //make sure that the session gets ready to expire if \nneeded\n                     session.setAccessCount(0);\n+                    session.resetDeltaRequest();\n                     sessions.put(session.getId(), session);\n                 }\n             } catch (ClassNotFoundException e) {",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "33558",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "P2 normal",
+    "product": "Tomcat 5",
+    "project": "TOMCAT",
+    "summary": "When the master node is enter again, only the first request is not replicated.",
+    "systemSpecification": true,
+    "version": "5.0.28"
+}

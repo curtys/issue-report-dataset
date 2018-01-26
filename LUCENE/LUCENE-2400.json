@@ -1,0 +1,119 @@
+{
+    "comments": [
+        {
+            "author": "Steve Rowe",
+            "body": "Patch implementing the above-described changes, along with tests confirming that all-filler shingles/unigrams are no longer output.  A new term attribute called FillerAttribute is defined to mark whether enqueued terms are filler terms.\n\nUnfortunately, these changes cause a roughly 22% slowdown - contrib/benchmark numbers for the shingle alg (I got similar numbers for Java 1.5):\n\nJAVA:\njava version \"1.6.0_13\"\nJava(TM) SE Runtime Environment (build 1.6.0_13-b03)\nJava HotSpot(TM) 64-Bit Server VM (build 11.3-b02, mixed mode)\n\nOS:\ncygwin\nWinVistaService Pack 2\nService Pack 26060022202561\n\n||Max Shingle Size||Unigrams?||Unpatched||Patched||StandardAnalyzer||Improvement||\n|2|no|3.04s|3.33s|2.05s|-22.6%|\n|2|yes|3.23s|3.49s|2.05s|-18.0%|\n|4|no|4.00s|4.56s|2.05s|-22.2%|\n|4|yes|4.13s|4.72s|2.05s|-22.0%|\n",
+            "date": "2010-04-18T15:37:56.231+0000",
+            "id": 0
+        },
+        {
+            "author": "Robert Muir",
+            "body": "bq. Unfortunately, these changes cause a roughly 22% slowdown - contrib/benchmark numbers for the shingle alg (I got similar numbers for Java 1.5):\n\nSteven, i wonder if this is because of a stupid thing, I noticed this in your patch:\n{noformat}\n-      shingleBuilder.append(termAtt.termBuffer(), 0, termAtt.termLength());\n+      gramBuilder.append(charTermAtt.toString());\n{noformat}\n\ni would recommend gramBuilder.append(termAtt.buffer(), 0, termAtt.length()) like before, maybe its just the extra gc cost of creating useless strings?",
+            "date": "2010-04-18T16:09:05.065+0000",
+            "id": 1
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Alternatively you can directly pass it to StringBuilder, as CharTermAttribute implements CharSequence: [http://java.sun.com/j2se/1.5.0/docs/api/java/lang/StringBuilder.html#append(java.lang.CharSequence)]. But copying the buffer as Robert suggested should be faster.\n\nBoth variant are faster than creating a new String.",
+            "date": "2010-04-18T16:15:16.456+0000",
+            "id": 2
+        },
+        {
+            "author": "Steve Rowe",
+            "body": "bq. i would recommend gramBuilder.append(termAtt.buffer(), 0, termAtt.length()) like before, maybe its just the extra gc cost of creating useless strings?\n\nI'll give this a try.\n\n",
+            "date": "2010-04-18T17:06:30.418+0000",
+            "id": 3
+        },
+        {
+            "author": "Steve Rowe",
+            "body": "Robert's change cut the performance penalty in half:\n\nJAVA:\njava version \"1.6.0_13\"\nJava(TM) SE Runtime Environment (build 1.6.0_13-b03)\nJava HotSpot(TM) 64-Bit Server VM (build 11.3-b02, mixed mode)\n\nOS:\ncygwin\nWinVistaService Pack 2\nService Pack 26060022202561\n\n||Max Shingle Size||Unigrams?||Unpatched||Patched||StandardAnalyzer||Improvement||\n|2|no|3.15s|3.25s|2.08s|-8.4%|\n|2|yes|3.29s|3.42s|2.08s|-9.6%|\n|4|no|4.07s|4.39s|2.08s|-13.8%|\n|4|yes|4.12s|4.54s|2.08s|-17.0%|\n",
+            "date": "2010-04-18T17:46:24.741+0000",
+            "id": 4
+        },
+        {
+            "author": "Steve Rowe",
+            "body": "This patch implements Uwe's suggestion (on #lucene-dev) of switching term attribute setting to use the simpler termAtt.append(gramBuilder).  However, this seems to slow things down:\n\nJAVA:\njava version \"1.6.0_13\"\nJava(TM) SE Runtime Environment (build 1.6.0_13-b03)\nJava HotSpot(TM) 64-Bit Server VM (build 11.3-b02, mixed mode)\n\nOS:\ncygwin\nWinVistaService Pack 2\nService Pack 26060022202561\n\n||Max Shingle Size||Unigrams?||Unpatched||Patched||StandardAnalyzer||Improvement||\n|2|no|3.12s|3.36s|2.09s|-18.8%|\n|2|yes|3.28s|3.54s|2.09s|-17.8%|\n|4|no|4.00s|4.61s|2.09s|-24.1%|\n|4|yes|4.14s|4.72s|2.09s|-22.0%|\n",
+            "date": "2010-04-18T18:34:45.554+0000",
+            "id": 5
+        },
+        {
+            "author": "Steve Rowe",
+            "body": "I tried adding specialized versions of CharTermAttribute.append(StringBuilder,...):\n\n\n{code:java}public CharTermAttribute append(StringBuilder builder) {\n  return append(builder, 0, builder.length());\n}\npublic CharTermAttribute append(StringBuilder builder, int start, int end) {\n  int newTermLength = termLength + end - start;\n  resizeBuffer(newTermLength);\n  builder.getChars(start, end, termBuffer, termLength);\n  termLength = newTermLength;\n  return this;\n}\n{code}\n\nThis helped a little bit, but it's still slower than the fully-spelled-out CharTermAttribute setting code that was previously in place:\n\nJAVA:\njava version \"1.6.0_13\"\nJava(TM) SE Runtime Environment (build 1.6.0_13-b03)\nJava HotSpot(TM) 64-Bit Server VM (build 11.3-b02, mixed mode)\n\nOS:\ncygwin\nWinVistaService Pack 2\nService Pack 26060022202561\n\n||Max Shingle Size||Unigrams?||Unpatched||Patched||StandardAnalyzer||Improvement||\n|2|no|3.08s|3.26s|2.11s|-15.6%|\n|2|yes|3.26s|3.41s|2.11s|-11.4%|\n|4|no|4.05s|4.49s|2.11s|-18.4%|\n|4|yes|4.17s|4.64s|2.11s|-18.5%|\n",
+            "date": "2010-04-18T19:02:51.571+0000",
+            "id": 6
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "The improvements are in LUCENE-2401.",
+            "date": "2010-04-18T21:23:39.821+0000",
+            "id": 7
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "bq. I tried adding specialized versions of CharTermAttribute.append(StringBuilder,...): \n\nDid you also add this to the interface, else your code would not use this method. LUCENE-2401 does not have the start,end methods, as this is not even in StringBuilder.",
+            "date": "2010-04-18T21:27:48.520+0000",
+            "id": 8
+        },
+        {
+            "author": "Steve Rowe",
+            "body": "Uwe told me on #lucene-dev that without adding the specialized CharTermAttribute methods to the interface, they wouldn't get invoked, and so since I didn't, the numbers in the previous post are meaningless.\n\nSo, I applied LUCENE-2401 to add the correct form of the specializations, then re-ran the shingle alg, and it looks like there is no longer a penalty for using the shorthand form Uwe suggested.  Here are the numbers:\n\nJAVA:\njava version \"1.6.0_13\"\nJava(TM) SE Runtime Environment (build 1.6.0_13-b03)\nJava HotSpot(TM) 64-Bit Server VM (build 11.3-b02, mixed mode)\n\nOS:\ncygwin\nWinVistaService Pack 2\nService Pack 26060022202561\n\n||Max Shingle Size||Unigrams?||Unpatched||Patched||StandardAnalyzer||Improvement||\n|2|no|3.21s|3.31s|2.12s|-8.3%|\n|2|yes|3.40s|3.54s|2.12s|-9.8%|\n|4|no|4.17s|4.57s|2.12s|-16.2%|\n|4|yes|4.33s|4.75s|2.12s|-15.9%|\n",
+            "date": "2010-04-18T22:03:03.362+0000",
+            "id": 9
+        },
+        {
+            "author": "Steve Rowe",
+            "body": "New patch.  Removed FillerAttribute.  Switched inputWindow from LinkedList<State> to LinkedList<InputWindowToken>, where InputWindowToken holds an AttributeSource, references to Attributes of interest, and a boolean isFiller.  InputWindowToken instances are recycled when shifting the input window.  These changes result in faster performance:\n\nJAVA:\njava version \"1.6.0_13\"\nJava(TM) SE Runtime Environment (build 1.6.0_13-b03)\nJava HotSpot(TM) 64-Bit Server VM (build 11.3-b02, mixed mode)\n\nOS:\ncygwin\nWinVistaService Pack 2\nService Pack 26060022202561\n\n||Max Shingle Size||Unigrams?||Unpatched||Patched||StandardAnalyzer||Improvement||\n|2|no|3.26s|3.05s|2.19s|24.4%|\n|2|yes|3.37s|3.20s|2.19s|16.8%|\n|4|no|4.21s|3.84s|2.19s|22.4%|\n|4|yes|4.46s|4.11s|2.19s|18.2%|\n",
+            "date": "2010-04-26T04:06:57.937+0000",
+            "id": 10
+        },
+        {
+            "author": "Steve Rowe",
+            "body": "Tests all pass.  I think this is ready to go.",
+            "date": "2010-04-28T04:06:26.893+0000",
+            "id": 11
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Hi Steven,\n\nI take this one.I will review the patch soon!",
+            "date": "2010-04-30T22:39:56.723+0000",
+            "id": 12
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "This patch looks good. You also removed the incorrect usage of LinkedList and now use it in its correct pattern: Only adding/removing items to/from one end. The old filter sometimes used get(index) on the list, which is slow.\n\nWill commit shortly.",
+            "date": "2010-05-03T13:03:07.592+0000",
+            "id": 13
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Committed revision: 940451",
+            "date": "2010-05-03T13:30:10.338+0000",
+            "id": 14
+        },
+        {
+            "author": "Steve Rowe",
+            "body": "Thanks Uwe!",
+            "date": "2010-05-03T15:28:58.385+0000",
+            "id": 15
+        },
+        {
+            "author": "Grant Ingersoll",
+            "body": "Bulk close for 3.1",
+            "date": "2011-03-30T15:49:52.045+0000",
+            "id": 16
+        }
+    ],
+    "component": "modules/analysis",
+    "description": "When the input token stream to ShingleFilter has position increments greater than one, filler tokens are inserted for each position for which there is no token in the input token stream.  As a result, unigrams (if configured) and shingles can be filler-only.  Filler-only output tokens make no sense - these should be removed.\n\nAlso, because TermAttribute has been deprecated in favor of CharTermAttribute, the patch will also convert TermAttribute usages to CharTermAttribute in ShingleFilter.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-2400",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Minor",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "ShingleFilter: don't output all-filler shingles/unigrams; also, convert from TermAttribute to CharTermAttribute",
+    "systemSpecification": true,
+    "version": "3.0.1"
+}

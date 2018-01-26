@@ -1,0 +1,101 @@
+{
+    "comments": [
+        {
+            "author": "Jukka Zitting",
+            "body": "Why is writeUTF() used in the first place? Couldn't the data just be written as a byte array?",
+            "date": "2008-04-30T07:37:15.368+0000",
+            "id": 0
+        },
+        {
+            "author": "Stefan Guggisberg",
+            "body": "i've stumbled over the same issue a couple of years ago;\ni've chosen to serialize the byte[] (as jukka suggests),\nsee o.a.j.c.persistence.util.Serializer, line 226:\n\n                /**\n                 * because writeUTF(String) has a size limit of 65k,\n                 * Strings are serialized as <length><byte[]>\n                 */\n                //out.writeUTF(val.toString());   // value\n                byte[] bytes = val.toString().getBytes(ENCODING);\n                out.writeInt(bytes.length); // lenght of byte[]\n                out.write(bytes);   // byte[]\n\n",
+            "date": "2008-04-30T08:21:05.502+0000",
+            "id": 1
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "That's true, it was a mistake to use writeUTF. I can try to change it to write the raw bytes in BundleBinding. Data using the new format will have the prefix '-3' (so far we have '-1' and '-2'). I will introduce constants for those magic numbers. However this change is more complex than simply capping minRecordLength to 32000.",
+            "date": "2008-04-30T08:38:20.171+0000",
+            "id": 2
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "I mean, why do we need to convert the value to a string for serialization?",
+            "date": "2008-04-30T08:53:31.748+0000",
+            "id": 3
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "Because of the prefix, and because the id is string based (DataIdentifier, BLOB id).\n\nLarge values that are stored in the data store are persisted as: \ndataStore:<sha-1>\n\nSmall values (that are kept in memory) are persisted as: \n0x<hex encoded value>\n\nValues that are stored in a FileSystemResource (resource-based BLOB store) are persisted as: \nfsResource:<blob id>\n\nValues that are stored in a temporary file are persisted as: \nfile:<file name> (actually those should never be written)\n\n",
+            "date": "2008-04-30T09:05:31.519+0000",
+            "id": 4
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Since we already have a procedure for detecting the type of the data and parsing it accordingly, couldn't we push that down so that it would operate on byte streams instead of strings? This way we wouldn't need to waste twice the amount of bytes when persisting small binary values. Also, this issue with witeUTF would simply not exist.",
+            "date": "2008-05-02T08:02:24.657+0000",
+            "id": 5
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "> we already have a procedure for detecting the type of the data \nDo you mean the property type? \nThe listed types are not property types, it's always PropertyType.BINARY.\n\nI'm not sure if you read my comment above: \"That's true, it was a mistake to use writeUTF. I can try to change it to write the raw bytes in BundleBinding. Data using the new format will have the prefix '-3' (so far we have '-1' and '-2'). I will introduce constants for those magic numbers. However this change is more complex than simply capping minRecordLength to 32000.\"\n",
+            "date": "2008-05-05T06:45:00.291+0000",
+            "id": 6
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "> I'm not sure if you read my comment above [...]\n\nI did, my last comment was targeted at your comment with the prefix stuff (by type detection I meant the parsing of that prefix).\n\nI agree that the best solution would be to write the raw bytes directly. And I wouldn't worry about extra complexity, it's better to solve this right instead of adding layers of extra hacks like the arbitrary limit on minRecordLength.",
+            "date": "2008-05-05T06:55:58.253+0000",
+            "id": 7
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "> the best solution would be to write the raw bytes directly.\nYou are right. I am working on that right now. I have implemented it and need to test it now. I hope that I can commit it later today.\n\nHere is the patch for the workaround (limit the minRecordLength). Hopefully this patch will not be required :-)",
+            "date": "2008-05-05T08:30:11.308+0000",
+            "id": 8
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "Fixed in revision 653367 (trunk)",
+            "date": "2008-05-05T09:00:35.765+0000",
+            "id": 9
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "I'd rather not have this in 1.4.4 as the fix is non-trivial and there's a reasonably simple workaround for 1.4.\n\nIf there's demand we could include this in a 1.4.5 once people have had a chance to try this out in trunk.",
+            "date": "2008-05-05T09:17:44.598+0000",
+            "id": 10
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "Well, yes, the correct fix it's non-trivial. \n\nThat's why I have proposed the simple solution maximumMinRecordLength.txt for 1.4.4. That one is trivial :-)\n\nDo you agree now to commit maximumMinRecordLength.txt in 1.4.4?\n",
+            "date": "2008-05-05T09:26:52.811+0000",
+            "id": 11
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "I'd rather not muddy the waters by having different fixes in different releases. The issue is documented here and I'm referencing this as a known issue in the 1.4.4 release notes. IMHO we don't need to hand-hold people who can just as well manually avoid configuring too large minRecordLength values until the proper fix gets released.",
+            "date": "2008-05-05T09:39:04.612+0000",
+            "id": 12
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "OK, let's not fix it in 1.4 then.",
+            "date": "2008-05-05T10:40:29.961+0000",
+            "id": 13
+        }
+    ],
+    "component": "jackrabbit-core",
+    "description": "If using a value larger than 33000 for minRecordLength, and then trying to store a value with 33000 bytes, the following exception is thrown: UTFDataFormatException. The reason is that values are serialized using DataOutputStream.writeUTF. There is size limitation of 65 K when using this method. Small entries are hex encoded, and there is a prefix, so the limitation for minRecordLength should be 32000.\n\nThis is a problem for both FileDataStore and DbDataStore.\n",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "JCR-1563",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Minor",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "Data Store: UTFDataFormatException when using large minRecordLength",
+    "systemSpecification": true,
+    "version": "1.4"
+}

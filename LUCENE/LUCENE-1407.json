@@ -1,0 +1,137 @@
+{
+    "comments": [
+        {
+            "author": "Mark Miller",
+            "body": "No work yet on this issue right? I'm going to pull off the 2.9 and leave the 3.0. Feel free to flip back if you plan on doing it.",
+            "date": "2009-06-11T00:35:52.510+0000",
+            "id": 0
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "This bugs me for a while already. Just started on refactoring it - Would be happy to get it into 2.9.\n\nsimon",
+            "date": "2009-06-11T09:14:49.438+0000",
+            "id": 1
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "I'd also like to see this in 2.9 as well...",
+            "date": "2009-06-11T09:19:44.471+0000",
+            "id": 2
+        },
+        {
+            "author": "Shai Erera",
+            "body": "In LUCENE-1630 I'm going to do just that, as part of deprecating Weight in favor of a new QueryWeight. I'm going to deprecate Searchable entirely. So perhaps we should wait with this until 1630 is resolved, or fold that issue under 1630?",
+            "date": "2009-06-11T09:55:38.609+0000",
+            "id": 3
+        },
+        {
+            "author": "Mark Miller",
+            "body": "Looks like we flip back for now in either case",
+            "date": "2009-06-11T09:59:59.264+0000",
+            "id": 4
+        },
+        {
+            "author": "Shai Erera",
+            "body": "Hmm ... maybe that won't be that simple. As part of LUCENE-1630, I'm deprecating Searchable, and the plan is to stick with just Searcher. Now, RemoteSearchable today implements Searchalbe (and by inheritance java.rmi.Remote) as well as extend UnicastRemoteObject.\n\nAfter refactoring, it will need to extend both Searcher and UnicastRemoteObject. Unless we make Searcher extend UnicastRemoteObject, but that will bring the RMI stuff back into core.\n\nAnybody got an idea how we can work around that besides keeping Searchable, or have Searcher extend UnicastRemoteObject?",
+            "date": "2009-06-11T10:42:15.267+0000",
+            "id": 5
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "Shai, I have looked at LUCENE-1630 but haven't  seen any patch available. I looked briefly at the comments and what you are doing and I feel removing Searchable in 2.9 is a heavy change and will most likely break back compat. \nThe RMI related classes this issue is about will just be moved to contrib but the problem which are you talking about will stay the same. With or without a patch for this issue.\nRemoving the RMI dependency would be a great step forward and will not keep you from working on your patch.\n\nSimon",
+            "date": "2009-06-11T11:07:31.770+0000",
+            "id": 6
+        },
+        {
+            "author": "Shai Erera",
+            "body": "bq. Shai, I have looked at LUCENE-1630 but haven't seen any patch available\n\nIt's in the oven :)\n\nbq. I feel removing Searchable in 2.9 is a heavy change and will most likely break back compat. \n\nBack-compat is already broken in 2.9 due to the Collector work. So people who extend Searcher will need to implement the new search(***, Collector) methods. As I understood it, Searcher was really a replacement for Searchable, and I suspect it was left there not deprecated just because of RMI.\n\nWe preferred to add new methods to Searcher as abstract, rather than to Searchable, b/c we want to move away from interfaces. Therefore I don't think that delaying that work will do any good - we'll have more methods to maintain on the interface as well.\n\nBut to be honest I don't know what's better. I can have Searcher extend the RMI class, but that will leave RMI in core. Or I can have Searchable implement new methods, but that won't take us in the ultimate direction we want - getting rid of interfaces.",
+            "date": "2009-06-11T12:42:32.960+0000",
+            "id": 7
+        },
+        {
+            "author": "Shai Erera",
+            "body": "I did the following: removed the \"extends Remote\" from Searchable and move it to RemoteSearchable. But TestSort.testRemoteSort fails to lookup the searchable. The object it returns from lookup is of type Remote, while if Searchable extends Remote, the object returned from lookup is Searchable. I'm still debugging this, but if someone knows what's going on, please don't be shy :)",
+            "date": "2009-06-11T14:06:24.267+0000",
+            "id": 8
+        },
+        {
+            "author": "Shai Erera",
+            "body": "From UnicastRemoteObject's documentation:\n\n{quote}\nIf the remote object is exported using the exportObject(Remote) UnicastRemoteObject.exportObject(Remote) method, a stub class (typically pregenerated from the remote object's class using the rmic tool) is loaded and an instance of that stub class is constructed as follows. \n* A \"root class\" is determined as follows: if the remote object's class directly implements an interface that extends Remote, then the remote object's class is the root class; otherwise, the root class is the most derived superclass of the remote object's class that directly implements an interface that extends Remote. \n{quote}\n\nNaming.lookup only succeeds when Searchable extends Remote, and RemoteSearchable implements Searchable. In fact, the type returned by lookup() is Searchable, not even RemoteSearchable.\n\nI guess we can solve it by having RemoteSearchable implement a Remoteable interface which extends Remote .. but that's just spooky. For now I left the code in LUCENE-1630 as-is in that area.",
+            "date": "2009-06-11T14:22:04.296+0000",
+            "id": 9
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "Shai, you miss one little tricky thing with RMI. RMI uses a DynamicProxy (java.lang.reflect.Proxy) together with a java.lang.reflect.InvocationHandler to proxy the remote call. A proxy can only be created using an interface. All calls to the interface are passed to the InvocationHandler instance and subsequently to the remote server. You can only cast an object returned by lookup() into an interface implemented by the remote object. If you would implement Remotable in you remote object you can only cast it into Remotable (while I have never seen that interface). This will only offer you the methods of this interface but not the methods of the remote object, in our case RemoteSeachable. Eventually we need an interface that defines all methods needed to use RemoteSearchable, without a base interface this is not gonna work together with RMI.\n\nsimon",
+            "date": "2009-06-11T14:45:35.171+0000",
+            "id": 10
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "Moved\n- org.apache.lucene.search.RemoteSearchable.java\n- org.apache.lucene.search.RemoteCachingWrapperFilter.java\nand depending test-cases to contrib/remote\n\nRemoved ant#rmci call from build.xml\nAdded build.xml to contrib/remote\nAdded pom.xml.template to contrib/remote\nAdded package.html to contrib/remote/src/java/org/apache/lucene/search/\n\nIdeally, the move should be done using svn copy which does not appear in a diff afaik.\n\nI did run test-cases with success. \nAfter finishing the patch I removed the Java standard library and compiled against android.jar version 1.1 / 1.5 and did not get any compile errors.\nI did not run the build in an emulator neither did I run any test-cases in it I guess that is little out of scope but I will do it one in the near future just in case I can catch another problem.\n\nThis change has one downside :(, the ant target \"test-tag\" will fail which is correct in my eyes as this patch breaks the compatibility in a certain way. I do have some ideas to make is succeed but I did not include them in the patch.",
+            "date": "2009-06-11T15:53:04.280+0000",
+            "id": 11
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "bq.  the ant target \"test-tag\" will fail which is correct in my eyes as this patch breaks the compatibility in a certain way.\n\nThis is actually fine, assuming we're OK with making an exception (to break back-compat), here (which I believe we are -- if anyone objects, speak up!).\n\nIf you can work out the patch to src/tags/... source code, and attach it, then when we commit this we'll commit the fixes to the back-compat branch, too.",
+            "date": "2009-06-11T16:54:57.003+0000",
+            "id": 12
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "What do you mean by:\nIf you can work out the patch to src/tags/... source code, and attach it, then when we commit this we'll commit the fixes to the back-compat branch, too.\n\nAre you talking about http://svn.apache.org/repos/asf/lucene/java/branches/lucene_2_4_back_compat_tests/?\nplease gimme some more details on that.\n\nthanks,\nsimon",
+            "date": "2009-06-11T17:07:00.938+0000",
+            "id": 13
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Woops, sorry... \"ant test-tag\" check out that branch into your local area, eg under tags/lucene_2_4_back_compat_tests_2009060.\n\nUnder there is src/test/... which you can go ahead and fix up with \"accepted\" changes to back-compat, until it passes \"ant test-tag\".\n\nThen, from within there do \"svn diff\" and attach that patch here.\n\nThanks!",
+            "date": "2009-06-11T17:09:52.860+0000",
+            "id": 14
+        },
+        {
+            "author": "Shai Erera",
+            "body": "bq. If you would implement Remotable in you remote object you can only cast it into Remotable (while I have never seen that interface).\n\nBy Remotable I meant exactly what you came up eventually with RMIRemoteSearchable - a mediator class between Searchable and RemoteSearchable which also extends Remote.\n\nIf this issue will be committed before LUCENE-1630, I'll make the necessary updates to RemoteSearchable - implementing the new methods that will be added.",
+            "date": "2009-06-11T20:14:43.365+0000",
+            "id": 15
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "Attached patches for back compat tag lucene_2_4_back_compat_tests_20090607b\nThe patch /back_compat_20090607b_without_contrib.patch contains only the changes to build.xml, /src/java and /src/test  while back_compat_20090607b_with_contrib.patch has also the created remote contrib project in it.\n\nThe third patch (LUCENE-1407_with_back_compat.patch) is an update to the original LUCENE-1407.patch where I addtionally removed the rmic call in the test-tag target. This call is obsolete and would fail as the RemoteSearchable.java is not present in src/java.\n\nI did run ant test and ant test-tag on trunk with the local modified compat tag directory set to tags-dir. The test do all pass on trunk. \nI did also run ant test on the compat tag where a lot of unrelated tests do fail but I guess that is due to modifications on accepted changes, correct?!\n\nsimon",
+            "date": "2009-06-12T09:13:47.558+0000",
+            "id": 16
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "bq. I did also run ant test on the compat tag where a lot of unrelated tests do fail but I guess that is due to modifications on accepted changes, correct?!\n\nYeah, this won't work (and yeah, it's confusing).  You can't checkout the back compat tag dir and run its tests because many changes we've made to src/test/* on that branch rely on trunk.  Ie we only really use src/test/* on the back compat branch.",
+            "date": "2009-06-12T17:20:56.356+0000",
+            "id": 17
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Patch looks good Simon!  Thanks.  I plan to commit in a day or two...",
+            "date": "2009-06-12T18:56:58.595+0000",
+            "id": 18
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Thanks Simon!",
+            "date": "2009-06-14T11:13:23.052+0000",
+            "id": 19
+        }
+    ],
+    "component": "",
+    "description": "Per http://lucene.markmail.org/message/fu34tuomnqejchfj?q=RemoteSearchable\n\nWe should refactor Searchable slightly so that it doesn't extend the java.rmi.Remote marker interface.  I believe the same could be achieved by just marking the RemoteSearchable and refactoring the RMI implementation out of core and into a contrib.\n\nIf we do this, we should deprecate/denote it for 2.9 and then move it for 3.0",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-1407",
+    "issuetypeClassified": "REFACTORING",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Minor",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "Refactor Searchable to not have RMI Remote dependency",
+    "systemSpecification": true,
+    "version": ""
+}

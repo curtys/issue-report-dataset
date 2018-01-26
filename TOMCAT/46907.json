@@ -1,0 +1,101 @@
+{
+    "comments": [
+        {
+            "author": null,
+            "body": "this is on tomcat 5.5.26",
+            "date": "20090325T01:17:56",
+            "id": 0
+        },
+        {
+            "author": null,
+            "body": "I will investigate this bug and fix it if I needed",
+            "date": "20090406T03:17:08",
+            "id": 1
+        },
+        {
+            "author": null,
+            "body": "Created attachment 23445\ntest application. I try to reproduce bug with it\n\nI can't reproduce problem with attached test application.\nI test it with tomcat builded from this url\nhttp://svn.apache.org/repos/asf/tomcat/current-svn15/tc5.5.x\n\nCan you provide test application and log file to reproduce problem",
+            "date": "20090406T04:33:44",
+            "id": 2
+        },
+        {
+            "author": null,
+            "body": "Can't reproduce bug with test application",
+            "date": "20090406T04:34:45",
+            "id": 3
+        },
+        {
+            "author": null,
+            "body": "Created attachment 23461\nweb archive reproducing #46907",
+            "date": "20090408T05:49:03",
+            "id": 4
+        },
+        {
+            "author": null,
+            "body": "Attached .war file (test_log4j.war, sources included) demonstrating the problem.\nPlease note the presence of commons-logging into /web-inf/lib, as without this Tomcat would not issue any log, and therefore the problem would not be reproduced.\n\nUsage:\n- run the provided webapp under tomcat 5.5.26 (problem may exist on more recent versions too) on a given host (ex: localhost)\n- perform an HTTP POST with body data on http://localhost/testlog4j/post.jsp\n(with curl: curl -d \"name=value\" http://localhost/testlog4j/post.jsp)\n- if things would work, the jsp would return the content of the POST body, but it doesn't, because Jasper consumes the request stream with its debug traces before the JSP is called.\n- to make it work, disable Jasper debug logging: edit /web-inf/classes/log4j.properties and uncomment the \"log4j.category.org.apache.jasper.servlet.JspServlet=WARN\" line : this way Jasper will not log anymore debug traces, therefore not consuming the stream the JSP is using.",
+            "date": "20090408T05:50:21",
+            "id": 5
+        },
+        {
+            "author": null,
+            "body": "Ok. I take a look.",
+            "date": "20090409T04:12:48",
+            "id": 6
+        },
+        {
+            "author": null,
+            "body": "I was able to reproduce this with 5.5.26 (the OP's stated version) and 5.5.27 (the current latest 5.5.x version). However, versions 6.0.0-alpha through to 6.0.18 (the current latest 6.0.x version) as well as the trunk do not exhibit this behavior.\n\nSo a question for the Tomcat developers, do we want to fix this for 5.5.x or do we instead suggest the user upgrade?",
+            "date": "20090416T08:18:00",
+            "id": 7
+        },
+        {
+            "author": null,
+            "body": "It will depend what the patch looks like. Create a patch and one of us will take a look. If the patch is OK, we'll propose it for 5.5.x.",
+            "date": "20090416T08:21:16",
+            "id": 8
+        },
+        {
+            "author": null,
+            "body": "I still can't reproduce the bug.\nI'm on WindowsXP \njdk - 1.6.0_07",
+            "date": "20090417T03:00:59",
+            "id": 9
+        },
+        {
+            "author": null,
+            "body": "I should mention I'm on Linux (Fedora 10 x64). Here's my java -version:\n\n    java version \"1.6.0_12\"\n    Java(TM) SE Runtime Environment (build 1.6.0_12-b04)\n    Java HotSpot(TM) 64-Bit Server VM (build 11.2-b01, mixed mode)",
+            "date": "20090417T09:03:24",
+            "id": 10
+        },
+        {
+            "author": null,
+            "body": "I have removed the debug logging (of the request parameters) that caused the input stream to be consumed in trunk. The patch has been proposed for 5.5.x and 6.0.x.",
+            "date": "20090723T23:18:42",
+            "id": 11
+        },
+        {
+            "author": null,
+            "body": "The patch has been applied to 5.5.x and will be included in 5.5.29 onwards.",
+            "date": "20090812T04:36:39",
+            "id": 12
+        },
+        {
+            "author": null,
+            "body": "This has been fixed in 6.0.x and will be included in 6.0.21 onwards.",
+            "date": "20090812T04:51:38",
+            "id": 13
+        }
+    ],
+    "component": "Jasper",
+    "description": "This is on Tomcat 5.5.x (don't remember the last rev. number, not my current machine).\n\nWhen log4j is in the classpath of the web-app and is configured to log at debug level, Jasper dumps the whole HTTP POST request body as debug traces. This consumes the HttpServletRequest input stream which then arrives unusable for the user at the beginning of the JSP code (using  HttpServletRequest.getInputStream(), the stream is already at its end).\nA workaround is to disable debug traces for Japser class in log4j.properties, but Jasper should not consume the HttpServletRequest input stream whatever mode it runs into.",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "46907",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "P2 major",
+    "product": "Tomcat 5",
+    "project": "TOMCAT",
+    "summary": "Jasper with log4j in web-app classpath and debug level enabled prevents reading HTTP POST stream from JSP",
+    "systemSpecification": true,
+    "version": "5.5.26"
+}

@@ -1,0 +1,29 @@
+{
+    "comments": [
+        {
+            "author": "angela",
+            "body": "the following test should demonstrate the problem. It's an adapted copy of \norg.apache.jackrabbit.core.security.authorization.acl.WriteTest#testWriteIfReadingParentIsDenied\n\n\npublic void testWriteWithoutRootAccess() throws Exception {\n        Privilege[] privileges = privilegesFromNames(new String[] {Privilege.JCR_READ, Privilege.JCR_WRITE});\n\n        /* deny READ/WRITE privilege for testUser at '/' */\n        withdrawPrivileges(\"/\", testUser.getPrincipal(), privileges, getRestrictions(superuser, \"/\"));\n        /*\n        allow READ/WRITE privilege for testUser at 'path'\n        */\n        givePrivileges(childNPath, testUser.getPrincipal(), privileges, getRestrictions(superuser, childNPath));\n\n\n        Session testSession = getTestSession();\n\n        // reading the node and it's definition must succeed.\n        assertTrue(testSession.nodeExists(childNPath));\n        Node n = testSession.getNode(childNPath);\n\n        n.addNode(\"someChild\");\n        testSession.save();  // or testSession.refresh(false)\n\n        // TODO: proper cleanup of modified permissions outside of the testroot-scope that is cleanup in tear-down.\n    }",
+            "date": "2009-12-04T14:44:41.621+0000",
+            "id": 0
+        },
+        {
+            "author": "Stefan Guggisberg",
+            "body": "fixed in svn r887279",
+            "date": "2009-12-04T17:28:40.833+0000",
+            "id": 1
+        }
+    ],
+    "component": "jackrabbit-core",
+    "description": "follow-up issue to JCR-2418:\n\nan editing session that is only allowed to write in a subtree but isn't allowed to access the root node will not be\nable to save or revert changes made in the transient space within that subtree.\n\nthe reason for this is, that both SessionImpl.save() and SessionImpl.refresh(boolean) access the root node\nin order to execute the call. since it's the regular call READ permissions are checked, although the user\nmade no attempt to *look* at the root.\n\nA workaround would be to call Item.save() on the modified tree itself that obviously was visible for the \nuser... unfortunately that method is deprecated as of JCR 2.0. Therefore, I have the impression that we\nshould fix the methods mentioned above.\n\n",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "JCR-2425",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "Session.save() and Session.refresh(boolean) rely on accessibility of the root node",
+    "systemSpecification": true,
+    "version": ""
+}

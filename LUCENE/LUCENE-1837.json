@@ -1,0 +1,113 @@
+{
+    "comments": [
+        {
+            "author": "Simon Willnauer",
+            "body": "Mark, I did not follow that changes can you gimme a pointer to it?! \nWould be easier to track later too. - Just for the record.\n\nthanks",
+            "date": "2009-08-21T13:07:03.610+0000",
+            "id": 0
+        },
+        {
+            "author": "Mark Miller",
+            "body": "The original mistake was in LUCENE-1066 - I don't think that should have been done. It didn't work as you can see by: LUCENE-1087\n\nThe issue got worse when we went to per segment. We attempted to fix in LUCENE-1771, but we just made the old faulty behavior doable again, and added cruft to the API that will encourage further abuse.",
+            "date": "2009-08-21T13:12:50.914+0000",
+            "id": 1
+        },
+        {
+            "author": "Mark Miller",
+            "body": "Its possible that, like being discussed in LUCENE-1821, we could pass the IndexSearcher here with approp warnings.\n\nThen, perhaps even the output in TermWeight could be modified to indicate its per IndexSearcher rather than universal instead of removing.\n\nI don't feel strongly either way.",
+            "date": "2009-08-21T14:25:43.666+0000",
+            "id": 2
+        },
+        {
+            "author": "Mark Miller",
+            "body": "Anyone have any comments, objections?\n\nI'll hold off until we resolve LUCENE-1821 in any case.",
+            "date": "2009-08-22T21:03:37.425+0000",
+            "id": 3
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "So Mark this will revert LUCENE-1771?  Ie no longer pass in the top searcher to weight.explain?",
+            "date": "2009-08-23T15:32:19.687+0000",
+            "id": 4
+        },
+        {
+            "author": "Mark Miller",
+            "body": "It won't revert the whole issue. Weight still an abstract class, the sub reader with the doc still the reader passed rather than top level reader.\n\nThe only revert:\n\nBecause TermWeight tried to take index level stats from the reader, we passed that searcher (to make the TermWeight explain behavior like it was when we passed top level reader) - its the only place its used currently. But thats illegal now and it was illegal before.\n\nYou cannot count on having access to the entire index through a Searcher - else we break MultiSearcher and remote use.\n\nSo passing that Searcher is a recipe for illegal abuse. Same with the other issue Tim brought up - though if we end up passing an IndexSearcher there with all kinds of warnings to abuse at your own peril - I guess we could here.\n\nI'm not sure I like it because we encourage code that doesn't work correctly with MultiSearcher. I think if we wan't to go down that road, we should probably try to move away from support remote and multisearcher.",
+            "date": "2009-08-23T15:39:09.158+0000",
+            "id": 5
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "bq. It won't revert the whole issue.\n\nOK got it.\n\nbq. Because TermWeight tried to take index level stats from the reader, we passed that searcher (to make the TermWeight explain behavior like it was when we passed top level reader) - its the only place its used currently.\n\nPhraseQuery also prints the [top-level] docFreq for each term in the phrase.\n\nbq. You cannot count on having access to the entire index through a Searcher - else we break MultiSearcher and remote use.\n\nI agree, so our fix in LUCENE-1771 doesn't work w/ MultiSearcher.  So we definitely need to do something here...\n\nThe thing is, it's useful for TermQuery's explain to print out the docFreq/maxDoc, right?  (This was the original motivation of LUCENE-1066).  But, it has to be the top-level numbers, not the single-segment numbers.\n\nReally the Weight should gather & hold all top-level stats it needs on construction?  (The MultiSearcher is passed on Weight construction).",
+            "date": "2009-08-23T15:50:48.141+0000",
+            "id": 6
+        },
+        {
+            "author": "Mark Miller",
+            "body": "bq. Really the Weight should gather & hold all top-level stats it needs on construction? (The MultiSearcher is passed on Weight construction).\n\nAh - good point. I've said it before myself - index level stats should be taken from the createWeightSearcher - I just don't integrate thoughts well :)\n\nSo that seems like the right thing to do - only thing I don't like is that this info has to be calculated by calling each Searchable in the MultiSearcher, and then\nyou likely won't ever use it - explain is generally debug stuff. I don't like that.\n\nBut I guess, if you want the info, you gotto do what you gotto do ...",
+            "date": "2009-08-23T15:57:51.976+0000",
+            "id": 7
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "bq. I don't like is that this info has to be calculated by calling each Searchable in the MultiSearcher, and then you likely won't ever use it - explain is generally debug stuff. I don't like that.\n\nBut those stats are already being computed (in the default Similarity impl's idf).  If we \"improved\" Similarity.idf so that it returned idf, docFreq and maxDoc in one go, then there's no added cost right?",
+            "date": "2009-08-23T16:16:59.416+0000",
+            "id": 8
+        },
+        {
+            "author": "Mark Miller",
+            "body": "Right - I was just writing to that affect. If we can get that info back too, I think we are golden. What I was writting:\n\nIt looks like we have to calc twice (not sure about phrasequery - with that it looks like we would have to calc a bunch of info the scorer doesn't even use?) with termweight.\n\n  We want to grab the info on the TermWeight constructor and store it. That info is already calced, but we don't have access to it:\n{code}\n\n    public PhraseWeight(Searcher searcher)\n      throws IOException {\n      this.similarity = getSimilarity(searcher);\n\n      idf = similarity.idf(terms, searcher);\n      // Similiarity#idf\n      // public float idf(Term term, Searcher searcher) throws IOException {\n      //   return idf(searcher.docFreq(term), searcher.maxDoc());\n      // }\n    }\n\n \n{code}\n\n  *edit*\n\nbq. not sure about phrasequery - with that it looks like we would have to calc a bunch of info the scorer doesn't even use?\n\nOkay, we do use all of that - again the info is just all hidden behind the Similarity. \n\nSo we would also want all the  docFreq info from every term in:\n\npublic float idf(Collection terms, Searcher searcher) throws IOException {",
+            "date": "2009-08-23T16:22:38.785+0000",
+            "id": 9
+        },
+        {
+            "author": "Mark Miller",
+            "body": "And also ;)\n\nIf a Sim didn't do those calculations (and its an impl detail now), how could we ask for them back?\n\nIf we tie them to the API, impls will be required to do those calcs for explain - when they didn't need to before. Prob not a huge deal, but ...",
+            "date": "2009-08-23T16:32:38.957+0000",
+            "id": 10
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "bq. If a Sim didn't do those calculations (and its an impl detail now), how could we ask for them back?\n\nWe could require only that the thing that's returned can explain itself?\n",
+            "date": "2009-08-23T16:37:12.552+0000",
+            "id": 11
+        },
+        {
+            "author": "Mark Miller",
+            "body": "Okay, very rough patch. No concern for back compat or anything.\n\nAdded:\n\nplace holder class\n\n{code}\n  public static abstract class SimExplain {\n    abstract float getIdf();\n    abstract String explain();\n  }\n{code}\n\n{code} \n  public SimExplain idfExplain(Term term, Searcher searcher) throws IOException {\n{code}\n\n{code}  public SimExplain idfExplain(Collection terms, Searcher searcher) throws IOException{code}\n\nRemoved Searcher from explain method.\n\nSo I think this is the right path - still a few issues to jump through though, and still some ugliness I've left in.",
+            "date": "2009-08-23T18:01:52.852+0000",
+            "id": 12
+        },
+        {
+            "author": "Mark Miller",
+            "body": "I'm just going to revert the Searcher here - a fix for the bugs can be tracked in LUCENE-1847",
+            "date": "2009-08-23T20:23:36.225+0000",
+            "id": 13
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Patch looks good Mark, and I agree separating out explainability of idf makes sense.",
+            "date": "2009-08-24T10:24:46.954+0000",
+            "id": 14
+        },
+        {
+            "author": "Mark Miller",
+            "body": "committed r807180",
+            "date": "2009-08-24T12:35:38.344+0000",
+            "id": 15
+        }
+    ],
+    "component": "",
+    "description": "Explain needs to calculate corpus wide stats in a way that is consistent with MultiSearcher.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-1837",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "Remove Searcher from Weight#explain",
+    "systemSpecification": true,
+    "version": ""
+}

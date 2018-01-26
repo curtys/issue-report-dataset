@@ -1,0 +1,83 @@
+{
+    "comments": [
+        {
+            "author": "Robert Muir",
+            "body": "here's a patch that speeds up the slowest ones a bit (doesn't really solve the problem, but helps as a step)",
+            "date": "2011-07-04T10:21:45.933+0000",
+            "id": 0
+        },
+        {
+            "author": "Shai Erera",
+            "body": "Patch looks good. One other idea I think we should try is to create the large indexes once per all Top-K tests extensions. There are several references to FacetTestBase.initIndex(), and I think that the TopK tests can create their indexes (which is the same) at @BeforeClass, perhaps all indexes per partition sizes that are tested, and then proceed with testing. I think that will cut away a large portion of the running time.",
+            "date": "2011-07-04T11:02:27.555+0000",
+            "id": 1
+        },
+        {
+            "author": "Robert Muir",
+            "body": "Hi Shai, here is an updated patch that achieves the same thing, now the tests don't create redundant indexes",
+            "date": "2011-07-04T11:26:04.919+0000",
+            "id": 2
+        },
+        {
+            "author": "Robert Muir",
+            "body": "One more tweak, this one seems to help a lot, allows subclasses to tweak the IWConfig (we use the same trick here that we use for NRQ tests to prevent really slow behavior for such large indexes)",
+            "date": "2011-07-04T11:39:45.522+0000",
+            "id": 3
+        },
+        {
+            "author": "Shai Erera",
+            "body": "Patch introduces the following:\n* HashMap<Integer, SearchTaxoDirPair> which is initialized in beforeClass and maps a partition size to the pair of Directories.\n* initIndex first checks the map for the partition size, and creates the indexes only if no matching pair is found.\n\nThe sampling tests do not benefit from that directly, as they only run one test method, however, if they will run in the same JVM, then they will reuse the already created indexes.\n\nPatch is against 3x and seems trivial, so I intend to commit this later today or tomorrow if there are no objections.",
+            "date": "2011-11-14T09:01:54.360+0000",
+            "id": 4
+        },
+        {
+            "author": "Robert Muir",
+            "body": "Hi Shai: a couple suggestions.\n\nWith the current patch we will never close these directories, so we lose some test coverage like the CheckIndex at the end...\nI think these tests caught a serious JRE bug in this checkindex so i'd like to keep it.\n\nAdditionally we have a problem I think if we randomly get a FSDirectory, especially on windows.\n\nSo how about we build up a RAMdir and cache it? when topK tests start up they could do something like this:\n\n{noformat}\n   Directory dir = newDirectory(random, getCachedDir());\n   ...\n   dir.close();\n{noformat}\n\nwhere getCachedDir is the access to the cache (if it doesnt exist, it builds it, and its always a ramdir).\n(LuceneTestCase already has newDirectory(random, Directory) that copies from an existing directory)\n",
+            "date": "2011-11-14T11:38:59.870+0000",
+            "id": 5
+        },
+        {
+            "author": "Robert Muir",
+            "body": "Sorry Shai, i got myself confused and thought you were trying to cache across-tests...\nthis patch is good in case a test has multiple methods...!",
+            "date": "2011-11-14T12:06:17.513+0000",
+            "id": 6
+        },
+        {
+            "author": "Shai Erera",
+            "body": "Right. Caching across tests is very tricky since they can anyway run in different JVMs (with parallel testing) and so we'll gain nothing. And the tests are not really slow - the sampling tests run <12 seconds on my laptop ... not a big deal.\n\nI'll commit shortly.",
+            "date": "2011-11-14T12:15:07.140+0000",
+            "id": 7
+        },
+        {
+            "author": "Shai Erera",
+            "body": "Committed revisions 1201677 (3x) and 1201678 (trunk).\n\nThanks Robert !",
+            "date": "2011-11-14T12:17:09.906+0000",
+            "id": 8
+        },
+        {
+            "author": "Shai Erera",
+            "body": "I see what got you confused (it was me, not you):\n\n{quote}\nhowever, if they will run in the same JVM, then they will reuse the already created indexes\n{quote}\n\nwhat I wrote is wrong (I got myself confused !) -- whatever you do in beforeClass affects only that testcase, not all the ones that will run in the JVM. Perhaps JUnit need to invent two more concepts @StartJVM and @EndJVM, for this to happen :)",
+            "date": "2011-11-14T12:19:48.977+0000",
+            "id": 9
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Bulk close after release of 3.5",
+            "date": "2011-11-27T12:29:24.940+0000",
+            "id": 10
+        }
+    ],
+    "component": "modules/facet",
+    "description": "speed up the top-k sampling tests (but make sure they are thorough on nightly etc still)\n\nusually we would do this with use of atLeast(), but these tests are somewhat tricky,\nso maybe a different approach is needed.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-3269",
+    "issuetypeClassified": "OTHER",
+    "issuetypeTracker": "OTHER",
+    "priority": "Major",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "Speed up Top-K sampling tests",
+    "systemSpecification": true,
+    "version": ""
+}

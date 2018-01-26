@@ -1,0 +1,47 @@
+{
+    "comments": [
+        {
+            "author": "Alex Lukin",
+            "body": "I checked it with native java 1.6 jaxb implementation, result is the same. ",
+            "date": "2008-11-13T12:35:47.003+0000",
+            "id": 0
+        },
+        {
+            "author": "Alex Lukin",
+            "body": "I found that NPE is caused by namespace with empty prefix and empty uri. This namespace exists even in  newly created repository.\n\nCode to discover it:\n            String[] nsp = ses.getNamespacePrefixes();\n            for (String ns : nsp) {\n                System.out.println( \"namespace: \" + ns + \" uri: \" + ses.getNamespaceURI(ns));\n            }",
+            "date": "2008-11-18T11:03:09.313+0000",
+            "id": 1
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "I looked at this and I think I found the cause of the problem. In the Exported class I used null instead of the correct empty string for the default namespace. The normal JAXP libraries seem to accept both cases, but JAXB apparently does not.\n\nI committed a fix to trunk in revision 718566. Can you check whether this fix works for you? If yes, I'll get it included in 1.5.\n\n",
+            "date": "2008-11-18T12:57:29.145+0000",
+            "id": 2
+        },
+        {
+            "author": "Alex Lukin",
+            "body": "Thak you very much, my app works as it should. I just moved file from trunk to 1.5 branch, compiled commons and replaced in my app libs. Everything works fine.  Pleas include this fix in 1.5 release.",
+            "date": "2008-11-18T19:42:15.866+0000",
+            "id": 3
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Merged to the 1.5 branch in revision 719573. Thanks for the help!",
+            "date": "2008-11-21T13:21:22.354+0000",
+            "id": 4
+        }
+    ],
+    "component": "jackrabbit-jcr-commons",
+    "description": "I tried to update my project from Jackrabbit 1.4 to 1.5 and found following error, that is critical for my app.\nProject uses Import/Export features of JCR and JAXB to map XML from JCR to java objects.\n\nexportDocumentView() works with streams when I call it like this:\n\n              Unmarshaller umr = getUnmarshaller();\n        ...\n                fo = new FileOutputStream(\"/tmp/export-node.xml\");\n                jcrs.exportDocumentView(path,fo , false, false);\n                fi = new FileInputStream(\"/tmp/export-node.xml\");\n                umr.unmarshal(new InputSource(fi));    \n\nBut it does not work when I call it using SAX event handler:\n\n            UnmarshallerHandler ctxh = umr.getUnmarshallerHandler();\n             jcrs.exportDocumentView(path, ctxh, false, false);\n\ngiving following exception:\n\njava.lang.NullPointerException\n        at org.xml.sax.helpers.AttributesImpl.getIndex(AttributesImpl.java:203)\n        at com.sun.xml.bind.v2.runtime.unmarshaller.InterningXmlVisitor$AttributesImpl.getIndex(InterningXmlVisitor.java:112)\n        at com.sun.xml.bind.v2.runtime.unmarshaller.XsiNilLoader.selectLoader(XsiNilLoader.java:62)\n        at com.sun.xml.bind.v2.runtime.unmarshaller.ProxyLoader.startElement(ProxyLoader.java:53)\n        at com.sun.xml.bind.v2.runtime.unmarshaller.UnmarshallingContext._startElement(UnmarshallingContext.java:449)\n        at com.sun.xml.bind.v2.runtime.unmarshaller.UnmarshallingContext.startElement(UnmarshallingContext.java:427)\n        at com.sun.xml.bind.v2.runtime.unmarshaller.InterningXmlVisitor.startElement(InterningXmlVisitor.java:71)\n        at com.sun.xml.bind.v2.runtime.unmarshaller.SAXConnector.startElement(SAXConnector.java:137)\n        at org.apache.jackrabbit.commons.xml.Exporter.startElement(Exporter.java:438)\n        at org.apache.jackrabbit.commons.xml.DocumentViewExporter.exportNode(DocumentViewExporter.java:76)\n        at org.apache.jackrabbit.commons.xml.Exporter.exportNode(Exporter.java:298)\n        at org.apache.jackrabbit.commons.xml.Exporter.exportNodes(Exporter.java:214)\n        at org.apache.jackrabbit.commons.xml.DocumentViewExporter.exportNode(DocumentViewExporter.java:77)\n        at org.apache.jackrabbit.commons.xml.Exporter.exportNode(Exporter.java:298)\n        at org.apache.jackrabbit.commons.xml.Exporter.exportNodes(Exporter.java:214)\n        at org.apache.jackrabbit.commons.xml.DocumentViewExporter.exportNode(DocumentViewExporter.java:77)\n        at org.apache.jackrabbit.commons.xml.Exporter.exportNode(Exporter.java:298)\n        at org.apache.jackrabbit.commons.xml.Exporter.export(Exporter.java:144)\n        at org.apache.jackrabbit.commons.AbstractSession.export(AbstractSession.java:461)\n        at org.apache.jackrabbit.commons.AbstractSession.exportDocumentView(AbstractSession.java:241)\n        at ua.org.dg.semaril.helpers.AbstractTypeResolver.getContent(AbstractTypeResolver.java:31\n\nVersion 1.4. works fine.\n\nJukka, please check your changes to  org.apache.jackrabbit.commons.xml.Exporter.\n",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "JCR-1852",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "session.exportDocumentView() does not work with jaxb 2.1.x  UnmarshallerHandler",
+    "systemSpecification": true,
+    "version": "1.5"
+}

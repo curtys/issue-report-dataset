@@ -1,0 +1,59 @@
+{
+    "comments": [
+        {
+            "author": null,
+            "body": "(In reply to comment #0)\n> \n> If I take out the tag attribute, the remote deploy works fine.\n> \n> This is with tomcat 5.5.9, sun-jdk-1.5.0.03 on a Gentoo Linux machine.\n> \n\nTo add some points of reference, this used to work fine in 5.0.28. In addition,\nI upgraded to 5.5.12 and it is broken in there as well.",
+            "date": "20050928T22:29:12",
+            "id": 0
+        },
+        {
+            "author": null,
+            "body": "My colleague and I have tracked down the problem.\n\nThe bug was introduced in revision 1.22 in\njakarta-tomcat-catalina/webapps/manager/WEB-INF/classes/org/apache/catalina/manager/ManagerServlet.java\n\nStarting from line 627 (in the 5.5.9 sources):\n\n                    // Copy WAR and XML to the host app base if needed\n                    if (tag != null) {\n                        deployedPath = deployed;\n                        File localWarCopy = new File(deployedPath, basename + \".\nwar\");\n                        copy(localWar, localWarCopy);\n----------------------> localWar = localWarCopy;\n----------------------> copy(localWar, new File(getAppBase(), basename + \".war\")\n);\n                    }\n\nTaking out the above 2 marked lines fixes the problem.",
+            "date": "20050930T19:49:17",
+            "id": 1
+        },
+        {
+            "author": null,
+            "body": "Created attachment 16565\nFix for tomcat 5.5.9 remote deploy while using tag via ant task",
+            "date": "20050930T19:52:03",
+            "id": 2
+        },
+        {
+            "author": null,
+            "body": "See ongoing discussion on dev@tomcat.apache.org mailing list titled \"yet another\ntomcat goes stable and I still have to make a custom package\" at Nabble:\nhttp://www.nabble.com/yet-another-tomcat-goes-stable-and-I-still-have-to-make-a-custom-package-t1318004.html",
+            "date": "20060322T17:16:45",
+            "id": 3
+        },
+        {
+            "author": null,
+            "body": "Created attachment 17943\nFix for tomcat 5.5.16 for remote deploy while using tag via ant task",
+            "date": "20060322T18:31:03",
+            "id": 4
+        },
+        {
+            "author": null,
+            "body": "Created attachment 17944\nFix for tomcat 5.5.16 for remote deploy while using tag via ant task",
+            "date": "20060322T19:45:24",
+            "id": 5
+        },
+        {
+            "author": null,
+            "body": "Fixed and patched, will be available in 5.5.17\nThe copy method makes a check make sure it doesn't overwrite file A with file B,\nif file A==file B\n",
+            "date": "20060412T22:31:52",
+            "id": 6
+        }
+    ],
+    "component": "Webapps:Manager",
+    "description": "Exactly similar to bug 34654, I have an identical ZipException when using the\ntag attribute while deploying remotely using the ant <deploy> task. In bug\n34654, comment 2, Yoav had mentioned something to the effect that he couldn't\nreproduce it and neither could the OP. I don't think the OP in bug 34654 ever\nmentioned that he couldn't reproduce it. I don't know why the OP never disputed\nthat assumption.\n\nI can easily reproduce it by having a <deploy> ant task with a tag attribute\nsuch as:\n\n<deploy url=\"http://${host}:8080/manager\"\n        username=\"${tomcat.username}\"\n        password=\"${tomcat.password}\"\n        path=\"/${app.name}\"\n        update=\"true\"\n        tag=\"${tag.war}\"\n        war=\"file:${gen.dir}/war/${webapp.war}\"/>\n\nIf I take out the tag attribute, the remote deploy works fine.\n\nThis is with tomcat 5.5.9, sun-jdk-1.5.0.03 on a Gentoo Linux machine.\n\nWhat the OP of bug 34654 was referring to in bug 34654, comment 1 was the fact\nthat if you look inside the remote hosts' work/Catalina/localhost/manager\ndirectory, you will find a fully intact war file with the properly named\ndirectory (as per the tag). And indeed, the war file in that directory is\ncomplete and does not have any defects and/or corruptions.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "36847",
+    "issuetypeClassified": "OTHER",
+    "issuetypeTracker": "BUG",
+    "priority": "P2 normal",
+    "product": "Tomcat 5",
+    "project": "TOMCAT",
+    "summary": "[Patch] ZipException when using \"tag\" in deploy ant task",
+    "systemSpecification": true,
+    "version": "5.5.12"
+}

@@ -1,0 +1,89 @@
+{
+    "comments": [
+        {
+            "author": null,
+            "body": "Please post on tomcat-user about this. This is a recurrent non issue.\nIf you want to reopen this bug, please use a profiler and point out leaked\nreferences (under Tomcat's control, obviously).",
+            "date": "20040114T17:34:10",
+            "id": 0
+        },
+        {
+            "author": null,
+            "body": "I believe this is a bug within Tomcat...\n\nHere is a way to replicate it:\n\nUse the Struts blank war.\nAvailable here:\nhttp://mirrors.isc.org/pub/apache/jakarta/struts/binaries/jakarta-struts-1.1.zip\n\nLoad that webapp, and open two browser windows, one to the Tomcat Manager and\none to the Tomcat Status page.  View the available memory.  You will see it\ncycle within a meg as garbage collection is run.  Then use Tomcat Manager to\nreload the struts webapp.  The free memory should now be a meg less.  This will\ncontinue until you reach 0, when a major garbage collection will occur, but it\njust looks like memory is released, as the Total Memory usage has now increased.\n You can continue this cycle until the memory reaches the total allocated, and\nTomcat will fall over.\n\nIf this is truly a \"non issue\", then I feel the Tomcat developers need to answer\nthis issue more directly (like the release notes).\n\nWe have customers that run multiple occurrences of our webapp under a single\nTomcat, and need to reload... With the leak... they end up having to restart\nTomcat to free the memory... causing support issues.\n\nI look forward to become more educated on why this is (not) an issue...",
+            "date": "20040128T23:54:21",
+            "id": 1
+        },
+        {
+            "author": null,
+            "body": "I looked into that already. While the classloader is not being garbage collected\n(this is the only object not being GCed) due to an unknown reason, no references\nare kept to it (as seen in a profiler), so from the Tomcat programming\nperspective, there's nothing to fix. Many \"simple\" webapps reload without\nleaking memory, but Struts webapps seem to pose a problem. Of course, there are\nalso ways for a shared library to cause GC trouble when reloading, and this\ncannot be fixed, so you cannot assume a webapp reload will never leak memory.\n\nThere's nothing in the release notes, because there's no conclusive information\navailable.",
+            "date": "20040129T08:35:20",
+            "id": 2
+        },
+        {
+            "author": null,
+            "body": "*** Bug 32709 has been marked as a duplicate of this bug. ***",
+            "date": "20041215T00:40:43",
+            "id": 3
+        },
+        {
+            "author": null,
+            "body": "I would have to agree, a memory leak of this magnitude renders the Manager\napplication useless.  If this is something that the Tomcat team will not\naddress, it should be noted in the release notes, or in the Manager App HOW-TO.\n Our organization made number of decisions based on the functionality of the\nManager app that were thrown out once we observed this memory leak.  Although\nthere may be no conclusive evidence showing this is a problem in Tomcat, a\nnumber of people have consistently observed this behavior in the Manager\napplication, and would agree that it is not desired behavior.  To save other\norganizations from going through the problems we did, a simple blurb about this\nknown behavior would be more that appreciated.\n\nThanks,\nJames Norman",
+            "date": "20041215T17:46:44",
+            "id": 4
+        },
+        {
+            "author": null,
+            "body": "After seaching the net I found that there indeed exists a problem with Struts \nthat prevents web app class loaders from beeing garbage collected. The problem \nis that java beans information used by Struts is cached by \njava.beans.Introspector and never removed. A call to one of the methods \njava.beans.Introspector.flushCaches(), java.beans.Introspector.flushCaches\n(Class) or org.apache.commons.beanutils.PropertyUtilsBean.clearDescriptors() \nwould solve this.\n\nAfter doing a bit more searching I found that the Spring framework solves this \nproblem by providing a servlet context listener class \n(http://www.springframework.org/docs/api/org/springframework/web/util/Introspec\ntorCleanupListener.html) that calls Introspector.flushCaches() when a context \nis destroyed. \n\nTo test this, I modified the web.xml of the struts-examples web app to include \na listener definition using IntrospectorCleanupListener. After that I ran the \nWebPageConnector test program posted by James Norman on bug 32709. The program \nran over 1500 redeploys before i turned it off, at which time the memory \nconsumed by Tomcat (5.5) was about 30MB. Before the modification the program \ncould only run about 110 redeploys before an OutOfMemoryError occurred.\n",
+            "date": "20050125T13:21:02",
+            "id": 5
+        },
+        {
+            "author": null,
+            "body": "Very good finding !\nI think I will add that to the stop method of the classloader, like there is a\nmethod to clear the classloader in commons-logging.\n\nThis is a very sneaky issue as the references to the classloader are never\ndisplayed by profilers ... Any other cool features like this in the JDK ?\n\nThe comment in the JDK source is hilarious:\n\n    /**\n     * Flush all of the Introspector's internal caches.  This method is\n     * not normally required.  It is normally only needed by advanced\n     * tools that update existing \"Class\" objects in-place and need\n     * to make the Introspector re-analyze existing Class objects.\n     */\n",
+            "date": "20050125T14:13:38",
+            "id": 6
+        },
+        {
+            "author": null,
+            "body": "That got it.  Thanks to all who resolved this, we can now run multiple apps\ninside of 1 tomcat.\n\n<snip>\n  Any other cool features like this in the JDK ?\n</snip>\n\nJust that super cool System.getProperties()\n\n",
+            "date": "20050126T22:31:57",
+            "id": 7
+        },
+        {
+            "author": null,
+            "body": "This is the same solution as was found previously in the following two bugs...\nhttp://issues.apache.org/bugzilla/show_bug.cgi?id=26372\nhttp://issues.apache.org/bugzilla/show_bug.cgi?id=27371\n\nThe solution was originally (as far as I know) found here...\nhttp://marc.theaimsgroup.com/?t=109578393000004&r=1&w=2\n\n\nIt would have been nice to have recognized this information back in September\n'04 when Yoav posted references to the solution rather than having to re-figure\nit out independently in January '05 and finaly take action.  In any case, I'm\nglad it is finally fixed!\n\n\nJake",
+            "date": "20050205T19:05:04",
+            "id": 8
+        },
+        {
+            "author": null,
+            "body": "This issue is incorrectly closed as WON'T FIX even though the 5.5.8 changelog\nmarks it as fixed. Please reclose it as fixed.",
+            "date": "20050822T17:57:58",
+            "id": 9
+        },
+        {
+            "author": null,
+            "body": "Oops, I can do this myself :)",
+            "date": "20050822T18:18:42",
+            "id": 10
+        },
+        {
+            "author": null,
+            "body": "*** Bug 36548 has been marked as a duplicate of this bug. ***",
+            "date": "20051018T11:24:59",
+            "id": 11
+        }
+    ],
+    "component": "Catalina",
+    "description": "Tomcat 5.0.16 leaks a lot of memory when a webapp is reloaded. To duplicate, \nstart Tomcat.\n\nOpen Windows Task manager and view memory information for the java.exe process.\n\nGo to Tomcat Manager.\n\nReload Tomcat Admin webapp.\n\nMemory will increase for each reload request.  Memory also leaks when \nstopping/starting a webapp, but not as much as reload.  I lost about 15 \nmegabytes of memory after about 10 reload requests.  I waited about 10 to 15 \nminutes to see if memory ever went back down, but it never did.",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "26135",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "P3 normal",
+    "product": "Tomcat 5",
+    "project": "TOMCAT",
+    "summary": "Tomcat 5.0.16 leaks memory when a webapp is reloaded or stopped/started",
+    "systemSpecification": true,
+    "version": "5.0.16"
+}

@@ -1,0 +1,53 @@
+{
+    "comments": [
+        {
+            "author": "Yonik Seeley",
+            "body": "If we start guaranteeing that fields get returned in the same order as they were added, what are the costs?  (I'm not sure there ever was such a guarantee... just because someone added it to the FAQ doesn't make it so).\n\nAFAIK, sorting the fields is necessary to group multiple values for the same field, and it also ensured that segments with the same fields had the same field numbers, which enables faster segment merging?",
+            "date": "2009-07-01T15:02:16.080+0000",
+            "id": 0
+        },
+        {
+            "author": "Yonik Seeley",
+            "body": "bq. just because someone added it to the FAQ doesn't make it so\n\nOf course, I tried to find out when it was added, and it's been there since the original Apache version.... that's a long time.  I guess we do need to treat it like a guarantee at this point (which we could break in 3.0 if there is a benefit to doing so).\n\nIt's a good reminder to avoid documenting how something works as a guarantee that it will always work that way.",
+            "date": "2009-07-01T15:14:18.010+0000",
+            "id": 1
+        },
+        {
+            "author": "Hoss Man",
+            "body": "bq. It's a good reminder to avoid documenting how something works as a guarantee that it will always work that way.\n\nI remember it being pretty heavily advertised as a feature for as long as i can remember -- it was the entire basis for adding the FieldSelector API.\n\nBased on McCandless comments in email, it sounds like order was only ever maintained for fields that don't use term vectors -- in which case the documentation was only ever partially correct.  If it's possible to fix it to work at least as well as it use to that seems worth while considering how much FieldSelector depends on it.\n\n(I admit however: it's kind of scary that it's been such an implicit assumption but apparently never had a unit test)",
+            "date": "2009-07-02T21:05:53.380+0000",
+            "id": 2
+        },
+        {
+            "author": "Yonik Seeley",
+            "body": "bq. it was the entire basis for adding the FieldSelector API.\n\nYes, something I'm not particularly fond of.  IMO, speeding up loading certain fields should be left to Lucene.  For example, one can think of a simple way to improve the performance of loading only certain fields... instead of\n\n[fieldnum][fieldlength][fieldvalue] [fieldnum][fieldlength][fieldvalue]\n\nstore it instead as\n\n[fieldnum][fieldlength][fieldnum][fieldlength] [fieldvalue] [fieldvalue]\n",
+            "date": "2009-07-02T22:01:33.038+0000",
+            "id": 3
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "bq. If we start guaranteeing that fields get returned in the same order as they were added, what are the costs?\n\nI'm not yet sure, but I expect it to be a minor added cost; I'll know more as I dig in.\n\nbq. AFAIK, sorting the fields is necessary to group multiple values for the same field, and it also ensured that segments with the same fields had the same field numbers, which enables faster segment merging?\n\nActually the mapping of field name -> number happens before the sort, so presently we rely on the docs having the same order of fields, to enable bulk merging of stored fields & term vectors.  Bulk merging is really a rather brittle optimization.  Actually we could improve it by only checking for matched name -> numbers for fields that are stored or have term vectors enabled (right now we check that all fields match), and by pre-sorting the field names when doing the mapping to number.\n\nI plan to just move the stored fields writer up in the indexing chain, so that it receives the in-order list of fields, not the coalesced & sorted list.\n\nbq. Based on McCandless comments in email, it sounds like order was only ever maintained for fields that don't use term vectors - in which case the documentation was only ever partially correct.\n\nActually, order was correctly maintained prior to 2.3.  In 2.3, it was maintained only if you had no term vectors fields (ie, we only sorted when there was at least 1 field w/ term vectors enabled).  In 2.4 we always sort and order was never maintained.  For 2.9 I think we should fix it again so that order is fully maintained.\n\nbq.  For example, one can think of a simple way to improve the performance of loading only certain fields\n\nI think that'd be a good improvement to how fields are stored!",
+            "date": "2009-07-06T10:54:23.509+0000",
+            "id": 4
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Attached patch.\n\nI moved StoredFieldsWriter up in the chain, by calling it directly\nfrom DocFieldProcessor/PerThread, and added a test case showing the\nproblem & showing the fix.\n",
+            "date": "2009-07-06T22:37:03.838+0000",
+            "id": 5
+        }
+    ],
+    "component": "core/index",
+    "description": "As noted in these threads...\n\nhttp://www.nabble.com/Order-of-fields-returned-by-Document.getFields%28%29-to21034652.html\nhttp://www.nabble.com/Order-of-fields-within-a-Document-in-Lucene-2.4%2B-to24210597.html\n\nsomewhere prior to Lucene 2.4.1 a change was introduced that prevents the Stored fields of a Document from being returned in same order that they were originally added in.  This can cause serious performance problems for people attempting to use LoadFirstFieldSelector or a custom FieldSelector with the LOAD_AND_BREAK, or the SIZE_AND_BREAK options (since the fields don't come back in the order they expect)\n\nSpeculation in the email threads is that the origin of this bug is code introduced by LUCENE-1301 -- but the purpose of that issue was refactoring, so if it really is the cause of the change this would seem to be a bug, and not a side affect of a conscious implementation change.\n\nSomeone who understands indexing internals should investigate this.  At a minimum, if it's decided that this is not actual a bug, then prior to resolving this bug the wiki docs and some of the FIeldSelector javadocs should be updated to make it clear what order Fields will be returned in.\n\n",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-1727",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "Order of stored Fields not maintained",
+    "systemSpecification": true,
+    "version": "2.4, 2.4.1"
+}

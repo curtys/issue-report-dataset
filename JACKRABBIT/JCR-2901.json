@@ -1,0 +1,77 @@
+{
+    "comments": [
+        {
+            "author": "Andreas Zschorn",
+            "body": "test project which shows the wrong transaction behaviour",
+            "date": "2011-02-21T18:02:36.860+0000",
+            "id": 0
+        },
+        {
+            "author": "Claus K\u00f6ll",
+            "body": "This patch assigns the the new opened Session Object to its internal XAResource. Can you test the patch ?",
+            "date": "2011-02-22T13:48:28.057+0000",
+            "id": 1
+        },
+        {
+            "author": "Andreas Zschorn",
+            "body": "i tested it, it does not work, nevertheless we found hopefully a final solution. I will create a patch for it. The TransactionBoundXAResource may not be newly created. This objects are cached by the transaction handler from the application server. So the solution is just to set the session.getXAResource in the TracsactionBoundXAResource. After this everything works as expected.",
+            "date": "2011-02-22T17:45:32.624+0000",
+            "id": 2
+        },
+        {
+            "author": "Andreas Zschorn",
+            "body": "Patch which is working for us, includes the first patch",
+            "date": "2011-02-22T17:55:45.296+0000",
+            "id": 3
+        },
+        {
+            "author": "Andreas Zschorn",
+            "body": "Just some additional information, after reading javadoc and the spec for the resource adapter, this is the normal behaviour. The managed connection and the xa resource have two different purposes, but need to be in sync. Because the managed connections are cached by the pool it is not allowed just to recreate the xa resource in the managed connection. It will have no effect. Thats the reason i assigned the transactionboundxaresource the newly created xaresource from the new created session. Hope there is not an threading problem with this, but i don't see any at the moment.",
+            "date": "2011-02-22T18:12:18.027+0000",
+            "id": 4
+        },
+        {
+            "author": "Andreas Zschorn",
+            "body": "Another thing, is it possible  to merge the sample project with the jca-project, so the current testcases could be extended. The current testcases for the jca project are pretty simple and it would be great if they could be extended.",
+            "date": "2011-02-22T19:15:44.782+0000",
+            "id": 5
+        },
+        {
+            "author": "Claus K\u00f6ll",
+            "body": "Thank you for the patch and the infos.\nThe Problem to test it is that we have no container running in the testscases but i will have a look at it and discuss it how we can handle this.",
+            "date": "2011-02-24T13:24:56.077+0000",
+            "id": 6
+        },
+        {
+            "author": "Claus K\u00f6ll",
+            "body": "commited in rev. 1074140",
+            "date": "2011-02-24T13:39:02.640+0000",
+            "id": 7
+        },
+        {
+            "author": "Andreas Zschorn",
+            "body": "Thanks, in the sample project we run jencks as an container, so it can be used without an application server and spring does the rest.",
+            "date": "2011-02-24T14:16:42.248+0000",
+            "id": 8
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Merged to the 2.2 branch in revision 1080584.",
+            "date": "2011-03-11T14:49:44.346+0000",
+            "id": 9
+        }
+    ],
+    "component": "jackrabbit-jca",
+    "description": "during the cleanup (returning to the pool) of an jca managed connection,  an new internal session is created in the object JCAManagedConnection in the method cleanup, this is supposed to fix JCR-2523, The sideeffect is, that the XA-Resource (variable-xaResource) in JCAManagedConnection is not anymore the same XASessionImpl Object like the session Object. Subsequent calls on this connection, lead that the internal session variable is not anymore informed about the current transaction context. (XAItemStateManager, variables tx and txLog are null), because only the xaResource is informed about the new transaction context. Result is that the complete transaction handling does not work anymore.\nI attached a sample project which shows this behaviour.\n",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "JCR-2901",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Blocker",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "JCR-2523 break the transaction handling in container managed environment",
+    "systemSpecification": true,
+    "version": "2.1.3, 2.2.4"
+}

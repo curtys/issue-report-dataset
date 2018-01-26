@@ -1,0 +1,65 @@
+{
+    "comments": [
+        {
+            "author": "mguillemot@yahoo.fr",
+            "body": "Created attachment 376705\nPatch with unit test fixing the reported exception\n\nThe provided patch contains a unit test and fixes the problem. It makes some cleanup in NativeString removing (nearly) all ConstructorId_XXX. This code is the source of the error and it seems to useless (at least no new test fails with these changes). The patch doesn't try to make additional cleanup to stay as simple as possible.",
+            "date": "20090511T13:58:35",
+            "id": 0
+        },
+        {
+            "author": "hannesw@gmail.com",
+            "body": "Created attachment 376712\nrevised patch for string generics that uses this-object if called without args\n\nYour patch breaks the basic functionality of the generic String functions: \n\njs> String.toLowerCase(\"FOO\")\nfunction string() { [native code for string.string, arity=1] }\n\nNote that the \"correct\" use of String.toLowerCase.apply would be (where the first argument could really be anything): \n\njs> String.toLowerCase.apply(String, [\"SOME STRING\"]);\n\nBut it looks like spidermonkey checks the arguments and uses the this-object if a string generic funciton is called without arguments. I'll try to implement the same behaviour in Rhino. Anyway we need better argument checking here.\n\nI'm uploading a patch that seems to reproduce spidermonkey behaviour and avoids the ArrayOutOfBound exception. We should probable do the same for the generic Array methods.",
+            "date": "20090511T14:46:01",
+            "id": 1
+        },
+        {
+            "author": "hannesw@gmail.com",
+            "body": "Created attachment 376719\nimproved patch\n\nImproved patch that checks the fallback this-object is a string object and does the same argument check and fallback for generic array methods.",
+            "date": "20090511T15:19:11",
+            "id": 2
+        },
+        {
+            "author": "mguillemot@yahoo.fr",
+            "body": "Thanks for the fast feedback Hannes.\nCould you add some tests for \"static\" usage of these functions. Currently it\nseems that there is absolutely no test for that as I couldn't see any broken\ntest with the changes in the propose patch.",
+            "date": "20090511T15:23:32",
+            "id": 3
+        },
+        {
+            "author": "hannesw@gmail.com",
+            "body": "I committed your testcase and my patch.\n\nChecking in src/org/mozilla/javascript/NativeArray.java;\n/cvsroot/mozilla/js/rhino/src/org/mozilla/javascript/NativeArray.java,v  <--  NativeArray.java\nnew revision: 1.98; previous revision: 1.97\ndone\nChecking in src/org/mozilla/javascript/NativeString.java;\n/cvsroot/mozilla/js/rhino/src/org/mozilla/javascript/NativeString.java,v  <--  NativeString.java\nnew revision: 1.64; previous revision: 1.63\ndone\nRCS file: /cvsroot/mozilla/js/rhino/testsrc/org/mozilla/javascript/tests/NativeStringTest.java,v\ndone\nChecking in testsrc/org/mozilla/javascript/tests/NativeStringTest.java;\n/cvsroot/mozilla/js/rhino/testsrc/org/mozilla/javascript/tests/NativeStringTest.java,v  <--  NativeStringTest.java\ninitial revision: 1.1\ndone",
+            "date": "20090511T15:28:30",
+            "id": 4
+        },
+        {
+            "author": "mguillemot@yahoo.fr",
+            "body": "Impressing! I've never seen such a fast reaction in the Rhino project! ;-)\n\nI'll attach a patch checking that the regression of my first patch can be catch by a test in the future.",
+            "date": "20090511T15:44:56",
+            "id": 5
+        },
+        {
+            "author": "mguillemot@yahoo.fr",
+            "body": "Created attachment 376722\nImproves unit test to cover call to String.toLowerCase\n\nAdds test for call to String.toLowerCase that first proposed patch was breaking and that is not covered by any test until now.",
+            "date": "20090511T15:46:53",
+            "id": 6
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "I committed the patch to the unit test.",
+            "date": "20090520T11:56:23",
+            "id": 7
+        }
+    ],
+    "component": "Core",
+    "description": "User-Agent:       Mozilla/5.0 (X11; U; Linux i686; en-US; rv:1.9.0.10) Gecko/2009042513 Ubuntu/8.04 (hardy) Firefox/3.0.10\nBuild Identifier: \n\napply called on String.toLowerCase causes ArrayIndexOutOfBoundsException:\n\nString.toLowerCase.apply('HELLO')\n\nThe same occurs probably for other String methods.\n\nReproducible: Always",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "492359",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "-- major",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "Calling generic String and Array functions without arguments causes ArrayIndexOutOfBoundsException",
+    "systemSpecification": true,
+    "version": "other"
+}

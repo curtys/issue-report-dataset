@@ -1,0 +1,35 @@
+{
+    "comments": [
+        {
+            "author": null,
+            "body": "\n\n*** This bug has been marked as a duplicate of 28131 ***",
+            "date": "20040402T11:16:41",
+            "id": 0
+        },
+        {
+            "author": null,
+            "body": "It is not a duplicate of 28131, which was also found by me.\n\n28131 prevented any expiration in a cluster. This bug here only applies if one \ncluster node is shutdown. Then the replicated sessions will no longer expire.\n\n28131 is resolved in DeltaSession.java, this bug here must be resolved in \nDeltaManager.java. Please leave open for comment by Filip Hanik.\n\nThanks.",
+            "date": "20040402T11:19:57",
+            "id": 1
+        },
+        {
+            "author": null,
+            "body": "Thanks for the info, I haven't had time to play around with all this since we \njust moved from California to Texas. Thanks for your help!!",
+            "date": "20040402T14:43:38",
+            "id": 2
+        }
+    ],
+    "component": "Catalina:Cluster",
+    "description": "After stopping one cluster node, expiration of the sessions replicated from \nthis node to the other nodes is broken. This is due to a bug in \nDeltaManager.java. In line 882 there is a call to session.access(), which \nincreases accessCount by 1. Since there is no call to session.endAccess, this \nsession will never expire.\n\nThe same seems to be true in line 870. If it is necessary to update timestamps \nwith session.access, you should also call session.setAccessCount(0) directly \nafter. In line 870 this might be appropriate, in line 882 there is dreq.execute \ndirectly before and dreq.execute already calls session.access and \nsession.endAccess, so I think one could drop line 882.\n\nThe Bug was first introduced in Version 1.8 of DeltaManager (TC 5.0.18).\n\nSince there was already another bug relating to accessCount>0 it seems to be a \ngood idea to check other uses of accessCount or session.access() as well.\n\nThanks for correcting.",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "28156",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "P3 normal",
+    "product": "Tomcat 5",
+    "project": "TOMCAT",
+    "summary": "Session Expiration in Cluster broken after stopping one node",
+    "systemSpecification": false,
+    "version": "5.0.21"
+}

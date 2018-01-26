@@ -1,0 +1,107 @@
+{
+    "comments": [
+        {
+            "author": "Gordon Mohr",
+            "body": "Previous suggestion fails to reproduce another behavior of IE6 (but not\nFirefox1.0.4): a cookie of domain \"example.com\" (no leading dot) will be sent by\nIE to subdomains, like \"www.example.com\" (but not unrelated domains like\n\"anotherexample.com\"). \n\nTo match IE, this should do the trick (without again ruling-in unrelated but\nsimilar-ending domains): \n\n    public boolean domainMatch(final String host, final String domain) {\n// EVEN BETTER (for mimicking IE): also sends \"example.com\" cookie to proper\nsubdomains like \"www.example.com\"\n        return (domain.startsWith(\".\")) \n            ? (host.endsWith(domain) || host.equals(domain.substring(1)))\n            : (host.equals(domain) || host.endsWith(\".\"+domain));\n    }",
+            "date": "2005-06-05T17:15:47.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "This indeed represents a major blunder on our part. I stop short of marking this\nbug as critical only because the browser compatibility policy is not a default one.\n\nOleg",
+            "date": "2005-06-05T19:14:30.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Created an attachment (id=15305)\nPatch (take 1)\n\nGordon,\nThe way IE matches whatever.com cookie to www.whatever.com host does not make\nany sense to me. I would rather stick to the more conservative approach of\nFirefox. Please let me know if you could live with that. \n\nFolks, please review the patch\n\nOleg",
+            "date": "2005-06-06T04:35:57.000+0000",
+            "id": 2
+        },
+        {
+            "author": "Gordon Mohr",
+            "body": "I don't have enough info to have a strong opinion. In favor of (what appears to\nbe ) the Firefox approach, RFC2109 plus send \".domain.com\" cookies to exact host\n\"domain.com\", the arguments would be:\n\n - I trust the Mozilla/Firefox project in general to have converged on\nreasonable tradeoffs over time\n - In my daily use of FF, I've never noticed a cookie problem with their policy\n - It's a smaller deviation from written specs.\n\nIn favor of (what appears to be) the IE6 approach, of the Firefox policy plus\nsend \"domain.com\" cookies to \"sub.domain.com\", the argument would be:\n\n - It's still by far the most-used browser, and if the rationale of\nCookieSpecBase/compatibility mode is (as suggested by the method comment) to\nmatch \"common browsers\", there's no more \"common\" browser than IE\n\nI could go either way. Either would be an improvement over current bug. Without\ntime for more extensive testing, perhaps try the Firefox approach and see who\ncomplains, with examples of real sites (if any) that break without the IE\nbehavior?  ",
+            "date": "2005-06-06T09:37:16.000+0000",
+            "id": 3
+        },
+        {
+            "author": "Gordon Mohr",
+            "body": "The patch proposed in #3 leaves first endsWith() test in place, which still\nallows leakage on cookies whose 'domain' value does not begin with a '.'. For\nexample:\n\nCookieSpecBase cspec = new CookieSpecBase();\nCookie cookie = new\nCookie(\"sourceforge.net\",\"foo\",\"bar\",\"/\",Integer.MAX_VALUE,false);\ncspec.match(\"antisourceforge.net\",80,\"/\",false,cookie); // returns true\n\nChanging that to equals then requires an endsWith test inside the \".\" case, as\nin the suggestion in comment #1. (Which, as far as I can tell, then matches\nFirefox cookie domain-matching behavior.)",
+            "date": "2005-06-06T10:02:18.000+0000",
+            "id": 4
+        },
+        {
+            "author": "Roland Weber",
+            "body": "The argument for the IE6 approach are cookies for which no domain is\nset by the server. They default to the host in the URL that was accessed,\nand some people use \"domain.com\" as a shortcut to \"www.domain.com\".\nI doubt that this much tolerance is needed in HttpClient.\n\ncheers,\n  Roland",
+            "date": "2005-06-06T14:38:27.000+0000",
+            "id": 5
+        },
+        {
+            "author": "Roland Weber",
+            "body": "I just read across RFC 2965 (Cookie 2). Section 3.2.2, Page 5:\n\n>   Domain=value\n>      OPTIONAL.  The value of the Domain attribute specifies the domain\n>      for which the cookie is valid.  If an explicitly specified value\n>      does not start with a dot, the user agent supplies a leading dot.\n\nSo the IE6 behavior for old cookies has become standard for cookie2. Or\nelse IE6 applies the standard behavior for cookie2 also to old cookies.\n\nSince we don't support RFC 2965 yet, we don't have to tolerate the missing\ndot. On the other hand, the error seems to be so commonplace that it has\nbeen deemed acceptable in a followup specification. So we could make\nHttpClient more tolerant without sacrificing spec compliance by implementing\nthe IE6 behavior.\n\ncheers,\n  Roland\n",
+            "date": "2005-06-06T16:50:01.000+0000",
+            "id": 6
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Created an attachment (id=15307)\nPatch (take2)\n\nAll right. This should do the trick. Please review\n\nOleg",
+            "date": "2005-06-06T17:33:22.000+0000",
+            "id": 7
+        },
+        {
+            "author": "Ortwin Gl\u00fcck",
+            "body": "Oleg, what about the case\n\n\".sourceforge.net\" cookie against \"www.sourceforge.net\"? This case should be\ncovered by all specs.\n\nOdi",
+            "date": "2005-06-06T17:45:13.000+0000",
+            "id": 8
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "(In reply to comment #9)\n> Oleg, what about the case\n> \n> \".sourceforge.net\" cookie against \"www.sourceforge.net\"? This case should be\n> covered by all specs.\n> \n> Odi\n\nOdi, \n\nThis is a standard case. It should already be adequately covered by all the\ncookie specs\n\nOleg\n",
+            "date": "2005-06-06T18:03:06.000+0000",
+            "id": 9
+        },
+        {
+            "author": "Ortwin Gl\u00fcck",
+            "body": "I don't see test coverage, Oleg. Please add an additonal test case:\n\n public void testSecondDomainLevelCookieMatch3() throws Exception {\n       Cookie cookie = new Cookie(\".sourceforge.net\", \"name\", null, \"/\", null,\nfalse); \n        cookie.setDomainAttributeSpecified(true);\n        cookie.setPathAttributeSpecified(true);\n\n        CookieSpec cookiespec = new CookieSpecBase();\n        assertTrue(cookiespec.match(\"www.sourceforge.net\", 80, \"/\", false, cookie));\n",
+            "date": "2005-06-06T18:51:38.000+0000",
+            "id": 10
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "As far as I am concerned the test cases below should exercise the code path in\nquestion:\n\nhttp://jakarta.apache.org/commons/httpclient/3.0/xref-test/org/apache/commons/httpclient/cookie/TestCookieCompatibilitySpec.html#871\n\nI see no harm in adding another test case either\n\nOleg",
+            "date": "2005-06-06T19:23:58.000+0000",
+            "id": 11
+        },
+        {
+            "author": "Roland Weber",
+            "body": "Just for the records: while reading through RFC 2109, I encountered\nsection 4.3.2 about \"Rejecting Cookies\". There, it is required to reject\ncookies with a domain attribute that does not start with a dot. So it\nwould be a violation of the spec to supply the missing dot for Set-Cookie,\nas IE does. For Set-Cookie2, that will be required instead of forbidden.\nLooks like there are no security or privacy concerns about it anymore.\n\ncheers,\n  Roland\n",
+            "date": "2005-06-08T16:12:36.000+0000",
+            "id": 12
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Folks, any objections to committing this patch?\n\nOleg",
+            "date": "2005-06-10T00:22:26.000+0000",
+            "id": 13
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Patch committed.\n\nOleg",
+            "date": "2005-06-14T04:09:09.000+0000",
+            "id": 14
+        }
+    ],
+    "component": "HttpClient (classic)",
+    "description": "The change committed for #32833\n<http://issues.apache.org/bugzilla/show_bug.cgi?id=32833> is buggy; it doesn't\nmatch browser behavior and in fact leaks cookies to third party domains. \n\nTo see, try the following:\n\nCookieSpecBase cspec = new CookieSpecBase();\nCookie cookie = new Cookie(\".hotmail.com\",\"foo\",\"bar\",\"/\",Integer.MAX_VALUE,false);\ncspec.match(\"iwanttostealcookiesfromhotmail.com\",80,\"/\",false,cookie);\n\nIt will return true. Testing in Firefox1.0.4 and IE6 show no such similar\nleakage for similar cases. (Indeed, it'd be a headline-making privacy bug if\nthey were to do this.)\n\nThose browsers do, in my limited testing, behave as desired by the filer of\n#32833: a cookie of domain value '.mydomain.com' will be returned to exact host\n'mydomain.com' (. However, the fix that was suggested was overbroad.\n\nI suggest instead for CookieSpecBase.domainMatch():\n\n    public boolean domainMatch(final String host, final String domain) {\n// BUGGY: matches a '.service.com' cookie to hosts like 'enemyofservice.com'\n//        return host.endsWith(domain)\n//            || (domain.startsWith(\".\") && host.endsWith(domain.substring(1)));\n// BETTER: RFC2109, plus matches a '.service.com' cookie to exact host 'service.com'\n        return host.equals(domain)\n            || (domain.startsWith(\".\") \n                    && (host.endsWith(domain)\n                            || host.equals(domain.substring(1))));\n    }",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "HTTPCLIENT-467",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "HTTPCLIENT",
+    "project": "HTTPCLIENT",
+    "summary": "CookieSpecBase.domainMatch() leaks cookies to 3rd party domains",
+    "systemSpecification": false,
+    "version": "3.0 RC2"
+}

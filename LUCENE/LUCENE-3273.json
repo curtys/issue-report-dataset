@@ -1,0 +1,95 @@
+{
+    "comments": [
+        {
+            "author": "Chris Male",
+            "body": "Patch with first shot at this.\n\n- MockQueryParser is introduced.  It handles a very simple syntax consisting of boolean operators and can identify Wildcard queries.  Cannot handle complex BooleanQuerys, boosts or PhraseQuerys.\n- QueryBuilderHelper is introduced which provides some utilities methods for building queries (currently just to create a TermQuery with a boost)\n- BooleanQueryBuilder and PhraseQueryBuilder are introduced to ease the process of programmatically creating complex BooleanQuerys and PhraseQuerys.\n\n- All core Lucene tests (apart from those in the queryparser package) have been moved away from relying on QueryParser.  In extremely trivial situations, TermQuerys are now directly instantiated.  In others, the MockQueryParser is used.  In complex scenarios, the Builder classes are used to programmatically create the queries.\n- Some tests have been split up and moved around.  Tests that did both parsing assertions and search assertions have been split so the parsing assertions go into TestQueryParser (since they are testing the QPs supported language).\n\nNext step is to visit the contrib tests and clear those out too, so we can prevent any back dependencies on the queryparser module.",
+            "date": "2011-07-04T08:34:19.944+0000",
+            "id": 0
+        },
+        {
+            "author": "Hoss Man",
+            "body": "I'm in favor of eliminating the QueryParser dependency, but i feel like this approach of adding things like \"BooleanQueryBuilder\" leads us down the road towards tests that are so verbose in query construction it will draw attention away from the important parts of the test -- doing something with those queres.\n\na while back when i wrote TestExplanations, i added a bunch of convenience methods for constructing esoteric queries that i couldn't get cleanly from the QueryParser (mainly spans) -- perhaps we should move towards generalizing that approach ... either in a Utility class where they can be staticly imported, or into LuceneTestCase?  These days we could even use vargs for things like Phrase, Boolean, and SpanNear queries (we weren't using Java5 when i wrote the existing ones)\n\nThat way instead of things like this...\n\n{code}\nPhraseQuery q = new PhraseQuery(); // Query \"this hi this is a test is\"\nq.add(new Term(\"field\", \"hi\"), 1);\nq.add(new Term(\"field\", \"test\"), 5);\n\nassertEquals(\"field:\\\"? hi ? ? ? test\\\"\", q.toString());\n{code}\n\n...we could have ...\n\n{code}\nQuery q = phraseQ(\"field\", null, \"hi\", null, null, null, \"test\");\n\nassertEquals(\"field:\\\"? hi ? ? ? test\\\"\", q.toString());\n{code}\n\nAnd instead of this...\n\n{code}\npublic void testDMQ8() throws Exception {\n  DisjunctionMaxQuery q = new DisjunctionMaxQuery(0.5f);\n  q.add(new BooleanQueryBuilder(FIELD)\n      .addTermQuery(\"yy\")\n      .addQuery(QueryBuilderHelper.newTermQuery(FIELD, \"w5\", 100))\n      .get());\n  q.add(QueryBuilderHelper.newTermQuery(FIELD, \"xx\", 100000));\n  qtest(q, new int[] { 0,2,3 });\n}\n{code}\n\n...we could have...\n\n{code}\npublic void testDMQ8() throws Exception {\n  DisjunctionMaxQuery q = new DisjunctionMaxQuery(0.5f);\n  q.add(booleanQ(opt(termQ(FIELD, \"yy\")), \n                 opt(termQ(FIELD, \"w5\", 100))));\n  q.add(termQ(FIELD, \"xx\", 100000));\n  qtest(q, new int[] { 0,2,3 });\n}\n{code}\n\n",
+            "date": "2011-07-04T18:01:11.374+0000",
+            "id": 1
+        },
+        {
+            "author": "Robert Muir",
+            "body": "With all due respect hoss, i'd rather have the former than the latter.\n\nThe latter reminds me of solr tests which use this approach, I find them extremely painful to read.",
+            "date": "2011-07-04T18:06:14.675+0000",
+            "id": 2
+        },
+        {
+            "author": "Hoss Man",
+            "body": "to each his own i guess.\n\nI just think it makes sense for utilities that do the banal stuff that's not central to the actually methods being tested should be as short as possible and get the hell out of the way -- the code you actually want to test should be verbose and catch your eye.\n\n",
+            "date": "2011-07-04T18:11:15.652+0000",
+            "id": 3
+        },
+        {
+            "author": "Robert Muir",
+            "body": "the difference here, is that I think in general the tests should use/look like the API.\n\nthis makes them readable for people (e.g. new contributors) who already know lucene's API to\nunderstand what the tests do.\n\nFor example in the lucene tests we added various randomization, but we tried to make it look just like the API, except deleting a space:\n\n{noformat}\nnew IndexWriterConfig() -> newIndexWriterConfig()\nnew Directory() -> newDirectory()\nnew Field() -> newField()\n...\n{noformat}\n\nin some of these tests, I think its actually *way more clear* to explicitly build the BQs and not use any builders or parsers, especially TestBoolean2 for example.\n\nI fear sometimes, people get caught up on \"more lines of code\" == bad. I think this is wrong, sometimes more lines of code is good.\n\nparsers, builder apis, and helper methods might reduce the number of lines of code, but they add additional layers and obfuscation that makes this a terrible tradeoff.\n",
+            "date": "2011-07-04T18:35:42.107+0000",
+            "id": 4
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "I would also prefer to keep tests very straightforward, even if that makes them more verbose.  Ie just use the Lucene core API, and if the core API is insufficient we should improve it.  I don't think we should be adding very much special test-only APIs.\n\nIn fact, why even add a builder here for BQ?  Can't we just make the BQ and add the clauses?\n\nIn general I'm not a fan of builder APIs... I think they are over-applied these days (hammer!) and I don't think we need it here for our tests.",
+            "date": "2011-07-04T18:36:38.296+0000",
+            "id": 5
+        },
+        {
+            "author": "Robert Muir",
+            "body": "here's my example, TestBoolean2.\n\nin my opinion building the queries like this makes the test much more readable.\n\nit adds 48 lines and deletes 29 lines of code... \n\nI think adding these 19 lines of code to this 343 line test case is worth every penny, because its much easier to see what any given test does, e.g. just glance real quick at testQueries06 and you see its a BQ with one MUST and two MUST_NOTS, no parsing by the brain required.\n",
+            "date": "2011-07-04T18:51:36.001+0000",
+            "id": 6
+        },
+        {
+            "author": "Hoss Man",
+            "body": "bq. In general I'm not a fan of builder APIs... I think they are over-applied these days (hammer!) \n\nbq. I think adding these 19 lines of code to this 343 line test case is worth every penny, because its much easier to see what any given test does, e.g. just glance real quick at testQueries06 and you see its a BQ with one MUST and two MUST_NOTS, no parsing by the brain required.\n\ni don't disagree with either of you.  particularly in this test where the whole point is testing BooleanQueries -- so lets actually have the test showing the construction of a BooleanQuery.\n\nmy point was more about tests where the construction of the Query object is ancillary to what the test is actually for.\n\nthat said: definitely in agreement that using the core api and constructing the queries right in the test leaves no room for ambiguity -- my main point was that if we're going to have \"builders\" to simplify the tests, let's make them short and terse like the QP syntax that use to be in those tests.",
+            "date": "2011-07-04T19:09:53.589+0000",
+            "id": 7
+        },
+        {
+            "author": "Robert Muir",
+            "body": "after reviewing the core tests, I think there is really not that many tests using the queryparser at all.\n\nin fact it seems the only 'non-trivial' queries being built are inside the explanations tests (e.g. more than just a term, boolean, or phrase or whatever), if these are too laborious to make manually, maybe we can just have whatever is needed in the base TestExplanations... but I think it would be good to build queries directly in most places in general.\n",
+            "date": "2011-07-04T19:14:54.025+0000",
+            "id": 8
+        },
+        {
+            "author": "Chris Male",
+            "body": "In defence of builders, its a great design pattern and I don't agree that its over-applied.\n\nWith all that said, I'll move away from them.",
+            "date": "2011-07-05T00:01:11.106+0000",
+            "id": 9
+        },
+        {
+            "author": "Chris Male",
+            "body": "New patch, new ideas.\n\nI've moved away from introducing anything new and have converted all the core tests over to instantiating Queries programmatically.  No builders / helpers are used.\n\nEverything compiles and passes again.",
+            "date": "2011-07-05T02:30:21.143+0000",
+            "id": 10
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Thanks Chris!  Patch looks great.",
+            "date": "2011-07-05T10:27:23.972+0000",
+            "id": 11
+        },
+        {
+            "author": "Chris Male",
+            "body": "Committed revision 1143231.",
+            "date": "2011-07-06T00:08:45.127+0000",
+            "id": 12
+        }
+    ],
+    "component": "core/other",
+    "description": "Most tests use Lucene Core's QueryParser for convenience.  We want to consolidate it into a QP module which we can't have as a dependency.  We should add a simple MockQueryParser which does String.split() on the query string, analyzers the terms and builds a BooleanQuery if necessary.  Any more complex Queries (such as phrases) should be done programmatically. ",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-3273",
+    "issuetypeClassified": "OTHER",
+    "issuetypeTracker": "",
+    "priority": "Major",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "Convert Lucene Core tests over to a simple MockQueryParser",
+    "systemSpecification": true,
+    "version": ""
+}

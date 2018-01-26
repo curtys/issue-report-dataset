@@ -1,0 +1,65 @@
+{
+    "comments": [
+        {
+            "author": "pschwartau@meer.net",
+            "body": "Confirming bug; cc'ing Igor -",
+            "date": "20030429T22:32:26",
+            "id": 0
+        },
+        {
+            "author": "pschwartau@meer.net",
+            "body": "Testcase added to JS testsuite:\n\n      mozilla/js/tests/js1_5/Regress/regress-203841.js\n\n\nCurrently passing in SpiderMonkey and Rhino interpreted mode.\nBut crashing in any optimized Rhino mode, with the above stack.",
+            "date": "20030430T01:06:38",
+            "id": 1
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "I changed the subject since the same problem persists not only with comma\noperator cases like:\n\nif (1, 1 == 6) ;\n\nbut also with the following cases\"\n\n// get elem case\nx=[];\nif (x[1==2]) ;\n\n// set elem case\nif (x[1==2]=1) ;\n\n// delete elem case\nif (delete x[1==2]) ;\n\n\nAll these cases caused by incorrect code generation optimization to merger\nevaluation of boolean expressions like x == y, a && b etc. with generation code\nfor conditional jumps like code for if statements, ? operator etc.\n\nIn fact these test cases are produced by looking for the code of\ngenerateCodeFromNode in  omj/optimizer/Codegen.java.\n",
+            "date": "20030430T11:04:08",
+            "id": 2
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 122121\nFix for Codegen.java: conditional jumps are processed in new generateIfJump method\n\nTo fix the issue I moved away from generateCodeFromNode code to merge boolean\nchecks and conditional jumps into separated generateIfJump method that tries to\napply this optimization and if it is not possible, it calls\ngenerateCodeFromNode and adds a generic jump.",
+            "date": "20030430T18:07:05",
+            "id": 3
+        },
+        {
+            "author": "pschwartau@meer.net",
+            "body": "I've added Igor's new examples from Comment #3 to the testcase.\nOnce again, passing in SpiderMonkey and in Rhino interpreted mode,\nbut failing in Rhino compiled modes.",
+            "date": "20030430T21:41:34",
+            "id": 4
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "I committed the fix. By \"if and boolean checks merger\" I mean special code in\nthe optimizer not to generate Boolean object just to convert them to boolean on\nJVM stack later when generating bytecode for conditional jumps but rather use\nIFLE etc. bytecode to compare and jump skipping intermediate steps. \n\nHopefully the fix closed all the problems with the optimization.\n\n",
+            "date": "20030501T10:15:52",
+            "id": 5
+        },
+        {
+            "author": "pschwartau@meer.net",
+            "body": "Verified FIXED.\n\nThe above testcase now passes not only in Rhino interpreted mode,\nbut in optimized modes as well.",
+            "date": "20030501T18:58:20",
+            "id": 6
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Targeting as resolved against 1.5R5",
+            "date": "20040213T11:42:06",
+            "id": 7
+        }
+    ],
+    "component": "Compiler",
+    "description": "User-Agent:       Mozilla/5.0 (Windows; U; Windows NT 5.0; en-US; rv:1.0.2) Gecko/20021216\nBuild Identifier: Mozilla/5.0 (Windows; U; Windows NT 5.0; en-US; rv:1.0.2) Gecko/20021216\n\nWhen using a comma operator inside an if statement in non-interpreted mode, as\nin the following example,\n\nif (a = 5, b == 6) { c = 1; }\n\nRhino throws this exception:\n\nException in thread \"main\" java.lang.IllegalStateException: Stack underflow: -1\n        at org.mozilla.classfile.ClassFileWriter.badStack(ClassFileWriter.java:1154)\n        at org.mozilla.classfile.ClassFileWriter.add(ClassFileWriter.java:401)\n        at org.mozilla.javascript.optimizer.Codegen.addByteCode(Codegen.java:3568)\n        at org.mozilla.javascript.optimizer.Codegen.visitGOTO(Codegen.java:1574)\n        at\norg.mozilla.javascript.optimizer.Codegen.generateCodeFromNode(Codegen.java:1172)\n        at\norg.mozilla.javascript.optimizer.Codegen.generateCodeFromNode(Codegen.java:1044)\n        at\norg.mozilla.javascript.optimizer.Codegen.generateCodeFromNode(Codegen.java:1044)\n        at org.mozilla.javascript.optimizer.Codegen.generateCode(Codegen.java:409)\n        at org.mozilla.javascript.optimizer.Codegen.compile(Codegen.java:137)\n        at org.mozilla.javascript.Context.compile(Context.java:1916)\n        at org.mozilla.javascript.Context.compileReader(Context.java:886)\n        at org.mozilla.javascript.Context.evaluateReader(Context.java:803)\n        at org.mozilla.javascript.tools.shell.Main.evaluateReader(Main.java:363)\n        at org.mozilla.javascript.tools.shell.Main.processSource(Main.java:260)\n        at org.mozilla.javascript.tools.shell.Main.exec(Main.java:103)\n        at org.mozilla.javascript.tools.shell.Main.main(Main.java:76)\n\nReproducible: Always\n\nSteps to Reproduce:\n1. use the js> shell\n2. Enter the following:\n\njs> Packages.org.mozilla.javascript.Context.enter().setOptimizationLevel(1);\njs> if (a = 5, b==6} { return false; }\n\nActual Results:  \nGot this exception:\n\norg.mozilla.javascript.optimizer.Codegen.generateCode(Codegen.java:409)\n        at org.mozilla.javascript.optimizer.Codegen.compile(Codegen.java:137)\n        at org.mozilla.javascript.Context.compile(Context.java:1916)\n        at org.mozilla.javascript.Context.compileReader(Context.java:886)\n        at org.mozilla.javascript.Context.evaluateReader(Context.java:803)\n        at org.mozilla.javascript.tools.shell.Main.evaluateReader(Main.java:363)\n        at org.mozilla.javascript.tools.shell.Main.processSource(Main.java:260)\n        at org.mozilla.javascript.tools.shell.Main.exec(Main.java:103)\n        at org.mozilla.javascript.tools.shell.Main.main(Main.java:76)\n\nExpected Results:  \nNo exception\n\nThis isn't a problem in interpreted mode.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "203841",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "-- normal",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "Bad code generation to merge \"if\" and boolean expressions",
+    "systemSpecification": true,
+    "version": "other"
+}

@@ -1,0 +1,23 @@
+{
+    "comments": [
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "This bit of code got committed by mistake. See HTTPCLIENT-911 for details. The problem has been fixed in the SVN trunk. Please upgrade to the latest SVN snapshot.\n\nOleg",
+            "date": "2010-12-30T09:07:02.082+0000",
+            "id": 0
+        }
+    ],
+    "component": "HttpClient (classic)",
+    "description": "Issue with 4.1 beta1 fails to parse the right host from the URL, eg. http://my.site.com/search/?for=http://other.site.com\nThis fails request for eg. REST that has a param value with ':' or '?' or '/'.\n\nAbstractHttpClient.determineTarget(HttpUriRequest)\nhttpcomponents-client-4.0.3:\n    private HttpHost determineTarget(HttpUriRequest request) {\n        // A null target may be acceptable if there is a default target.\n        // Otherwise, the null target is detected in the director.\n        HttpHost target = null;\n\n        URI requestURI = request.getURI();\n        if (requestURI.isAbsolute()) {\n            target = new HttpHost(\n                    requestURI.getHost(),\n                    requestURI.getPort(),\n                    requestURI.getScheme());\n        }\n        return target;\n    }\n\n\nhttpcomponents-client-4.1-beta1:\n    private HttpHost determineTarget(HttpUriRequest request) throws ClientProtocolException {\n        // A null target may be acceptable if there is a default target.\n        // Otherwise, the null target is detected in the director.\n        HttpHost target = null;\n\n        URI requestURI = request.getURI();\n        if (requestURI.isAbsolute()) {\n            String ssp = requestURI.getSchemeSpecificPart();\n            ssp = ssp.substring(2, ssp.length()); //remove \"//\" prefix\n            int end = ssp.indexOf(':') > 0 ? ssp.indexOf(':') :\n                    ssp.indexOf('/') > 0 ? ssp.indexOf('/') :\n                    ssp.indexOf('?') > 0 ? ssp.indexOf('?') : ssp.length();\n            String host = ssp.substring(0, end);\n\n            int port = requestURI.getPort();\n            String scheme = requestURI.getScheme();\n            if (host == null || \"\".equals(host)) {\n                throw new ClientProtocolException(\n                        \"URI does not specify a valid host name: \" + requestURI);\n            }\n            target = new HttpHost(host, port, scheme);\n        }\n        return target;\n    }\n",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "HTTPCLIENT-1038",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "HTTPCLIENT",
+    "project": "HTTPCLIENT",
+    "summary": "AbstractHttpClient.determineTarget(HttpUriRequest)",
+    "systemSpecification": true,
+    "version": "4.1 Beta1"
+}

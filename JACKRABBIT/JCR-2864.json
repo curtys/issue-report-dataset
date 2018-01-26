@@ -1,0 +1,47 @@
+{
+    "comments": [
+        {
+            "author": "S\u00e9bastien Launay",
+            "body": "I like this isolation because we can also kill parsers blocked into a infinite loop.\n\nBut there might be an issue at least on GNU/Linux systems (vanilla kernel) because of how processes are created.\nIndeed, creating a process required the same amount of free memory as the memory consumed by the parent process (fork() then exec()).\nThis can be a big issue for enterprise server where a lot of memory is dedicated to the JVM and creating subprocesses would result in the system swapping or error like \"Cannot run program \"java\": java.io.IOException: error=12, Cannot allocate memory\".\n\nA solution often recommended is to start one light process parallel to the main one and communicate with it (e.g. by socket) to create the subprocesses.\n\nMore information can be found here:\nhttp://developers.sun.com/solaris/articles/subprocess/subprocess.html\n",
+            "date": "2011-01-24T09:14:27.330+0000",
+            "id": 0
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Hmm, good point about subprocess creation. That should probably be handled in Tika though I'm not sure where the proper tradeoff between complexity and fail-safety lies. Can we somehow estimate how likely the described fork() memory issues would be in Jackrabbit deployments.",
+            "date": "2011-01-24T09:49:10.264+0000",
+            "id": 1
+        },
+        {
+            "author": "S\u00e9bastien Launay",
+            "body": "Yes it definitely needs to be handle in Tika for other projects using it.\nWe happened to have this issue in a webapp (1 tomcat with 1 webapp consuming 60% of RAM+Swap and -Xmx == -Xms) and a shell script for launching custom data processing executed from the JVM with ProcessBuilder.\nI guess this can become problematic when we have an enterprise server with multiple webapps (one or several using JR/Tika).",
+            "date": "2011-01-24T10:06:51.036+0000",
+            "id": 2
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "I filed TIKA-591 for tracking this within Tika. See also HADOOP-5059 for a similar problem in the Hadoop land.",
+            "date": "2011-01-31T10:08:43.694+0000",
+            "id": 3
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "I've implemented this by adding a new \"forkJavaCommand\" configuration option. When specified, this command will be used to fork background text extraction processes up to the configured \"extractorPoolSize\" limit (by default 2 x processor count). The pool size limit will only become effective once we upgrade to Tika 1.0 where TIKA-639 is implemented.\n\nThe fork memory use issue is best handled within the Tika issue.",
+            "date": "2011-04-12T14:56:50.619+0000",
+            "id": 4
+        }
+    ],
+    "component": "indexing, jackrabbit-core",
+    "description": "The upcoming Tika 0.9 release will contain a highly useful out-of-process text extraction feature (TIKA-416) that we should use also in Jackrabbit.",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "JCR-2864",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Major",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "Use out-of-process text extraction",
+    "systemSpecification": true,
+    "version": ""
+}

@@ -1,0 +1,101 @@
+{
+    "comments": [
+        {
+            "author": "Ortwin Gl\u00fcck",
+            "body": "Could this be a race condition, i.e. do we need more synchronization? Michael?",
+            "date": "2005-05-27T16:43:59.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Michael Becke",
+            "body": "I definitely don't think we need more synchronization.  The MTHCM is chock full of that already.  \nGetting this error message is quite strange, as it should not been seen under normal working \nconditions.  As far as I can tell, the only way it will happen is if a connection is returned to the wrong \nconnection manager, or if a connection's host/port/protocol/proxy is changed after it is checked out.\n\nAndrzej, could you give us a little more detail about your application, and also attempt to rule out the \nabove two scenarios?\n\nMike",
+            "date": "2005-05-29T13:22:31.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Andrzej Bialecki",
+            "body": "Created an attachment (id=15199)\nNutch protocol-httpclient handler\n\nThe application in question is Nutch (http://www.nutch.org). I'm porting it's\nHTTP protocol handler to use httpclient.\n\nI attached the protocol-http source code here. It's full of Nutch-specific\nclasses, but at least it will give you an idea of the control flow. The method\nHttp.getProtocolOutput() is called repeatedly, from multiple threads, in order\nto retrieve the page content.",
+            "date": "2005-05-29T16:17:07.000+0000",
+            "id": 2
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Mike,\nCan it be that hostCode/equals methods of HostConfiguration class contribute to\nthis problem? \n\nAs I just realized this patch (HTTPCLIENT-441) may have not completely solved the\nissue and may have produced some side effects on the way MTHCM functions\n\nOleg",
+            "date": "2005-05-29T20:48:28.000+0000",
+            "id": 3
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Created an attachment (id=15200)\nHostConfiguration hashCode/equals fix\n\nAndrzej,\nCould you please test this patch against SVN trunk or the latest nightly in\nyour environment?\n\nOleg",
+            "date": "2005-05-29T20:50:42.000+0000",
+            "id": 4
+        },
+        {
+            "author": "Michael Becke",
+            "body": "I'm not sure if this is the problem or not.  An error in HostConfiguration.equals() would certainly cause \nproblems with the MTHCM, but nothing appears have been wrong.  What problem in equals() is this \npatch fixing?\n\nMike",
+            "date": "2005-05-30T13:22:50.000+0000",
+            "id": 5
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Mike, \nPresently #hashCode of HostConfiguration does not include localAddress attribute\ninto hash computation, whereas #equals does compare localAddress attributes,\nwhich, I believe, is a violation of hashCode/equals contract. I took liberty of\nchanging #equals method to make it slightly more readable while checking on the\ncorrectness of its implementation. I am not saying #equals method is broken in\nany way. It is just not easy to see what is going on in the code\n\nOleg",
+            "date": "2005-05-30T17:14:07.000+0000",
+            "id": 6
+        },
+        {
+            "author": "Andrzej Bialecki",
+            "body": "Thanks for the patch! I'm running a test crawl with this patch, so far it's\nrunning well. I'll let you know when it finishes, it could take another day or so.",
+            "date": "2005-05-31T08:06:16.000+0000",
+            "id": 7
+        },
+        {
+            "author": "Roland Weber",
+            "body": "Hi Oleg,\n\ndifferent objects are allowed to return the same hash code. So it\nis OK for hashCode() to omit attributes considered by equals().\n\ncheers,\n  Roland",
+            "date": "2005-06-01T00:55:09.000+0000",
+            "id": 8
+        },
+        {
+            "author": "Andrzej Bialecki",
+            "body": "After applying the patch and testing, the problem didn't occur, so it appears to\nfix it. I suggest applying this patch to the trunk, and close the issue for now\n- if the problem appears again, I'll re-open this issue.\n\nThank you!",
+            "date": "2005-06-02T05:17:43.000+0000",
+            "id": 9
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Andrzej,\nCuriously enough, as Roland pointed out the patch actually should not make any\ndifference. It does make #hashCode a little more efficient and #equals a bit\nmore readable, but should have no effect on HashMap lookups. I believe the patch\nshould be checked in, but it still does not explain the cause of the problem\n\nMike et al, do you have any objections to committing the patch?\n\nOleg\n\n",
+            "date": "2005-06-02T05:33:35.000+0000",
+            "id": 10
+        },
+        {
+            "author": "Michael Becke",
+            "body": "The patch looks good to me.  As you say it just cleans up the code some.  What\nexactly is causing the problem here is a mystery to me.\n\nMike",
+            "date": "2005-06-02T05:46:45.000+0000",
+            "id": 11
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Patch committed. \n\nAndrzej, could you please test your application with the latest SVN snapshot and\nlet us know if the problem still persists?\n\nOleg",
+            "date": "2005-06-02T07:19:06.000+0000",
+            "id": 12
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Andrzej,\n\nFeel free to reopen the report if some new data becomes available\n\nOleg",
+            "date": "2005-06-08T02:53:03.000+0000",
+            "id": 13
+        }
+    ],
+    "component": "HttpClient (classic)",
+    "description": "I'm using HttpClient with MultiThreadedHttpConnectionManager in a crawler\napplication. The application issues requests to many hosts, in 10-20 parallel\nrequest threads. Each thread creates a new GetMethod, but all threads use the\nsame instance of HttpClient, created once with a multi-threaded manager.\n\nThe code in each thread looks like this:\n\nGetMethod get = new GetMethod(url);\ntry {\n  int code = getSharedHttpClient().executeMethod(get);\n  // ... read response, do stuff\n} finally {\n  get.releaseConnection();\n}\n\n\nFrom time to time I get an error like this:\n\nHost connection pool not found, hostConfig=HostConfiguration[host=http://a.b.c]\n\nwhere the url is a random url from my fetch list. I looked into the source code\nof the nightly release (MultiThreadedHttpConnectionManager.java:979), but the\ncomment there is not enlightening... ;-) Any help or suggestions for further\ndebugging would be appreciated.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "HTTPCLIENT-463",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "HTTPCLIENT",
+    "project": "HTTPCLIENT",
+    "summary": "Occasional \"Host connection pool not found\"",
+    "systemSpecification": true,
+    "version": ""
+}

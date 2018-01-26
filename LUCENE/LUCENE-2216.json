@@ -1,0 +1,137 @@
+{
+    "comments": [
+        {
+            "author": "Yonik Seeley",
+            "body": "Thanks Dawid!\n\nhashCode and equals probably shouldn't be modifying the state of the object though, right?\nIt's also not thread safe, so a lot of weird things could happen... the simplest example is that two threads could check that the last word is all zeros and both decrement wlen.\n\nI like the spirit of your change though, as it only adds to the cost of hashCode/equals (which are already very expensive with large bitsets and should be avoided if possible anyway).",
+            "date": "2010-01-16T15:10:44.112+0000",
+            "id": 0
+        },
+        {
+            "author": "Yonik Seeley",
+            "body": "I haven't tested this patch, but this seems like a simple solution.  Start with a zero hashcode while iterating backward and the trailing zeros won't affect the hashcode.",
+            "date": "2010-01-16T15:14:59.261+0000",
+            "id": 1
+        },
+        {
+            "author": "Dawid Weiss",
+            "body": "Hi Yonik,\n\nThis class is not thread-safe anyway (there are no memory barriers of any kind anywhere in the code).\n\nFrom a single-thread perspective, yes, you are modifying the internal state of this object, but it's not really affecting anything other than possibly speeding up further interaction with this object (any other operation no OpenBitSets is affected by the value inside wlen).\n\nYour patch also solves the issue, of course. I just don't see the point in _not_ updating wlen since you're scanning through memory anyway... The implementation of OpenBitSet is different in this regard to java.util.BitSet, which always maintains the last non-empty index. I've been thinking about it a bit and there are pros and cons to both implementations, but lazily moving wlen when memory is scanned anyway seems like a better alternative than keeping wlen unnecessarily large (which affects ORs, ANDs and other set operations).\n\nTo me this implementation cannot be used in a multi-threaded application anyway, am I wrong here?\n\nD.",
+            "date": "2010-01-16T15:43:35.429+0000",
+            "id": 2
+        },
+        {
+            "author": "Dawid Weiss",
+            "body": "Perhaps this is for another patch, but BitUtil contains several bit-counting methods (pop, ntz) that have been implemented in the JDK in the same way (Hacker's Delight) and will come with HotSpot intrinsics for the new Intels (http://bugs.sun.com/bugdatabase/view_bug.do?bug_id=6823354). On the other hand, Lucene's implementation may be useful for folks with older VMs...",
+            "date": "2010-01-16T15:47:49.367+0000",
+            "id": 3
+        },
+        {
+            "author": "Yonik Seeley",
+            "body": "bq. To me this implementation cannot be used in a multi-threaded application anyway, am I wrong here?\n\nPretty much any mutable object may be safely shared with other threads after it's done being modified.  So one thread could create, and many threads could read.  I don't know how explicitly it's spelled out in Java, but hashCode and  equals shouldn't modify the object's state in any meaningful way.",
+            "date": "2010-01-16T15:57:26.064+0000",
+            "id": 4
+        },
+        {
+            "author": "Dawid Weiss",
+            "body": "This is only true if there is happens-before between the reads and the modifications to the object. In any other case other threads may be reading stale values (i.e., from their own cache), at least if my understanding of the jmm is correct here. Whether you want to rely on such a deep semantics of interaction between threads is something to consider deeply, at least in my personal opinion.",
+            "date": "2010-01-16T16:59:18.888+0000",
+            "id": 5
+        },
+        {
+            "author": "Dawid Weiss",
+            "body": "This is not entirely what I had in mind (it's not cache, but HotSpot optimisation), but similar situation applies (the value of the field that's never modified from the perspective of the current thread is never re-read).\n\n{code}\npublic class Example10 {\n    private static Holder holder;\n\n    public static void startThread() {\n        new Thread() {\n            public void run() {\n                try { sleep(2000); } catch (Exception e) { /* ignore */ }\n                holder.ready = true;\n                System.out.println(\"Setting ready to true.\");\n            }\n        }.start();\n    }\n\n    public static void main(String [] args) {\n        holder = new Holder();\n        startThread();\n        while (!holder.ready) {\n            // Do nothing.\n        }\n        System.out.println(\"I'm ready.\");\n    }\n}\n\nclass Holder {\n    public boolean ready;\n}\n{code}\n\nIf you run it with -server, it will (should... or does on two machines I own) deadlock. Client mode and interpreted mode are not optimized, so it passes.",
+            "date": "2010-01-16T17:25:35.870+0000",
+            "id": 6
+        },
+        {
+            "author": "Yonik Seeley",
+            "body": "bq. This is only true if there is happens-before between the reads and the modifications to the object. \n\nOf course... I said \"may be safely shared', not that any method one chooses to share it is correct.\nIt still seems that promoting hashCode and equals to mutating operations is wrong, no?",
+            "date": "2010-01-16T17:34:43.128+0000",
+            "id": 7
+        },
+        {
+            "author": "Dawid Weiss",
+            "body": "uff, I started having doubts in my own understanding, thanks for being patient with me.\n\nI agree that having hashCode mutate the object's state is weird. I had some thoughts about it -- this particular mutation seems to be \"safe\" even from multi-threaded point of view. If another thread sees a stale value of wlen, then the only thing that is going to happen is it will scan more memory; for ands, ors and other types of operations this will have no effect. So assuming hashCode/equals is the ONLY method you're calling concurrently, it shouldn't break things. A similar kind of trickery goes on in String#hashCode (caching to a non-volatile field), although that object is immutable, so it's a slightly different scenario.\n\nTo be honest, my preference for this would be to either maintain the wlen field during all operations (like java.util.BitSet) or at least to clearly state (JavaDoc?) that trimTrailingZeros() should be invoked prior to publishing the object for other threads for increased performance (in case you fiddle with bits and clear the tail). In the second options, your patch does a fine job of not mutating the object and correcting the bug.\n\nThanks for an interesting discussion.",
+            "date": "2010-01-16T17:54:32.858+0000",
+            "id": 8
+        },
+        {
+            "author": "Yonik Seeley",
+            "body": "bq. I agree that having hashCode mutate the object's state is weird. I had some thoughts about it - this particular mutation seems to be \"safe\" even from multi-threaded point of view. If another thread sees a stale value of wlen, then the only thing that is going to happen is it will scan more memory;\n\nThere are still quite a few things that can go wrong I think.  If all threads *only* called hashCode and equals, then you *might* be right... it's very specific to the implementation of trimTrailingZeros()\n{code}\n   public void trimTrailingZeros() {\n    int idx = wlen-1;\n    while (idx>=0 && bits[idx]==0) idx--;\n    wlen = idx+1;\n  }\n{code}\nWhat could make that work is the fact that wlen is an integer, is never directly used as the loop counter, or as an index into the array.\n\nBut the other big questions: are other read operations tolerant of wlen changing out from under them?  My guess would be no.\nLook at xorCount for example:\n{code}\n    if (a.wlen < b.wlen) {\n      tot += BitUtil.pop_array(b.bits, a.wlen, b.wlen-a.wlen);\n{code}\nhashCode and equals changing wlen could cause a negative value to be passed to pop_array.\n\nedit: deleted second example, which isn't different from the first (the issue is safety with other read ops).",
+            "date": "2010-01-16T18:31:36.467+0000",
+            "id": 9
+        },
+        {
+            "author": "Dawid Weiss",
+            "body": "Chances of this happening are really slim (this would probably be a single inlined read as soon as the compilation takes place, but you're right in the general case. I am not arguing changing the object in hashCode is good -- my argument is that ideally it should be fixed elsewhere (as in my previous suggestion -- either updating wlen every time the tail changes, or make explicit changes to the documentation that inform about suboptimal performance for zero-tailed sets).",
+            "date": "2010-01-16T20:05:08.994+0000",
+            "id": 10
+        },
+        {
+            "author": "Dawid Weiss",
+            "body": "For what it's worth, I checked the mentioned BitUtil methods -- ntz/pop; the same implementation is included from Java 1.5 upward. Do you want me to file another patch for this, Yonik, or are we leaving this as-is? I'd redirect from BitUtil to Long/Integer, deprecate BitUtil methods and replace the places in the code where they are used.",
+            "date": "2010-01-16T20:10:04.251+0000",
+            "id": 11
+        },
+        {
+            "author": "Yonik Seeley",
+            "body": "bq. my argument is that ideally it should be fixed elsewhere\n\nThis is an expert-level class... I don't think that every call to clear() should be checking if it completely cleared the last word.  It's easy enough to call trimTrailingZeros after you did a bunch of modifications... but not so easy to regain the lost performance for the code doing redundant checking you didn't want.\n",
+            "date": "2010-01-16T20:23:45.308+0000",
+            "id": 12
+        },
+        {
+            "author": "Dawid Weiss",
+            "body": "Ok, argument accepted.",
+            "date": "2010-01-16T20:38:46.432+0000",
+            "id": 13
+        },
+        {
+            "author": "Yonik Seeley",
+            "body": "bq. For what it's worth, I checked the mentioned BitUtil methods - ntz/pop; the same implementation is included from Java 1.5 upward.\n\nHuh - I didn't realize that Java5 had the same pop impl as I did... it will be cool if it finally starts using native POPCNT instructions.\n\nAs far as ntz, I went though a lot of micro-optimizations and different implementations before I settled on the one used in BitUtil, so it would be nice to do some benchmarks to see if it's truly faster now (and also what the performance difference is for users of JVMs before this optimization was implemented).",
+            "date": "2010-01-16T20:42:31.907+0000",
+            "id": 14
+        },
+        {
+            "author": "Dawid Weiss",
+            "body": "Ah, ok -- I thought ntz in BitUtils is the same as in hacker's delight, but it isn't. Microbenchmarks will always be misleading as they depend a lot on how you test, but I can do it out of sheer curiosity -- will report tomorrow.",
+            "date": "2010-01-16T21:01:34.242+0000",
+            "id": 15
+        },
+        {
+            "author": "Yonik Seeley",
+            "body": "Microbenchmarks will always be misleading as they depend a lot on how you test, but I can do it out of sheer curiosity - will report tomorrow.\n\nCool.  I'd recommend testing in the context of OpenBitSet (i.e. don't try testing ntz directly).\nPerhaps just create a large random set (~1M bits) with a certain percent of bits set, and then iterate over those set bits.",
+            "date": "2010-01-16T21:11:03.728+0000",
+            "id": 16
+        },
+        {
+            "author": "Yonik Seeley",
+            "body": "Committed in trunk.  Thanks for bringing this up!",
+            "date": "2010-01-16T22:14:33.327+0000",
+            "id": 17
+        },
+        {
+            "author": "Robert Muir",
+            "body": "reopening for possible 2.9.4/3.0.3 backport.\n",
+            "date": "2010-10-29T12:57:41.707+0000",
+            "id": 18
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Backported 3.0 revision: 1038096\nBackported 2.9 revision: 1038098",
+            "date": "2010-11-23T13:21:34.481+0000",
+            "id": 19
+        }
+    ],
+    "component": "core/other",
+    "description": "OpenBitSet uses an internal buffer of long variables to store set bits and an additional 'wlen' index that points \nto the highest used component inside {@link #bits} buffer.\n\nUnlike in JDK, the wlen field is not continuously maintained (on clearing bits, for example). This leads to a situation when wlen may point\nfar beyond the last set bit. \n\nThe hashCode implementation iterates over all long components of the bits buffer, rotating the hash even for empty components. This is against the contract of hashCode-equals. The following test case illustrates this:\n\n{code}\n// initialize two bitsets with different capacity (bits length).\nBitSet bs1 = new BitSet(200);\nBitSet bs2 = new BitSet(64);\n// set the same bit.\nbs1.set(3);\nbs2.set(3);\n        \n// equals returns true (passes).\nassertEquals(bs1, bs2);\n// hashCode returns false (against contract).\nassertEquals(bs1.hashCode(), bs2.hashCode());\n{code}\n\nFix and test case attached.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-2216",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Minor",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "OpenBitSet#hashCode() may return false for identical sets.",
+    "systemSpecification": true,
+    "version": "2.9, 2.9.1, 3.0"
+}

@@ -1,0 +1,59 @@
+{
+    "comments": [
+        {
+            "author": "pschwartau@meer.net",
+            "body": "This is working correctly for me with the latest Rhino source:\n\n[c:/] java org.mozilla.javascript.tools.shell.Main\n\njs> var a = new Array(4);\n\njs> a.length\n4\n\njs> a[1+3] = \"test\";\ntest\n\njs> a[4]\ntest\n\njs> a[1+3]\ntest\n\njs> a[2+2]\ntest\n\n\nwtam@bigfoot.com: can you download the latest tarball (Rhino 1.5r2)\nat ftp://ftp.mozilla.org/pub/js, or the latest Rhino source from CVS,\nand see if the problem has gone away for you, too?\n",
+            "date": "20010808T16:59:18",
+            "id": 0
+        },
+        {
+            "author": "wtam@bigfoot.com",
+            "body": "I gave the wrong test code with my original submission.  I found the problem\nalmost a year ago, so I forgot what the exact problem was.  Here's the original\ncode I used to test for the problem:\n\nvar testArray = new Array(6);\ntestArray[1+1] = 1;\ntestArray[1+1]+=2;\n\n",
+            "date": "20010808T22:49:43",
+            "id": 1
+        },
+        {
+            "author": "pschwartau@meer.net",
+            "body": "wtam@bigfoot.com: thank you; this is a bug with my source, too:\n\n[c/] java org.mozilla.javascript.tools.shell.Main\n\njs> var testArray = new Array(6);\n\njs> testArray.length\n6\n\njs> testArray[1+1] = 1;\n1\n\njs> testArray.length\n6\n\njs> testArray[1+1]\n1\n\njs> testArray[2]\n1\n\njs> testArray[2]+=2;                          <<<<<<<<<<<<<<<<<< (THIS IS OK)\n3\n\njs> testArray[1+1]+=2;                        <<<<<<<<<<<<<<<<<< (THIS CRASHES)\nException in thread \"main\" java.lang.NullPointerException\nat org.mozilla.javascript.Interpreter.generateICode(Interpreter.java:258)\nat org.mozilla.javascript.Interpreter.generateICode(Interpreter.java:579)\nat org.mozilla.javascript.Interpreter.generateICode(Interpreter.java:660)\nat org.mozilla.javascript.Interpreter.generateICode(Interpreter.java:810)\nat org.mozilla.javascript.Interpreter.generateICode(Interpreter.java:279)\nat org.mozilla.javascript.Interpreter.generateICodeFromTree(Interpreter.java:89)\nat org.mozilla.javascript.Interpreter.generateScriptICode(Interpreter.java:134)\nat org.mozilla.javascript.Interpreter.compile(Interpreter.java:78)\nat org.mozilla.javascript.Context.compile(Context.java:1810)\nat org.mozilla.javascript.Context.compile(Context.java:1735)\nat org.mozilla.javascript.Context.compileReader(Context.java:852)\nat org.mozilla.javascript.Context.evaluateReader(Context.java:770)\nat org.mozilla.javascript.tools.shell.Main.evaluateReader(Main.java:293)\nat org.mozilla.javascript.tools.shell.Main.processSource(Main.java:217)\nat org.mozilla.javascript.tools.shell.Main.exec(Main.java:104)\nat org.mozilla.javascript.tools.shell.Main.main(Main.java:66)\n",
+            "date": "20010809T00:17:28",
+            "id": 2
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "Thanks, I just checked in a fix to create a temp rather than the deep clone.",
+            "date": "20011030T14:11:20",
+            "id": 3
+        },
+        {
+            "author": "pschwartau@meer.net",
+            "body": "Marking VERIFIED. Testcase added to JS testsuite: \n\n           mozilla/js/tests/js1_5/Array/regress-94257.js\n\nTestcase passing in Rhino compiled and interpreted modes on WinNT.",
+            "date": "20011031T02:40:19",
+            "id": 4
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "*** Bug 109438 has been marked as a duplicate of this bug. ***",
+            "date": "20011110T03:15:24",
+            "id": 5
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Targeting as resolved against 1.5R3",
+            "date": "20040213T12:24:17",
+            "id": 6
+        }
+    ],
+    "component": "Core",
+    "description": "This following javascript fails to execute:\nvar a = new Array(4);\na[1+3] = \"test\";  // this is the line that fails.\n\nThe problem is in the generation of the parse tree in the class\norg.mozilla.javascript.IRFactory in the method \"createSetProp\".  When the above\ncode is parsed, \"1+3\" is parsed into a node/branch that is separate from the\narray accessor node.  It is later cloned and appended to the array accessor\nnode.  The problem is, only a shallow clone is performed on the parent node of\ncomputation branch, which means that none of the children nodes, ie. the actual\nnodes representing the computation itself, is cloned.\n\nThe solution was simply to do a deep clone, but the Node object did not include\na deep clonging method.  Not wanting break anything in the Node object, I put\nthe following deep cloning method into IRFactory:\n\n    private Node deepClone(Node n)\n    {\n        Node first = n.getFirst();\n        if(first != null){\n            if(first.getType() == TokenStream.IFNE){\n                Node ifTrue = first.getNext();\n                Node ifFalse = ifTrue.getNext().getNext().getNext();\n                return (Node)createIf(deepClone(first.getFirst()),\n                                      deepClone(ifTrue),\n                                      deepClone(ifFalse),-1);\n            }else{\n                Node result = n.cloneNode();\n                while(first != null){\n                    result.addChildToBack(deepClone(first));\n                    first = first.getNext();\n                }\n                return result;\n            }\n        }\n        return n.cloneNode();\n    }\n\nI used this method in \"createSetProp\" to change this:\n\n        } else {\n            tmp1 = obj.cloneNode();\n            tmp2 = id.cloneNode();\n            opLeft = new Node(nodeType, obj, id);\n        }\n\nto this:\n\n        } else {\n            tmp1 = obj.cloneNode();\n            tmp2 = deepClone(id); \n            opLeft = new Node(nodeType, obj, id);\n        }\n\nI found this bug in 1.5R1, but I think R2 also has this problem.",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "94257",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "-- major",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "Computation within a array index fails.",
+    "systemSpecification": false,
+    "version": "other"
+}

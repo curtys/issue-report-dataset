@@ -1,0 +1,23 @@
+{
+    "comments": [
+        {
+            "author": "angela",
+            "body": "suggested fix:\n\nadd an extra check for the Node being lock if Node.removeMixin is called with \"mix:lockable\", similar to the corresponding check for existing references if  an attempt is made to remove \"mix:referenceable\".",
+            "date": "2008-11-20T10:03:53.764+0000",
+            "id": 0
+        }
+    ],
+    "component": "jackrabbit-core, jackrabbit-jcr2spi",
+    "description": "when the lock holder removes mix:lockable from a locked node, the lock related properties get removed.\nhowever, the lock still is live and present on the node.\n\ni would have expected that either\n\n- removing mix:lockable was not allowed or\n- the lock was automatically released\n\ntest code:\n\n    public void testRemoveMixLockableFromLockedNode() throws RepositoryException {\n\n        Node n = testRootNode.addNode(nodeName1);\n        n.addMixin(mixLockable);\n        testRootNode.save();\n\n        Lock l = n.lock(true, true);\n        n.removeMixin(mixLockable);\n        n.save();\n\n        assertFalse(n.isNodeType(mixLockable));                                <===== ok\n        assertFalse(l.isLive());                                                                    <===== lock is still live\n        assertFalse(n.isLocked());                                                            <=====  node is still locked\n        List tokens = Arrays.asList(superuser.getLockTokens());\n        assertFalse(tokens.contains(l.getLockToken()));                    <=====  session contains the token\n\n        assertFalse(n.hasProperty(jcrLockOwner));                             <=====  ok. prop got removed.\n        assertFalse(n.hasProperty(jcrlockIsDeep));                             <=====  ok. prop got removed.\n        n.unlock();                                                                                         <===== LockException (node not lockable)\n    }",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "JCR-1868",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "Inconsistent state when removing mix:lockable from a locked Node",
+    "systemSpecification": true,
+    "version": ""
+}

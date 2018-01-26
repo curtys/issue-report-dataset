@@ -1,0 +1,77 @@
+{
+    "comments": [
+        {
+            "author": null,
+            "body": "Confirmed and fixed in trunk for 7.0.x\n\nI have proposed the same fix for 6.0.x and 5.5.x",
+            "date": "20100328T19:42:34",
+            "id": 0
+        },
+        {
+            "author": null,
+            "body": "This has been fixed in 6.0.x and will be included in 6.0.27 onwards.",
+            "date": "20100505T17:54:37",
+            "id": 1
+        },
+        {
+            "author": null,
+            "body": "Is there any chance you'll also be backporting to 5.5.x as well?\n\nAppreciate the updates...",
+            "date": "20100505T18:01:33",
+            "id": 2
+        },
+        {
+            "author": null,
+            "body": "As per comment #1, it has been proposed for 5.5.x. When it gets enough votes, it will be committed.",
+            "date": "20100505T18:05:34",
+            "id": 3
+        },
+        {
+            "author": null,
+            "body": "This has been fixed in 5.5.x and will be included in 5.5.30 onwards.",
+            "date": "20100518T13:17:12",
+            "id": 4
+        },
+        {
+            "author": null,
+            "body": "I never got a chance to test that this was fixed until now, but testing on 5.5.32 still does not appear to work.\n\nHow I'm testing:\n\nTwo Linux systems running Tomcat 5.5.32 with a Cluster defined in the Host section like this:\n\n<Cluster className=\"org.apache.catalina.cluster.tcp.SimpleTcpCluster\" receiver.sendAck=\"false\" sender.waitForAck=\"false\" sender.doTransmitterProcessingStats=\"true\" sender.queueDoStats=\"true\" sender.queueTimeWait=\"true\">\n<Valve className=\"org.apache.catalina.cluster.tcp.ReplicationValve\" filter=\".*\\.gif;.*\\.js;.*\\.jpg;.*\\.png;.*\\.htm;.*\\.html;.*\\.css;.*\\.txt;\"/>\n<Valve className=\"org.apache.catalina.cluster.session.JvmRouteBinderValve\" enabled=\"true\"/>\n<ClusterListener className=\"org.apache.catalina.cluster.session.ClusterSessionListener\"/>\n<ClusterListener className=\"org.apache.catalina.cluster.session.JvmRouteSessionIDBinderListener\"/>\n</Cluster>\n\nThe application has a <listener><listener-class> defined in the web.xml which implements ServletContextListener and HttpSessionListener.  The HttpSessionListener methods work fine on each node.\n\nThe application adds an attribute to a session which implements HttpSessionActivationListener, HttpSessionBindingListener and Serializable.  The HttpSessionBindingListener methods work fine on each node.\n\nWhen restarting a node, the session attribute never receives any calls to sessionDidActivate when that node comes back online.\n\nLet me know if you need any more details.",
+            "date": "20110209T19:29:32",
+            "id": 5
+        },
+        {
+            "author": null,
+            "body": "Created attachment 26679\nAdds sessionDidActivate calss\n\nThe previous fix handled session creation/destruction but not activation",
+            "date": "20110218T06:45:45",
+            "id": 6
+        },
+        {
+            "author": null,
+            "body": "Thanks - so I guess to test this I'd have to apply the patch to Tomcat source and build it myself?",
+            "date": "20110224T17:48:44",
+            "id": 7
+        },
+        {
+            "author": null,
+            "body": "'fraid so.",
+            "date": "20110224T17:52:52",
+            "id": 8
+        },
+        {
+            "author": null,
+            "body": "This has been fixed in 5.5.x and will be included in 5.5.34 onwards.",
+            "date": "20110816T12:44:45",
+            "id": 9
+        }
+    ],
+    "component": "Catalina:Cluster",
+    "description": "This appears to be a regression from an earlier bug #35916 which describes the exact same problem, but somewhere along the way, it appears that the bug has come back.\n\nBasically, once Tomcat is put in to a cluster and a node joins the cluster, the webapp isn't notified via either HttpSessionActivationListener.didActivate or HttpSessionListener.sessionCreated.\n\nOtherwise, all nodes seem to receive these events as expected once in the cluster.\n\nThis is a problem for an application which needs to track all currently active sessions as it will not know of any existing sessions when joining a cluster.\n\nThis also appears to affect Tomcat 6.0.24 as well where the symptoms are the same.\n\nI actually posted to the users list almost a year ago (totally forgot I did that until I was searching the archives again), but didn't hear any response and worked around the issue temporarily, but it has come up again so I posted to the list again, but no response either time.\n\nhttp://www.mail-archive.com/users@tomcat.apache.org/msg58675.html\nhttp://www.mail-archive.com/users@tomcat.apache.org/msg73135.html",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "48717",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "P2 regression",
+    "product": "Tomcat 5",
+    "project": "TOMCAT",
+    "summary": "Session listeners not called on cluster node start",
+    "systemSpecification": true,
+    "version": "5.5.32"
+}

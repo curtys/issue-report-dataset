@@ -1,0 +1,29 @@
+{
+    "comments": [
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "Proposed fix:\n\nIndex: Interpreter.java\n===================================================================\nRCS file: /m/pub/mozilla/js/rhino/org/mozilla/javascript/Interpreter.java,v\nretrieving revision 1.30\ndiff -u -r1.30 Interpreter.java\n--- Interpreter.java    2000/03/13 18:27:25     1.30\n+++ Interpreter.java    2000/05/07 05:45:50\n@@ -1314,6 +1314,7 @@\n         byte[] iCode = theData.itsICode;        \n         int pc = 0;\n         int iCodeLength = theData.itsICodeTop;\n+        Scriptable itsThisObj = theData.itsThisObj;\n         \n         Object[] local = null;        // used for newtemp/usetemp etc.\n         if (theData.itsMaxLocals > 0)\n@@ -1659,8 +1660,7 @@\n                         lhs = stack[stackTop];\n                         stack[stackTop] = ScriptRuntime.callSpecial(\n                                             cx, lhs, rhs, outArgs, \n-                                            theData.itsThisObj,\n-                                            scope, name, i);\n+                                            itsThisObj, scope, name, i);\n                         pc += 6;\n                         break;\n                     case TokenStream.CALL :\n@@ -1765,7 +1765,7 @@\n                         stack[++stackTop] = null;\n                         break;\n                     case TokenStream.THIS :\n-                        stack[++stackTop] = theData.itsThisObj;\n+                        stack[++stackTop] = itsThisObj;\n                         break;\n                     case TokenStream.FALSE :\n                         stack[++stackTop] = Boolean.FALSE;\n\nThe problem is that the InterpreterData object is referenced for the current \n'this' object, but recursive calls can overwrite that value. Copying it into a \nlocal prevents the problem.\n\nThis seems a bit inefficient. Roger, do you remember why it was done this way? \nShould we just add another parameter to the interpret method? \n\nIf the change looks okay to you, Roger, could you check it in? I'll wait for my \nnew email address to come before I request checkin privileges.",
+            "date": "20000507T05:57:49",
+            "id": 0
+        },
+        {
+            "author": "rogerl@formerly-netscape.com.tld",
+            "body": "I think the only reason I didn't want it passed around was that it uses up a \nslot and a low-index Java register. The testing I did with various JITs \nindicated that they were favoring the parameters and earlier-declared variables \n(for register allocation? - seems kind of hard to believe on x86, but who \nknows). I checked in your fix, but moved the local 'itsThisObj' further down in \nthe declaration order as it doesn't get used that freqeuntly.",
+            "date": "20000510T22:07:59",
+            "id": 1
+        }
+    ],
+    "component": "Core",
+    "description": "----------- file: nesting_test.js -----------------\nfunction Nest() \n{\n  this.toString_return_value = \"\";\n  this.contents = new Array();\n\n  this.addElement = \n      new Function( \"elem\", \"this.contents[this.contents.length] = elem; return \n(this);\" );\n  this.toString = NEST_toString_m;\n}\n\nfunction NEST_toString_m()\n{\n  this.toString_return_value = \"\";\n\n  for ( var i = 0; i < this.contents.length; i++ ) \n    {\n      this.toString_return_value += this.contents[ i ].toString() ;\n    }\n\n  return ( this.toString_return_value );\n}\n\nnet = new Nest();\nnet.addElement( 'foobar' );\nnet.addElement( new Nest().addElement( 'hello world' ) );\nnet.addElement( 'snafu' );\n---------------------------------------------------\n\nwhen doing a net.toString() in the Rhino shell i get:\njs> load( 'nesting_test.js' )\njs> net.toString();\nhello world\njs>\n\nbut when i use IE(5.X) to test the code i get, what i think assume\nto be correct: 'foobarhello worldsnafu' [same result using Netscape\n4.X]\n\n------------ file: nesting_test.html ---------------\n<html>\n<head>\n<title></title>\n<script language=\"JavaScript\" src=\"nesting_test.js\"></script>\n</head>\n\n<body onLoad=\"alert( net.toString() )\">\n\n</body>\n\n</html>\n----------------------------------------------------\n\nI don't know what the ECMAScript Standard says, but i would assume\nthat the IE/Netscape result is the correct result?\n\nHope it helps,\n\nGerrit",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "38384",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "P3 normal",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "Instance variable is treated as class variable",
+    "systemSpecification": true,
+    "version": "other"
+}

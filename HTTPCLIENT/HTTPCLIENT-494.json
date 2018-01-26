@@ -1,0 +1,137 @@
+{
+    "comments": [
+        {
+            "author": "Roland Weber",
+            "body": "If we start to implement workarounds for all kinds of bugs that\nare tolerated by browsers we'll end up in hell's kitchen, as a\ngerman proverb says. The solution to your problem is:\n\n1. disable automatic redirects\n2. get the Location: response header\n3. fix anything you think should be fixed\n4. generate a followup request with the fixed URL\n\ncheers,\n  Roland",
+            "date": "2005-09-09T15:33:53.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Ortwin Gl\u00fcck",
+            "body": "I completely agree with Roland. HttpClient is not a browser. We do not\ncompensate for wrong user input. Sanitizing user input is the domain of your\napplication and not some library you are using. As my experience shows,\nfunctions that try and guess what some malformed input could probably mean\nquickly become useless and source of errors.",
+            "date": "2005-09-09T16:16:02.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Ted Dunning",
+            "body": "\nShooting from the hip like this is not so good.  I have already implemented a\nwork-around as described in my original message.\n\nThis problem is a bug in HttpClient either way you take it.  Either of two cases\napplies:\n\n- a (possibly optional) compensation is a good idea so that programs like\nHttpUnit can accurately test web sites by mimicing wide-spread behavior \n\nor \n\n- compensation is a bad thing in which case HttpClient should be checking for\ninvalid input.\n\nI agree that this is also a bug on the part of Tomcat (or more likely acegi). \nBut that doesn't absolve HttpClient from the responsibility for checking for\ninvalid inputs.  Keep in mind that this is *not* user input, but automatically\ngenerated input.  Also, the error produced is after the redirect happens and is\na 505, unsupported protocol which is highly misleading.  A simple check for\nvalid location would allow HttpClient to provide an accurate and timely\nindication of error.\n",
+            "date": "2005-09-10T01:06:31.000+0000",
+            "id": 2
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Adding a validation check to the location header would certainly help in this situation.  Seems reasonable.\n\nTed, a patch and test against 3.0 would go a long way to getting this issue resolved :)\n\nMike",
+            "date": "2005-09-10T06:01:31.000+0000",
+            "id": 3
+        },
+        {
+            "author": "Ortwin Gl\u00fcck",
+            "body": "Ted,\n\ndo you mean you don't get an exception?\nDoes this only happen when an invalid URL in a Location header is encountered or\nwhen you create a new GetMethod?",
+            "date": "2005-09-11T01:13:50.000+0000",
+            "id": 4
+        },
+        {
+            "author": "Ted Dunning",
+            "body": "\nOdi,\n\nI haven't checked to see if GetMethod would throw an exception if I give it an\ninvalid URL.  Hopefully it would.  What I have encountered is that when I\nconstruct a GetMethod with a valid URL and then that URL gives me a redirect\nwith an invalid URL in the Location header field (DUE TO A SERVER BUG, NOT MY\nINPUT), then I do not get an exception.  Instead, HttpClient dutifully submits\nthe invalid URL to the server that handles the redirect and I get a 505 invalid\nprotocol.\n\nThe best thing for HttpClient to do would be to throw an exception when a\nredirect to an invalid URL happens.  (or even whenever access to an invalid URL\nis attempted).  That would tell the user of HttpClient what they need to know\n(the server gave an invalid Location field) as soon as possible and as clearly\nas possible.  The work-around that I use (and which was independently suggested\nhere) can then be implemented ... disable automatic redirects and try to fix the\nURL by hand until the server can be corrected.\n\nI will be under water schedule-wise for the next few weeks.  Otherwise, I would\nbe happy to produce a test case and a patch.  When I come up for air, I may be\nable to do it if it hasn't happened before then.",
+            "date": "2005-09-11T02:07:12.000+0000",
+            "id": 5
+        },
+        {
+            "author": "Roland Weber",
+            "body": "If we build in this feature, we must be able to switch it off\nthrough a parameter. How should we know that the server isn't\ncapable of handling the presumably invalid redirect it sent us?\nThis change might break things that have worked before, though\nnot within the specifications.\n\ncheers,\n  Roland",
+            "date": "2005-09-11T17:09:06.000+0000",
+            "id": 6
+        },
+        {
+            "author": "Ortwin Gl\u00fcck",
+            "body": "Ted,\n\nThanks for the clarifications. I guess everybody misunderstood your initial\nreport. I suggest to create a new subclass of HttpProtocolException for this\nissue where we add the malformed URL as a field. So it can easily be handled by\nthe application. I still would not try and fix the malformed URL.",
+            "date": "2005-09-12T16:20:17.000+0000",
+            "id": 7
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "If we have to introduce new classes / methods in otder to fix the problem it\nwill have to wait until 3.1\n\nOleg",
+            "date": "2005-09-12T17:48:30.000+0000",
+            "id": 8
+        },
+        {
+            "author": "Ortwin Gl\u00fcck",
+            "body": "Oleg, it is just an exception sub-class. It won't break the API.",
+            "date": "2005-09-12T18:57:05.000+0000",
+            "id": 9
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "(In reply to comment #10)\n> Oleg, it is just an exception sub-class. It won't break the API.\n\nI am not saying it would break the API. However, the introduction of a new\nexception class would effectively change the API, which is meant to stay frozen\nuntil 3.0 release. I personally do not think this problem is severe enough to\njustify the API change so late in the release process. My preference would be to\nstick to the announced API freeze and to address this issue after the 3.0 release\n\nOleg \n",
+            "date": "2005-09-12T20:09:34.000+0000",
+            "id": 10
+        },
+        {
+            "author": "Michael Becke",
+            "body": "I agree with Oleg.  Adding this class doesn't break the API, but it does change\nit.  3.1 is the way to go.\n\nMike",
+            "date": "2005-09-12T22:31:05.000+0000",
+            "id": 11
+        },
+        {
+            "author": "Mohammad Rezaei",
+            "body": "Please make sure that relative URL's are allowed in the Location: header.\nStrictly speaking, this is against the HTTP RFC, but I think that's more of an\noversight in the RFC. There is really nothing wrong with a relative redirect,\nand it's common practice after a POST request (just google \"redirect afer\npost\"). All browsers handle relative redirects correctly.\n\nThanks\nMoh",
+            "date": "2005-09-12T23:56:37.000+0000",
+            "id": 12
+        },
+        {
+            "author": "Ortwin Gl\u00fcck",
+            "body": "The reason for this bug is that URI does not check for invalid characters. Space\nis not an allowed character in a URI. Fixing this issue correctly would mean to\nadd a whole lot of checks to the URI class. With an URI consisting of several\nparts that all have different sets of allowed and reserved characters and\nbecause URIs can have several forms this is a worksome task. I should definitely\nrewrite that darn URI class once. It is just too bad.",
+            "date": "2005-09-13T00:00:15.000+0000",
+            "id": 13
+        },
+        {
+            "author": "Ortwin Gl\u00fcck",
+            "body": "Created an attachment (id=16371)\nTest cases\n\nHere are some test cases that reproduce the bug. The redirect test actually\nthrows a ConnectionClose exception. This is because HttpClient does not detect\nthe invalid URI and sends an invalid query to our internal test server which\njust terminates the connection.",
+            "date": "2005-09-13T00:07:07.000+0000",
+            "id": 14
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "(In reply to comment #13)\n> Please make sure that relative URL's are allowed in the Location: header.\n> Strictly speaking, this is against the HTTP RFC, but I think that's more of an\n> oversight in the RFC. There is really nothing wrong with a relative redirect,\n> and it's common practice after a POST request (just google \"redirect afer\n> post\"). All browsers handle relative redirects correctly.\n> \n> Thanks\n> Moh\n\nMohammad,\nIf the 'http.protocol.reject-relative-redirect' parameter is set to false,\nHttpClient will attempt to process relative redirects. \n\nOleg",
+            "date": "2005-09-13T02:13:48.000+0000",
+            "id": 15
+        },
+        {
+            "author": "Ortwin Gl\u00fcck",
+            "body": "Created an attachment (id=16373)\nTest cases\n\nFixed test case.",
+            "date": "2005-09-13T06:20:58.000+0000",
+            "id": 16
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Patch (take 1). Please review\n\nOleg",
+            "date": "2006-06-10T04:25:14.000+0000",
+            "id": 17
+        },
+        {
+            "author": "Roland Weber",
+            "body": "patch looks good\n\ncheers,\n  Roland\n",
+            "date": "2006-06-10T12:31:31.000+0000",
+            "id": 18
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Patch checked in\n\nOleg",
+            "date": "2006-06-10T17:38:27.000+0000",
+            "id": 19
+        }
+    ],
+    "component": "HttpClient (classic)",
+    "description": "If a get is made to a page with a query argument containing a space, many web\nservers, notably including Tomcat 5 can generate a redirect in which the space\nin the query argument is not escaped correctly.  Most browsers including IE and\nFirefox compensate for this by quoting any included spaces in the redirect\nlocation.  Http client does not.  When this broken URL is presented to a\nsubsequent server, the GET command is interprted incorrectly resulting (usually)\nin a 505.\n\nThe fix is to replace spaces in redirect locations with +'s.  This doesn't\nentirely fix the problem but that is the job of the web server developers.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "HTTPCLIENT-494",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "HTTPCLIENT",
+    "project": "HTTPCLIENT",
+    "summary": "Invalid redirects are not corrected",
+    "systemSpecification": true,
+    "version": "2.0.2"
+}

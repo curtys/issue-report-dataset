@@ -1,0 +1,107 @@
+{
+    "comments": [
+        {
+            "author": "Robert Muir",
+            "body": "I reviewed all uses of this attribute, and fixed some more problems in contrib and solr.\n\nSo in my opinion there are two options:\n1. apply this patch and fix the javadoc for this expert attribute, which does say that it makes a copy of the bytes.\n2. Don't apply this patch, but instead change Test2BTerms and ICUCollationAttribute to make (useless) copies of the bytes for each term.\n\nThe indexer has no problems either way, the problem is only other consumers. I'm just bringing up the second option because any performance improvement saved from not copying the bytes might be negligible, and clearly its easy to screw this up.\n",
+            "date": "2011-03-01T15:07:09.007+0000",
+            "id": 0
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "IMO this is ICUs problem here. This code should not give the key.bytes array to the outer world in this particular case unless its documented that you must not use / modify the BytesRef you pass to toBytesRef anywhere else.\n",
+            "date": "2011-03-01T15:19:12.865+0000",
+            "id": 1
+        },
+        {
+            "author": "Robert Muir",
+            "body": "Well its not just the ICU implementation... Test2BTerms does this too.\n\nIn general the attributes are owned by the producer: for example the char[] in TermAttribute is owned by the analysis chain, if you want to do something with it, you should copy it.\n\nSo it would be very strange from the analysis api to treat byte[] in the complete opposite fashion... but I'm fine with making steps to prevent bugs.",
+            "date": "2011-03-01T15:21:28.675+0000",
+            "id": 2
+        },
+        {
+            "author": "Robert Muir",
+            "body": "here's the alternative patch, also adding documentation that you *must* make a new copy of the byte[] for each term.",
+            "date": "2011-03-01T15:41:37.126+0000",
+            "id": 3
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "I think producer should own the BytesRef and if consumer wants to hang onto it, it should make a deep copy?  This is consistent w/ TermAttribute...",
+            "date": "2011-03-01T16:05:38.672+0000",
+            "id": 4
+        },
+        {
+            "author": "Robert Muir",
+            "body": "{quote}\nI think producer should own the BytesRef and if consumer wants to hang onto it, it should make a deep copy? This is consistent w/ TermAttribute...\n{quote}\n\nHere's a new patch implementing it this way. I refactored TermToBytesRefAttribute into two methods, getBytesRef() and hash()... I find this less confusing, removes some wasted bytesrefs being needlessly created here and there (e.g. queryparser), and does things like allow an attribute to say, pre-size its reusable BytesRef to a huge size or other things custom attributes might want to do.  \n\nHere is the consumer code sample I added from the javadoc:\n{code}\n/* \n * Consumers of this attribute call getBytesRef() up-front, and then\n * invoke hash() for each term. Example:\n */\nfinal TermToBytesRefAttribute termAtt = tokenStream.getAttribute(TermToBytesRefAttribute.class);\nfinal BytesRef bytes = termAtt.getBytesRef();\n\nwhile (termAtt.incrementToken() {\n\n  /* \n   * you must call termAtt.hash() even if you don't need this hashCode.\n   * this encodes the term value (internally it might be a char[], etc) into the bytes.\n   */\n  int hashCode = termAtt.hash();\n\n  if (isInteresting(bytes)) {\n     \n    /* \n     * because the bytes are reused by the attribute (like CharTermAttribute's char[] buffer),\n     * you should make a copy if you need persistent access to the bytes, otherwise they will\n     * be rewritten across calls to incrementToken()\n     */\n    doSomethingWith(new BytesRef(bytes));\n  }\n}\n{code}",
+            "date": "2011-03-02T04:24:10.269+0000",
+            "id": 5
+        },
+        {
+            "author": "Robert Muir",
+            "body": "sorry, previous patch was missing the new javadoc i added to TermToBytesRefAttribute... here it is with the javadocs.",
+            "date": "2011-03-02T04:26:22.068+0000",
+            "id": 6
+        },
+        {
+            "author": "Robert Muir",
+            "body": "guys, any comments on the api?\n\nI am no good at naming, so...\n\nBut this bug is blocking some of my stuff",
+            "date": "2011-03-13T12:52:32.709+0000",
+            "id": 7
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "I had a brief review - naming looks good from my side though...\n\nsimon",
+            "date": "2011-03-13T13:20:24.987+0000",
+            "id": 8
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "How about .fillBytesRef() (returns hash code) instead of .hash()?",
+            "date": "2011-03-14T18:19:59.298+0000",
+            "id": 9
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "bq. How about .fillBytesRef() (returns hash code) instead of .hash()?\n\n+1 I don't like solely hash().",
+            "date": "2011-03-14T18:34:40.426+0000",
+            "id": 10
+        },
+        {
+            "author": "Robert Muir",
+            "body": "i agree guys, here's the updated patch.",
+            "date": "2011-03-14T18:37:43.396+0000",
+            "id": 11
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Patch looks good!",
+            "date": "2011-03-14T21:39:42.519+0000",
+            "id": 12
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Looks fine, will do closer review tomorrow!",
+            "date": "2011-03-14T22:21:46.979+0000",
+            "id": 13
+        },
+        {
+            "author": "Robert Muir",
+            "body": "Committed revision 1083784.",
+            "date": "2011-03-21T13:52:47.425+0000",
+            "id": 14
+        }
+    ],
+    "component": "",
+    "description": "Some code uses BytesRef as if it were a \"String\", in this case consumers of TermToBytesRefAttribute.\nThe thing is, while our general implementation works on char[] and then populates the consumers BytesRef,\nnot all TermToBytesRefAttribute implementations do this, specifically ICU collation, it reuses the bytes and simply sets the pointers:\n{noformat}\n  @Override\n  public int toBytesRef(BytesRef target) {\n    collator.getRawCollationKey(toString(), key);\n    target.bytes = key.bytes;\n    target.offset = 0;\n    target.length = key.size;\n    return target.hashCode();\n  }\n{noformat}\n\nMost of the blame falls on me as I added this to the queryparser in LUCENE-2514.\n\nAttached is a patch so that these consumers re-use a 'spare' and copy the bytes when they are going to make a long lasting object such as a Term.\n",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-2944",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "BytesRef reuse bugs in QueryParser and analysis.jsp",
+    "systemSpecification": true,
+    "version": ""
+}

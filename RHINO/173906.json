@@ -1,0 +1,65 @@
+{
+    "comments": [
+        {
+            "author": "hannesw@gmail.com",
+            "body": "Created attachment 102559\nModified version of DynamicScopes.java that produces the bug",
+            "date": "20021011T09:24:12",
+            "id": 0
+        },
+        {
+            "author": "pschwartau@meer.net",
+            "body": "cc'ing Igor -",
+            "date": "20021011T17:28:49",
+            "id": 1
+        },
+        {
+            "author": "user@apochta.com",
+            "body": "Created attachment 103842\nFix: change Codegen.visitCall to check for dynamic scope flag when calling direct call target\n\nThe patch fixes the reported problem but as currently there are no tests for\ndynamic scope mode I need at leat a confirmation that the patch works as\nexpected from a real-life Rhino usage.",
+            "date": "20021023T10:12:30",
+            "id": 2
+        },
+        {
+            "author": "hannesw@gmail.com",
+            "body": "Thanks Igor, I just checked it out with some pretty complex Java/JavaScript\ncombination and everything works fine now (same results with optimization turned\non and off).",
+            "date": "20021023T22:07:01",
+            "id": 3
+        },
+        {
+            "author": "user@apochta.com",
+            "body": "I commited the patch",
+            "date": "20021024T10:16:05",
+            "id": 4
+        },
+        {
+            "author": "pschwartau@meer.net",
+            "body": "Based on Hannes' findings in Comment #4, marking FIXED",
+            "date": "20021024T19:58:00",
+            "id": 5
+        },
+        {
+            "author": "pschwartau@meer.net",
+            "body": "And marking Verified -",
+            "date": "20021024T19:58:41",
+            "id": 6
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Targeting as resolved against 1.5R4",
+            "date": "20040213T12:20:53",
+            "id": 7
+        }
+    ],
+    "component": "Compiler",
+    "description": "User-Agent:       Mozilla/5.0 (Macintosh; U; PPC Mac OS X; de-AT; rv:1.1) Gecko/20020826\nBuild Identifier: \n\nWhen optimization is set to 1 or higher, per-thread dynamic scopes stop working\nas soon as more than one nested function is executed. This means that as soon as\nI have one function calling another, variables will be looked up in the shared\nscope only instead of the per-thread scope.\n\nI'm seeing this using both Rhino 1.5_R3 and the latest CVS version, running on\nJDK 1.3.1 on Mac OS X.\n\nThe bug is reproducable with a slightly modified version of\nexamples/DynamicScopes.java. (I'm also attaching the modified source file.)\n\n--- DynamicScopes.java.orig     Fri Oct 11 11:03:13 2002\n+++ DynamicScopes.java  Fri Oct 11 11:04:27 2002\n@@ -63,6 +63,7 @@\n         throws JavaScriptException\n     {\n         Context cx = Context.enter();\n+        cx.setOptimizationLevel(1);\n         try {\n             cx.setCompileFunctionsWithDynamicScope(false);\n             runScripts(cx);\n@@ -84,7 +85,8 @@\n         // Now we can evaluate a script and functions will be compiled to\n         // use dynamic scope if the Context is so initialized.\n         String source = \"var x = 'sharedScope';\" +\n-                        \"function f() { return x; }\";\n+                        \"function f() { return f2(); }\" +\n+                        \"function f2() { return x; }\";\n         cx.evaluateString(scope, source, \"MySource\", 1, null);\n \n         // Now we spawn some threads that execute a script that calls the \n\n\n\nReproducible: Always\n\nSteps to Reproduce:\n1. Run the modified version of DynamicScopes.java\n\nActual Results:  \nsharedScope\nsharedScope\nsharedScope\nsharedScope\nsharedScope\nsharedScope\n\nExpected Results:  \nsharedScope\nsharedScope\nsharedScope\nthread1\nthread0\nthread2",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "173906",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "-- normal",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "Dynamic scope not working correctly with optimzation level >= 1",
+    "systemSpecification": true,
+    "version": "other"
+}

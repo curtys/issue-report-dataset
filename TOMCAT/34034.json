@@ -1,0 +1,95 @@
+{
+    "comments": [
+        {
+            "author": null,
+            "body": "As promised ;)",
+            "date": "20050316T15:00:15",
+            "id": 0
+        },
+        {
+            "author": null,
+            "body": "Reread xml spec, nothing prevent us to use external entities like this.\nAlso external entities are invalid when outside webapp, it's not the case here.\n\nYou should read :\n\nMy web.xml is :\n\n<?xml version=\"1.0\" encoding=\"ISO-8859-1\"?>\n\n<!DOCTYPE web-app\n    PUBLIC \"-//Sun Microsystems, Inc.//DTD Web Application 2.3//EN\"\n    \"http://java.sun.com/dtd/web-app_2_3.dtd\" [ \n    \n<!ENTITY base      SYSTEM \"base.xml\">\n\n]>\n\n<web-app>\n\n...\n&base;\n\n</web-app>\n\n",
+            "date": "20050316T15:02:33",
+            "id": 1
+        },
+        {
+            "author": null,
+            "body": "Webapps are not necessarily filesystem based. As a result, that kind of little\ntricks are not portable, and cannot be supported. As you know, I am very\nefficient at marking reports invalid ;)",
+            "date": "20050316T15:04:26",
+            "id": 2
+        },
+        {
+            "author": null,
+            "body": "Actually, I just saw it maybe can work even when not filesystem based:\n                if (altDDName != null) {\n                    url = new File(altDDName).toURL();\n                } else {\n                    url = servletContext.getResource(\n                                                Constants.ApplicationWebXml);\n                }\n                if( url!=null ) {\n                    InputSource is = new InputSource(url.toExternalForm());\n                    is.setByteStream(stream);\n\nI still really don't care about the issue, but my big issue with this might go away.\n\nThis might teach people that it's not a good idea to bug me about something I\ndon't care about all morning long (some people you might not know about may have\ngotten the same idea at the same time) ;)",
+            "date": "20050316T15:16:32",
+            "id": 3
+        },
+        {
+            "author": null,
+            "body": "Created attachment 14517\na patch to allow Jasper to resolve external entities located in WEBAPP",
+            "date": "20050318T14:47:36",
+            "id": 4
+        },
+        {
+            "author": null,
+            "body": "if (systemId.startsWith(\"file:///WEB-INF/\"))\n  return new InputSource(ctxt.getResourceAsStream(systemId.substring(7)));\n\n-> -1\nNo surprise here ...",
+            "date": "20050318T16:05:36",
+            "id": 5
+        },
+        {
+            "author": null,
+            "body": "It's a trick :\n\nif (systemId.startsWith(\"file:///WEB-INF/\"))\n  return new InputSource(ctxt.getResourceAsStream(systemId.substring(7)));\n\nXML parser have a pseudo root origine set to /WEB-INF/ and as such you get the\nsystemId filed with 'file:///WEB-INF/whatever.xml' when you have defined a\n<ENTITY what SYSTEM \"whatever.xml\">\n\nWith the substring 7 we remove the \"file:////\" and as such get\n\"/WEB-INF/whatever.xml\" from ServletContext via getResourceAsStream.\n\nSo it should works EVEN if the webapp is not file based.\n\nI do that to respect WHAT YOU REQUIRED, ie no InputSource from a File, just from\na resource.\n\n",
+            "date": "20050318T16:15:27",
+            "id": 6
+        },
+        {
+            "author": null,
+            "body": "It should be enough to do (in JspConfig):\n  URL uri = ctcx.getResource(WEB_XML);\n  InputSource ip = new InputSource(uri.openStream());\n  ip.setSystemId(uri.toExternalForm());\n\nand leave the EntityResolver alone.  Between Xerces and o.a.naming they can \nwork out the relative Entity references.\n\n\n\n",
+            "date": "20050318T20:17:32",
+            "id": 7
+        },
+        {
+            "author": null,
+            "body": "Well if it works, I'm happy with this patch.\n\nWill try it Monday.\n\nThanks William",
+            "date": "20050319T10:36:22",
+            "id": 8
+        },
+        {
+            "author": null,
+            "body": "Couldn't wait monday.\n\nOk it seems to works.\n\nResolver get a systemId : jndi:/localhost/webappname/WEB-INF/app.xml\n\nAnd it works.\n\nOnly got in System.out :\n\n19 mars 2005 11:06:49 org.apache.jasper.xmlparser.MyEntityResolver resolveEntity\nGRAVE: PUBLIC ID invalide: null\n19 mars 2005 11:06:57 org.apache.jasper.xmlparser.MyEntityResolver resolveEntity\nGRAVE: PUBLIC ID invalide: null\n19 mars 2005 11:06:59 org.apache.jasper.xmlparser.MyEntityResolver resolveEntity\nGRAVE: PUBLIC ID invalide: null\n19 mars 2005 11:07:00 org.apache.jasper.xmlparser.MyEntityResolver resolveEntity\nGRAVE: PUBLIC ID invalide: null\n19 mars 2005 11:07:02 org.apache.jasper.xmlparser.MyEntityResolver resolveEntity\nGRAVE: PUBLIC ID invalide: null\n\n\nSo a simpler patch could be commited :)",
+            "date": "20050319T11:09:49",
+            "id": 9
+        },
+        {
+            "author": null,
+            "body": "Created attachment 14546\nAllow jasper to resolve external entities",
+            "date": "20050323T15:36:00",
+            "id": 10
+        },
+        {
+            "author": null,
+            "body": "After Bill and Jan review, a new patch to close this BZ",
+            "date": "20050323T15:36:55",
+            "id": 11
+        },
+        {
+            "author": null,
+            "body": "*** Bug 36284 has been marked as a duplicate of this bug. ***",
+            "date": "20050820T21:31:37",
+            "id": 12
+        }
+    ],
+    "component": "Jasper",
+    "description": "While converting my apps from Tomcat 3.3.x to Tomcat 5.5.x, I discovered a\nserious bug in Jasper.\n\nMy web.xml is :\n\n<?xml version=\"1.0\" encoding=\"ISO-8859-1\"?>\n\n<!DOCTYPE web-app\n    PUBLIC \"-//Sun Microsystems, Inc.//DTD Web Application 2.3//EN\"\n    \"http://java.sun.com/dtd/web-app_2_3.dtd\" [ \n    \n<!ENTITY base      SYSTEM \"base.xml\">\n\n]>\n\n<web-app>\n\n...\n&base.xml;\n\n</web-app>\n\n\nTomcat 5.0.30 and 5.5.8 have no problem in loading web.xml at startup, they\nresolve since the base.xml external entity file is local to the WAR.\n\nBut jasper when it tried to compile it's first JSP fail with message :\n\n\nEtat HTTP 500 -\n\ntype Rapport d'exception\n\nmessage\n\ndescription Le serveur a rencontr\u00e9 une erreur interne () qui l'a\nemp\u00each\u00e9 de satisfaire la requ\u00eate.\n\nexception\n\norg.apache.jasper.JasperException: Erreur d'\u00e9valuation XML sur le\nfichier /WEB-INF/web.xml\n      \norg.apache.jasper.xmlparser.ParserUtils.parseXMLDocument(ParserUtils.java:113)\n       org.apache.jasper.compiler.JspConfig.processWebDotXml(JspConfig.java:70)\n       org.apache.jasper.compiler.JspConfig.init(JspConfig.java:188)\n       org.apache.jasper.compiler.JspConfig.findJspProperty(JspConfig.java:240)\n       org.apache.jasper.compiler.Compiler.generateJava(Compiler.java:103)\n       org.apache.jasper.compiler.Compiler.compile(Compiler.java:286)\n       org.apache.jasper.compiler.Compiler.compile(Compiler.java:267)\n       org.apache.jasper.compiler.Compiler.compile(Compiler.java:255)\n      \norg.apache.jasper.JspCompilationContext.compile(JspCompilationContext.java:556)\n      \norg.apache.jasper.servlet.JspServletWrapper.service(JspServletWrapper.java:296)\n       org.apache.jasper.servlet.JspServlet.serviceJspFile(JspServlet.java:291)\n       org.apache.jasper.servlet.JspServlet.service(JspServlet.java:241)\n       javax.servlet.http.HttpServlet.service(HttpServlet.java:802)\n\ncause m\u00e8re\n\njava.io.FileNotFoundException: C:\\eclipse3\\base.xml (Le fichier\nsp\u00e9cifi\u00e9 est introuvable)\n       java.io.FileInputStream.open(Native Method)\n       java.io.FileInputStream.<init>(FileInputStream.java:106)\n       java.io.FileInputStream.<init>(FileInputStream.java:66)\n      \nsun.net.www.protocol.file.FileURLConnection.connect(FileURLConnection.java:69)\n      \nsun.net.www.protocol.file.FileURLConnection.getInputStream(FileURLConnection.java:156)\n       org.apache.xerces.impl.XMLEntityManager.setupCurrentEntity(Unknown Source)\n       org.apache.xerces.impl.XMLEntityManager.startEntity(Unknown Source)\n       org.apache.xerces.impl.XMLEntityManager.startEntity(Unknown Source)\n      \norg.apache.xerces.impl.XMLDocumentFragmentScannerImpl.scanEntityReference(Unknown\nSource)\n      \norg.apache.xerces.impl.XMLDocumentFragmentScannerImpl$FragmentContentDispatcher.dispatch(Unknown\nSource)\n       org.apache.xerces.impl.XMLDocumentFragmentScannerImpl.scanDocument(Unknown\nSource)\n       org.apache.xerces.parsers.XML11Configuration.parse(Unknown Source)\n       org.apache.xerces.parsers.XML11Configuration.parse(Unknown Source)\n       org.apache.xerces.parsers.XMLParser.parse(Unknown Source)\n       org.apache.xerces.parsers.DOMParser.parse(Unknown Source)\n       org.apache.xerces.jaxp.DocumentBuilderImpl.parse(Unknown Source)\n       javax.xml.parsers.DocumentBuilder.parse(Unknown Source)\n       org.apache.jasper.xmlparser.ParserUtils.parseXMLDocument(ParserUtils.java:98)\n       org.apache.jasper.compiler.JspConfig.processWebDotXml(JspConfig.java:70)\n       org.apache.jasper.compiler.JspConfig.init(JspConfig.java:188)\n       org.apache.jasper.compiler.JspConfig.findJspProperty(JspConfig.java:240)\n       org.apache.jasper.compiler.Compiler.generateJava(Compiler.java:103)\n       org.apache.jasper.compiler.Compiler.compile(Compiler.java:286)\n       org.apache.jasper.compiler.Compiler.compile(Compiler.java:267)\n       org.apache.jasper.compiler.Compiler.compile(Compiler.java:255)\n      \norg.apache.jasper.JspCompilationContext.compile(JspCompilationContext.java:556)\n      \norg.apache.jasper.servlet.JspServletWrapper.service(JspServletWrapper.java:296)\n       org.apache.jasper.servlet.JspServlet.serviceJspFile(JspServlet.java:291)\n       org.apache.jasper.servlet.JspServlet.service(JspServlet.java:241)\n       javax.servlet.http.HttpServlet.service(HttpServlet.java:802)\n\nnote La trace compl\u00e8te de la cause m\u00e8re de cette erreur est disponible\ndans les fichiers journaux de Apache Tomcat/5.5.8.\n\nIt seems that Jasper didn't use the WEBAPP path but start from my environnement\npath, in my case eclipse3, c:\\eclipse3, which is bad.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "34034",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "BUG",
+    "priority": "P2 normal",
+    "product": "Tomcat 5",
+    "project": "TOMCAT",
+    "summary": "Jasper didn't respect external entities",
+    "systemSpecification": true,
+    "version": "Nightly Build"
+}

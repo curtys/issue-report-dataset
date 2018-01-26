@@ -1,0 +1,125 @@
+{
+    "comments": [
+        {
+            "author": null,
+            "body": "Then use a realm which doesn't do that ...",
+            "date": "20031230T15:52:54",
+            "id": 0
+        },
+        {
+            "author": null,
+            "body": "Created attachment 9763\npatch to save only when user database is modified",
+            "date": "20031231T13:45:48",
+            "id": 1
+        },
+        {
+            "author": null,
+            "body": "Here is a simple patch that should prevent unnecessary file modifications.\nCould it be applied or is the \"always write file\" a feature ?",
+            "date": "20031231T13:51:34",
+            "id": 2
+        },
+        {
+            "author": null,
+            "body": "How does this patch help?  If modified, you still have to write the file and \ntherefore still require the same directory/security permissions.",
+            "date": "20031231T13:54:28",
+            "id": 3
+        },
+        {
+            "author": null,
+            "body": "If you don't plan to add users using the web interface, with this patch you can\ndisallow any write in the conf directory and add users only \"by hand\".\nWe could perhaps go further by writing the tempory files tomcat-users.xml.old\nand tomcat-users.xml.new in the temporary directory. Then only write right on\nthe file tomcat-users.xml would be required.\nBut since I am completely ingorant of tomcat internals, I don't where we can get\nthe tomcat temporary directory.",
+            "date": "20031231T14:07:17",
+            "id": 4
+        },
+        {
+            "author": null,
+            "body": "You could use java.io.tmpdir.  I wish you had discussed this on the mailing \nlist before posting a bug (which I've now modified to an enhancement request).",
+            "date": "20031231T14:09:29",
+            "id": 5
+        },
+        {
+            "author": null,
+            "body": "Sorry, but I really thought it was a bug since the default configuration was\nimplying a lower security.\nIs java.io.tmpdir better than something like System.getProperty(\"catalina.base\")\n+ File.separator+ \"temp\" ?\n",
+            "date": "20031231T14:42:23",
+            "id": 6
+        },
+        {
+            "author": null,
+            "body": "Created attachment 9814\nreplacement for previous buggy patch",
+            "date": "20040105T15:56:57",
+            "id": 7
+        },
+        {
+            "author": null,
+            "body": "-1 for your revised patch, sorry. Please do not reopen the bug.\nIf you do not agree, write your own custom realm, or use the older memory realm.",
+            "date": "20040105T15:59:59",
+            "id": 8
+        },
+        {
+            "author": null,
+            "body": "My previous patch wasn't able to detect any user modification.\nSince it seems to have been applied to cvs, here is a patch that remove it and\nuses another method.\nLike discussed before, it uses a temporary file to save the file before\noverwriting the file in conf directory.\nWith this patch, write permission is only necessary for the file\ntomcat-users.xml and not for the entire directory.",
+            "date": "20040105T16:02:24",
+            "id": 9
+        },
+        {
+            "author": null,
+            "body": "Sorry, but I'm not interested. Either something simple works (like your first\npatch), or it doesn't. If it doesn't then since the \"issue\" is not significant,\nthen the patch will be reverted.",
+            "date": "20040105T16:08:06",
+            "id": 10
+        },
+        {
+            "author": null,
+            "body": "My first patch doesn't work since it doesn't detect user modification.\nMy second remove the first patch and implements the following :\n- use a temporary file for write instead of conf/tomcat-users.xml.new\n- check wether conf/tomcat-users.xml is writable (if it exists)\n- rename the temporary files to conf/tomcat-users.xml\nIt removes the need to write in the directory.\n\nBy the way the old code had a very little bug :\n\n        File fileOld = new File(pathnameNew);\n        if (!fileOld.isAbsolute()) {\n            fileOld =\n                new File(System.getProperty(\"catalina.base\"), pathnameOld);\n        }\n\nwhen I expected \n\n        File fileOld = new File(pathnameOld);\n        if (!fileOld.isAbsolute()) {\n            fileOld =\n                new File(System.getProperty(\"catalina.base\"), pathnameOld);\n        }\n\n\n",
+            "date": "20040105T16:19:24",
+            "id": 11
+        },
+        {
+            "author": null,
+            "body": "Your first patch works fine (at least it does what I wanted): the users are no\nlonger saved on startup, while updates using the admin webapp cause the file to\nbe saved.",
+            "date": "20040105T16:21:33",
+            "id": 12
+        },
+        {
+            "author": null,
+            "body": "If you only modify an existing user, the change isn't detected and won't be\nsaved unless you add/remove another user.",
+            "date": "20040105T16:28:04",
+            "id": 13
+        },
+        {
+            "author": null,
+            "body": "Created attachment 9829\ncomplete the first patch to correctly detect all modifications",
+            "date": "20040106T15:41:40",
+            "id": 14
+        },
+        {
+            "author": null,
+            "body": "Since you liked my first patch tentative, I completed it by detecting every\nmodifications made to the UserDatabase.\nI hope this could be accepted since it remains simple.",
+            "date": "20040106T15:43:51",
+            "id": 15
+        },
+        {
+            "author": null,
+            "body": "Created attachment 9948\npatch containing fix for pathnameOld",
+            "date": "20040114T16:44:20",
+            "id": 16
+        },
+        {
+            "author": null,
+            "body": "If this solution doesn't fit, I could provide a ReadOnlyMemoryUserDatabase\nimplementation.",
+            "date": "20040114T16:46:42",
+            "id": 17
+        }
+    ],
+    "component": "Catalina",
+    "description": "I am trying to start tomcat as normal user and carefully adding only required\npermissions and I found that during startup tomcat is writing the file\ntomcat-users.xml. I think it should only write this file when users are\nadded/modified/deleted and I think it would be a bad thing to have to make the\nentire conf directory writeable since it writes a tomcat-users.xml.new and then\nrenames it.\nI am using the standard binaries.\nFor info :\n30 d\u00e9c. 2003 13:27:34 org.apache.naming.NamingContext lookup\nATTENTION: Une erreur s est produite durant la r\u00e9solution de la r\u00e9f\u00e9rence\njava.io.FileNotFoundException:\n/usr/local/jakarta-tomcat-5.0.16/conf/tomcat-users.xml.new (Permission denied)\n        at java.io.FileOutputStream.open(Native Method)\n        at java.io.FileOutputStream.<init>(FileOutputStream.java:179)\n        at java.io.FileOutputStream.<init>(FileOutputStream.java:131)\n        at\norg.apache.catalina.users.MemoryUserDatabase.save(MemoryUserDatabase.java:508)\n        at\norg.apache.catalina.users.MemoryUserDatabaseFactory.getObjectInstance(MemoryUserDatabaseFactory.java:144)\n        at\norg.apache.naming.factory.ResourceFactory.getObjectInstance(ResourceFactory.java:176)\n        at javax.naming.spi.NamingManager.getObjectInstance(NamingManager.java:301)\n        at org.apache.naming.NamingContext.lookup(NamingContext.java:837)\n        at org.apache.naming.NamingContext.lookup(NamingContext.java:197)\n        at\norg.apache.catalina.mbeans.GlobalResourcesLifecycleListener.createMBeans(GlobalResourcesLifecycleListener.java:202)\n        at\norg.apache.catalina.mbeans.GlobalResourcesLifecycleListener.createMBeans(GlobalResourcesLifecycleListener.java:172)\n        at\norg.apache.catalina.mbeans.GlobalResourcesLifecycleListener.lifecycleEvent(GlobalResourcesLifecycleListener.java:144)\n        at\norg.apache.catalina.util.LifecycleSupport.fireLifecycleEvent(LifecycleSupport.java:166)\n        at org.apache.catalina.core.StandardServer.start(StandardServer.java:2336)\n        at org.apache.catalina.startup.Catalina.start(Catalina.java:581)\n        at sun.reflect.NativeMethodAccessorImpl.invoke0(Native Method)\n        at\nsun.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:39)\n        at\nsun.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:25)\n        at java.lang.reflect.Method.invoke(Method.java:324)\n        at org.apache.catalina.startup.Bootstrap.start(Bootstrap.java:297)\n        at org.apache.catalina.startup.Bootstrap.main(Bootstrap.java:398)\n30 d\u00e9c. 2003 13:27:34\norg.apache.catalina.mbeans.GlobalResourcesLifecycleListener createMBeans\nGRAVE: Exception processing Global JNDI Resources\njavax.naming.NamingException:\n/usr/local/jakarta-tomcat-5.0.16/conf/tomcat-users.xml.new (Permission denied)\n        at org.apache.naming.NamingContext.lookup(NamingContext.java:849)\n        at org.apache.naming.NamingContext.lookup(NamingContext.java:197)\n        at\norg.apache.catalina.mbeans.GlobalResourcesLifecycleListener.createMBeans(GlobalResourcesLifecycleListener.java:202)\n        at\norg.apache.catalina.mbeans.GlobalResourcesLifecycleListener.createMBeans(GlobalResourcesLifecycleListener.java:172)\n        at\norg.apache.catalina.mbeans.GlobalResourcesLifecycleListener.lifecycleEvent(GlobalResourcesLifecycleListener.java:144)\n        at\norg.apache.catalina.util.LifecycleSupport.fireLifecycleEvent(LifecycleSupport.java:166)\n        at org.apache.catalina.core.StandardServer.start(StandardServer.java:2336)\n        at org.apache.catalina.startup.Catalina.start(Catalina.java:581)\n        at sun.reflect.NativeMethodAccessorImpl.invoke0(Native Method)\n        at\nsun.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:39)\n        at\nsun.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:25)\n        at java.lang.reflect.Method.invoke(Method.java:324)\n        at org.apache.catalina.startup.Bootstrap.start(Bootstrap.java:297)\n        at org.apache.catalina.startup.Bootstrap.main(Bootstrap.java:398)\n30 d\u00e9c. 2003 13:27:34 org.apache.catalina.core.StandardService start",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "25822",
+    "issuetypeClassified": "RFE",
+    "issuetypeTracker": "RFE",
+    "priority": "P3 enhancement",
+    "product": "Tomcat 5",
+    "project": "TOMCAT",
+    "summary": "tomcat shouldn't write tomcat-users.xml at startup",
+    "systemSpecification": true,
+    "version": "5.0.16"
+}

@@ -1,0 +1,47 @@
+{
+    "comments": [
+        {
+            "author": "Gr\u00e9gory Joseph",
+            "body": "Same goes if you replace {{repository.shutdown()}} by a call to {{RegistryHelper.unregisterRepository}} which is even more worrying. The issue seems to be due to the static cache of BindableRepositoryFactory.\nI can reproduce this with 1.4.6 and 1.5.0, not with 1.4.5",
+            "date": "2009-01-05T18:05:50.160+0000",
+            "id": 0
+        },
+        {
+            "author": "Gr\u00e9gory Joseph",
+            "body": "Seems to me as this is (if only by accident) related to JCR-1823",
+            "date": "2009-01-12T22:07:53.542+0000",
+            "id": 1
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "> Seems to me as this is (if only by accident) related to JCR-1823\n\nYes, now the test case throws a RepositoryException instead of an IllegalStateException. This is still incorrect.",
+            "date": "2009-01-13T09:31:21.713+0000",
+            "id": 2
+        },
+        {
+            "author": "Ren\u00e9 Link",
+            "body": "Patch  do prevent invalid repository object to remain in the BindableRepositoryFactory's cache",
+            "date": "2010-01-20T09:36:02.786+0000",
+            "id": 3
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Thanks for the patch! I committed a slightly modified version to Jackrabbit trunk in revision 933694 and merged the change to the 2.1 branch in revision 933697.",
+            "date": "2010-04-13T16:09:19.397+0000",
+            "id": 4
+        }
+    ],
+    "component": "jackrabbit-core",
+    "description": "The BindableRepositoryFactory class keeps a cached reference to a repository even after the repository has been shut down.\n\nThis causes the following code snippet to fail with an IllegalStateException:\n\n        Hashtable environment = new Hashtable();\n        environment.put(\n                Context.INITIAL_CONTEXT_FACTORY,\n                DummyInitialContextFactory.class.getName());\n        environment.put(Context.PROVIDER_URL, \"http://jackrabbit.apache.org/\");\n        Context context = new InitialContext(environment);\n\n        JackrabbitRepository repository;\n        String xml = \"src/test/repository/repository.xml\";\n        String dir = \"target/repository\";\n        String key = \"repository\";\n\n        // Create first repository\n        RegistryHelper.registerRepository(context, key, xml, dir, true);\n        repository = (JackrabbitRepository) context.lookup(key);\n        repository.login().logout();\n        repository.shutdown();\n\n        // Create second repository with the same configuration\n        RegistryHelper.registerRepository(context, key, xml, dir, true);\n        repository = (JackrabbitRepository) context.lookup(key);\n        repository.login().logout(); // throws an IllegalStateException!\n        repository.shutdown();\n",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "JCR-1778",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Minor",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "BindableRepositoryFactory doesn't handle repository shutdown",
+    "systemSpecification": true,
+    "version": "core 1.4.6, core 1.4.8, core 1.4.7, core 1.4.9, core 1.4.10, core 1.4.11, 1.5, 1.5.2, 1.5.3, 1.5.4, 1.5.5, 1.5.6, 1.5.7, 1.6, 1.6.1, 2.0-alpha1, 2.0-alpha3, 2.0-alpha4, 2.0-alpha7, 2.0-alpha8, 2.0-alpha9, 2.0-alpha11, 2.0-beta1, 2.0-beta3, 2.0-beta4, 2.0-beta5, 2.0-beta6, 2.0, 2.1"
+}

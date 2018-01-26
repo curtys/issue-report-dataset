@@ -1,0 +1,35 @@
+{
+    "comments": [
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 172569\nImplementation",
+            "date": "20050127T16:27:45",
+            "id": 0
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "I committed the patch after tagging the code in CVS as\nbefore_simpler_undefined_280047 to be able to remove patch if too many\ncompatibility problems happens.",
+            "date": "20050127T16:37:26",
+            "id": 1
+        },
+        {
+            "author": "mcormier@miranda.com",
+            "body": "Igor,\n\nI recently updated to the latest CVS Rhino code, and started seeing a lot of\nwarnings reported:\n\nRHINO USAGE WARNING: Missed Context.javaToJS() conversion:\nRhino runtime detected object org.mozilla.javascript.Undefined@11adeb7 of class\norg.mozilla.javascript.Undefined where it expected String, Number, Boolean or\nScriptable instance. Please check your code for missig Context.javaToJS() call.\n\nThe problem in this case is that the error doesn't even come from Java code, but\nrather from a JavaScript invocation.  In one case, I invoke the contructor on\none of my ScriptableObject sub-classes, which takes three parameters:\n\n   public void jsConstructor(String a, String b, int c) {\n      // ...\n      if (c == 0) {\n         // Assume not specified in JavaScript\n      }\n   }\n\nMy understanding (correct me if I'm wrong) is that you are allowed to omit later\narguments, thereby implementing many constructors as one (you can't have two\ndifferent constructors).  In any case, it worked just fine prior to your fix --\nomitting the 'c' parameter from JavaScript resulted in an undefined value, which\nwould result in a value of zero for 'c', which I would handle in the constructor.\n\nWas my understanding wrong?  Is there anything I should do to make this work? \nShould Rhino be fixed to handle such cases?",
+            "date": "20050208T19:05:18",
+            "id": 2
+        }
+    ],
+    "component": "Core",
+    "description": "Currently in a few places Rhino code contains checks like:\n\nif (x instanceof Scriptable && x != Undefined.instance) {\n   do_something()\n}\n\nIf Undefined would not implement Scriptable, that code would be reduced to simple:\n\nif (x instanceof Scriptable) {\n   do_something()\n}\n\nThe additional benefit is code reduction in Undefined.java since the class would\nonly need to implement Serializable interface and declare Undefined.instance method.\n\nClearly it would be incompatible with code that directly uses Undefined, but\nsince the class is not a part of public API, I suggest to try  this.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "280047",
+    "issuetypeClassified": "OTHER",
+    "issuetypeTracker": "RFE",
+    "priority": "-- enhancement",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "Not implementing Scriptable in Undefined",
+    "systemSpecification": true,
+    "version": "other"
+}

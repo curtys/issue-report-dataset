@@ -1,0 +1,77 @@
+{
+    "comments": [
+        {
+            "author": "Andreas Hauser",
+            "body": "$ java -Dfile.encoding=UTF-8 -cp lib/lucene-core-2.4-20090219.021329-1.jar:. AnalyzerTest    \n(mo,0,2,type=<ALPHANUM>)\n(chte,3,7,type=<ALPHANUM>)\n(m,8,9,type=<ALPHANUM>)\n(mo,10,12,type=<ALPHANUM>)\n(chte,13,17,type=<ALPHANUM>)\n$locale\nLANG=de_DE.UTF-8\nLC_CTYPE=\"de_DE.UTF-8\"\nLC_NUMERIC=\"de_DE.UTF-8\"\nLC_TIME=\"de_DE.UTF-8\"\nLC_COLLATE=de_DE.UTF-8\nLC_MONETARY=\"de_DE.UTF-8\"\nLC_MESSAGES=de_DE.UTF-8\nLC_PAPER=\"de_DE.UTF-8\"\nLC_NAME=\"de_DE.UTF-8\"\nLC_ADDRESS=\"de_DE.UTF-8\"\nLC_TELEPHONE=\"de_DE.UTF-8\"\nLC_MEASUREMENT=\"de_DE.UTF-8\"\nLC_IDENTIFICATION=\"de_DE.UTF-8\"\nLC_ALL=\n",
+            "date": "2009-02-20T15:24:18.136+0000",
+            "id": 0
+        },
+        {
+            "author": "Robert Muir",
+            "body": "this is an example of why i started messing with LUCENE-1488",
+            "date": "2009-02-20T15:25:06.433+0000",
+            "id": 1
+        },
+        {
+            "author": "Mark Miller",
+            "body": "Feel free to switch back, but for now I'm going to mark this as part of LUCENE-1488, as offhand, that looks like the best solution for this issue. As that issue is not marked 2.9 at the moment, I'm pushing this off to 3.0.",
+            "date": "2009-06-11T02:46:05.914+0000",
+            "id": 2
+        },
+        {
+            "author": "Robert Muir",
+            "body": "if you are looking for a more short-term solution (since i think 1488 will take quite a bit more time), it would be possible to make StandardAnalyzer more 'unicode-friendly'.\n\nits not possible to make it 'correct', and adding additional unicode friendliness would make backwards compat a much more complex issue (different unicode versions across JVM  versions, etc).\n\nbut if you want, i'm willing to come up with some minor grammar changes for StandardAnalyzer that could help things like this.\n",
+            "date": "2009-06-11T05:19:26.585+0000",
+            "id": 3
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Mark, when we push, we should push to 3.1 not 3.0 (I just added a 3.1 version to Jira for Lucene)... because 3.0 will come quickly after 2.9 and will \"only\" remove deprecations, etc.",
+            "date": "2009-06-11T09:33:56.682+0000",
+            "id": 4
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "bq. but if you want, i'm willing to come up with some minor grammar changes for StandardAnalyzer that could help things like this.\n\nIs it possible to conditionalize, at runtime, certain parts of a JFlex grammar?  Ie, with matchVersion (LUCENE-1684) we could preserve back-compat on this issue, but I'm not sure how to cleanly push that matchVersion (provided @ runtime to StandardAnalyzer's ctor) \"down\" into the grammar so that eg we're not force to make a new full copy of the grammar for each fix.  (Though perhaps that's an OK solution since it'd make it easy to strongly guarantee back compat...).",
+            "date": "2009-06-12T11:08:40.393+0000",
+            "id": 5
+        },
+        {
+            "author": "Robert Muir",
+            "body": "michael, I don't see a way from the manual to do it.\n\nits not just the rules, but the JRE used to compile the rules (and its underlying unicode defs) so you might need separate standardtokenizerimpl's to really control the thing...",
+            "date": "2009-06-12T13:03:31.833+0000",
+            "id": 6
+        },
+        {
+            "author": "Steve Rowe",
+            "body": "I updated AnalyzerTest.java:\n\n{code:java}\nimport java.io.FileOutputStream;\nimport java.io.OutputStreamWriter;\nimport java.io.StringReader;\nimport org.apache.lucene.analysis.TokenStream;\nimport org.apache.lucene.analysis.standard.StandardAnalyzer;\nimport org.apache.lucene.util.Version;\n\npublic class AnalyzerTest {\n  public static void test() throws Exception {\n    StandardAnalyzer a = new StandardAnalyzer(Version.LUCENE_31);\n    TokenStream ts = a.tokenStream(\"\", new StringReader(\"mo\u0364chte m mo\\u0364chte \"));\n    OutputStreamWriter writer = new OutputStreamWriter(new FileOutputStream(\"output.txt\"), \"UTF-8\");\n    while (ts.incrementToken()) {\n      writer.append(ts.toString()).append(System.getProperty(\"line.separator\"));\n    }\n    writer.flush();\n    writer.close();\n  }\n\n  public static void main(String[] argv) throws Exception {\n    test();\n  }\n}\n{code}\n\nHere's what goes into output.txt when I compile {{AnalyzerTest.java}} with {{javac -encoding UTF-8 -cp lucene/dev/branches/branch_3x/lucene/build/lucene-core-3.1-SNAPSHOT.jar\" AnalyzerTest}}:\n{code:java}\n(mo\u0364chte,startOffset=0,endOffset=7,positionIncrement=1,type=<ALPHANUM>)\n(m,startOffset=8,endOffset=9,positionIncrement=1,type=<ALPHANUM>)\n(mo\u0364chte,startOffset=10,endOffset=17,positionIncrement=1,type=<ALPHANUM>)\n{code}\n\nWith LUCENE-2167 committed on the 3.X branch and on trunk, I think this issue is resolved.  Please reopen if you see different behavior.",
+            "date": "2010-09-29T05:51:11.158+0000",
+            "id": 7
+        },
+        {
+            "author": "Robert Muir",
+            "body": "fixed in LUCENE-2167",
+            "date": "2010-09-29T05:53:25.669+0000",
+            "id": 8
+        },
+        {
+            "author": "Grant Ingersoll",
+            "body": "Bulk close for 3.1",
+            "date": "2011-03-30T15:50:14.450+0000",
+            "id": 9
+        }
+    ],
+    "component": "modules/analysis",
+    "description": "Standard analyzer does not correctly tokenize combining character U+0364 COMBINING LATIN SMALL LETTRE E.\nThe word \"mo\u0364chte\" is incorrectly tokenized into \"mo\" \"chte\", the combining character is lost.\nExpected result is only on token \"mo\u0364chte\".",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "LUCENE-1545",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Minor",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "Standard analyzer does not correctly tokenize combining character U+0364 COMBINING LATIN SMALL LETTRE E",
+    "systemSpecification": true,
+    "version": "2.4"
+}

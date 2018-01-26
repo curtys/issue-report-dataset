@@ -1,0 +1,35 @@
+{
+    "comments": [
+        {
+            "author": "Thomas Mueller",
+            "body": "This patch solves the performance problem introduced by JCR-2138. The unit tests of jackrabbit-core still work for me after applying the patch.\n\nI don't really understand what the problem was before JCR-2138. \n\nWas it a clustering issue? If yes, then the check introduced doesn't really work. Reason: 1) first it checks if references were added, and if yes, then 2) the references are removed. However if the second cluster node adds the references between 1) and 2) then it will still not work.\n\nIf it was not a clustering problem, then why do you check if the node already exists in the 'addedStates' list? Those by definition don't exist (they are added, that's the reason to call it 'addedStates'). As far as I understand, saving is synchronized. Is it only a problem if a non-default ISMLocking is used?\n",
+            "date": "2010-01-19T14:30:51.931+0000",
+            "id": 0
+        },
+        {
+            "author": "Martijn Hendriks",
+            "body": "The problem did not specifically involve clustered environments. I wrote the ReferencesTest that has been added in JCR-2138; running these against the jackrabbit-1.4.5 gives 5 test failures because of corrupt references. This happens when two sessions add/modify the same reference property at the same time.\n\nYour patch effectively removes the patch for JCR-2138 and the ReferencesTest does not fail. That's good! Something in the ItemStateManager hierarchy must have changed such that the problem cannot occur anymore.",
+            "date": "2010-01-20T09:53:50.506+0000",
+            "id": 1
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "Hi Martijn,\n\nThanks for your help. It's good to know the issue is resolved, and it's very good to have the additional test case. For me, it is very important that the check is disabled in Jackrabbit 2.0, because it is a major performance problem in my environment.",
+            "date": "2010-01-20T09:59:33.904+0000",
+            "id": 2
+        }
+    ],
+    "component": "jackrabbit-core",
+    "description": "In revision 782898, the following code was introduced:\n\nupdateReferences() {\n    for (Iterator i = local.addedStates(); i.hasNext();) {\n        ...\n        if (hasItemState(state.getId())) {\n            ...\n        }\n    }\n}\n\nThis will try to fetch inexistent nodes from the persistence manager.\nDepending on the persistence manager implementation, this is very slow.\nI hope there is a way to avoid this call, or if not, speed it up.\n",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "JCR-2449",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "Slow performance due to JCR-2138 (Prevent persistence of faulty back-references)",
+    "systemSpecification": true,
+    "version": "1.5.7, 2.0-beta4"
+}

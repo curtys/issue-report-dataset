@@ -1,0 +1,23 @@
+{
+    "comments": [
+        {
+            "author": "Jukka Zitting",
+            "body": "Thanks for reporting this, and for including a good test case! Fixed in revision 1032770.",
+            "date": "2010-11-08T22:23:46.624+0000",
+            "id": 0
+        }
+    ],
+    "component": "jackrabbit-core",
+    "description": "A problem occurs with the following sequence of steps: \n\n1) Create a versionable node that has a child and a grandchild.\n2) Perform a check-in of the versionable node and give a version-label.\n3) Perform a restore by using the version-label.\n4) Access the grandchild.\n\nStep 4 fails, if step 3 is executed within a transaction. If no transaction is used, then step 4 succeeds. \nThe test-case attached below can be executed within XATest.java (http://svn.apache.org/repos/asf/jackrabbit/trunk/jackrabbit-core/src/test/java/org/apache/jackrabbit/core/XATest.java).\n\n\npublic void testRestore() throws Exception {\n        Session session = null;\n        try {\n            session = getHelper().getSuperuserSession();\n\n            // make sure that 'testNode' does not exist at the beginning of the test\n            for (NodeIterator ni = session.getRootNode().getNodes(); ni.hasNext();) {\n                Node aNode = ni.nextNode();\n                if (aNode.getName().equals(\"testNode\")) {\n                    aNode.remove();\n                }\n            }\n\n            // 1) create 'testNode' that has a child and a grandchild\n            session.getRootNode().addNode(\"testNode\").addMixin(NodeType.MIX_VERSIONABLE);\n            session.getRootNode().getNode(\"testNode\").addNode(\"child\").addNode(\"grandchild\");\n            session.save();\n\n            // 2) check in 'testNode' and give a version-label\n            Version version = session.getWorkspace().getVersionManager().checkin(\n                    session.getRootNode().getNode(\"testNode\").getPath());\n            session.getWorkspace().getVersionManager().getVersionHistory(\n                    session.getRootNode().getNode(\"testNode\").getPath()).addVersionLabel(version.getName(),\n                    \"testLabel\", false);\n\n            // 3) do restore by label\n            UserTransaction utx = new UserTransactionImpl(session);\n            utx.begin();\n            session.getWorkspace().getVersionManager().restoreByLabel(\n                    session.getRootNode().getNode(\"testNode\").getPath(), \"testLabel\", true);\n            utx.commit();\n\n            // 4) try to get the grandchild (fails if the restoring has been done within a transaction)\n            session.getRootNode().getNode(\"testNode\").getNode(\"child\").getNode(\"grandchild\");\n        } finally {\n            if (session != null) {\n                session.logout();\n            }\n        }\n    } ",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "JCR-2796",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "Restoring a node fails (partially) if done within a XA transaction",
+    "systemSpecification": true,
+    "version": "2.1.1"
+}

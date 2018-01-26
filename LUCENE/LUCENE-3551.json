@@ -1,0 +1,59 @@
+{
+    "comments": [
+        {
+            "author": "Simon Willnauer",
+            "body": "here is a patch that checks the flushQueue as a last resort",
+            "date": "2011-11-01T19:54:05.455+0000",
+            "id": 0
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "ups one negation to rule them all :) - fixing the prev patch",
+            "date": "2011-11-01T20:04:19.619+0000",
+            "id": 1
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "this seems to have a deadlock.... I need to investigate more how to solve this.",
+            "date": "2011-11-01T20:18:59.922+0000",
+            "id": 2
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "here is a new patch fixing this issue. With this patch I could not reproduce any failure from SOLR-2861 which usually failed fairly quickly.",
+            "date": "2011-11-02T11:42:55.746+0000",
+            "id": 3
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "I isolated the problem in SOLR-2861 into a lucene testcase that fails reproduceable & very very quickly. (passed on 3.x too though) \n\nwith the fixes in this patch it passes reliably. The problem among the others I already explained is that once DW has flushed all threads and put all deletes in the frozenPacketBuffer we have a little window where those changes are not taken into account. This only happens if I only flush deletes (no documents) since we prune the frozenBufferedDeletes before we checkpoint so nrtIsCurrent doesn't see those changes for a little while. ",
+            "date": "2011-11-03T13:04:08.722+0000",
+            "id": 4
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "This seems to fix SOLR-2861 I went through the changes again double checking all conditions. It seems ready, I will commit soon if nobody objects.",
+            "date": "2011-11-04T20:06:57.882+0000",
+            "id": 5
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "Committed in revision 1197742.\n",
+            "date": "2011-11-04T20:17:01.495+0000",
+            "id": 6
+        }
+    ],
+    "component": "core/index",
+    "description": "In IW#nrtIsCurrent looks like this:\n\n{code}\n  synchronized boolean nrtIsCurrent(SegmentInfos infos) {\n    ensureOpen();\n    return infos.version == segmentInfos.version && !docWriter.anyChanges() && !bufferedDeletesStream.any();\n  }\n{code}\n\n* the version changes once we checkpoint the IW\n* docWriter has changes if there are any docs in ram or any deletes in the delQueue\n* bufferedDeletes contain all frozen del packages from the delQueue\n\nyet, what happens is 1. we decrement the numDocsInRam in DWPT#doAfterFlush (which is executed during DWPT#flush) but before we checkpoint. 2. if we freeze deletes (empty the delQueue) we put them in the flushQueue to maintain the order.  This means they are not yet in the bufferedDeleteStream.\n\nBottom line, there is a window where we could see IW#nrtIsCurrent returning true if we check within this particular window. Phew, I am not 100% sure if that is the reason for our latest failure in SOLR-2861 but from what the logs look like this could be what happens. If we randomly hit low values for maxBufferedDocs & maxBufferedDeleteTerms this is absolutely possible.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-3551",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "Yet another race in IW#nrtIsCurrent",
+    "systemSpecification": true,
+    "version": "4.0-ALPHA"
+}

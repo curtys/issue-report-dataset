@@ -1,0 +1,125 @@
+{
+    "comments": [
+        {
+            "author": "Paul Elschot",
+            "body": "Patches BooleanQuery only. Tests pass, javadocs build.",
+            "date": "2007-06-26T09:28:17.582+0000",
+            "id": 0
+        },
+        {
+            "author": "Michael Busch",
+            "body": "Committed. Thanks, Paul!",
+            "date": "2007-07-12T18:42:04.016+0000",
+            "id": 1
+        },
+        {
+            "author": "Grant Ingersoll",
+            "body": "Hmm, I was just trying to compile Luke source against the latest Lucene and am getting compiler errors on this being missing.  Doesn't this violate our back-compatibility clause or did I miss something?  Don't we have to wait until 3.0-dev to remove these?",
+            "date": "2007-12-10T18:47:27.559+0000",
+            "id": 2
+        },
+        {
+            "author": "Michael Busch",
+            "body": "You are right, Grant.\n\nI will revert this for 2.3. Thanks for catching this!!",
+            "date": "2007-12-11T12:04:23.342+0000",
+            "id": 3
+        },
+        {
+            "author": "Michael Busch",
+            "body": "Some test fail with this patch when a MatchAllDocQuery is used, e.g. TestSimpleExplanations.testMA1. skipTo() tries to get the delete bit for a negative document, which throws an Exception of course. This happens for a searcher that contains a MultiReader created by QueryUtils.wrapUnderlyingReader().\n\nI assume this is related to the change I made in QueryUtils. I need to spend some more time to figure out what exactly leads to this exception. Maybe I'm doing something silly here - I'm still catching up on some changes, such as the out-of-order scoring changes. \n\nI can't work on this till Monday, so anyone familiar with these tests feel free to take a look! :)",
+            "date": "2009-10-01T23:10:55.823+0000",
+            "id": 4
+        },
+        {
+            "author": "Mark Miller",
+            "body": "Hoss added some multireader test stuff that counts on where the deletes are if I remember right.\n\nso \n\n{code}\n-    if (BooleanQuery.getAllowDocsOutOfOrder()) return;  // in this case order of skipTo() might differ from that of next().\n+    if (q.weight(s).scoresDocsOutOfOrder()) return;  // in this case order of skipTo() might differ from that of next().\n{code}\n\nmust not be exactly equiv and where it wasn't scoring out of order for this test, now it is, or vice versa (I havn't looked closely).",
+            "date": "2009-10-01T23:24:02.758+0000",
+            "id": 5
+        },
+        {
+            "author": "Michael Busch",
+            "body": "Yeah I figured it has to do with that, but it seems weird to me that a call to scorer.advance() (in QueryUtils, line 348) leads to a ArrayIndexOutOfBoundsException?",
+            "date": "2009-10-01T23:32:18.742+0000",
+            "id": 6
+        },
+        {
+            "author": "Mark Miller",
+            "body": "So this was always there - but in the past, because BoolQuery.getAllowOutOfOrder was always returning true for these tests, it didn't get into the code thats now failing.\n\nWith the replacement, because it only returns true or false based on if its a booleanquery, it gets through there for other queries, and we are seeing the results.",
+            "date": "2009-10-01T23:32:46.825+0000",
+            "id": 7
+        },
+        {
+            "author": "Mark Miller",
+            "body": "bq. but it seems weird to me that a call to scorer.advance() (in QueryUtils, line 348) leads to a ArrayIndexOutOfBoundsException?\n\nWe had similar issues when we were working on these tests before. Hoss knows how the MultiReader/delete stuff is better than I do though - he wrote it, I just addressed issues/bugs.",
+            "date": "2009-10-01T23:34:14.846+0000",
+            "id": 8
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "When we change this, don't forget to remove the 2.9 BW tests that may fail because of this change - whenever we remove deprecated methods, the new 2.9 BW branch must be updated.",
+            "date": "2009-10-01T23:40:31.564+0000",
+            "id": 9
+        },
+        {
+            "author": "Mark Miller",
+            "body": "Part of it or all of it is that the tests that are failing are using external ids, which doesn't work with this multireader stuff (since they are tech illegal, though they worked before per segment). We fixed a bunch of these, but missed these ones, since they didn't hit these tests. They need to be fixed in the same manner.",
+            "date": "2009-10-01T23:41:32.616+0000",
+            "id": 10
+        },
+        {
+            "author": "Mark Miller",
+            "body": "A second part is that there looks to be some insane fieldcache usage that needs to be fixed in these tests - again, because the code wasn't hit before, we didn't see it before ...\n\nI just keep randomly taking peeks ;)",
+            "date": "2009-10-02T00:15:50.777+0000",
+            "id": 11
+        },
+        {
+            "author": "Michael Busch",
+            "body": "{quote}\nSo this was always there - but in the past, because BoolQuery.getAllowOutOfOrder was always returning true for these tests, it didn't get into the code thats now failing. \n{quote}\n\nExactly. \n\nNow I just hope all bugs are in the tests... \nSorry, have to leave now. Thanks for your help, Mark! ",
+            "date": "2009-10-02T00:24:55.867+0000",
+            "id": 12
+        },
+        {
+            "author": "Mark Miller",
+            "body": "bq. Now I just hope all bugs are in the tests...\n\nI'm pretty sure they are (though obviously I cant gaurantee). Its all stuff Hoss and I saw before and fixed from what I can tell - we just fixed what was causing failures though, so getting past that line is exposing stuff we didn't handle.",
+            "date": "2009-10-02T01:03:46.923+0000",
+            "id": 13
+        },
+        {
+            "author": "Michael Busch",
+            "body": "Hey Mark, any interest in taking this, since you seem to have experience with fixing those tests? \n\nOtherwise I'll continue here later tonight or tomorrow... you'd probably be faster though ;)",
+            "date": "2009-10-08T23:03:47.827+0000",
+            "id": 14
+        },
+        {
+            "author": "Michael Busch",
+            "body": "All core & contrib tests pass now.\n\nThe problem was QueryUtils#checkSkipTo(). It still performed the checks using a global scorer, which resulted in failures in the FieldCacheSanityChecker. (the same values were cached twice: once for the global reader plus for the per-segment readers).\n\nQueryUtils#checkFirstSkipTo() was already implemented correctly so that it performs the checks with per-segment scorers.\n\nI think this is ready to commit now. Mark, do you want to take a look at my checkSkipTo() changes before I commit?",
+            "date": "2009-10-12T21:32:54.908+0000",
+            "id": 15
+        },
+        {
+            "author": "Michael Busch",
+            "body": "Tiny change in QueryUtils#checkSkipTo() to keep it more consistent to how it worked before.\n\nAlso attaching the back-compat patch. Note that I have to make the change to checkSkipTo() there too, because it was not changed before to do the search per-segment. Now more tests actually run this check, exposing this problem.\n\nAll tests pass now.",
+            "date": "2009-10-13T17:17:01.671+0000",
+            "id": 16
+        },
+        {
+            "author": "Michael Busch",
+            "body": "Committed revision 824870.",
+            "date": "2009-10-13T18:29:21.342+0000",
+            "id": 17
+        }
+    ],
+    "component": "core/search",
+    "description": "Remove deprecated methods setUseScorer14 and getUseScorer14 in BooleanQuery, and adapt javadocs.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-944",
+    "issuetypeClassified": "OTHER",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Minor",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "Remove deprecated methods in BooleanQuery",
+    "systemSpecification": true,
+    "version": ""
+}

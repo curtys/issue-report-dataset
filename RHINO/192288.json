@@ -1,0 +1,53 @@
+{
+    "comments": [
+        {
+            "author": "user@apochta.com",
+            "body": "Created attachment 113822\nTest case",
+            "date": "20030207T19:49:25",
+            "id": 0
+        },
+        {
+            "author": "pschwartau@meer.net",
+            "body": "Testcase added to JS testsuite:\n\n      mozilla/js/tests/js1_5/Expressions/regress-192288.js\n\nThis passes in SpiderMonkey and in Rhino when optimization < 1.\nBut, as Igor reported, it fails if Rhino optimization is set >=1:\n\njava org.mozilla.javascript.tools.shell.Main -opt 1\n                                        -f js1_5/shell.js \n                                        -f js1_5/Expressions/regress-192288.js\n\n[ Exception as given above ]",
+            "date": "20030207T22:58:25",
+            "id": 1
+        },
+        {
+            "author": "user@apochta.com",
+            "body": "Created attachment 113855\nFix: call Codegen.addNumberConstant only once\n\nThe bug was caused by a double call to Codegen.addNumberConstant, the first\ntime correctly from Codegen.visitLiteral and the second time wrongfully from\nthe loop in emitConstantDudeInitializers where loop index should be used\ninstead of calling addNumberConstant. As addNumberConstant would return the\nsame index for same numbers, the bug surfaces only with NaN as\naddNumberConstant does not recognizes already added NaN. The bug also visible\nonly with optimization set to 1 or higher since only then constant folding can\nproduce NaN literal.\n\nThe patch removes the second call to addNumberConstant and uses\nScriptRuntime.NaNobj for NaNs.\n\nIt touches Context to make Context.codeBug() public and ScriptRuntime to make\nNaN and NaNobj final as a workaround for MS JVM bug can be done without making\nthese fields mutable.",
+            "date": "20030208T01:19:54",
+            "id": 2
+        },
+        {
+            "author": "user@apochta.com",
+            "body": "I commited the fix",
+            "date": "20030215T00:07:40",
+            "id": 3
+        },
+        {
+            "author": "pschwartau@meer.net",
+            "body": "Verified FIXED. The above testcase now passes in the Rhino shell.\nI tested with optimization levels set to -1, 0, 1, and 9.",
+            "date": "20030217T23:45:07",
+            "id": 4
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Targeting as resolved against 1.5R5",
+            "date": "20040213T12:11:49",
+            "id": 5
+        }
+    ],
+    "component": "Compiler",
+    "description": "User-Agent:       Mozilla/5.0 (X11; U; Linux i686; en-US; rv:1.0.1) Gecko/20021003\nBuild Identifier: Rhino CVS from 2003-02-07\n\nWith optimization set to 1 or higher 0 / 0  in functions leads to bad class code\ntriggering java.lang.NoSuchFieldError during execution. The bug is present at\nleast since  Rhino 1.5R3 so its fix has to wait post 1.5R4 time.\n\nA simple test case is a script like\n\nfunction f() { return 0 / 0; }\nf();\n\nwhich gives java.lang.NoSuchFieldError: jsK_0\n\nThis is the reason why ecma/Expressions/11.5.2.js from the test suite currently\nfails when jsDriver.pl runs with --engine rhino9\n\nReproducible: Always\n\nSteps to Reproduce:\nRun the following attached test case under Rhino shell with optimization set to\n1 or higher.\n\nActual Results:  \nException in thread \"main\" java.lang.NoSuchFieldError: jsK_0\n        at org.mozilla.javascript.gen.c1.call(/home/igor/w/js/x/opt.js:1)\n        at\norg.mozilla.javascript.optimizer.OptRuntime.callSimple(OptRuntime.java:275)\n        at org.mozilla.javascript.gen.c2.call(/home/igor/w/js/x/opt.js:3)\n        at org.mozilla.javascript.gen.c2.exec(/home/igor/w/js/x/opt.js)\n        at org.mozilla.javascript.Context.evaluateReader(Context.java:818)\n        at org.mozilla.javascript.tools.shell.Main.evaluateReader(Main.java:363)\n        at org.mozilla.javascript.tools.shell.Main.processFileSecure(Main.java:354)\n        at org.mozilla.javascript.tools.shell.Main.processFile(Main.java:291)\n        at org.mozilla.javascript.tools.shell.Main.processSource(Main.java:283)\n        at org.mozilla.javascript.tools.shell.Main.exec(Main.java:103)\n        at org.mozilla.javascript.tools.shell.Main.main(Main.java:76)\n\n\nExpected Results:  \nIt should print OK.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "192288",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "-- normal",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "0 / 0 in functions with optimization >= 1 gives bad class code",
+    "systemSpecification": true,
+    "version": "other"
+}

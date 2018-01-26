@@ -1,0 +1,71 @@
+{
+    "comments": [
+        {
+            "author": "mguillemot@yahoo.fr",
+            "body": "Created attachment 371838\nPatch using Arrays.sort for NativeArray.sort\n\nThis patch removes all custom sort logic to use JDK's Arrays.sort method. With this patch applied, I get exactly the same errors running ant junit-all than without the patch.\n\nNote:\nI've removed handling of arrays with length greater than Integer.MAX_VALUE first because I think that it is not a real use case and second because it is not tested by any test and a feature that is not tested doesn't exist! ;-)",
+            "date": "20090409T11:30:39",
+            "id": 0
+        },
+        {
+            "author": "szegedia@freemail.hu",
+            "body": "Overall, it looks good to me. Few minor points:\n\n1. removing handling of arrays with length equal to Integer.MAX_VALUE should be okay. Maximum length for JS native arrays is 2^32-1 anyway. It's true that sort() function can be transferred to another objects as well, but even if it were, the definition of sort is such that it only operates on ToUInt32(this.[[Get]](\"length\")).\n\n2. The testing for undefined values should also be performed in the case where you don't have a comparator function.\n\n3. storing the Undefined.instance and Scriptable.NOT_FOUND in a local variable won't really help performance. The anonymous inner Comparator class will have them stored in compiler-emitted synthetic instance fields, so they'll be accessed using GETFIELD JVM instruction on the comparator object, instead of a GETSTATIC on Undefined and Scriptable classes - not much if any performance boost. They certainly won't be accessed as local variables with ALOAD, if that's what your intent was...",
+            "date": "20090409T12:54:23",
+            "id": 1
+        },
+        {
+            "author": "mguillemot@yahoo.fr",
+            "body": "2. You're right.\n\n3- It just a rest of the old code that I haven't completely clean up. I'm quite sure as well that it has no impact on the performance: the JVM is surely able to make the best decision here.\n\nI'll make the tow changes and upload a new version of the patch.",
+            "date": "20090409T13:08:10",
+            "id": 2
+        },
+        {
+            "author": "mguillemot@yahoo.fr",
+            "body": "Created attachment 371852\nthe same with the minor improvements suggested by Attila",
+            "date": "20090409T13:13:42",
+            "id": 3
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "You shouldn't have to copy into a working array if \"denseOnly\" is true.\n\nIt would be nice to have the code work for sparse arrays. That appears to be the intent of the heapsort code (I didn't write it), but it doesn't appear to work from my brief testing, so I'm fine with removing it.\n\nThanks for the contribution.",
+            "date": "20090410T12:18:33",
+            "id": 4
+        },
+        {
+            "author": "szegedia@freemail.hu",
+            "body": "(In reply to comment #5)\n> \n> It would be nice to have the code work for sparse arrays.\n\nThe existing heapsort code was also first copying a sparse array to a temporary array, didn't it? In this regard at least, the new code is not any worse :-)\n\nIt would be nice though if java.util.Collections.sort(List) weren't implemented in terms of Arrays.sort() (it too copies the list to an array first), so we could then delegate sorting of sparse arrays to java.util.Collections.sort(List) with a List adapter... \n\nBTW, did you hear that Josh Bloch checked in an implementation of timsort as a replacement for mergesort for Arrays.sort() in Java 7? See <http://bugs.sun.com/bugdatabase/view_bug.do?bug_id=6804124>",
+            "date": "20090410T12:39:43",
+            "id": 5
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "Having the code work efficiently with very sparse arrays would be nice but shouldn't hold up this change. I hadn't heard of timsort, sounds promising.",
+            "date": "20090410T13:12:02",
+            "id": 6
+        },
+        {
+            "author": "mguillemot@yahoo.fr",
+            "body": "Ping!\n\nWhat about applying this patch as you seem to agree on it.",
+            "date": "20090630T10:37:59",
+            "id": 7
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "Committed, thanks.\n\nChecking in src/org/mozilla/javascript/NativeArray.java;\n/cvsroot/mozilla/js/rhino/src/org/mozilla/javascript/NativeArray.java,v  <--  NativeArray.java\nnew revision: 1.101; previous revision: 1.100\ndone",
+            "date": "20090703T02:11:00",
+            "id": 8
+        }
+    ],
+    "component": "Core",
+    "description": "User-Agent:       Mozilla/5.0 (X11; U; Linux i686; en-US; rv:1.9.0.8) Gecko/2009032711 Ubuntu/8.04 (hardy) Firefox/3.0.8\nBuild Identifier: \n\nNativeArray currently implement sort by itself whereas it could make usage of java.util.Arras#sort as done is provided patch.\n\nWith following code:\n\nvar t = [1, 5, 2, 1, 9];\nvar nbComp = 0;\nvar compare = function(x, y) { print((nbComp++) + \": \" + x + \"<>\" + y); return x - y; };\nt.sort(compare);\n\ncurrent implementation needs to call the compare function 11 times:\n--- output with current implementation ---\n0: 9<>1\n1: 9<>5\n2: 2<>9\n3: 9<>1\n4: 5<>1\n5: 5<>1\n6: 2<>5\n7: 5<>1\n8: 1<>1\n9: 2<>1\n10: 2<>1\n11: 1<>1\n\nwith provided patch, the compare function is called only 6 times!\n--- output with patched implementation using java's Array.sort ---\n0: 1<>5\n1: 5<>2\n2: 1<>2\n3: 5<>1\n4: 2<>1\n5: 1<>1\n6: 5<>9\n\nOk, this example is not necessary representative but my guess is that a JDK method like Arras.sort contains when not all necessary optimizations, surely more than Rhino's implementation.\n\n\nReproducible: Always",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "487599",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "BUG",
+    "priority": "-- normal",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "NativeArray: improve performance of sort([fn]) using java's Arrays.sort(..)",
+    "systemSpecification": true,
+    "version": "other"
+}

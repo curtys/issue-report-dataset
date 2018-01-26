@@ -1,0 +1,35 @@
+{
+    "comments": [
+        {
+            "author": "Gustavo Orair",
+            "body": "Patch creating finalize() method that should certify the stream is being closed.",
+            "date": "2011-05-05T15:26:34.348+0000",
+            "id": 0
+        },
+        {
+            "author": "Stefan Guggisberg",
+            "body": "fixed in svn r1100242\n\nthanks for reporting this issue and providing a patch\n\n(i am trying to avoid finalize methods that's why\ni've just moved the scope of the try/finally block).",
+            "date": "2011-05-06T14:57:48.814+0000",
+            "id": 1
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Merged to the 2.2 branch in revision 1174778, to 2.1 in 1174780, and to 2.0 in 1174788.",
+            "date": "2011-09-23T14:08:47.057+0000",
+            "id": 2
+        }
+    ],
+    "component": "jackrabbit-core",
+    "description": "After deploying a j2ee artifact that uses jackrabbit and org.apache.jackrabbit.core.persistence.pool.MySqlPersistenceManager, Glassfish starts complaining there are input streams without being explicitly closed.\nThe specific inputStream mey be found at org.apache.jackrabbit.core.persistence.pool.BundleDbPersistenceManager.createCheckSchemaOperation(BundleDbPersistenceManager.java:584).\n\nI've checked the code and in BundleDbPersistenceManager:530 the run method is invoked to the object CheckSchemaOperation.\nIn run method CheckSchemaOperation:78, the finally block that calls IOUtils.closeQuietly(ddl); to close the stream is inside the condition if (!conHelper.tableExists(table)) (CheckSchemaOperation:79).\nSo, if this condition is false, the inputStream will not be explicitly closed.\n\nIn my opinion, there are two fix alternatives:\nThe most robust should be:\n1 - insert a finalize() method:\n    @Override\n    protected void finalize() throws Throwable {\n\t    if (ddl!=null){\n            IOUtils.closeQuietly(ddl);\n\t    }\n\t\tsuper.finalize();\n\t}\n\nAnother alternative:\n2 - Put the condition if (!conHelper.tableExists(table)) inside try-finally block.\n\n\nStackTrace:\n[#|2011-05-05T11:43:28.087-0300|WARNING|glassfish3.1|javax.enterprise.system.core.classloading.com.sun.enterprise.loader|_ThreadID=1233;_ThreadName=Thread-1;|Input stream has been finalized or forced closed without being explicitly closed; stream instantiation reported in following stack trace\njava.lang.Throwable\n        at com.sun.enterprise.loader.ASURLClassLoader$SentinelInputStream.<init>(ASURLClassLoader.java:1230)\n        at com.sun.enterprise.loader.ASURLClassLoader$InternalJarURLConnection.getInputStream(ASURLClassLoader.java:1338)\n        at java.net.URL.openStream(URL.java:1010)\n        at java.lang.ClassLoader.getResourceAsStream(ClassLoader.java:1195)\n        at com.sun.enterprise.loader.ASURLClassLoader.getResourceAsStream(ASURLClassLoader.java:872)\n        at java.lang.Class.getResourceAsStream(Class.java:2030)\n        at org.apache.jackrabbit.core.persistence.pool.BundleDbPersistenceManager.createCheckSchemaOperation(BundleDbPersistenceManager.java:584)\n        at org.apache.jackrabbit.core.persistence.pool.BundleDbPersistenceManager.init(BundleDbPersistenceManager.java:530)\n        at org.apache.jackrabbit.core.persistence.pool.MySqlPersistenceManager.init(MySqlPersistenceManager.java:51)\n        at org.apache.jackrabbit.core.RepositoryImpl.createPersistenceManager(RepositoryImpl.java:1353)",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "JCR-2962",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Trivial",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "InputStream not being explicitly closed",
+    "systemSpecification": true,
+    "version": "2.2.5"
+}

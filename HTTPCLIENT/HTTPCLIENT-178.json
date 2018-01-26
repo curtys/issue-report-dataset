@@ -1,0 +1,95 @@
+{
+    "comments": [
+        {
+            "author": "Michael Becke",
+            "body": "Created an attachment (id=5595)\nFix take 1\n",
+            "date": "2003-04-02T12:31:23.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Attached is another take on adding support for a maximum number of connections\nto the MultiThreadedHttpConnectionManager.  This code is based upon the patch\nsubmitted by Carl Dunham.  Here are some key points:\n\n- the connection timeout is no longer implemented using a separate thread. \ninstead, threads use Object.wait() and keep track of the amount of wait time.\n- unused connections are reclaimed in a LRU-like manner\n- an attempt is made to give connections to threads that can reuse them\ndirectly.  for example, if two threads are waiting for a connection, the\nconnection will be given first to the thread using the same host as the connection.\n- all connection access is still locked by a single monitor.  I had hoped to\nmake things a little more modular but after quite a bit of experimenting I\ndiscovered this was much harder that I had anticipated.\n\nTo anyone who is interested in this functionality, please take a good look at\nthis patch.  I suspect there are a few things that I am missing.  Any real-world\ntesting would be great.\n\nThanks,\n\nMike",
+            "date": "2003-04-02T12:47:22.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Carl A. Dunham",
+            "body": "Created an attachment (id=5710)\nSample program and data\n",
+            "date": "2003-04-09T00:46:00.000+0000",
+            "id": 2
+        },
+        {
+            "author": "Carl A. Dunham",
+            "body": "This definitely works much better, however now it seems that treads go off to nana land and \nstop taking work. The connections that they were working eventually go away, so the system \ndoes not get overwhelmed like it use to, but it doesn't do the work it is supposed to either. \n \nI am still trying to track down exactly what is going on here, as it is inconsistent. Sometimes \none or two threads will keep trucking along, sometimes they will all freeze up fairly soon. \n \nI have attached a test program that I posted to the list awhile ago, but should probably be \nhere. It may be that there is just some sloppy coding on my part, or I'm missing some \nimportant point about detecting server-dropped connections or something.... ",
+            "date": "2003-04-09T00:46:33.000+0000",
+            "id": 3
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Created an attachment (id=5718)\nModified SimpleDownloader\n",
+            "date": "2003-04-09T10:01:09.000+0000",
+            "id": 4
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Hi Carl,\n\nI have attached a modified version of SimpleDownloader.  In this version I have\nchanged the following:\n\n- GetMethod creation has been changed so that it is not immediately recycled\nafter creation\n- all of the hosts are now just accessed once\n- the threads now each print to their own log file\n- the HttpClient read timeout is now being set to 5000ms using\nHttpClient.setTimeout()\n\nThese changes seem to have fixed quite a few problems.  I was able to run\nthrough all of the \"non_working_urls\" successfully.  The \"nana threads\" were\nbeing caused by some servers that never respond to requests and also do not\nclose connections.  This was \"fixed\" by setting the read timeout.  \n\nThere are still a few things to look at.  First, there are a number of \"host\nconnection pool not found for: ... \" errors.  Also the hosts that cause the read\ntimeouts are valid hosts but for some reason they do not respond to HttpClient.\n\nThoughts?\n\nMike ",
+            "date": "2003-04-09T10:21:00.000+0000",
+            "id": 5
+        },
+        {
+            "author": "Carl A. Dunham",
+            "body": "Hi, Mike. \n \nWell, the problem is that deleteLeastUsedConnection() is closing the connection and \ndecrementing the counters, doing what it should be doing, except now this connection is \nunreferenced, and subject to garbage collection. When the GC kicks in, the referenceQueue is \nrun, and the counters decremented again. Somehow we have to make sure it that it only \nhappens once. It pretty much has to happen in deleteLeastUsedConnection() so that \ncreateConnection call can proceed, so that means clearing the reference. Unfortunately, we \ncan only get the reference from the queue, and trying to save it somewhere else could get \npainful. Perhaps you have an idea of how to untie this little knot... \n \nAlso, I think this *might* explain why I still see hundreds of connection in netstat, if for some \nreason the real socket isn't going away until the Java socket is GCd. Dunno. Brain hurts right \nnow.... \n \nCarl ",
+            "date": "2003-04-09T13:16:23.000+0000",
+            "id": 6
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Carl,\n\nGood catch.  You are quite right.  I remember thinking about that when working\non this originally, but I completely forgot about it.  I will try to fix this\ntonight.  Since WeakReference does not override hashCode() and equals() the only\nway to fix this is to iterate over the reference Map.\n\nI'm not sure if there are actually as many connections open as suggested by\nnetstat.  With the current setup only 20 connections are ever open at once.  I\nthink what may be happening is that SimpleDownloader opens so many connections\nso quickly that it opens(closes) connection faster than netstat can report them.\n So netstat is showing all of the connections that are opened, but it doesn't\nnecessarily mean that they are still open.\n\nMike",
+            "date": "2003-04-09T19:54:58.000+0000",
+            "id": 7
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Created an attachment (id=5757)\nfix take 2\n",
+            "date": "2003-04-10T09:44:27.000+0000",
+            "id": 8
+        },
+        {
+            "author": "Michael Becke",
+            "body": "This patch should take care of the GC problem.  Please give it a try when you\nhave a chance.\n\nThanks,\n\nMike",
+            "date": "2003-04-10T09:45:41.000+0000",
+            "id": 9
+        },
+        {
+            "author": "Carl A. Dunham",
+            "body": "Mike, \n \nIt's working like a champ now. Thanks! \n ",
+            "date": "2003-04-11T00:29:35.000+0000",
+            "id": 10
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Are there any more comments from others?  Oleg, Jeff?  I will commit this one\ntonight if I do not hear any complaints.\n\nMike",
+            "date": "2003-04-13T00:59:21.000+0000",
+            "id": 11
+        },
+        {
+            "author": "Michael Becke",
+            "body": "The patch has been applied.  Many thanks to Carl for submitting the original\npatch and for the thorough testing.\n\nMike",
+            "date": "2003-04-13T10:55:52.000+0000",
+            "id": 12
+        }
+    ],
+    "component": "HttpClient (classic)",
+    "description": "There is no limit on the number of connections that will get created by the\nMultiThreadedHttpConnectionManager.  Unused connections are never destroyed.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "HTTPCLIENT-178",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Minor",
+    "product": "HTTPCLIENT",
+    "project": "HTTPCLIENT",
+    "summary": "MultiThreadedHttpConnectionManager never reclaims unused connectons",
+    "systemSpecification": true,
+    "version": "2.0 Alpha 3"
+}

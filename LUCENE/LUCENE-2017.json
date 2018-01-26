@@ -1,0 +1,65 @@
+{
+    "comments": [
+        {
+            "author": "Michael McCandless",
+            "body": "I don't think using remove() is sufficient -- it only removes the\ncalling thread's entry, whereas we want all entries for any thread\nthat stored something into the ThreadLocal, to be eligible for GC when\nclose is called.\n\nThe problem is a live thread is slow(ish) to free its objects in a\nThreadLocal instance even when the ThreadLocal instance is GC'd.  The\nclose method works around this.\n",
+            "date": "2009-10-29T17:57:28.366+0000",
+            "id": 0
+        },
+        {
+            "author": "C\u00e9drik LIME",
+            "body": "Oh, I see! The lifecyle is different, as close()'ing 1 instance of ClosableThreadLocal will take care of all threads that have accessed it (vs only the caller thread for ThreadLocal).\nThis is a very subtle difference, and should be documented as such in ClosableThreadLocal IMHO:\n\nYou only need to close() a ClosableThreadLocal instance once, whereas you need to remove() a ThreadLocal instance from every thread that accessed that ThreadLocal instance.\n\nThat said, wouldn't we risk that one thread close() the ClosableThreadLocal when other threads are still using it? That would invalidate currently used values!\n\nGiven that all threads supposedly follow the same code path, wouldn't a remove() be called by each thread?",
+            "date": "2009-10-29T19:01:16.095+0000",
+            "id": 1
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "If we would do it that way, we wouldn't need the CloseableThreadLocal at all. Because even with 1.4 you can do a remove() by simply setting the value to null (internally remove() does exactly that, see src.java in yor jdk). So CloseableThreadLocal is needed.\n\nAbout the multiple-Threads closing problem: This does not affect Lucene, as it keeps track, when it can be closed. If you close it to early it is the same as closing an IndexInput at the wrong time. So do not worry!",
+            "date": "2009-10-29T19:10:16.469+0000",
+            "id": 2
+        },
+        {
+            "author": "C\u00e9drik LIME",
+            "body": "Right. May I suggest we amend CloseableThreadLocal with some additional documentation?\nHere is a proposal. I have also \"optimised\" the removal for the current thread. O:-)\n\nIn any case, this issue can be now be closed as invalid. Thanks for the explanation Michael!",
+            "date": "2009-10-29T19:32:32.297+0000",
+            "id": 3
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Why did you add that the class should not be used outside of Lucene?  Also, I don't think we need to reference this issue in the javadocs?",
+            "date": "2009-10-29T20:37:59.443+0000",
+            "id": 4
+        },
+        {
+            "author": "C\u00e9drik LIME",
+            "body": "Michael,\n\nI wrote the class should not be closed outside Lucene because of the potential multiple-Threads closing problem mentioned earlier.\nFeel free to change the comments (including removing the reference to this issue); my JavaDoc patch was a proposal, not the absolute truth! :-)",
+            "date": "2009-10-30T09:24:06.410+0000",
+            "id": 5
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "OK, no problem... I'll sharpen the javadoc to state \"don't close this when other threads are still using it\", and remove reference to this issue.",
+            "date": "2009-10-30T09:53:06.979+0000",
+            "id": 6
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Thanks C\u00e9drik!",
+            "date": "2009-10-30T10:07:27.499+0000",
+            "id": 7
+        }
+    ],
+    "component": "",
+    "description": "Since Lucene 3 depends on Java 5, we can use ThreadLocal#remove() to take care or resource management.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-2017",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Major",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "CloseableThreadLocal is now obsolete",
+    "systemSpecification": true,
+    "version": "3.0"
+}

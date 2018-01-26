@@ -1,0 +1,71 @@
+{
+    "comments": [
+        {
+            "author": "Tobias Bocanegra",
+            "body": "suggest to extends the NamespaceResolver interface by the respective QName translation methods. This would enable a broader usage of an eventual cache. fruthermore could the session local namespace/qname resolvers be sensitive to local namespace mappings.",
+            "date": "2005-10-03T19:27:59.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Felix Meschberger",
+            "body": "Shouldn't the QNameResolver interface be placed in the name package just like the QName class itself ?",
+            "date": "2005-10-03T19:31:51.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Sounds great! +1 from me, especially the LRUMap is a nice touch, no need to worry about DoS threats due to this.\n\nDesign comment: The NamespaceRegistryImpl dependency seems out of place. How about the following structure?\n\norg.apache.jackrabbit.name:\n    public interface NamespaceListener\n    public interface QNameResolver\n    public class StandardQNameResolver implements QNameResolver\n    public class CachingQNameResolver implements QNameResolver, NamespaceListener\n\nThe static QName.toJCRName and QName.fromJCRName methods could be moved to StandardQNameResolver to simplify the QName class.\nThe CachingQNameResolver could  be implemented as a decorator on top of another QNameResolver implementation (StandardQNameResolver by default).\nClient code should register and deregister the CachingQNameResolver as a namespace change listener.\n\nThis structure would add a tiny amount of overhead (a virtual vs. a static method call + some extra object instances), but would IMHO add much flexibility to the resolution process while keeping the package boundaries nice and solid.",
+            "date": "2005-10-03T23:49:17.000+0000",
+            "id": 2
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "Thank you all for your suggestions I'll post a new patch soon that incorporates your thoughts.",
+            "date": "2005-10-06T19:22:39.000+0000",
+            "id": 3
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "Ok, here is a second version of the QName caching patch.\n\n- moved name related classes and interface into package o.a.j.name\n- getQName() and getJCRName() added to NamespaceResolver interface\n- AbstractNamespaceResolver provides optional support for NamespaceListener\n- CachingNamespaceResolver implemented as decoration on AbstractNamespaceResolver\n- NamespaceRegistryImpl used caching per aggregation (not inheritance)\n\nCurrently also LocalNamespaceMappings caches QName resolution, but I think we should only cache mappings on the global NamespaceRegistryImpl. So I'm tempted to remove the caching again from LocalNamespaceMappings. Thoughts on that?\n\nI kept the static methods in QName because I think that's the place they belong to. The class implements the JCR specification of a QName and should therefore also provide a parse facility that is according to the spec.\n\nThe patch only include changes on NodeImpl and PropertyImpl to use the new methods in NamespaceResolver, even though there are now many more places in the code that can benefit from the added getQName() and getJCRName() methods in NamespaceResolver. I suggest to change the rest of the code later, after this patch is accepted and committed.",
+            "date": "2005-10-10T18:11:15.000+0000",
+            "id": 4
+        },
+        {
+            "author": "Tobias Bocanegra",
+            "body": "+1 looks good",
+            "date": "2005-10-10T21:53:16.000+0000",
+            "id": 5
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "+1",
+            "date": "2005-10-11T15:35:43.000+0000",
+            "id": 6
+        },
+        {
+            "author": "Stefan Guggisberg",
+            "body": "+1 \n\ni am gonna commit the patch, thanks!",
+            "date": "2005-10-12T18:04:19.000+0000",
+            "id": 7
+        },
+        {
+            "author": "Stefan Guggisberg",
+            "body": "applied the patch (r314827)",
+            "date": "2005-10-12T18:06:15.000+0000",
+            "id": 8
+        }
+    ],
+    "component": "jackrabbit-core",
+    "description": "Currently jcr names are always parsed and resolved into QName instances. Introducing a cache would increase performance and also save memory because well known and often used jcr names would always return the same QName instance from cache.\n\nTesting with common read operations shows a performance improvement of about 25%.\nThe test involved the following methods on Node interface:\n\n- getProperty()\n- getProperties()\n- getName()\n- getPath()\n- isLocked()\n- isNodeType()\n- getPrimaryNodeType()\n- hasNodes()\n- getNodes()\n\nAttached proposed implementation of a QNameResolver.\n\nPlease comment.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "JCR-235",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Minor",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "Cache jcr name to QName mappings",
+    "systemSpecification": false,
+    "version": ""
+}

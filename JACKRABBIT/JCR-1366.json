@@ -1,0 +1,83 @@
+{
+    "comments": [
+        {
+            "author": "Thomas Mueller",
+            "body": "Hi,\n\nI see this feature is undocumented. I will document it. Currently the tablePrefix can only be used to set the catalog and schema name as in:\n\n<param name=\"tablePrefix\" value=\"ds.\"> \nor (Microsoft SQL Server):\n<param name=\"tablePrefix\" value=\"ds.dbo.\"> \n\nCould you explain why you like to change the table name (what is the use case)?\n\n> DatabaseMetaData is API is unclear on the parameter to getTables being a \"tableNamePattern\" - should wildcards work?\n\nIt used to be unclear, but in recent JDKs this is better documented. It is in the class level Javadoc:\n\"Some DatabaseMetaData methods take arguments that are String patterns. These arguments all have names such as fooPattern. Within a pattern String, \"%\" means match any substring of 0 or more characters, and \"_\" means match any one character. Only metadata entries matching the search pattern are returned. If a search pattern argument is set to null, that argument's criterion will be dropped from the search.\"\n\nThere are still some problems, for example the table name is not always stored uppercase (MySQL, PostgreSQL). Also, the wildcard escape character (default should be \\) doesn't work with all databases.\n\nRegards,\nThomas",
+            "date": "2008-02-11T15:42:09.070+0000",
+            "id": 0
+        },
+        {
+            "author": "Tyson Norris",
+            "body": "We would like to be able to change the table name so that its use is obvious - i.e. change \"DATASTORE\" to \"JACKRABBIT_DATASTORE\". It is unlikely that we would have a collision with the name DATASTORE, but nevertheless, it is possible. All other config options have proper working prefix options so that all of our JACKRABBIT tables are effectively named with the prefix \"JACKRABBIT_\".\n\nThanks!\nTyson",
+            "date": "2008-02-11T19:11:37.091+0000",
+            "id": 1
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "Hi,\n\nSome databases don't support long table names. To avoid collisions, I suggest to use a different (database-) schema.\n\nRegards,\nThomas",
+            "date": "2008-02-29T14:06:33.291+0000",
+            "id": 2
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "It seems this problem should be fixed (see also https://issues.apache.org/jira/browse/JCR-1542).\nThere are two options:\n\nA) A prefix of \"JACKRABBIT_\" will result in a table called \"JACKRABBIT_DATASTORE\"\n  this is in line with schemaObjectPrefix of the bundle db persistence manager\n  and database journal. The disadvantage is that \"ds.\" and \"ds.dbo.\" wouldn't work\n  any more, but maybe that's not a problem.\n\nB) Deprecate this setting, and introduce a new setting schemaObjectPrefix\n  that works exactly like in bundle db persistence manager and database journal (as in A).\n\nWhat do you think? My vote is B) because of compatibility. ",
+            "date": "2008-04-17T12:14:07.846+0000",
+            "id": 3
+        },
+        {
+            "author": "Bart van der Schans",
+            "body": "The patch is quite trivial. It seems that the table query is mixed up with the table name. \n\nI don't think the parameter name has to change. If a prefix is configured in the repository.xml the repository will fail to start with the first restart. \n",
+            "date": "2008-10-13T13:40:05.759+0000",
+            "id": 4
+        },
+        {
+            "author": "Bart van der Schans",
+            "body": "I haven't confirmed this myself, but looking at the code the same bug exists in 1.5 and trunk.",
+            "date": "2008-10-13T13:44:11.207+0000",
+            "id": 5
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "Committed in revision 727376",
+            "date": "2008-12-17T13:33:28.658+0000",
+            "id": 6
+        },
+        {
+            "author": "Eric Wout van der Steen",
+            "body": "As a minor suggestion, I do think the tablePrefix parameter should be deprecated and replaced with a tableSpace parameter so that the different database configuration options for all the database-driven components (PersistenceManager, DataStore, Versioning, etc.) are the same (or at least comparable).\n\nAs it is now, it could be confusing, since each element has different parameters to configure the connection with the database, while they more or less same.\n\nBut this should probably be a new issue if accepted? ;)",
+            "date": "2009-02-26T12:25:32.103+0000",
+            "id": 7
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "Hi,\n\nCurrently the DbDataStore doesn't support tableSpace. If you need this feature, could you create a new issue?\nI don't know if tablePrefix is still required or not. \n\nRegards,\nThomas",
+            "date": "2009-03-04T14:09:32.320+0000",
+            "id": 8
+        },
+        {
+            "author": "Eric Wout van der Steen",
+            "body": "Hi, no, I don't actually need it. We're helped by the schemaObjectPrefix (which is in line rest of the configurations already :) ).\n\nSo if I understand it correctly by your comment, you implemented option B? I didn't fully get that. If so, you can disregard my comment, since I thought there would still be two parameters.\n\nOn the Wiki I already changed the documentation slightly based on comments from the user group, see http://wiki.apache.org/jackrabbit/DataStore?action=diff\n\nIs that still correct?",
+            "date": "2009-03-04T16:24:24.555+0000",
+            "id": 9
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "> no, I don't actually need it\n\nThat means it's not urgent. However it would still be nice if all components had the same configuration parameters (as you wrote).\n\n> On the Wiki I already changed the documentation slightly\n\nAs far as I see it's correct. Thanks! \n",
+            "date": "2009-03-04T18:13:28.804+0000",
+            "id": 10
+        }
+    ],
+    "component": "jackrabbit-core",
+    "description": "we are providing a test db deployment with prepopulated data, including jackrabbit DataStore. I tried specifying the tablePrefix when creating the initial repository, and tables are created properly.\n\nHowever, when a clean installation is run with a fresh database that has an existing DataStore (stored at JACKRABBIT_DS_DATASTORE table), the startup fails, because during init, the meta data only checks for tables name matching the tableSQL property:\nResultSet rs = meta.getTables(null, null, tableSQL, null);\n\nbut the tableSQL property is never modified based on the tablePrefix property (other uses of tableSQL modify queries based on the prefix).\n\nI think the init method should modify the tested table name based on the tablePrefix.\n\nNote: I assume different JDBC drivers may handle this differently (we are using SQL Server 2007 and jTDS driver), since the DatabaseMetaData is API is unclear on the parameter to getTables being a \"tableNamePattern\" - should wildcards work? Or should a specific table be specified? \n\nMy DataStore config is below:\n\n    <DataStore class=\"org.apache.jackrabbit.core.data.db.DbDataStore\">\n      <param name=\"className\" value=\"org.apache.jackrabbit.core.data.db.DbDataStore\"/>\n      <param name=\"url\" value=\"jdbc:jtds:SQLServer://localhost:1433/nga_admin;prepareSQL=2;responseBuffering=adaptive\"/>\n      <param name=\"user\" value=\"sa\"/>\n      <param name=\"password\" value=\"\"/>\n      <param name=\"databaseType\" value=\"sqlserver\"/>\n      <param name=\"driver\" value=\"net.sourceforge.jtds.jdbc.Driver\"/>\n      <!-- a bug in jackrabbit makes tablePrefix not work -->\n      <param name=\"tablePrefix\" value=\"JACKRABBIT_DS_\">\n      <param name=\"minRecordLength\" value=\"1\"/>\n      <param name=\"maxConnections\" value=\"2\"/>\n      <param name=\"copyWhenReading\" value=\"true\"/>         \n    </DataStore>\n",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "JCR-1366",
+    "issuetypeClassified": "OTHER",
+    "issuetypeTracker": "RFE",
+    "priority": "Minor",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "DbDataStore: tablePrefix not accomodated during init test for existing DATASTORE table",
+    "systemSpecification": true,
+    "version": "1.4"
+}

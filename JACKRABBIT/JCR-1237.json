@@ -1,0 +1,83 @@
+{
+    "comments": [
+        {
+            "author": "Ard Schrijvers",
+            "body": "I agree. Defaults obviously can better have not a large performance hit, certainly not when most apps don't use it but people are not aware of its impact.\n\n+1",
+            "date": "2007-11-27T12:59:05.685+0000",
+            "id": 0
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "I was about to vote -1 on this, but then I realized that the JCR spec doesn't actually require document order as the default ordering, it's just an optional default.\n\nSo +0, as this seems useful even though it does mean that a client would need to use some yet to be implemented custom extension to request document ordering on a workspace with this default configuration.\n\nAlso, we would need to change the QUERY_XPATH_DOC_ORDER repository descriptor to false. As a somewhat questionable side effect, this change would allow us to resolve JCR-591 and perhaps even JCR-392 as Won't Fix.",
+            "date": "2007-11-27T13:20:06.399+0000",
+            "id": 1
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "Hmm, I completely forgot about the repository descriptor. This is currently hard coded in a properties file. With Jackrabbit it is actually possible to have document order on results in one workspace but not in another one. Which raises an interesting question. What does QUERY_XPATH_DOC_ORDER return in that case?\n\nJackrabbit should probably enable or disable document order on all workspaces and not selectively.\n\nJukka wrote:\n> it does mean that a client would need to use some yet to be implemented custom extension\n\nmy intention was to provide a default configuration where you won't have document order, but if you wish the repository to do so you could enable it in the configuration.",
+            "date": "2007-11-27T13:49:14.091+0000",
+            "id": 2
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Marcel:\n> What does QUERY_XPATH_DOC_ORDER return in that case?\n\nI think the only really correct result would be for the descriptor to be false (or actually not to exist in the first place). But given that few (if any) clients actually use that descriptor for in any real functional sense, one could argue that the descriptor is more useful as an informational tool to human operators, in which case making the descriptor reflect the default setting would also make sense.\n\nWe could use the default setting from the Workspace template in repository.xml to decide the state of the QUERY_XPATH_DOC_ORDER descriptor.\n\n> my intention was to provide a default configuration where you won't have document order,\n> but if you wish the repository to do so you could enable it in the configuration.\n\nThe information is still in the query index, isn't it? What should I do if I have a client that mostly doesn't about document order for most queries, but occasionally would like to use the ordering within the same workspace?",
+            "date": "2007-11-27T14:40:16.704+0000",
+            "id": 3
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "> The information is still in the query index, isn't it?\n\nI'm not sure I understand your question. But the document order is never available in the index. It is always calculated.\n\n> What should I do if I have a client that mostly doesn't about document order for most queries, but occasionally would like\n> to use the ordering within the same workspace?\n\nYou would set respectDocumentOrder to true and omit an order by in your query to get document order, otherwise you should add an order by @jcr:score. This effectively disables document order.",
+            "date": "2007-11-27T15:14:59.509+0000",
+            "id": 4
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Marcel:\n> I'm not sure I understand your question. But the document order is never available in the index.\n> It is always calculated. \n\nSorry, my (obscured) point was that the query engine is still able to return results in document order even if the default would be to not do that. Unfortunately there is no way for a client to explicitly request that the results should be document-ordered if that's not the default.\n\nBut I guess that's a secondary concern and probably should be addressed with a separate feature request.",
+            "date": "2007-11-27T16:30:06.977+0000",
+            "id": 5
+        },
+        {
+            "author": "Christoph Kiehl",
+            "body": "+1 to change the default for \"respectDocumentOrder\" to \"false\". Most people don't care about document order but about performance and they should get the best performance as possible by default. It's better to let the minority find out how to enable document order than to let the majority find out how to make jackrabbit perform better.\nI think the descriptor should just tell that document order is not supported. Anyone can still enable it for whichever workspaces they like.",
+            "date": "2007-11-27T19:14:11.750+0000",
+            "id": 6
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "I've changed the default for respectDocumentOrder to false. The repository descriptor QUERY_XPATH_DOC_ORDER still returns true. If code relies on results in document order the workspace.xml needs to be adapted when upgrading to 1.5.\n\nCommitted in revision: 612420",
+            "date": "2008-01-16T11:12:06.898+0000",
+            "id": 7
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "I think we should drop the QUERY_XPATH_DOC_ORDER descriptor. It's absence doesn't mean that the repository couldn't return query results in document order if so configured.",
+            "date": "2008-01-18T13:51:09.207+0000",
+            "id": 8
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "I disabled the QUERY_XPATH_DOC_ORDER descriptor in revision 613226.",
+            "date": "2008-01-18T19:01:56.734+0000",
+            "id": 9
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "This also mean that the four test cases in XPathDocOrderTest are now not executable anymore.",
+            "date": "2008-01-21T08:27:51.187+0000",
+            "id": 10
+        }
+    ],
+    "component": "jackrabbit-core",
+    "description": "The current default value for the search index configuration parameter respectDocumentOrder is true. Almost all applications are not interested in document order, while this default adds significant overhead to query execution because document order information is present in the index but has to be calculated over the complete result set.\n\nI propose to change the default value to false and document this change in the 1.4 release notes. If an application relies on document order one can still explicitly set the parameter in the configuration to true.",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "JCR-1237",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Minor",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "Change default value for respectDocumentOrder",
+    "systemSpecification": true,
+    "version": ""
+}

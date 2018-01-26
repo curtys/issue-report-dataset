@@ -1,0 +1,89 @@
+{
+    "comments": [
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "We'll happily accept a patch.\n\nOleg",
+            "date": "2006-08-02T16:24:13.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Roland Weber",
+            "body": "This will change the behavior for existing subclasses that do NOT override hashCode and equals and for which NOT all instances are supposed to be equal. Overriding those methods is not a big deal. I am -0 on this change for a minor version upgrade. Different story for 4.0.\n\ncheers,\n   Roland\n",
+            "date": "2006-08-02T16:33:02.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Good point, actually\n\nOleg",
+            "date": "2006-08-02T17:07:52.000+0000",
+            "id": 2
+        },
+        {
+            "author": "Chris Audley",
+            "body": "Roland, there is no working subclass of either of these classes that would be effected by my proposed changes.  If a subclass does not explicitly override equals, it will be broken.  For instance, a subclass not overriding equals will not be equal to itself.\n\nTechnically, such a class should not work in a HashMap or HashSet.  Fortunately, the Hash implementations look for object identity before testing equality, so they may work but only because the equals method will not be used.  However, if a program creates separate instances of the ProtocolSocketFactory, things will break.\n\nSince the current equals can not work for a subclass, any working subclass must have overridden it.  Especially if those subclasses don't intend for all instances to be equal.  Applying this fix can not affect those subclasses and only allows for new subclasses to be implemented in a correct manner without having to re-implement equals and hashCode.\n\nIt may not be a big deal to have to override those methods, but it is annoying, error prone and unnecessary.",
+            "date": "2006-08-02T17:17:05.000+0000",
+            "id": 3
+        },
+        {
+            "author": "Ortwin Gl\u00fcck",
+            "body": "+1 for the change",
+            "date": "2006-08-02T17:40:25.000+0000",
+            "id": 4
+        },
+        {
+            "author": "Chris Audley",
+            "body": "No Oleg, not a good point!  This should be fixed in the Beta1.\n\nTo help illustrate some of the problems with the equals method, play around with this little test program.\n\n    public static void main(String[] args) {\n        ProtocolSocketFactory factory1 = new DefaultProtocolSocketFactory();\n        ProtocolSocketFactory factory2 = new DefaultProtocolSocketFactory() {};\n\n        Protocol protocolA = new Protocol(\"http\", factory1, 80);\n        Protocol protocolB = new Protocol(\"http\", factory2, 80);\n        Protocol protocolC = new Protocol(\"http\", factory2, 80);\n\n        if (!protocolB.equals(protocolC))\n            System.out.println(\"Hey! protocolB doesn't equal protocolC\");\n        if (!protocolA.equals(protocolB))\n            System.out.println(\"Whew, protocolA != protocolB!!!\");\n        if (protocolB.equals(protocolA))\n            System.out.println(\"What! protocolB == protocolA!!!\");\n        if (protocolA.equals(protocolB) != protocolB.equals(protocolA))\n            System.out.println(\"Oh no! equals isn't reflexive\");\n        if (!protocolB.equals(protocolB))\n            System.out.println(\"Uh, You may want to fix this\");\n    }\n\nNotice that factory2 is a subclass of DefaultProtocolSocketFactory.  The first instance of Protocol (protocolA) should not be equal to protocolB or protocolC, which should be equal to each other.  As you'll see when you run the program, this is not the case.  Every single one of the println methods will be run.\n\nMay favorite error is the last one.",
+            "date": "2006-08-02T18:10:25.000+0000",
+            "id": 5
+        },
+        {
+            "author": "Roland Weber",
+            "body": ">   if (protocolB.equals(protocolA))\n>            System.out.println(\"What! protocolB == protocolA!!!\"); \n>   if (!protocolB.equals(protocolB))\n>            System.out.println(\"Uh, You may want to fix this\");\n\nThese are good enough to convince me. The others were not.\n\nThe contracts for equals and hasCodes were problematic in the very first version of Java, and have even been changed in later versions because of that. You can't expect them to be implemented correctly everywhere. But since protocols have to be compared to eachother, it's better to implement this change.  \n\ncheers and thanks,\n  Roland\n",
+            "date": "2006-08-02T18:34:56.000+0000",
+            "id": 6
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Chris,\n(1) Roland does have a point in pointing out that this change _may_ alter behaviour of existing applications, which is certainly not something to be expected from a minor release\n(2) Subclasses are _always_ expected to correctly implement #hashCode and #equals\n(3) ProtocolSocketFactory javadoc explicitly states #hashCode and #equals methods should be overridden for correct operation of some connection managers.\n\nHaving said all that, I am +1 for the change, but will not insist on including the fix into 3.1 unless Roland retracts his -0\n\nOleg",
+            "date": "2006-08-02T18:35:23.000+0000",
+            "id": 7
+        },
+        {
+            "author": "Roland Weber",
+            "body": "> Having said all that, I am +1 for the change, but will not insist on including the fix into 3.1 unless Roland retracts his -0 \n\nalready done :-) I am +1 now.",
+            "date": "2006-08-02T18:43:19.000+0000",
+            "id": 8
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Oh, and by the way, did I mention we would happily accept a patch? ;-)\n\nOleg",
+            "date": "2006-08-02T18:47:03.000+0000",
+            "id": 9
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "I'll commit this patch in a few days if no one complains loudly\n\nOleg",
+            "date": "2006-08-07T11:08:51.000+0000",
+            "id": 10
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Patch checked in\n\nOleg",
+            "date": "2006-08-08T22:12:36.000+0000",
+            "id": 11
+        }
+    ],
+    "component": "HttpClient (classic)",
+    "description": "In the implemenation of equals and hashCode for the classes\norg.apache.commons.httpclient.protocol.DefaultProtocolSocketFactory\norg.apache.commons.httpclient.protocol.SSLProtocolSocketFactory\n\nThe implementation of equals and hashCode attempts to make all instances of the classes equal.  However, the manner in which the methods are coded makes it necessary for any subclass to implement equals and hashCode themselves.  A minor change to the methods in these classes will make possible to subclass these factories without re-implementing the equals and hashCode.  The method equals should be written as\n\n        return ((obj != null) && obj.getClass().equals(getClass()));\n\nrather than\n\n        return ((obj != null) && obj.getClass().equals(DefaultProtocolSocketFactory.class));\n\nAnd similarly, the hashCode method should be\n\n        return getClass().hashCode();\n\nrather than\n\n        return DefaultProtocolSocketFactory.class.hashCode();",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "HTTPCLIENT-593",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "BUG",
+    "priority": "Minor",
+    "product": "HTTPCLIENT",
+    "project": "HTTPCLIENT",
+    "summary": "ProtocolSocketFactory equals and hashCode don't support subclassing",
+    "systemSpecification": true,
+    "version": "3.1 Alpha 1"
+}

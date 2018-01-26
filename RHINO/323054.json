@@ -1,0 +1,35 @@
+{
+    "comments": [
+        {
+            "author": "ahpublicaddress@yahoo.com.au",
+            "body": "Created attachment 208206\nJava code demonstrating the bug\n\nZip contains src for a class that demonstrates the issue, and a txt file that shows output produced when run against 1.6R2 and 1.6R1",
+            "date": "20060111T18:09:35",
+            "id": 0
+        },
+        {
+            "author": "szegedia@freemail.hu",
+            "body": "This happens when you use rhino without Apache XML Beans library on the classpath. For now, either add it to the classpath, add a fake XML and XMLImpl objects to the scope, create a subclass of ScriptableOutputStream that'll override the relevant method and swallow the exception:\n\n    public void addExcludedName(String name)\n    {\n        // Workaround for mysterious cases when \"XML\" global object is not \n        // found.\n        try\n        {\n            super.addExcludedName(name);\n        }\n        catch(IllegalArgumentException e)\n        {\n            logger.debug(e.getMessage());\n        }\n    }\n\nI was bitten by this myself in my own application that uses Rhino... I have committed a fix for this in the CVS -- next release will no longer suffer from this problem.",
+            "date": "20060203T11:53:25",
+            "id": 1
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Marking as resolved per comment 2.",
+            "date": "20060331T16:26:11",
+            "id": 2
+        }
+    ],
+    "component": "Core",
+    "description": "User-Agent:       Mozilla/5.0 (Windows; U; Windows NT 5.0; en-US; rv:1.7.7) Gecko/20050414 Firefox/1.0.3\nBuild Identifier: Rhino 1.6 release 2 2005 09 19\n\nThe exception is thrown when attempting to create the ScriptableOutputStream:\n\nie:\nScriptableOutputStream scriptableOs = new ScriptableOutputStream(outputStream,scope);\n\njava.lang.IllegalArgumentException: Object for excluded name XML not found.\n\tat org.mozilla.javascript.serialize.ScriptableOutputStream.addExcludedName(ScriptableOutputStream.java:91)\n\tat org.mozilla.javascript.serialize.ScriptableOutputStream.excludeStandardObjectNames(ScriptableOutputStream.java:131)\n\tat org.mozilla.javascript.serialize.ScriptableOutputStream.<init>(ScriptableOutputStream.java:78)\n\tat RhinoSerializationBug.run(RhinoSerializationBug.java:45)\n\nThis error is not present in 1.6R1. A workaround is to create 'dummy' objects and prototypes for XML and XMLList.\n\nReproducible: Always\n\nSteps to Reproduce:\n1. Enter a context, create the standard objects, and then evaluate a script that creates/defines something - a function say (fwiw: I originally noticed this trying to serialize a Continuation).\nie:\nfunction example() { return 42; }\n\n2. Back in java get the Function you created in the javascript from the scope, create a ScriptableOutputStream around a normal FileOutputStream.\n\n3. In 1.6R2 this throws the exception. In 1.6R1 it does not and you can write the Function to the stream.\n\nTo demonstrate the workaround, follow the steps above, but in addition to the function, also create dummy objects for XML, XMLList and their prototypes. ie:\nvar XML = new Object(); XML.prototype=new Object();\nvar XMLList = new Object(); XMLList.prototype=new Object();\nfunction example() { return 42; }\n\n\n\nExpected Results:  \nNot thrown the exception\n\nIll try and attach some code and its output that reproduces the problem.",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "323054",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "-- major",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "Creating a ScriptableOutputStream throws IllegalArgumentException: Object for excluded name XML not found",
+    "systemSpecification": true,
+    "version": "other"
+}

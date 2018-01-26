@@ -1,0 +1,89 @@
+{
+    "comments": [
+        {
+            "author": "Stefan Guggisberg",
+            "body": "fixed in svn r519892.\n\nsince i haven't been able to reproduce the issue i couldn't verify the fix.\nplease reopen this issue if the ConcurrentModificationException still\noccur on session logout.\n\nthanks for reporting this issue,\ncheers\nstefan",
+            "date": "2007-03-19T10:08:13.663+0000",
+            "id": 0
+        },
+        {
+            "author": "Martijn Hendriks",
+            "body": "Unfortunately, the CME still occurs:\n\njava.util.ConcurrentModificationException\n        at org.apache.commons.collections.map.AbstractReferenceMap$ReferenceEntrySetIterator.checkMod(AbstractReferenceM\nap.java:761)\n        at org.apache.commons.collections.map.AbstractReferenceMap$ReferenceEntrySetIterator.nextEntry(AbstractReference\nMap.java:770)\n        at org.apache.commons.collections.map.AbstractReferenceMap$ReferenceValuesIterator.next(AbstractReferenceMap.jav\na:829)\n        at org.apache.commons.collections.map.AbstractReferenceMap$ReferenceValues.toArray(AbstractReferenceMap.java:544)\n        at java.util.Collections$UnmodifiableCollection.toArray(Collections.java:1002)\n        at java.util.Collections$UnmodifiableCollection.toArray(Collections.java:1002)\n        at org.apache.jackrabbit.core.state.LocalItemStateManager.dispose(LocalItemStateManager.java:343)\n        at org.apache.jackrabbit.core.WorkspaceImpl.dispose(WorkspaceImpl.java:170)\n        at org.apache.jackrabbit.core.SessionImpl.logout(SessionImpl.java:1225)\n        at org.apache.jackrabbit.core.XASessionImpl.logout(XASessionImpl.java:379)\n\nRegards,\n\nMartijn",
+            "date": "2007-03-21T09:04:09.297+0000",
+            "id": 1
+        },
+        {
+            "author": "Martijn Hendriks",
+            "body": "It seems to me that the only way of avoiding such concurrent modifications is to have some form of synchronization. For instance, having a read-write lock in the LISM that serializes the calls to dispose and the ItemStateListener methods could prevent the first scenario as sketched above. This, however, does not solve the second scenario. I.e., when an item is to be evicted from a MLRUItemStateCache, it must be certain that nobody iterates over the related ItemStateReferenceMap (via the ItemStateReferenceCache).\n\nMartijn",
+            "date": "2007-03-22T10:27:01.158+0000",
+            "id": 2
+        },
+        {
+            "author": "Stefan Guggisberg",
+            "body": "i don't think that the second scenario (i.e. garbage collector interfering while iterating over ReferenceMap entries) is realistic since this should IMO be taken care of by the commons-collections ReferenceMap class. since ReferenceMap is being heavily used in jackrabbit's core we would see a lot more issues like this if that wouldn't be the case. \n\ni think that marcel's scenario and/or improper sharing of Session instances are the most plausible explanations for this issue.\n\nsince i've never come across this issue myself i'd like to be able to reproduce it in order to further analyze it. \nmartjin, could you perhaps provide a simple test-case?\n\ncheers\nstefan",
+            "date": "2007-03-22T10:54:04.904+0000",
+            "id": 3
+        },
+        {
+            "author": "Martijn Hendriks",
+            "body": "We have finally found the cause of the CME.\n\nConsider the following scenario: Session A registers an EventListener B which uses A to process received events. Session A then logs out, and gets the Iterator in the LocalItemStateManager.dispose method. Then another thread modifies the repository and triggers the observation mechanism. EventListener B receives events, and processes them using Session A. This modifies the cache of Session A, and a CME is thrown.\n\nThis scenario is caused by the fact that in the SessionImpl.logout the Workspace (including ObservationManager) is disposed of after the disposal of the SessionItemStateManager. A possible fix would be to swap the order there.\n\nI cannot find in the spec whether this is a valid use case of the JCR. I can image, however, that it is because otherwise each EventListener needs to create it's own session in order to to something with the events.\n\nregards,\n\nMartijn",
+            "date": "2007-03-23T11:35:22.596+0000",
+            "id": 4
+        },
+        {
+            "author": "Stefan Guggisberg",
+            "body": "martjin, thanks for sharing this. \n\n> Consider the following scenario: Session A registers an \n> EventListener B which uses A to process received events. \n> Session A then logs out, and gets the Iterator in the \n> LocalItemStateManager.dispose method. Then another thread \n> modifies the repository and triggers the observation mechanism. \n> EventListener B receives events, and processes them using \n> Session A. This modifies the cache of Session A, and a CME is \n> thrown.\n \nthis confirms my assumption. session A is actually used by 2 \nseparate threads: \n\n1. the thread that's logging out session A\n2. the thread that is dispatching the events to the event listener\n    (which in turn is using session A aswell)\n\n> I cannot find in the spec whether this is a valid use case of the JCR. \n\n\"7.5 Thread-Safety Requirements\" states that you cannot assume Session\nbeing thread-safe. \n\n> I can image, however, that it is because otherwise each EventListener \n> needs to create it's own session in order to to something with the events.\n\nonly if your EventListener interacts with the repository. that's just one, but \ncertainly not the only use case. \n\nwrt your suggested fix (swapping the order of disposing the workspace/SISM):\nwhile that would probably fix this issue i am somehow reluctant to apply it.\ni am concerned that this could possibly cause new, more serious issues\nsince the order of those calls is quite delicate.\n\ni am tempted to resolve this issue as \"Won't fix\" or \"Invalid\" since it's imo caused\nby improper session usage. wdyt?\n\ncheers\nstefan",
+            "date": "2007-03-23T14:51:17.227+0000",
+            "id": 5
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Reading Martijn's description it seems that the problem is simply that the event listener is not automatically unregistered when the session is closed. Session.logout() should always unregister all listeners associated with that session, after which the described problem shouldn't occur.",
+            "date": "2007-03-23T15:01:23.840+0000",
+            "id": 6
+        },
+        {
+            "author": "Stefan Guggisberg",
+            "body": "> Reading Martijn's description it seems that the problem is simply \n> that the event listener is not automatically unregistered when the \n> session is closed. Session.logout() should always unregister all \n> listeners associated with that session, after which the described \n> problem shouldn't occur.\n\nevent listeners registered by a session are already automatically \nunregistered on Session.logout(). the core issue here is that\nthe same session is used by multiple threads (event dispatcher \nand application thread). ",
+            "date": "2007-03-23T15:49:44.668+0000",
+            "id": 7
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "> event listeners registered by a session are already automatically\n> unregistered on Session.logout().\n\nLooking at the code it seems like the even listeners are unregistered only after the item state and item managers have been disposed. That order should probably at least be changed.\n\n> the core issue here is that the same session is used by multiple\n> threads (event dispatcher and application thread).\n\nI don't think we can avoid that with the JCR observation design. At least the event dispatcher and the application thread need to share the local namespace mappings of the session.\n\nI agree that it's an application problem if the event *listener* uses the same session that was used to register it. Such a solution is almost always incorrect, though I can see unwary developers easily falling into that trap. Perhaps we should log a warning or even throw an exception if we detect a call like Session.getItem() being issued from an event listener registered by the same session?\n",
+            "date": "2007-03-23T15:58:57.755+0000",
+            "id": 8
+        },
+        {
+            "author": "Martijn Hendriks",
+            "body": "I am not familiar with the mechanics of remapping a namespace as Jukka mentioned, but isn't it possible to apply a namespace remapping to two sessions and use one in the application thread and one in the observation thread? If there is no usecase of two threads sharing a session then I guess that the issue can indeed be resolved as \"Won't fix\" or \"invalid\" as Stefan suggested.\nI don't know whether trying to detect this kind of usage of sessions is worth the overhead. Maybe the \"nondeterministic detection\" by the CME that is in place right now is enough?\n\nMartijn",
+            "date": "2007-03-26T19:23:48.434+0000",
+            "id": 9
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "For the record, the attached patch implements a simple check that prevents an observation listener from accessing the session it was registered with. I don't think the overhead is worth the benefit, so I won't apply this patch, but it's here in case people start falling into that concurrency trap.",
+            "date": "2007-04-18T08:44:44.392+0000",
+            "id": 10
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Fixed in revision 529913 by explicitly removing all registered event listeners at the beginning of the logout() method.\n\nThe EventConsumer class calls session.getAccessManager().isGranted() which in turn (depending on the configured AccessManager) can access session internals like the hierarchy and item state managers. This could previously happen in parallel with the logout() method.",
+            "date": "2007-04-18T09:10:43.002+0000",
+            "id": 11
+        }
+    ],
+    "component": "jackrabbit-core",
+    "description": "We regularly get the following exception:\n\njava.util.ConcurrentModificationException\n        at org.apache.commons.collections.map.AbstractReferenceMap$ReferenceEntrySetIterator.checkMod(AbstractReferenceMap.java:761)\n        at org.apache.commons.collections.map.AbstractReferenceMap$ReferenceEntrySetIterator.hasNext(AbstractReferenceMap.java:735)\n        at java.util.Collections$UnmodifiableCollection$1.hasNext(Collections.java:1009)\n        at java.util.Collections$UnmodifiableCollection$1.hasNext(Collections.java:1009)\n        at org.apache.jackrabbit.core.state.LocalItemStateManager.dispose(LocalItemStateManager.java:341)\n        at org.apache.jackrabbit.core.WorkspaceImpl.dispose(WorkspaceImpl.java:170)\n        at org.apache.jackrabbit.core.SessionImpl.logout(SessionImpl.java:1225)\n        at org.apache.jackrabbit.core.XASessionImpl.logout(XASessionImpl.java:379)\n\nTwo causes for this exception have been identified:\n\n (Taken from an email to the dev-list from Marcel Reutegger):\n> - session A reads some items I\n> - session B transiently removes items in I\n> - session A logs out and starts to iterate over I in  LocalItemStateManager (LISM)\n> - session B saves changes and removed items are evicted from A's LISM\n> - session A gets concurrent modification exception\n\nAnother scenario is the following:\n- Session A gets the iterator of the values of (the primary cache of) an ItemStateReferenceCache in LocalItemStateManager.dispose.\n- Session B then does something that triggers the CacheManager.\n- The CacheManager then calls resizeAll, and evicts some items from the secondary cache of the ItemStateReferenceCache of which the LocalItemStateManager has a values iterator.\n- The garbage collector then runs and evicts the removed items also from the primary cache, which effectively modifies the set over which is iterated.\n\nRegards,\n\nMartijn Hendriks",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "JCR-798",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "ConcurrentModificationException during logout",
+    "systemSpecification": true,
+    "version": ""
+}

@@ -1,0 +1,113 @@
+{
+    "comments": [
+        {
+            "author": "codeparser",
+            "body": "a fix to track the reader",
+            "date": "2011-01-19T02:36:59.522+0000",
+            "id": 0
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Do you have a real case of thread A applying for another read lock? If yes, can you please post a thread dump of the deadlock?\n\nSuch a double-read should never occur, so instead of adding code and complexity in DefaultISMLocking (which is a very performance-critical component) we should get rid of such possible double-reads.",
+            "date": "2011-01-19T10:07:02.074+0000",
+            "id": 1
+        },
+        {
+            "author": "codeparser",
+            "body": "The dead lock thread is as follows:\n\nthread 1148 first time get read lock: InternalVersionManagerImpl line 324\n            second time get : InternalVersionImpl line 149\n\n\"Thread-1148\" daemon prio=6 tid=0x4a409400 nid=0x15a0 in Object.wait() [0x4d27f000..0x4d27fb94]\n   java.lang.Thread.State: WAITING (on object monitor)\n        at java.lang.Object.wait(Native Method)\n        - waiting on <0x099abc00> (a org.apache.jackrabbit.core.state.DefaultISMLocking)\n        at java.lang.Object.wait(Object.java:485)\n        at org.apache.jackrabbit.core.state.DefaultISMLocking.acquireReadLock(DefaultISMLocking.java:92)\n        - locked <0x099abc00> (a org.apache.jackrabbit.core.state.DefaultISMLocking)\n        at org.apache.jackrabbit.core.version.InternalVersionManagerBase.acquireReadLock(InternalVersionManagerBase.java:196)\n        at org.apache.jackrabbit.core.version.InternalVersionImpl.getSuccessors(InternalVersionImpl.java:149)\n        at org.apache.jackrabbit.core.version.InternalVersionHistoryImpl.init(InternalVersionHistoryImpl.java:165)\n        - locked <0x03a6d180> (a org.apache.jackrabbit.core.version.InternalVersionHistoryImpl)\n        at org.apache.jackrabbit.core.version.InternalVersionHistoryImpl.<init>(InternalVersionHistoryImpl.java:113)\n        at org.apache.jackrabbit.core.version.InternalVersionManagerBase.createInternalVersionItem(InternalVersionManagerBase.java:806\n\n        at org.apache.jackrabbit.core.version.InternalVersionManagerImpl.getItem(InternalVersionManagerImpl.java:329)\n        - locked <0x099abd08> (a org.apache.commons.collections.map.ReferenceMap)\n        at org.apache.jackrabbit.core.version.InternalXAVersionManager.getItem(InternalXAVersionManager.java:429)\n        at org.apache.jackrabbit.core.version.InternalVersionManagerBase.getVersionHistory(InternalVersionManagerBase.java:134)\n        at org.apache.jackrabbit.core.version.InternalXAVersionManager.getVersionHistory(InternalXAVersionManager.java:58)\n        at org.apache.jackrabbit.core.version.InternalVersionManagerBase.checkin(InternalVersionManagerBase.java:583)\n        at org.apache.jackrabbit.core.version.InternalXAVersionManager.checkin(InternalXAVersionManager.java:236)\n        at org.apache.jackrabbit.core.version.VersionManagerImplBase.checkoutCheckin(VersionManagerImplBase.java:190)\n        at org.apache.jackrabbit.core.VersionManagerImpl.access$1(VersionManagerImpl.java:1)\n        at org.apache.jackrabbit.core.VersionManagerImpl$1.perform(VersionManagerImpl.java:121)\n        at org.apache.jackrabbit.core.VersionManagerImpl$1.perform(VersionManagerImpl.java:1)\n        at org.apache.jackrabbit.core.session.SessionState.perform(SessionState.java:200)\n        at org.apache.jackrabbit.core.VersionManagerImpl.perform(VersionManagerImpl.java:95)\n        at org.apache.jackrabbit.core.VersionManagerImpl.checkin(VersionManagerImpl.java:114)\n        at org.apache.jackrabbit.core.VersionManagerImpl.checkin(VersionManagerImpl.java:100)\n        at org.apache.jackrabbit.core.NodeImpl.checkin(NodeImpl.java:2844)\n        at com.vitria.modeling.repository.sapi.service.jcr.access.JcrAccessUtil.checkin(JcrAccessUtil.java:580)\n        at com.vitria.modeling.repository.sapi.service.jcr.JcrLeaveNodeImpl.checkin(JcrLeaveNodeImpl.java:54)\n        at com.vitria.modeling.repository.sapi.service.core.CoreModel.checkin(CoreModel.java:101)\n        at com.vitria.modeling.repository.sapi.service.core.CoreModel.checkin(CoreModel.java:66)\n        at com.vitria.modeling.repository.sapi.service.proxy.local.LocalModel.checkin(LocalModel.java:62)\n        at com.vitria.modeling.repository.sapi.usecase.transaction.ModelModifier.action(DeadLockTest.java:197)\n        at com.vitria.modeling.repository.sapi.usecase.transaction.AbstractTestThread.run(DeadLockTest.java:156)",
+            "date": "2011-01-20T07:11:33.252+0000",
+            "id": 2
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "OK, thanks! See JCR-2828 for an earlier related issue, and JCR-2753 for a case where the reentrancy requirement came up earlier.\n\nIn general I think we shouldn't use DefaultISMLocking as a generic read/write lock in InternalVersionManagerBase, but I don't have a direct replacement in mind.",
+            "date": "2011-01-20T11:05:51.623+0000",
+            "id": 3
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "To follow up on the above, the reason why a normal ReentrantReadWriteLock instance isn't appropriate in this case is that the lock needs to be reentrant also for transactions that may span over multiple threads.",
+            "date": "2011-01-20T13:16:07.073+0000",
+            "id": 4
+        },
+        {
+            "author": "codeparser",
+            "body": "are you going to give a official fix about it? This problem could be encountered easily in our environment.",
+            "date": "2011-01-24T04:26:11.045+0000",
+            "id": 5
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Here's the best quick solution I came up with: We'll copy the DefaultISMLocking class into a VersioningLock class for use only by the version manager code. This way we can keep the DefaultISMLocking class clean and focused to just one use case, while still leveraging the code and your fix in the version manager. Would you mind preparing a patch like that?",
+            "date": "2011-01-24T09:54:17.814+0000",
+            "id": 6
+        },
+        {
+            "author": "Claus K\u00f6ll",
+            "body": "Why we can not modify the DefaultISMLocking class to allow re-read as it was implemented before changing code not to use oswego code ?",
+            "date": "2011-01-24T13:44:41.648+0000",
+            "id": 7
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "> Why we can not modify the DefaultISMLocking class\n\nIt's a very performance-critical piece of code in highly concurrent and fully cached use cases (i.e. a typical web server). See JCR-2699 for the work I did to streamline the synchronized acquireReadLock() method as much as possible. Currently the method doesn't allocate any new memory or make any structural changes to any data structures, and I'd like to keep it that way until we can come up with a way to avoid synchronization.\n\nThe improved logic in DefaultISMLocking was based on a rather thorough review of the concurrency requirements of the ISMLocking interface. Unfortunately I failed to take into account the fact that the DefaultISMLocking class is also being used directly by the version manager outside the ISMLocking contract. This and the other referenced issues are a result of this.\n\nISM and version locking are really two separate cases with somewhat different requirements, which is why I don't think it's a good idea to use a single class for both cases. I'll go forward and implement the idea I suggested earlier about splitting the class into two different copies.",
+            "date": "2011-01-31T11:40:14.202+0000",
+            "id": 8
+        },
+        {
+            "author": "Claus K\u00f6ll",
+            "body": "It would also be my intention not to use the DefaultISMLocking everywhere as locking class\nAs you mentionent it breaks the ISM contract. It would be great to have sepereted classes to handle the uses cases (re-read) in a proper way\n\n",
+            "date": "2011-01-31T12:10:22.062+0000",
+            "id": 9
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Fixed in revision 1065599 and merged to the 2.2 branch in revision 1065610.\n\nThe solution I implemented was to take an earlier version of the DefaultISMLocking class from before JCR-2699 and adapt it into a versioning-only read-write lock class. Besides solving the problem, this change helps reduce coupling between the o.a.j.core.version and o.a.j.core.state packages.",
+            "date": "2011-01-31T13:42:05.808+0000",
+            "id": 10
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "The obvious disadvantage is code duplication.",
+            "date": "2011-02-02T15:44:31.819+0000",
+            "id": 11
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "> The obvious disadvantage is code duplication.\n\nIn fact the amount of duplication in this case is pretty small, as the two use cases are quite different. In fact I think there are less than ten lines that these two classes have in common.",
+            "date": "2011-02-02T16:02:56.846+0000",
+            "id": 12
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "You are right, it's not source code duplication, sorry. But it's duplicating logic. The two classes do almost the same thing, with one small but important difference: DefaultISMLocking isn't re-entrant for in all cases (is that documented in the source code?), and was the root cause for this bug and JCR-2753.",
+            "date": "2011-02-02T16:28:51.189+0000",
+            "id": 13
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "That crucial difference (documented in the ISMLocking javadocs) is what makes the design of these two classes so different and what enables the  performance optimizations implemented in JCR-2699. By similar logic also the ArrayList and LinkedList classes in java.util are duplicates.",
+            "date": "2011-02-02T16:50:03.782+0000",
+            "id": 14
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Merged to the 2.1 branch in revision 1069811.",
+            "date": "2011-02-11T14:31:27.869+0000",
+            "id": 15
+        }
+    ],
+    "component": "jackrabbit-core",
+    "description": "The jackrabbit 2.2 's org.apache.jackrabbit.core.state.DefaultISMLocking has a defect which will cause a dead lock in concurrent use cases.\nThe use case is as follows:\n1.\tThread A apply a read lock, now there is an active reader hold the read lock.\n\n2.\tThread B apply a write lock, and then thread B will wait for thread A's reading end. You could see below code snippet from the Jackrabbit source. readerCount is the current active reader.\nwritersWaiting++;\nwhile (writerId != null? !isSameThreadId(writerId, currentId) : readerCount > 0) {\n                                wait();\n}\n\n3.\tThread A apply another read lock, then it will wait too, since there is a writer is waiting.  Then a dead lock happens.\nwhile (writerId != null? (writerCount > 0 && !isSameThreadId(writerId, currentId)): writersWaiting > 0) {\n                                wait();\n}\n\nSince the lock in DefaultISMLocking is global lock, so I think if a thread has already hold a reader lock, it could get the reader lock again. I create a fix with this idea.\n",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "JCR-2865",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "a dead lock in DefaultISMLocking",
+    "systemSpecification": true,
+    "version": "2.2"
+}

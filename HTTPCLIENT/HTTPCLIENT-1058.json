@@ -1,0 +1,47 @@
+{
+    "comments": [
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "What is the problem with setting SO_TIMEOUT on the socket instance in the #createSocket(HttpParams) method?\n\nOleg",
+            "date": "2011-02-14T20:30:26.407+0000",
+            "id": 0
+        },
+        {
+            "author": "subes",
+            "body": "None, besides that it is not done there :P. The current implementation of PlainSocketFactory does not set SO_TIMEOUT before connecting the socket or after creating the socket. SO_TIMEOUT needs to be set because when a SOCKS Proxy is specified, the connect method does reads which may not timeout even if a user set SO_TIMEOUT in HttpParams. It was not obvious for me that I should set SO_TIMEOUT myself before delegating to PlainSocketFactory.connect() because I thought it would take care about HttpParams for me. Thats why it caused me some headache to track down this problem.",
+            "date": "2011-02-14T23:31:01.946+0000",
+            "id": 1
+        },
+        {
+            "author": "subes",
+            "body": "Also, why not support socks proxies directly in httpclient? It would be simply a check for Proxy.Type to determine whether to use the current implementation as HTTP proxy or to create the socket with the proxy as a parameter to new Socket(Proxy). Though the current design uses a HttpHost as the proxy config as i remember. To follow this you could introduce SocksHost to let users configure a SOCKS proxy. :)",
+            "date": "2011-02-14T23:40:12.390+0000",
+            "id": 2
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "SOCKS is a TCP level, not an HTTP level protocol. If configured correctly, it should be completely transparent to HttpClient. However, I am open to contributions of a better, more integrated support for SOCKS.\n\nI committed the proposed fix to SVN trunk.\n\nOleg\n\n ",
+            "date": "2011-02-15T15:54:49.188+0000",
+            "id": 3
+        },
+        {
+            "author": "subes",
+            "body": "Thanks, now I'll just have to wait for the first 4.2 release so I can remove my workaround. :)",
+            "date": "2011-02-15T16:07:18.131+0000",
+            "id": 4
+        }
+    ],
+    "component": "HttpClient (classic)",
+    "description": "I've created my own delegating SchemeSocketFactory implementation which supports setting SOCKS proxies on socket creation. In the connectSocket implementation, I previously just delegated to PlainSocketFactory.\n\nThe problem there was, that the SO_TIMEOUT was not set on the socket before the connection was established through the SOCKS proxy. This lead to a stop on the native read0 method because the socket is endlessly waiting for a read to occur from the proxy, so it can continue with the the connect to the actual socket destination through the proxy. I made sure I set the SO_TIMEOUT parameter in HttpParams, but it did not get honored by PlainSocketFactory.\n\nTo fix this and make HttpClient honor SO_TIMEOUT for SOCKS proxies, the following line has to be added:\n  sock.setSoTimeout(HttpConnectionParams.getSoTimeout(params));\nin PlainSocketFactory.connectSocket(...).\n\nHeres the complete fixed method:\n\nPlainSocketFactory:            \n    public Socket connectSocket(\n            final Socket socket,\n            final InetSocketAddress remoteAddress,\n            final InetSocketAddress localAddress,\n            final HttpParams params) throws IOException, ConnectTimeoutException {\n        if (remoteAddress == null) {\n            throw new IllegalArgumentException(\"Remote address may not be null\");\n        }\n        if (params == null) {\n            throw new IllegalArgumentException(\"HTTP parameters may not be null\");\n        }\n        Socket sock = socket;\n        if (sock == null) {\n            sock = createSocket();\n        }\n        if (localAddress != null) {\n            sock.setReuseAddress(HttpConnectionParams.getSoReuseaddr(params));\n            sock.bind(localAddress);\n        }\n        \n        //FIX for SOCKS proxies which get stalled if they don't answer\n        sock.setSoTimeout(HttpConnectionParams.getSoTimeout(params));\n        \n        int timeout = HttpConnectionParams.getConnectionTimeout(params);\n        try {\n            sock.connect(remoteAddress, timeout);\n        } catch (SocketTimeoutException ex) {\n            throw new ConnectTimeoutException(\"Connect to \" + remoteAddress.getHostName() + \"/\"\n                    + remoteAddress.getAddress() + \" timed out\");\n        }\n        return sock;\n    }\n\nCurrently I've implemented this in my delegating SchemeSocketFactory, because PlainSocketFactory misses this setting.\n\nDunno if there are other implementations of SocketFactory in HttpClient, which might need this fix. Anyway I hope this helps other people who get  headaches about halting threads because they use SOCKS proxies. :)",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "HTTPCLIENT-1058",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Minor",
+    "product": "HTTPCLIENT",
+    "project": "HTTPCLIENT",
+    "summary": "SO_TIMEOUT not set early enough for SOCKS proxies in PlainSocketFactory",
+    "systemSpecification": true,
+    "version": "4.1 Final"
+}

@@ -1,0 +1,29 @@
+{
+    "comments": [
+        {
+            "author": "Thomas Draier",
+            "body": "Sorry , i cannot add the patch to the jira - here it is :\n\nIndex: jackrabbit-core/src/main/java/org/apache/jackrabbit/core/BatchedItemOperations.java\n===================================================================\n--- jackrabbit-core/src/main/java/org/apache/jackrabbit/core/BatchedItemOperations.java\t(revision 901309)\n+++ jackrabbit-core/src/main/java/org/apache/jackrabbit/core/BatchedItemOperations.java\t(working copy)\n@@ -1608,6 +1608,12 @@\n             boolean shareable = ent.includesNodeType(NameConstants.MIX_SHAREABLE);\n             switch (flag) {\n                 case COPY:\n+                    if (shareable && refTracker.getMappedId(srcState.getNodeId()) != null) {\n+                        NodeId newId = refTracker.getMappedId(srcState.getNodeId());\n+                        NodeState sharedState = (NodeState) stateMgr.getItemState(newId);\n+                        sharedState.addShare(destParentId);\n+                        return sharedState;\n+                    }\n                     // always create new uuid\n                     id = new NodeId();\n                     if (referenceable) {\n@@ -1621,8 +1627,16 @@\n                         id = new NodeId();\n                         break;\n                     }\n+\n                     // use same uuid as source node\n                     id = srcState.getNodeId();\n+\n+                    if (shareable && stateMgr.hasItemState(id)) {\n+                        NodeState sharedState = (NodeState) stateMgr.getItemState(id);\n+                        sharedState.addShare(destParentId);\n+                        return sharedState;\n+                    }\n+\n                     if (stateMgr.hasItemState(id)) {\n                         // node with this uuid already exists\n                         throw new ItemExistsException(safeGetJCRPath(id));\n\n\n\nRegards",
+            "date": "2010-01-21T11:59:25.860+0000",
+            "id": 0
+        },
+        {
+            "author": "Dominique Pfister",
+            "body": "Thanks for detecting this issue and providing a patch! I added a test case with your setup.\n\nFixed in revision 902110.",
+            "date": "2010-01-22T15:11:20.645+0000",
+            "id": 1
+        }
+    ],
+    "component": "jackrabbit-core",
+    "description": "There's a problem when trying to clone a tree in another workspace, when this tree contains shareable nodes.\n\nLet ws1 be one workspace, which contains one node A. This node has two sub-nodes B and C. B and C share a shareable sub-node D :\n\nA \n|   \\\nB  C\n|    |\nD  D\n\nLet ws2 be a second workspace. Then calling ws2.clone(\"ws1\" , \"/A\" , \"/A\" , false) throws an ItemExistsException ( copyNodeState line 1628 ) . This is done when the copyNodeState is checking if the nodeId is already present in the workspace - which is the case when copying the second instance of the shareable node. I can't find in the specification something about this case - but it would be logical to add a share to the node when coming across this situation - at least in the CLONE ( and probable COPY too ) cases. I don't know what would be expected in the CLONE_REMOVE_EXISTING case - we might not want to remove the node if it's shareable, and also add a share here.\n\nI fixed the issue by handling the case the node is shareable in the COPY and CLONE cases of copyNodeState - you'll find attached the corresponding patch. Do you think this solution is ok ?",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "JCR-2473",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "Cloning a tree containing shareable nodes into another workspace throws ItemExistsException",
+    "systemSpecification": true,
+    "version": "2.0-beta6"
+}

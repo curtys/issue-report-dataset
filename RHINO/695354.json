@@ -1,0 +1,107 @@
+{
+    "comments": [
+        {
+            "author": "hannesw@gmail.com",
+            "body": "Your sample code works for me with Rhino 1.7R3. What Java implementation/version are you using?",
+            "date": "20111018T22:48:20",
+            "id": 0
+        },
+        {
+            "author": "northerncoder@gmail.com",
+            "body": "I using jdk1.6.0_16 and DO need to use 1.6.\nHowever, I just tried with jdk1.5.0_11 and don't see the exception.",
+            "date": "20111020T15:43:37",
+            "id": 1
+        },
+        {
+            "author": "hannesw@gmail.com",
+            "body": "Where did you get your copy of Rhino from? Did you build yourself or download a binary distribution? If you built Rhino yourself make sure you don't have any local changes and try makeing a clean build:\n\n    ant clean jar\n\nAre you running with any special flags? I guess this must be some local issue, otherwise there would be more reports. \n\nSetting importance to normal until we find out whether it's an actual issue with Rhino.",
+            "date": "20111119T17:36:46",
+            "id": 2
+        },
+        {
+            "author": "northerncoder@gmail.com",
+            "body": "Created attachment 576593\nEclipse launch configuration",
+            "date": "20111123T20:29:46",
+            "id": 3
+        },
+        {
+            "author": "northerncoder@gmail.com",
+            "body": "Created attachment 576594\neclipse project classpath",
+            "date": "20111123T20:31:30",
+            "id": 4
+        },
+        {
+            "author": "northerncoder@gmail.com",
+            "body": "Created attachment 576595\neclipse project file",
+            "date": "20111123T20:31:54",
+            "id": 5
+        },
+        {
+            "author": "northerncoder@gmail.com",
+            "body": "Problem occurs when I compile rhino with the Compiler Compliance Level set to 1.6.\nI do not get the error when I compile with the level set to 1.5.\nTo clarify, I am not using the and build files to compile and run.\n\nI've attached my eclipse project, classpath and run configuration files.",
+            "date": "20111123T20:34:24",
+            "id": 6
+        },
+        {
+            "author": "hannesw@gmail.com",
+            "body": "That js-14.jar in your classpath looks fishy. Can you check the timestamp how old that file is, and remove it from both disk and classpath?",
+            "date": "20111124T05:13:40",
+            "id": 7
+        },
+        {
+            "author": "northerncoder@gmail.com",
+            "body": "Removed it from both disk and classpath...still getting the exception.\nI downloaded the rhino jar from http://www.mozilla.org/rhino/download.html.\nUsing the link: ftp://ftp.mozilla.org/pub/mozilla.org/js/rhino1_7R3.zip\n\nThe date on all the files in the jar is \"May  9  2011\", including the js-14.jar.",
+            "date": "20111124T15:30:38",
+            "id": 8
+        },
+        {
+            "author": "hannesw@gmail.com",
+            "body": "*** Bug 710027 has been marked as a duplicate of this bug. ***",
+            "date": "20111214T07:53:30",
+            "id": 9
+        },
+        {
+            "author": "hannesw@gmail.com",
+            "body": "I see now that the WIDE instructions that triggers this error is actually used by ClassFileWriter internally. Hope to have a patch in git that you can try soon.",
+            "date": "20111214T08:04:31",
+            "id": 10
+        },
+        {
+            "author": "hannesw@gmail.com",
+            "body": "Tom and/or Andy, can you please check if the \"fix-stackmap\" branch here fixes the problem for you:\n\nhttps://github.com/mozilla/rhino/tree/fix-stackmap\n\nSince I still can't reproduce the problem locally it would also be great if you could make sure you still see the problem with current master branch.",
+            "date": "20111214T10:03:26",
+            "id": 11
+        },
+        {
+            "author": "goryachev@yahoo.com",
+            "body": "Preliminary tests show that \"fix-stackmap\" works, at least with the test case provided in Bug #710027.",
+            "date": "20111214T16:31:09",
+            "id": 12
+        },
+        {
+            "author": "goryachev@yahoo.com",
+            "body": "fix-stackmap branch passes our tests, many thanks!",
+            "date": "20111214T18:52:58",
+            "id": 13
+        },
+        {
+            "author": "hannesw@gmail.com",
+            "body": "Thanks! I merged the change to both master and rhino_1_8 branch. \n\nhttps://github.com/mozilla/rhino/commit/f7f63f18a0c34de713036dcbd4e305e1f3ce878c\n\n(Also deleted fix-stackmap branch from github.)",
+            "date": "20111215T10:59:15",
+            "id": 14
+        }
+    ],
+    "component": "Compiler",
+    "description": "I upgraded my embedded Rhino to 1.7R3 from 1.7R1\nTried to compile scripts that contained try/finally blocks that were fine with 1.7R1 and also tried to execute the following script in the Rhino shell:\nvar x = 1;\ntry {\nx = 2;\n} catch(err) {\nx = 3;\n} finally {\nx = 4;\n}\n\nIn all cases, scripts with a try/finally block were resulting in the following exception:\n\nCaused by: java.lang.IllegalArgumentException: bad opcode\n       at org.mozilla.classfile.ClassFileWriter\n$StackMapTable.execute(ClassFileWriter.java:2271)\n       at org.mozilla.classfile.ClassFileWriter\n$StackMapTable.executeBlock(ClassFileWriter.java:1739)\n       at org.mozilla.classfile.ClassFileWriter\n$StackMapTable.executeWorkList(ClassFileWriter.java:1719)\n       at org.mozilla.classfile.ClassFileWriter\n$StackMapTable.verify(ClassFileWriter.java:1657)\n       at org.mozilla.classfile.ClassFileWriter\n$StackMapTable.generate(ClassFileWriter.java:1503)\n       at\norg.mozilla.classfile.ClassFileWriter.stopMethod(ClassFileWriter.java:\n322)\n       at\norg.mozilla.javascript.optimizer.BodyCodegen.generateBodyCode(Codegen.java:\n1399)\n       at org.mozilla.javascript.optimizer.Codegen.generateCode(Codegen.java:\n341)\n       at\norg.mozilla.javascript.optimizer.Codegen.compileToClassFile(Codegen.java:\n196)\n       at org.mozilla.javascript.optimizer.Codegen.compile(Codegen.java:105)\n       at org.mozilla.javascript.Context.compileImpl(Context.java:2430)\n       at org.mozilla.javascript.Context.compileString(Context.java:1367)\n       at org.mozilla.javascript.Context.compileString(Context.java:1356)\n       at\norg.mozilla.javascript.tools.shell.Main.loadScriptFromSource(Main.java:\n561)\n       at\norg.mozilla.javascript.tools.shell.Main.processFileSecure(Main.java:\n546)\n       at org.mozilla.javascript.tools.shell.Main.processFile(Main.java:507)\n       at org.mozilla.javascript.tools.shell.Global.load(Global.java:282)\n       at sun.reflect.NativeMethodAccessorImpl.invoke0(Native Method)\n       at\nsun.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:\n39)\n       at\nsun.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:\n25)\n       at java.lang.reflect.Method.invoke(Method.java:597)\n       at org.mozilla.javascript.MemberBox.invoke(MemberBox.java:161)\n\n\nWith 1.7R1, this exception did not occur.",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "695354",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "-- normal",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "try/finally bad opcode in R3",
+    "systemSpecification": true,
+    "version": "other"
+}

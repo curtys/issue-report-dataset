@@ -1,0 +1,47 @@
+{
+    "comments": [
+        {
+            "author": "Julian Reschke",
+            "body": "DomUtil.timeoutToXml:\n\n     * Note, that {@link DavConstants#INFINITE_TIMEOUT} is not represented by the String\n     * {@link DavConstants#TIMEOUT_INFINITE 'Infinite'} defined by RFC 2518, due to a known\n     * issue with Microsoft Office that opens the document \"read only\" and\n     * never unlocks the resource if the timeout is missing or 'Infinite'.\n\nSo what happens is that the servlet internall uses MAX_INT as infinite, but then doesn't treat is as a special value, and also divides by 1000 (ms -> s).\n\nNot sure what's the best fix here; do we know whether Office still has this problem?",
+            "date": "2012-01-20T15:06:38.538+0000",
+            "id": 0
+        },
+        {
+            "author": "Julian Reschke",
+            "body": "Speaking of which, as far as I recall Office uses a lock time out of 300s, and just was confused when the server did not respect the timeout.\n\nNow that the server *does* respect timeouts, the workaround may not be needed anymore.",
+            "date": "2012-01-20T15:08:20.019+0000",
+            "id": 1
+        },
+        {
+            "author": "Julian Reschke",
+            "body": "I just tried editing with word, and despite it sends a request with \"Timeout: Second-3600\", the same time out as above is returned; will have a look.",
+            "date": "2012-01-23T15:47:41.551+0000",
+            "id": 2
+        },
+        {
+            "author": "Julian Reschke",
+            "body": "OK; part of the problem are different code paths: DavResourceImpl vs DefaultItemCollection.",
+            "date": "2012-01-23T17:51:03.092+0000",
+            "id": 3
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Merged to the 2.4 branch in revision 1235746.",
+            "date": "2012-01-25T13:49:38.575+0000",
+            "id": 4
+        }
+    ],
+    "component": "jackrabbit-jcr-server, locks",
+    "description": "(this is a follow-up of JCR-3205)\n\ni am surprised by the davex reply to a lock request with infinite timeout (before and after the fix from JCR-3205):\n\n\n<D:timeout>Second-2147483</D:timeout>\n\nthis number is\n2^21+50331\n\nwhich seems pretty random to me. coincidally, this number is exactly 2^31 - 1 (2147483647) without the last 3 digits. can it be that there are some weird string operations happening on server side?\n",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "JCR-3214",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "[Lock] weird number for \"infinite\"",
+    "systemSpecification": true,
+    "version": ""
+}

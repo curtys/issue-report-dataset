@@ -1,0 +1,119 @@
+{
+    "comments": [
+        {
+            "author": "Jukka Zitting",
+            "body": "This is the correct behaviour for a left outer join. The previously incorrect behaviour was fixed in Jackrabbit 2.1.2 as a part of JCR-2718.",
+            "date": "2011-03-29T13:40:42.021+0000",
+            "id": 0
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "As discussed on users@, this actually is a problem. The join should only look at the join condition, not the where clauses.",
+            "date": "2011-03-29T14:14:55.603+0000",
+            "id": 1
+        },
+        {
+            "author": "Alex Deparvu",
+            "body": "Attached patch + test that replicates the indicated (and hopefully fixed ;) problem.\n\nThe solution consists of:\n\n - in the case where there is an Outer Join with a 'WHERE' condition, we'll run 2 queries in lucene, one that has only the 'ON' condition from the join, and the other one that has 'ON' and 'WHERE'.\nThis way it is easy to distinguish between a 'null' row and a row that must not be included in the result set.\n\nI haven't tested in other scenarios than a 2 way Outer Join, this is also indicated by the test.\n\nIf you feel that there are corner cases that are not covered, please let me now, or even better submit a patch to the test, this way we can keep track of these things.\n\n",
+            "date": "2011-03-31T10:54:54.577+0000",
+            "id": 2
+        },
+        {
+            "author": "Manfred Sattler",
+            "body": "Can you check this testcase. It gives me 1 row. This is not correct.\nThe property \"prop1\" from the first two nodes have the same value.\ndef n1 = root.addNode(\"node1\", \"test:SamplePage\");\nn1.setProperty(\"prop1\", \"page1\");\ndef n2 = root.addNode(\"node2\", \"test:SamplePage\");\nn2.setProperty(\"prop1\", \"page1\");\n\ndef n3 = n1.addNode(\"node3\", \"test:SampleContent\");\n\n\nSelect * from [test:SamplePage] as page left outer join [test:SampleContent] as content on ISDESCENDANTNODE(content,page) where page.prop1 = 'page1' and content.prop1 = 'XXX'   ",
+            "date": "2011-04-01T05:14:48.176+0000",
+            "id": 3
+        },
+        {
+            "author": "Alex Deparvu",
+            "body": "yes Manfred, you are right :)\n\nI fixed it and added the new testcase.\n\nAttaching the new version of the patch.",
+            "date": "2011-04-01T08:43:15.098+0000",
+            "id": 4
+        },
+        {
+            "author": "Alex Deparvu",
+            "body": "oups, I seriously forgot some System.out(s) in there :)\n\nhere's the proper version of the fix.",
+            "date": "2011-04-01T08:58:12.033+0000",
+            "id": 5
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "I'm not sure if the proposed solution always works, specially for 3+ way joins. I think there should be a randomized test case that compares the result with a relational database. I wrote such a test case, it could be adapted to SQL2: http://code.google.com/p/h2database/source/browse/trunk/h2/src/test/org/h2/test/synth/TestNestedJoins.java - this test case found quite a lot of problems, including problems in Apache Derby: DERBY-4712 - therefore it probably makes sense to run the test against other databases as well. I think the most stable database is PostgreSQL, but we can't include it in our unit tests. Therefore, I would pick H2 and Apache Derby (meaning run the test against Jackrabbit, H2, Derby, and compare the results).",
+            "date": "2011-04-01T09:02:22.898+0000",
+            "id": 6
+        },
+        {
+            "author": "Alex Deparvu",
+            "body": "wow\n\nas impressive as that is, I'm not even sure that is within JR's capabilities.\n\nCan you please submit a test that does a proper 3 way join, to have something to look at? I'd like to see a simple test case working (or breaking) before we start doing something like\n...\nselect t0.x , t1.x , t2.x , t3.x , t4.x , t5.x , t6.x , t7.x , t8.x from (((t0 inner join ((t1 right outer join (t2 inner join t3 on t2.x = t3.x ) on t1.x = t2.x ) left outer join (t4 inner join t5 on t4.x = t5.x ) on t1.x = t4.x ) on t0.x = t2.x ) left outer join (t6 inner join t7 on t6.x = t7.x ) on t1.x = t6.x ) inner join t8 on t5.x = t8.x ); \n...\n\nAs I see it, join are something new in JR, so I wouldn't go breaking everything just yet. There are also very few test cases that cover them.\n\nI find it worrying that the simple outer join (2 way if you will) does not work properly. Also, I'd have that working and mark the +3 way up as experimental, than having something that does not work at all.",
+            "date": "2011-04-01T09:25:42.021+0000",
+            "id": 7
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "> mark the +3 way up as experimental, than having something that does not work at all. \n\nThat's an option, but then it should be documented.\n\n> There are also very few test cases\n> I find it worrying that the simple outer join (2 way if you will) does not work properly.\n\nYes, that's why I think we should add more test cases :-)\n\n> I'm not even sure that is within JR's capabilities. \n\nI know Jackrabbit doesn't support explicitly nested joins (using \"()\"), but nesting can be influences with placing the join condition:\n\nSELECT * FROM c LEFT OUTER JOIN a LEFT OUTER JOIN b ON ISCHILDNODE(a, b) ON ISCHILDNODE(a, c)\n==>\nSELECT * FROM c LEFT OUTER JOIN (a LEFT OUTER JOIN b ON ISCHILDNODE(a, b)) ON ISCHILDNODE(a, c)\n\nand\nSELECT * FROM a LEFT OUTER JOIN b ON ISCHILDNODE(a, b) LEFT OUTER JOIN c ON ISCHILDNODE(a, c)\n==>\nSELECT * FROM (a LEFT OUTER JOIN b ON ISCHILDNODE(a, b)) LEFT OUTER JOIN c ON ISCHILDNODE(a, c)\n\n",
+            "date": "2011-04-01T09:42:46.310+0000",
+            "id": 8
+        },
+        {
+            "author": "Manfred Sattler",
+            "body": "The next errorcase.:)\nThe result from this query is 0. should be 2.\n\ndef n1 = root.addNode(\"node1\", \"test:SamplePage\");\nn1.setProperty(\"prop1\", \"page1\");\ndef n2 = root.addNode(\"node2\", \"test:SamplePage\");\nn2.setProperty(\"prop1\", \"page2\");\n\ndef n3 = n1.addNode(\"node3\", \"test:SampleContent\");\nn3.setProperty(\"prop1\", \"content3\");\ndef n4 = n2.addNode(\"node4\", \"test:SampleContent\");\nn4.setProperty(\"prop1\", \"content3\");\n\nsql = \"Select * from [test:SamplePage] as page left outer join [test:SampleContent] as content on ISDESCENDANTNODE(content,page) where (page.prop1 = 'page1' and content.prop1 = 'content3') or (page.prop1='page2' and content.prop1='content3') \"\n\n\nHave you ever tested with more as 3 nodes?\nif the left side have many rows, the performance is very poor.\n\n",
+            "date": "2011-04-01T12:17:56.477+0000",
+            "id": 9
+        },
+        {
+            "author": "Alex Deparvu",
+            "body": "Hi Manfred, \nyou are really devoted to this issue, thank you for putting in the time.\n\nHere, I think you might have hit a nice usecase for JCR-2852. A join with an OR condition didn't use to work 3 weeks ago, I guess you could say is it still undergoing bugfixes and tests ;)\nI'll look at this some more, see what I can come up with.\n\nIn the mean time, I think you'll find that this query works:\nselect * from [test:SamplePage] as page left outer join [test:SampleContent] as content on ISDESCENDANTNODE(content,page) where (page.prop1 = 'page1' or page.prop1='page2') and content.prop1='content3'\n\nAs you are referencing both sides of the join on both OR conditions, this will never give you the performance you are apparently seeking.\n\nTalking about performance, there are other pending issues that deal with certain aspects of SQL2 that are not up to speed. And as this is a tricky issue to tackle at best, please refrain yourself from saying things like \n...\nHave you ever tested with more as 3 nodes? \nif the left side have many rows, the performance is very poor. \n...\nthis does not help anybody, especially when you are putting a thing like performance on the table.\n\nPerformance does not come OOTB, and if you eve have questions or need help with anything, just ask on the list, there are plenty of people willing to help.\n",
+            "date": "2011-04-01T16:40:18.200+0000",
+            "id": 10
+        },
+        {
+            "author": "Manfred Sattler",
+            "body": "Hello Alex.\n\nI see the Sql2 is far from usuability.\nMy Customer-Application has an Query Generator, this highly depends on SQL2.\n\nI have this implemented some time ago, with jackrabbit 2.0.0.\nWith the old sql2.  This worked, but very  slow.\n\nIn the lasttime then i haved patched the old Sql2-Implementierung(A bit hackish),\nbut this works much more better as the new implementierung.\n \nNow i was just about to  go with the mainstream and use the new implementation, but i have not so much hope, that this will work.\n \n",
+            "date": "2011-04-01T23:51:24.707+0000",
+            "id": 11
+        },
+        {
+            "author": "Manfred Sattler",
+            "body": "No answer?",
+            "date": "2011-04-07T07:31:47.610+0000",
+            "id": 12
+        },
+        {
+            "author": "Alex Deparvu",
+            "body": "Hi Manfred,\n\nfinally an answer :)\n\nI'm attatching a new version of the patch, that includes the upgraded version of JCR-2852 also.\nI've also added a test for the latest problem (testOuterJoinDoubleJoinSplit).\n\nSome performance things you should consider: sometimes the query engine will split a given query into more subqueries that will be merged at runtime.\nThis is not really documented, it is on my todo list :)\n\nI've also started the work for a query debugger.\n\nTo see it in action just enable debug logging for QueryEngine.\n...just add this to logback-test.xml when you run a test:\n  <logger name=\"org.apache.jackrabbit.core.query.lucene.join.QueryEngine\" level=\"DEBUG\" />\n...and look at the log (target/jcr.log).\n\n\nI've had to time to look at tests for 3 way joins. that will be next I guess.",
+            "date": "2011-04-07T11:51:05.110+0000",
+            "id": 13
+        },
+        {
+            "author": "Alex Deparvu",
+            "body": "man, am I happy we have tests :)\n\nthanks jukka for keeping an eye on things",
+            "date": "2011-04-15T11:48:45.110+0000",
+            "id": 14
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Thanks! I committed the latest patch in revision 1092683. (I assumed the truetrue was a typo, and removed it. :-)\n\nI'm resolving this as fixed. Let's use followup issues for any further fixes and other improvements.",
+            "date": "2011-04-15T12:34:06.261+0000",
+            "id": 15
+        },
+        {
+            "author": "Alex Deparvu",
+            "body": "Merged to 2.2 branch in rev 1126536 and 1126527(child issue)",
+            "date": "2011-05-23T15:05:55.402+0000",
+            "id": 16
+        }
+    ],
+    "component": "jackrabbit-core",
+    "description": "Create this nodes.\ndef n1 = root.addNode(\"node1\", \"sling:SamplePage\");\nn1.setProperty(\"n1prop1\", \"page1\");\ndef n2 = n1.addNode(\"node2\", \"sling:SampleContent\");\nn2.setProperty(\"n2prop1\", \"content1\");\n\nExecute this Query:\nSelect * from [sling:SamplePage] as page left outer join [sling:SampleContent] as content on ISDESCENDANTNODE(content,page) where page.n1prop1 = 'page1' and content.n2prop1 = 'content1';\nThe resultset have 1 row with 2 Nodes. This OK.\n\nThen execute this:\nSelect * from [sling:SamplePage] as page left outer join [sling:SampleContent] as content on ISDESCENDANTNODE(content,page) where page.n1prop1 = 'page1' and content.n2prop1 = 'XXXXX';\n\nThe resultset has 1 row with 1 node.\nThis wrong. The result should be 0 rows.\n\nOld Versions, prior 2.2.2 have also 0 rows as result.\n\nAlso, if nodes \"n2\" not exists, jackrabbit reports 1 row as result.\n\n",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "JCR-2933",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "SQL2 Left Outer Join",
+    "systemSpecification": true,
+    "version": "2.2.4"
+}

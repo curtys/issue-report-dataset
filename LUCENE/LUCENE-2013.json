@@ -1,0 +1,113 @@
+{
+    "comments": [
+        {
+            "author": "Benjamin Keil",
+            "body": "Patch for LUCENE-2013",
+            "date": "2009-10-28T21:14:56.140+0000",
+            "id": 0
+        },
+        {
+            "author": "Benjamin Keil",
+            "body": "Resolving LUCENE-1685 has caused some difficulties for non-core queries in contrib-regex and in client code.",
+            "date": "2009-10-28T21:19:44.637+0000",
+            "id": 1
+        },
+        {
+            "author": "Benjamin Keil",
+            "body": "This patch does a better job of collecting fields from the queries.  The previous patch only had the desired result if there were no FieldMaskingSpanQueries, or if there was just one and it was at the very root of the hierarchy.",
+            "date": "2009-10-28T21:37:25.283+0000",
+            "id": 2
+        },
+        {
+            "author": "Benjamin Keil",
+            "body": "Removed failed attempts at {{monospace font}} in description.",
+            "date": "2009-10-28T21:52:38.350+0000",
+            "id": 3
+        },
+        {
+            "author": "Mark Miller",
+            "body": "Thanks for the report Benjamin -\n\nNot sure I like adding the methods to SpanQuerys though - \n\nhow about putting a check for regex query before the check for spanquery, and rewriting if we see it? It means adding the contrib with regex as a dependency of the highlighter, but it lets us avoid modifying any core classes.",
+            "date": "2009-10-28T23:29:14.214+0000",
+            "id": 4
+        },
+        {
+            "author": "Mark Miller",
+            "body": "Here is what I would propose - with additional handling of regular regex queries if needed (havn't check yet).",
+            "date": "2009-10-28T23:42:57.838+0000",
+            "id": 5
+        },
+        {
+            "author": "Benjamin Keil",
+            "body": "The problem with that solution is that it doesn't handle any kind of nested span queries.  Let's update the test case to use this query:\n\npublic void testSpanRegexQuery() throws Exception {\n    query = new SpanOrQuery(new SpanQuery [] {\n        new SpanRegexQuery(new Term(FIELD_NAME, \"ken.*\")) });\n\nI've attached a counter-counter-proposal :) that does not add SpanRegexQuery as a dependency of WeightedSpanTermExtractor (although the test-case still needs it ... does the build have a concept of test-only dependencies?).\n\nIt doesn't add any methods to the core classes, but this also means that no third-party queries have any way to influence their highlighting.",
+            "date": "2009-10-29T01:38:13.968+0000",
+            "id": 6
+        },
+        {
+            "author": "Mark Miller",
+            "body": "Nice catch - I think I like this method better than the core modifications.\n\nbq. but this also means that no third-party queries have any way to influence their highlighting.\n\nUnfortunately, I think thats already the deal in many cases. The Highlighter is very special case - ugly, but the current state of things. We will hopefully get away from that eventually.",
+            "date": "2009-10-29T15:58:10.036+0000",
+            "id": 7
+        },
+        {
+            "author": "Mark Miller",
+            "body": "Thanks Benjamin!",
+            "date": "2009-10-29T16:41:25.844+0000",
+            "id": 8
+        },
+        {
+            "author": "Benjamin Keil",
+            "body": "Awesome, Mark.  Thank you!",
+            "date": "2009-10-29T17:45:48.560+0000",
+            "id": 9
+        },
+        {
+            "author": "Mark Miller",
+            "body": "No problem - and we can refine if we need to for the next release - I plopped it in now to make sure at least this fix gets into 2.9.1",
+            "date": "2009-10-29T18:19:50.799+0000",
+            "id": 10
+        },
+        {
+            "author": "Mark Miller",
+            "body": "bug alert - I screwed up the backport",
+            "date": "2009-11-02T23:53:10.982+0000",
+            "id": 11
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Mark, does this require a 2.9.1 respin?",
+            "date": "2009-11-03T00:14:08.829+0000",
+            "id": 12
+        },
+        {
+            "author": "Mark Miller",
+            "body": "Umm - yes. Unless we want to draw a line. Its worse than the bug we fixed. Very sorry - entirely my fault.",
+            "date": "2009-11-03T00:17:41.137+0000",
+            "id": 13
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "OK, no problem, I'll respin!",
+            "date": "2009-11-03T00:33:03.001+0000",
+            "id": 14
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Bulk close all 2.9.1 issues.",
+            "date": "2009-11-07T14:57:31.143+0000",
+            "id": 15
+        }
+    ],
+    "component": "modules/highlighter",
+    "description": "Since the resolution of #LUCENE-1685, users are not supposed to rewrite their queries before submitting them to QueryScorer:\n\nbq.------------------------------------------------------------------------\nbq.r800796 | markrmiller | 2009-08-04 06:56:11 -0700 (Tue, 04 Aug 2009) | 1 line\nbq.\nbq.LUCENE-1685: The position aware SpanScorer has become the default scorer for Highlighting. The SpanScorer implementation has replaced QueryScorer and the old term highlighting QueryScorer has been renamed to QueryTermScorer. Multi-term queries are also now expanded by default. If you were previously rewritting the query for multi-term query highlighting, you should no longer do that (unless you switch to using QueryTermScorer). The SpanScorer API (now QueryScorer) has also been improved to more closely match the API of the previous QueryScorer implementation.\nbq.------------------------------------------------------------------------\n\nThis is a great convenience for the most part, but it's causing me difficulties with SpanRegexQuerys, as the WeightedSpanTermExtractor uses Query.extractTerms() to collect the fields used in the query, but SpanRegexQuery does not implement this method, so highlighting any query with a SpanRegexQuery throws an UnsupportedOpertationException.  If this issue is circumvented, there is still the issue of SpanRegexQuery throwing an exception when someone calls its getSpans() method.\n\nI can provide the patch that I am currently using, but I'm not sure that my solution is optimal.  It adds two methods to SpanQuery: extractFields(Set<String> fields) which is equivalent to fields.add(getField()) except when MaskedFieldQuerys get involved, and mustBeRewrittenToGetSpans() which returns true for SpanQuery, false for SpanTermQuery, and is overridden in each composite SpanQuery to return a value depending on its components.  In this way SpanRegexQuery (and any other custom SpanQuerys) do not need to be adjusted.\n\nCurrently the collection of fields and non-weighted terms are done in a single step.  In the proposed patch the WeightedSpanTerm extraction from a SpanQuery proceeds in two steps.  First, if the QueryScorer's field is null, then the fields are collected from the SpanQuery using the extractFields() method.  Second the terms are collected using extractTerms(), rewriting the query for each field if mustBeRewrittenToGetSpans() returns true.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-2013",
+    "issuetypeClassified": "OTHER",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "QueryScorer and SpanRegexQuery are incompatible.",
+    "systemSpecification": true,
+    "version": "2.9"
+}

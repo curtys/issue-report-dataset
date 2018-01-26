@@ -1,0 +1,77 @@
+{
+    "comments": [
+        {
+            "author": "Martijn Hendriks",
+            "body": "I'm linking this issue to JCR-905 because the solution of that issue has an impact on whether or not all revisions should be kept.",
+            "date": "2007-08-24T10:48:45.326+0000",
+            "id": 0
+        },
+        {
+            "author": "Martijn Hendriks",
+            "body": "When the cluster revision table becomes too large a cluster node without search index and local revision number cannot be started due to memory problems (see attached stacktrace).",
+            "date": "2007-10-17T13:39:35.244+0000",
+            "id": 1
+        },
+        {
+            "author": "Martijn Hendriks",
+            "body": "The resolution of JCR-905 allows us to remove all unnecessary revision data. I.e., the minimum of all local revisions of the clusternodes gives an upperbound on the revisions that can safely be removed from the database.\n\nA solution for this issue would be to add a periodic task that removes all unnecessary revisions:\n- All clusternodes should add their local revision to the database.\n- Add a configuration option in the repository.xml to let one of the clusternodes execute the cleanup task (i.e., period and offset such as \"every night at 00:00 hours\").",
+            "date": "2007-10-21T13:06:27.593+0000",
+            "id": 2
+        },
+        {
+            "author": "Martijn Hendriks",
+            "body": "Attached is a patch for this issue. When a DatabaseJournal is used, the local revisions are also stored in the database instead of on the local file system. This information can then be used for periodic clean-ups of the JOURNAL table which may become very large. Note that this only works if all JR information except for the search index is stored in the database. The clean-up thread is disabled by default.\n\nPlease comment. Thanks!",
+            "date": "2007-10-26T12:27:23.550+0000",
+            "id": 3
+        },
+        {
+            "author": "Dominique Pfister",
+            "body": "Hi Martijn,\n\nyour patch looks good to me, so please go ahead and submit it. One nice thing that might be required for people already owning a database journal: is there a way to easily detect whether the LOCAL_REVISIONS table is missing and to tell the user to upgrade their schema?\n\nCheers\nDominique",
+            "date": "2007-11-05T10:49:26.098+0000",
+            "id": 4
+        },
+        {
+            "author": "Martijn Hendriks",
+            "body": "Hi Dominique,\n\nGood point! When this patch is applied to a Jackrabbit installation that already uses the clustering feature it will break if the LOCAL_REVISIONS table is not added manually. I'll look into this.\n\nMartijn",
+            "date": "2007-11-08T07:50:19.039+0000",
+            "id": 5
+        },
+        {
+            "author": "Martijn Hendriks",
+            "body": "Hi all,\n\nUnfortunately I've been inactive for a while but now i've more time to work on Jackrabbit  which is good :). I created a second patch for this issue which also addresses the upgrade scenario that Dominique mentioned:\n- Added the LOCAL_REVISIONS table to the create scripts (*.ddl)\n- Added InstanceRevision interface\n- The InstanceRevision is now retrieved through the Journal instance\n- Added logic to the DatabaseJournal to (i) migrate to a db based InstanceRevision,\n  and (ii) start a janitor thread for cleaning up old cluster revision entries\n\nI've tested the patch only on MSSQL, MySQL and Oracle, because I don't have access to the other databases.\n\nI don't really like the solution for the upgrade scenario (a ddl is scanned for the line that creates the LOCAL_REVISIONS table), but I like the alternative of having twice as many .ddl files even less. But maybe there's a third way...?\n\nBest regards, Martijn",
+            "date": "2008-02-04T12:05:20.879+0000",
+            "id": 6
+        },
+        {
+            "author": "Martijn Hendriks",
+            "body": "Committed in revision 628697.\n\nThe instance revision on the local file system is automatically migrated to the database (to the LOCAL_REVISIONS) table. The clean-up thread is not started by default.\n\nKnown caveats of the current solution:\n- The user must make sure that all cluster nodes have written their local revision to the database before the clean-up thread runs for the first time because otherwise cluster nodes might miss updates (because they have been purged) and their local caches and search-indexes get out of sync.\n- If a cluster node is removed permanently from the cluster, then its entry in the LOCAL_REVISIONS table should be removed manually. Otherwise, the clean-up thread will not be effective.\n",
+            "date": "2008-02-18T12:28:12.706+0000",
+            "id": 7
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "I couldn't find any documentation for this feature at: http://wiki.apache.org/jackrabbit/Clustering\n\nIs there any documentation? So far I only added a link to here (Removing Old Revisions)",
+            "date": "2009-10-27T16:34:14.390+0000",
+            "id": 8
+        },
+        {
+            "author": "Martijn Hendriks",
+            "body": "I'm afraid there's no documentation yet. I'll try to add it soon.",
+            "date": "2009-10-28T08:29:34.768+0000",
+            "id": 9
+        }
+    ],
+    "component": "clustering, jackrabbit-core",
+    "description": "The revision table in which cluster nodes write their changes can potentially become very large. If all cluster nodes are up to date to a certain revision number, then it seems unnecessary to keep the revisions with a lower number.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "JCR-1087",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Minor",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "Maintain the cluster revision table",
+    "systemSpecification": true,
+    "version": ""
+}

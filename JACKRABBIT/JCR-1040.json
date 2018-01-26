@@ -1,0 +1,59 @@
+{
+    "comments": [
+        {
+            "author": "Julian Reschke",
+            "body": "This seems to be non trivial.\n\nThe code in o.a.j.jcr2spi.state.ChangeLog tries to sanitize the operations, but seems to go to far.\n\na) statusChanged EXISTING_REMOVED->REMOVED removes the Remove operation.\n\nb) Taking out that code leads to a ConstraintViolation in checkIsSelfContained().\n\nc) Taking out that check leads to a Batch being submitted which does contain the Remove operation, but now another issue becomes visible -- looking at the sequence of operations again:\n\n1) remove \"/a\"\n2) add \"/a\"\n3) add \"/a/b\" \n\nThe third operation's parent id now refers to the node \"/a\" that was removed in step 1, and thus will cause a failure in the SPI implementation (because that node is gone when step 3 is executed).\n\nThis requires more research...\n",
+            "date": "2007-07-30T13:16:59.462+0000",
+            "id": 0
+        },
+        {
+            "author": "Julian Reschke",
+            "body": "Angela S. pointed out that the removed node \"/a\" should be in the attic, but isn't. A similar case is a move() operation, such as:\n\n1) move \"/a\" to \"/a2\"\n2) add \"/a\"\n3) add \"/a/b\" \n\nTurns out that this doesn't work either. Test case:\n\n      if (session.getRepository().getDescriptor(Repository.LEVEL_2_SUPPORTED).equals(\"true\")) {\n        Node testnode;\n        String name = \"delete-test\";\n          \n        Node root = session.getRootNode();\n        \n        // make sure it's there\n        if (! root.hasNode(name)) {\n          root.addNode(name, \"nt:folder\");\n          session.save();\n        }\n\n        // make sure target is not there\n        if (root.hasNode(name + \"2\")) {\n          root.getNode(name + \"2\").remove();\n          session.save();\n        }\n        \n        // now test remove/add in one batch\n        if (root.hasNode(name)) {\n          testnode = root.getNode(name);\n          session.move(\"/\" + name, \"/\" + name + \"2\");\n          // session.save(); // un-commenting this makes the test pass\n        }\n        \n        testnode = root.addNode(name, \"nt:folder\");\n        // add one child\n        testnode.addNode(name, \"nt:folder\"); // commenting this out makes the test pass\n        \n        session.save();\n      }\n      \nThis fails with:\n\njavax.jcr.nodetype.ConstraintViolationException: ChangeLog is not self contained.\n\tat org.apache.jackrabbit.jcr2spi.state.ChangeLog.checkIsSelfContained(ChangeLog.java:364)\n\tat org.apache.jackrabbit.jcr2spi.state.SessionItemStateManager.getChangeLog(SessionItemStateManager.java:567)\n\tat org.apache.jackrabbit.jcr2spi.state.SessionItemStateManager.save(SessionItemStateManager.java:145)\n\tat org.apache.jackrabbit.jcr2spi.ItemImpl.save(ItemImpl.java:239)\n\tat org.apache.jackrabbit.jcr2spi.SessionImpl.save(SessionImpl.java:317)\n\tat com.xythos.jcr.NodeCreationRemovalTest.testMoveAddInRoot(NodeCreationRemovalTest.java:475)\n\n\n\n",
+            "date": "2007-07-31T13:25:16.083+0000",
+            "id": 1
+        },
+        {
+            "author": "angela",
+            "body": "hi julian\n\ni tried to reproduce the problem you describe but i don't get neither get a wrong ChangeLog nor a wrong Batch. What i did:\n\n- starting from both the root-node and the configured testRootNode\n- adding a nt:folder node (\"a\") and save changes\n- then remove the node previously created , adding new node with same name/nt and \n  an additional child node (\"b\", \"nt:folder\").\n- and saving all changes.\n\n=> the removed node-state has status EXISTING_REMOVED until the save is completed.\n=> ChangeLog contains 3 Operations: 1x Remove, 2x AddNode and all affected states.\n=> all Operations are executed on the Batch.\n\nsimilarly the example with the move seemed to work for me.\nam i missing something?\n\nmy questions to you:\n- were you able to reproduce the problem with the setup from the checkout (jcr2spi - spi2jcr)?\n- what revision were you using? (mine: 563477) \n\n\n",
+            "date": "2007-08-07T12:48:57.359+0000",
+            "id": 2
+        },
+        {
+            "author": "Julian Reschke",
+            "body": "Hi Angela,\n\nI have tried to repro the bug with the test cases in contrib/spi/client, and failed to do so.\n\nSo what's different over here? The first thing that comes to mind is that in my SPI implementation, all Nodes are referenceable, and the NodeId returned upon NodeInfo.getId() are always built just from the unique id. \n\nI just changed that experimentally (now always building the Id from an absolute Path), and sure enough, the tests pass now. So it has to do with the Id format.\n\nDoes that ring a bell?\n",
+            "date": "2007-08-07T14:04:12.954+0000",
+            "id": 3
+        },
+        {
+            "author": "Julian Reschke",
+            "body": "Turns out, adding addMixin(\"mix:referenceable\") makes the test fail here as well:\n\n    public void testRemoveThenAdd() throws RepositoryException {\n      Session session = testRootNode.getSession();\n      Node testnode;\n      String name = \"delete-test\";\n        \n      Node root = session.getRootNode();\n      \n      // make sure it's there\n      if (! root.hasNode(name)) {\n        testnode = root.addNode(name, \"nt:folder\");\n        testnode.addMixin(\"mix:referenceable\");\n        session.save();\n      }\n      \n      // now test remove/add in one batch\n      if (root.hasNode(name)) {\n        testnode = root.getNode(name);\n        testnode.remove();\n        // session.save(); // un-commenting this makes the test pass\n      }\n      \n      testnode = root.addNode(name, \"nt:folder\");\n      testnode.addMixin(\"mix:referenceable\");\n      // add one child\n      testnode = testnode.addNode(name, \"nt:folder\"); // commenting this out makes the test pass\n      testnode.addMixin(\"mix:referenceable\");\n\n      session.save();\n    }\n\n...yields...\n\ntestRemoveThenAdd(org.apache.jackrabbit.jcr2spi.RemoveReferenceableTest)  Time elapsed: 0.015 sec  <<< ERROR!\njavax.jcr.ItemExistsException: Cannot add child node 'delete-test' to /delete-test: colliding with same-named existing node.\n\tat org.apache.jackrabbit.jcr2spi.state.ItemStateValidator.checkCollision(ItemStateValidator.java:594)\n\tat org.apache.jackrabbit.jcr2spi.state.ItemStateValidator.checkAddNode(ItemStateValidator.java:387)\n\tat org.apache.jackrabbit.jcr2spi.state.SessionItemStateManager.addNodeState(SessionItemStateManager.java:610)\n\tat org.apache.jackrabbit.jcr2spi.state.SessionItemStateManager.visit(SessionItemStateManager.java:263)\n\tat org.apache.jackrabbit.jcr2spi.operation.AddNode.accept(AddNode.java:63)\n\tat org.apache.jackrabbit.jcr2spi.state.SessionItemStateManager.execute(SessionItemStateManager.java:229)\n",
+            "date": "2007-08-07T14:21:43.821+0000",
+            "id": 4
+        },
+        {
+            "author": "angela",
+            "body": "the problem was caused upon creating the effective node type for the new replacement node, which tried to load the jcr:mixinTypes from the persistent storage.\nconsequently the jcr:uuid was retrieved with the effects mentioned above.\n\nfix: in case of a NEW node entry it does not make sense to (try to) load props/child nodes from the persistent storage.",
+            "date": "2007-08-08T09:12:12.196+0000",
+            "id": 5
+        },
+        {
+            "author": "Julian Reschke",
+            "body": "Confirming this fixes the problem I saw. Thanks, Angela.\n",
+            "date": "2007-08-08T09:41:05.513+0000",
+            "id": 6
+        }
+    ],
+    "component": "jackrabbit-spi",
+    "description": "In JCR2SPI, the following sequence of operations seems to lead to an incorrect SPI batch being submitted:\n\n1) remove \"/a\"\n2) add \"/a\"\n3) add \"/a/b\"\n4) session.save()\n\nThis seems to create an SPI batch where the first remove operation is missing.\n\nNote that the problem only seems to occur when step 3 is part of the sequence.\n\nFull Java source for test:\n\n    try {\n      if (session.getRepository().getDescriptor(Repository.LEVEL_2_SUPPORTED).equals(\"true\")) {\n        Node testnode;\n        String name = \"delete-test\";\n          \n        Node root = session.getRootNode();\n        \n        // make sure it's there\n        if (! root.hasNode(name)) {\n          root.addNode(name, \"nt:folder\");\n          session.save();\n        }\n        \n        // now test remove/add in one batch\n        if (root.hasNode(name)) {\n          testnode = root.getNode(name);\n          testnode.remove();\n          // session.save(); // un-commenting this makes the test pass\n        }\n        \n        testnode = root.addNode(name, \"nt:folder\");\n        // add one child\n        testnode.addNode(name, \"nt:folder\"); // commenting this out makes the test pass\n        \n        session.save();\n      }\n    } finally {\n      session.logout();\n    }\n    \n    ",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "JCR-1040",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "JCR2SPI: remove node operation missing in submitted SPI batch",
+    "systemSpecification": true,
+    "version": ""
+}

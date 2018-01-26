@@ -1,0 +1,47 @@
+{
+    "comments": [
+        {
+            "author": "Heiner Westphal",
+            "body": "\nWorkaround:\n    // FIXME: This is a workaround for httpClient 3.0alpha1 bug\n    //         concerning content-length and multi-byte chars\n    if (method instanceof EntityEnclosingMethod) {\n        EntityEnclosingMethod eeMethod = (EntityEnclosingMethod) method;\n        final String charset = eeMethod.getRequestCharSet();\n        ByteArrayOutputStream baos = new ByteArrayOutputStream();\n        eeMethod.getRequestEntity().writeRequest(baos);\n        ByteArrayInputStream bais = \n          new ByteArrayInputStream(baos.toByteArray());\n        // better use InputStreamRequestEntity, but you get the picture\n        eeMethod.setRequestBody(bais);\n    }\n    httpClient.executeMethod(method);\n\n\nP.S.: eclipse debugger gave me this stacktrace to see the bug at work:\n\nThread [HttpClient-Client-Server-0] (Suspended)\n\tStringRequestEntity.getContentLength() line: 140\n\tPostMethod(EntityEnclosingMethod).getRequestContentLength() line: 322\n\tPostMethod(EntityEnclosingMethod).addContentLengthRequestHeader(HttpState,\nHttpConnection) line: 392\n\tPostMethod(EntityEnclosingMethod).addRequestHeaders(HttpState, HttpConnection)\nline: 360\n\tPostMethod(HttpMethodBase).writeRequestHeaders(HttpState, HttpConnection) line:\n1977\n\tPostMethod(HttpMethodBase).writeRequest(HttpState, HttpConnection) line: 1865\n\tPostMethod(HttpMethodBase).execute(HttpState, HttpConnection) line: 975\n\tHttpMethodDirector.executeWithRetry(HttpMethod) line: 368\n\tHttpMethodDirector.executeMethod(HttpMethod) line: 164\n\tHttpClient.executeMethod(HostConfiguration, HttpMethod, HttpState) line: 437\n\tHttpClient.executeMethod(HttpMethod) line: 324\n\tHttpClientThread.run() line: 96\n",
+            "date": "2004-07-02T20:53:20.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Created an attachment (id=12016)\nPatch\n",
+            "date": "2004-07-03T04:54:49.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "This should take care of the problem\n\nOleg",
+            "date": "2004-07-03T04:55:18.000+0000",
+            "id": 2
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Hi Oleg,\n\nLooks pretty good to me.   My only suggestion would be to log the UnsupportedEncodingExceptions.  \nThough they are probably not common, we definitely want to know when they occur.\n\nMike",
+            "date": "2004-07-03T06:16:06.000+0000",
+            "id": 3
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "UnsupportedEncodingException logs added. \n\nI have applied the patch without any further review, as the fix was pretty\nstraight-forward\n\nOleg",
+            "date": "2004-07-03T21:31:23.000+0000",
+            "id": 4
+        }
+    ],
+    "component": "HttpClient (classic)",
+    "description": "When setting up a PostMethod containing a StringRequestEntity with umlauts and\ncharset UTF-8 the content-length header is wrong. It should be the number\nof bytes, but is the number of chars by now.\n\n(e.g.\nContent-Type: text/xml; charset=UTF-8\nbody='\u00c3\u00a4\u00c3\u00b6\u00c3\u00bc\u00c3\u009f\u00c3\u0084\u00c3\u0096\u00c3\u009c')\n\nBug-location: org.apache.commons.httpclient.methods.StringRequestEntity",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "HTTPCLIENT-359",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "HTTPCLIENT",
+    "project": "HTTPCLIENT",
+    "summary": "StringRequestEntity.getContentLength wrong for multibyte chars",
+    "systemSpecification": false,
+    "version": "3.0 Alpha 1"
+}

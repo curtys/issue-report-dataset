@@ -1,0 +1,47 @@
+{
+    "comments": [
+        {
+            "author": null,
+            "body": "Thanks for the patch. I have applied it to trunk and proposed it for 6.0.x.\n\nI extended your patch to make the behaviour consistent when running under a security manager.",
+            "date": "20090408T06:02:07",
+            "id": 0
+        },
+        {
+            "author": null,
+            "body": "This has been fixed in 6.0.x and will be in 6.0.21 onwards.",
+            "date": "20090522T08:15:11",
+            "id": 1
+        },
+        {
+            "author": null,
+            "body": "*** Bug 47276 has been marked as a duplicate of this bug. ***",
+            "date": "20090717T10:41:58",
+            "id": 2
+        },
+        {
+            "author": null,
+            "body": "Reopening, to track fixing it in 5.5 branch.",
+            "date": "20090717T10:45:26",
+            "id": 3
+        },
+        {
+            "author": null,
+            "body": "This has been fixed in 5.5 and will be in 5.5.29 onwards.",
+            "date": "20090812T18:23:28",
+            "id": 4
+        }
+    ],
+    "component": "Catalina",
+    "description": "On some platforms (z/OS for sure), the device file /dev/urandom can pass the \"f.exists()\" test, but throws an IOException of some kind when trying to open it.  The current code in ManagerBase.setRandomFile() doesn't handle this, which results in EVERY call to getRandom() to try again and log the error  \"Failed to close randomIS\".\n\nThe following changes to the method will add proper error handling to correct this (my changes marked \"// kjw\")\n\n    public void setRandomFile( String s ) {\n        // as a hack, you can use a static file - and genarate the same\n        // session ids ( good for strange debugging )\n        if (Globals.IS_SECURITY_ENABLED){\n            randomIS = (DataInputStream)AccessController.doPrivileged(new PrivilegedSetRandomFile());          \n        } else {\n            try{\n                devRandomSource=s;\n                File f=new File( devRandomSource );\n                if( ! f.exists() ) return;\n                randomIS= new DataInputStream( new FileInputStream(f));\n                randomIS.readLong();\n                if( log.isDebugEnabled() )\n                    log.debug( \"Opening \" + devRandomSource );\n            } catch( IOException ex ) {\n            \tlog.debug(\"Error reading \" + devRandomSource, ex); //kjw\n            \tif (randomIS != null) {  // kjw: if opened\n\t                try {\n\t                    randomIS.close();\n\t                } catch (Exception e) {\n\t                    log.warn(\"Failed to close randomIS.\");\n\t                }\n            \t}                       // kjw \n            \tdevRandomSource = null; // kjw: don't try again automatically\n                randomIS=null;\n            }\n        }\n    }",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "46967",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "P2 normal",
+    "product": "Tomcat 5",
+    "project": "TOMCAT",
+    "summary": "ManagerBase.setRandomFile error handling fix",
+    "systemSpecification": false,
+    "version": "5.5.27"
+}

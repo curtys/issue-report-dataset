@@ -1,0 +1,53 @@
+{
+    "comments": [
+        {
+            "author": "Michael McCandless",
+            "body": "This sounds great!  Basically, rather than explicitly naming the tag, we can use svn's revision instead.  An \"anonymous\" tag.\n\nSo it should also be fully safe, ie, there's no time when you could do a checkout and find the back compat tests are failing.",
+            "date": "2010-01-06T11:54:28.086+0000",
+            "id": 0
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Here a patch that implements the above. It contains a lot variable renamings and some backwards-target (deprecated). Maybe we remove them before commit.\n\nTo test:\n- Apply patch\n- remove tags/ folder (unused now). If you have modifications in it, create a patch\n- run \"ant test-backwards\"\n\nTo modify backwards branch:\n- run \"svn up\" in backwards folder\n- modify backwards branch\n- to now test this modified trunk revision in checkout folder, you can pass \"ant test-backwards -Dbackwards.rev=HEAD\", but if you have done \"svn up\" as first step this is not needed\n- commit changes in backwards branch with \"svn commit\" (be sure to change to backwards/$branchname$/src, as src is the root folder of the checkout)\n- copy the revision number from commit message and insert into common-build.xml\n- (test again and) commit trunk\n\nPlease test this and tell me if you like it!",
+            "date": "2010-01-12T22:29:03.542+0000",
+            "id": 1
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Two opinions:\n\n- the top-level \"/backwards/\" folder could be removed and the branch directly checked out into the top-level dir, as the branch name cleary says that it is a backwards-test branch. The svn:ignore in top-level folder then would simple be \"lucene*_back_compat_tests\" and the ${backwards} references in the patch removed.\n- it is a little bit unhandy to use that the backwards-branch folder only consists of src/. To commit you have to go into src. Also applying/creating patches is harder with e.g. TortoiseSVN, because the patches are always relative to the top-level, which is \"src\" in this case. I suggest to checkout in two steps: First a non-recursive empty top-level folder and then the src folder inserted with an update command using the same strategy like \"sparse checkouts\" work (see svn book).\n\nI will think about it this night and maybe provide modified patches,",
+            "date": "2010-01-12T23:14:38.532+0000",
+            "id": 2
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Optimized version of the patch:\n- The backwards checkout is now sparse with the correct branch root folder, so patches in backwards branch look correct\n- added failonerror=\"true\", so build stops when svn update fails. It does *not* stop on svn.exe not found, so this is secure!\n\nI'll commit soon and merge flex.",
+            "date": "2010-01-13T23:05:04.986+0000",
+            "id": 3
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "One small optimization to have only one update if the checkout is available.",
+            "date": "2010-01-13T23:26:15.203+0000",
+            "id": 4
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Committed revision: 899001",
+            "date": "2010-01-13T23:41:30.305+0000",
+            "id": 5
+        }
+    ],
+    "component": "",
+    "description": "This is a followup on: [http://www.lucidimagination.com/search/document/bb6c23b6e87c0b63/back_compat_folders_in_tags_when_i_svn_update#3000a2232c678031]\n\nCurrently we use tags for specifying the revision number in the backwards branch that matches the current development branch revision (in common-build.xml). The idea is to just specify the corresponding revision no of the backwards branch in common-build.xml and the backwards-test target automatically handles up/down/co:\n\n- We just give the rev number in common-build in common-build.xml as a property backwards-rev=\"XXXX\". This property is used also in building the command line which is also a property backwards-svn-args=\"-r $backwards-rev\". By that you can use \"ant -Dbackwards-svn-args=''\" to force test-backwards to checkout/update to head of branch (recommened for developers).\n\n- we should rename target to \"test-backwards\" and keep a \"test-tag\" with dependency to that for compatibility\n\n- The checkout on backwards creates a directory \"backwards/${backwards-branch}\" and uses \"svn co ${backwards-svn-args} 'http://svn.../${backwards-branch}' 'backwards/${backwards-branch}'\". The cool thing, the dir is checked out if non existent, but if the checkout already exists, svn co implicitely does an svn up to the given revision (it will also downgrade and merge if newer). So the test-backwards target always updates the checkout to the correct revision. I had not tried with local changes, but this should simply merge as an svn up.\n\nThe workflow for committing fixes to bw would be:\n\n- First use \"svn up\" to upgrade the backwards working copy to HEAD.\n- Commit the changes\n- Copy and paste the message \"Committed revision XXXX\" to common-build.xml\n- Commit the changes in trunk\n",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-2193",
+    "issuetypeClassified": "OTHER",
+    "issuetypeTracker": "OTHER",
+    "priority": "Minor",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "Get rid of backwards tags",
+    "systemSpecification": true,
+    "version": ""
+}

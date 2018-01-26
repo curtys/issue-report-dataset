@@ -1,0 +1,41 @@
+{
+    "comments": [
+        {
+            "author": "Stefan Guggisberg",
+            "body": "attached patch with suggested fix:\n\nthe canonicalized path of the repository home dir is stored\nin a system property and checked on repository instance\nstartup. the only caveat of this approach is that system property\naccess is subject to security manager check, i.e. \nif a security manager is installed jackrabbit needs to be\ngranted system property write access.\n\ncomments welcome.\n\n",
+            "date": "2007-05-23T11:00:27.579+0000",
+            "id": 0
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Clever! Using a synchronized interned system property feels icky, but it actually achieves the required functionality.\n\nThe repository lock mechanism has accumulated a lot of collective knowledge and already contains > 50 LOC, so I guess it would make sense to refactor it into a separate helper class. Especially given the already large size of the RepositoryImpl class. The attached patch (RepositoryLock.patch) contains Stefan's suggested fix and refactors all the repository lock code into a separate o.a.j.core.util.RepositoryLock class. I also added a bunch of javadocs and tests.\n\nThe RepositoryLock class should be mostly equivalent to the current code + Stefan's fix. I made the following functional changes to streamline the code:\n\n* Removed the extra call to File.createNewFile() since creating the RandomAccessFile instance with mode \"rw\" will automatically create the file\n* Canonicalized the path names once at the beginning\n* Renamed and reorganized variables to make the code appear more like a generic directory locking tool",
+            "date": "2007-05-24T02:43:58.937+0000",
+            "id": 1
+        },
+        {
+            "author": "Stefan Guggisberg",
+            "body": "fixed in svn r541651 by applying jukka's patch ",
+            "date": "2007-05-25T13:52:52.373+0000",
+            "id": 2
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Merged to the 1.3 branch in revision 544288.",
+            "date": "2007-06-04T21:49:53.581+0000",
+            "id": 3
+        }
+    ],
+    "component": "jackrabbit-core",
+    "description": "with java 1.4 and 1.5 on a *nix-based platform it is possible to (concurrently) instantiate \nmore than one repository instance in the same jvm based on same/identical configurations.\n\nthis is a critical issue since it might lead to data corruption.\n\nthe issue only exists with java versions prior to 1.6 and *nix-based platforms (only verified\non mac os-x 10.4).\n\nnote that the issue does not exist when the file lock is held by another jvm.\n\n code snippet to reproduce the issue:\n\n            Repository rep1 = new TransientRepository();\n            Session s1 = rep1.login(new SimpleCredentials(\"johndoe\", \"\".toCharArray()));\n            Repository rep2 = new TransientRepository();\n            Session s2 = rep2.login(new SimpleCredentials(\"johndoe\", \"\".toCharArray()));\n\n\nthe root problem is the incorrect behavior of java.nio.channels.FileChannel#tryLock()\nwhich is demonstrated by the following code snippet:\n\n            try {\n                FileLock fl1 = new FileOutputStream(\"foo\").getChannel().tryLock();\n                System.out.println(\"1st lock: \" + fl1);\n                FileLock fl2 = new FileOutputStream(\"foo\").getChannel().tryLock();\n                System.out.println(\"2nd lock: \" + fl2);\n            } catch (Throwable t) {\n                t.printStackTrace();\n            }\n\n",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "JCR-933",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Critical",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "RepositoryImpl.acquireRepositoryLock() fails to detect that the file lock is already held by the current process",
+    "systemSpecification": true,
+    "version": "1.1, 1.1.1, 1.2.1, 1.2.2, 1.2.3, 1.3"
+}

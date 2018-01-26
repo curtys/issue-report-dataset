@@ -1,0 +1,113 @@
+{
+    "comments": [
+        {
+            "author": null,
+            "body": "Almost forgot - JDK 1.4.2",
+            "date": "20041129T14:18:30",
+            "id": 0
+        },
+        {
+            "author": null,
+            "body": "Same problem with JDK 1.5.0-b64",
+            "date": "20041201T15:59:33",
+            "id": 1
+        },
+        {
+            "author": null,
+            "body": "This works for me. Can you actually be more convincing ?",
+            "date": "20041201T16:09:29",
+            "id": 2
+        },
+        {
+            "author": null,
+            "body": "Well, how can I be more convincing? I can see the same symptom as Michael who\noriginated the bug report, but how to prove that? The only one thing I can think\nto is to attach the source code of the faulty left frame of the admin module\n(see bug report attachements) which shows the incomplete tree expand/collapse\nurl as described by Michael.\n\nThe config here is :\n- Sun Sparc machine\n- Solaris 8\n- Java is 1.5.0-b64\n\nThe problem occurs when using the admin package downloaded at the same time as\nTomcat 5.5.4\n\nEverything is working as a charm using Tomcat 5.0.28.\n",
+            "date": "20041201T17:12:33",
+            "id": 3
+        },
+        {
+            "author": null,
+            "body": "Created attachment 13612\nSource code of the faulty frame",
+            "date": "20041201T17:13:54",
+            "id": 4
+        },
+        {
+            "author": null,
+            "body": "The issue here is that it works for me. What I meant is: you're not doing\nanything which convinces me the issue is not that you didn't install things\ncorrectly. Besides, your attached code doesn't look so bad.\nSo please do not waste time reopening the report.",
+            "date": "20041201T17:21:13",
+            "id": 5
+        },
+        {
+            "author": null,
+            "body": "i can also reproduce this issue in a fresh 5.5.4 download and 5.5.4 admin \ndownload running Java 5.0. \n\nentering admin app is fine having added credentials to tomcat-users and you \n_can_ click the nodes with the o- icons to load the right hand side but you \n_cannot_ collapse or uncollapse the branch on the left.\n\nLogging when clicking a collapsable icon is\n\nDec 1, 2004 4:30:53 PM org.apache.catalina.core.ApplicationContext log\nINFO: action: Entered TreeControlTestAction:perform()\nDec 1, 2004 4:30:53 PM org.apache.catalina.core.ApplicationContext log\nINFO: action: Tree expand/contract on ",
+            "date": "20041201T17:33:44",
+            "id": 6
+        },
+        {
+            "author": null,
+            "body": "The problem I described appeared while using:\nSolaris 2.6\nTomcat 5.5.4 + Admin 5.5.4\nJDK 1.4.2\n\nWe experience the same problem with the following configuration:\nWindows XP\nTomcat 5.5.4 + Admin 5.5.4\nJDK 1.5\n\nRemy, please let me know what proofs do you need to convict you that this is a \nproblem.\n\nThe file that Michel have attached shows that all expandable/collapsable nodes \npoint to:\nhttp://nova:8080/admin/treeControlTest.do?tree=\nwhich is the source of the problem.\n",
+            "date": "20041201T18:10:19",
+            "id": 7
+        },
+        {
+            "author": null,
+            "body": "it does appear to be that the tree attribute is not being output for treeControl\n\n    <attribute>\n      <name>tree</name>\n      <required>false</required>\n      <rtexprvalue>true</rtexprvalue>\n      <description>\n        Name of the attribute (in the scope specified by the \"scope\"\n        attribute, if any) under which an object of type\n        org.apache.webapp.admin.TreeControl is stored.  This object\n        represents the entire current state of the tree, including\n        a representation of the hierarchical representation of the\n        nodes, plus the current expanded/ or contracted state of\n        non-leaf nodes.\n      </description>\n    </attribute>\n\ni've rooted around in the code, but don't have further time _right_ now.\n\nThere is a parameter in the JSP ${name} that should indicate the node's name \nbut it is empty\n\nIn the tag code this value is replaced with an encoded version of the node's \nname. node is passed in from looking for a TreeControlNode in a scope, but \nthat's as far as I got currently. Maybe Amy would have a better idea (I see she \nfixed a Struts problem yesterday on admin webapp)\n\n        // HACK to take into account special characters like = and &\n        // in the node name, could remove this code if encode URL\n        // and later request.getParameter() could deal with = and &\n        // character in parameter values. \n        String encodedNodeName = URLEncoder.encode(node.getName\n(),TomcatTreeBuilder.URL_ENCODING);",
+            "date": "20041201T18:12:02",
+            "id": 8
+        },
+        {
+            "author": null,
+            "body": "to view in isolation just request\n\nhttp://server:8080/admin/treeControlTest.do\n\nfrom Tomcat 5.5.4 installation\n\nand click on any of the collapse icons (note these have different URLs to the \ntext labels which may be why remy thought this worked??)",
+            "date": "20041201T18:15:55",
+            "id": 9
+        },
+        {
+            "author": null,
+            "body": "Ok, I retested this, and this doesn't work anymore. Sorry for the trouble.",
+            "date": "20041201T20:19:40",
+            "id": 10
+        },
+        {
+            "author": null,
+            "body": "I knew that changing admin to be a 2.4 webapp was a bad idea :(.",
+            "date": "20041201T21:43:15",
+            "id": 11
+        },
+        {
+            "author": null,
+            "body": "Created attachment 13619\nchanges the placeholder lookup key for node to collapse to match new jsp version\n\nfix for \n\norg.apache.webapp.admin.TreeControlTag",
+            "date": "20041201T23:36:53",
+            "id": 12
+        },
+        {
+            "author": null,
+            "body": "Created attachment 13620\nchanges the tree placeholder key in JSP to non-EL value\n\nfix for \n\nadmin/tree-control-test.jsp",
+            "date": "20041201T23:38:22",
+            "id": 13
+        },
+        {
+            "author": null,
+            "body": "this bug was a result of moving to the 2.4 spec. the placeholder used in the \ntree control tag was ${name} which tomcat will have tried to evaluate as a \npage scoped expression language variable (which does not exist of course as \nthis is not the intention).\n\ni have provided patches for the affected JSP and Java files that removes the \ndollar but leaves the braces so it still looks like a placeholder.\n\ni have also grepped all files across the admin webapp to ensure there are no \nmore similar bugs involving EL type syntax placeholders and there are not \n(only ${node} but this is in comments only and is not present in code anywhere.\n\ni have compiled and tested with the latest HEAD and the node collapse works \nok. hope this makes it for 5.5.5 tomorrow.\n\ncheers :)",
+            "date": "20041201T23:42:16",
+            "id": 14
+        },
+        {
+            "author": null,
+            "body": "Fixed also on the TOMCAT_5_0 branch, for 5.0.31.",
+            "date": "20041203T18:02:45",
+            "id": 15
+        }
+    ],
+    "component": "Webapps:Administration",
+    "description": "PROBLEM:\nWhen I log on to Tomcat Administration page there is a tree on the left frame. \nHowever when you click on the any branch that is expandable/collapsable, there \nis no action. All the icons have the same URL:\n\n   http://localhost:8080/admin/treeControlTest.do?tree=\n\nwith no node name.\n\nIt could be because the some Java servlet (possibly, SetUpTreeAction.class) \nthat prepares the tree.\n\nTEMPORARY SOLUTION:\nMy workaround was to steal the node names from the links that were next to the \nexpanding/collapsing icon and craft the correct URL.  For example, for \na \"Service (Catalina)\" branch there is a link:\n\nhttp://localhost:8080/admin/EditService.do?\nselect=Catalina:type=Service,serviceName=Catalina&nodeLabel=Service+(Catalina).\n\nIt seemed like the first parameter is a tree node name, so I crafted the link \nin the address bar: \nhttp://localhost:8080/admin/treeControlTest.do?\ntree=Catalina:type=Service,serviceName=Catalina\nand that branch has expanded. Using that link once again collapses the branch.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "32381",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "P3 normal",
+    "product": "Tomcat 5",
+    "project": "TOMCAT",
+    "summary": "Couldn't expand/collapse tree branches using Tomcat Administration Tool",
+    "systemSpecification": true,
+    "version": "5.5.4"
+}

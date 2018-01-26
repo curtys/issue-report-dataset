@@ -1,0 +1,35 @@
+{
+    "comments": [
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "Created attachment 4350\nProposed patch",
+            "date": "20000119T18:49:59",
+            "id": 0
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "I think the ENDTRY icode needs to be at the end of the code inside of the try\nrather than at the end of the catch. This allows us to then decrement\ntryStackTop when we're catching the exception, and so rethrows occur relative to\nthe correct try.\n\nI haven't tested this change for regressions yet. I'll do so before committing\nit.",
+            "date": "20000119T18:52:59",
+            "id": 1
+        },
+        {
+            "author": "rogerl@formerly-netscape.com.tld",
+            "body": "Having the ENDTRY at the end of the try block is correct, it was broken\npreviously because it got set AFTER the goto which was at the end of the try\nblokc and so was never executing, resulting in a bad array reference. That test\ncase is :\n\ntry {\n    a = 1;\n}\ncatch (x) {\n}\n\ntry {\n    a = 2;\n    throw \"a\";\n}\ncatch (x) {\n}\n\ntry {\n    a = 3;\n}\ncatch (x) {\n}\n\nI've checked in Norris' fix with the ENDTRY just before the goto.",
+            "date": "20000119T22:50:59",
+            "id": 2
+        }
+    ],
+    "component": "Core",
+    "description": "The following example never terminates:\n\nfunction test()\n{\n    try {\n        throwException();\n    } catch (ex) {\n        throw ex;\n    }\n}\n\nfunction throwException()\n{\n    throw new java.lang.Exception();\n}\n\ntest();\n\nThe problem seems to be that in the interpreter loop, the local variable\n<code>tryStackTop</code> never gets decremented, so the same exception\nhandler keeps getting control over and over again. I don't know if this is\nan interpreter bug or a code generation bug.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "24023",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "P3 normal",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "Rethrowing an exception infinite loop",
+    "systemSpecification": false,
+    "version": "other"
+}

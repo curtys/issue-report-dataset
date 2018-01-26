@@ -1,0 +1,89 @@
+{
+    "comments": [
+        {
+            "author": "Adrian Sutton",
+            "body": "Should have mentioned, I'm using an IIS webserver and squid proxy.  Adding a \nConnection: keep-alive header to every request doesn't help at all.  Looks like \nwe can't do anything till 2.1.",
+            "date": "2003-05-21T08:58:37.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Adrian Sutton",
+            "body": "Created an attachment (id=6435)\nLog file showing error (includes Connection: keep-alive header)\n",
+            "date": "2003-05-21T08:59:17.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "I agree. There's not much we can do without tearing the whole thing apart. I am\nafraid this one will have to wait till 2.1. Redirects and authentication logic\nmust be pulled out of the HttpMethodBase class and moved into HttpClient class\nin order to work properly. HttpMethodBase class refactoring will solve a whole\nbunch of other problems, not only this one.\n\nOleg",
+            "date": "2003-05-21T15:16:37.000+0000",
+            "id": 2
+        },
+        {
+            "author": "Ortwin Gl\u00fcck",
+            "body": "I would still like to have this working at least in 2.0 final.\nI know there are architectural problems. But had this not worked before (I guess\nthe problem does not show up with every server)? I mean it is a basic feature\nthat is broken! We just can not release HttpClient 2.0 known that it is broken,\ncan we?",
+            "date": "2003-05-22T13:01:59.000+0000",
+            "id": 3
+        },
+        {
+            "author": "Adrian Sutton",
+            "body": "This would never have worked reliably (though now it is 100% guaranteed to fail \nso it is worse than before).  Previously it just appeared as one of the \nIOExceptions that were thrown by HttpClient a lot, all of these have now been \nfixed so the problem comes through as it initially was.\n\nIn addition, back around December, HttpClient couldn't connect to SSL URLs \nthrough a proxy at all (there was no connect method) so this is really just \nincomplete support for a new feature.\n\nI should also note that you can work around this issue if you \nsetDoAuthentication(false) then manage authentication yourself.",
+            "date": "2003-05-22T13:09:15.000+0000",
+            "id": 4
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Odi\nIt could have never worked and never did. The problem is the retry logic is \nimplemented inside HttpMethodBase, whereas Connect method is executed outside \nit and therefore can't be retried. There\u0092s no way we can fix it reliably \nwithout ripping the whole thing apart. If you recall I was fighting really hard \nto get this problem fixed back in February, but my patch was turned down \n(delayed, postponed, whatever). It would be kind of ironic to start the whole \nstory over after we have just all voted for API freeze.\n\nOleg\n",
+            "date": "2003-05-22T14:24:15.000+0000",
+            "id": 5
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Sorry for being a little late to this one.  \n\nAs already noted, the problem is with the retry logic and it's location.  This problem can only be \n\"fixed\" in the current architecture by not allowing retries on tunneled connections that have been \nclosed.  This would force the user to handle the 401 response and retry.  We could accomplish this \nwith a little extra logic in the methodRetryHandler or in execute().  This really does not solve the \nproblem though, it just keeps HttpMethodBase for trying to connect to the proxy server.\n\nMike",
+            "date": "2003-05-27T04:39:10.000+0000",
+            "id": 6
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "That would be an acceptable interim solution for recoverable I/O errors.\nHowever, that would not solve the problem of multiple authentication attempts\nvia a tunneled connection. Preemptive authentication still appears the only\nfeasible workaround [sigh].\n\nOleg",
+            "date": "2003-05-28T01:40:51.000+0000",
+            "id": 7
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Agreed, if failed authentication closes the connection on the server, then\npreemptive authentication is the only answer.\n\nMike",
+            "date": "2003-05-28T02:34:33.000+0000",
+            "id": 8
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "This bug will be fixed by the patch for the HTTPCLIENT-306. I am attaching the wire\nlog of the successful authentication against an NTLM host via Squid proxy with\nbasic authentication using SSL.",
+            "date": "2003-12-15T19:44:58.000+0000",
+            "id": 9
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Created an attachment (id=9577)\nWire log of a successful SSL+ basic proxy + NTLM host session\n",
+            "date": "2003-12-15T19:47:25.000+0000",
+            "id": 10
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Re-tested once again against the latest CVS HEAD. The problem appears to have\nbeen fixed.\n\nOleg",
+            "date": "2004-01-13T18:23:46.000+0000",
+            "id": 11
+        }
+    ],
+    "component": "HttpClient (classic)",
+    "description": "When connecting through a proxy, using SSL and authentication HttpClient winds \nup sending a GET request to the proxy after the initial auth required response, \nthe proxy then obviously responds with a not implemented response since it \ncan't handle a GET request to an SSL URL.  In essence the following is \nhappening:\n\n1. HttpClient sends Connect response.\n2. Proxy responds 200 Connect OK\n3. HttpClient uses SSL connection to send the request to the web server.\n4. Web server responds with not authorized and closes the connection.\n5. HttpClient opens a new connection to the proxy and issues a GET request for \nthe SSL URL.\n6. Proxy returns 501 not implemented.\n\nI'll attach a full log to this bug.\n\nThis is likely to be hard to fix since the retry is performed in HttpMethodBase \nbut the Connect method is executed by HttpClient so a fix for this may be best \nwaiting for 2.1.  This looks very similar to HTTPCLIENT-195 except that that bug is \nmarked as fixed and this one still doesn't work, this also applies to \nauthentication schemes other than NTLM (testing NTLM and basic).\n\nMy best evaluation is that the web server returns Connection: close when it \nrejects the authorization attempt and then HttpMethodBase is incapable of \ncreating a new SSL connection through the proxy.  The only thing I can think of \nthat could be done prior to 2.1 to fix this is to send a Connection: keep-alive \nas well as the Proxy-Connection: Keep-Alive we're already sending with the \noriginal request.",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "HTTPCLIENT-213",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "HTTPCLIENT",
+    "project": "HTTPCLIENT",
+    "summary": "Authentication fails with proxied SSL Connections",
+    "systemSpecification": false,
+    "version": ""
+}

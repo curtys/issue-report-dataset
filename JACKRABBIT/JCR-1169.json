@@ -1,0 +1,107 @@
+{
+    "comments": [
+        {
+            "author": "angela",
+            "body": "my proposal (see also JCR-996 for the related issue defining Name/Path interfaces):\n\n----------------------------------------------------------\njackrabbit-jcr-commons\n----------------------------------------------------------\n\n- modify without breaking existing dependencies to it.\n\n- therefore rather deprecate than move classes related to\n  internal functionality of a JCR impl.\n  this mainly affects classes used for namespace handling and\n  name/path conversion:\n\n  > org.apache.jackrabbit.name.*.java\n  > org.apache.jackrabbit.util.name.*.java\n\n- in addition the following 'utility' classes:\n\n  > org.apache.jackrabbit.util.PathMap\n  > org.apache.jackrabbit.util.Locked\n  > org.apache.jackrabbit.BaseException\n\n- eventually deprecated methods that define param/return\n  values to be any of the classes mentioned above\n\n  > o.a.j.value.NameValue.valueOf(QName, NamespaceResolver)\n  > o.a.j.util.ISO9075.encode(QName)\n  > o.a.j.util.ISO9075.decode(QName)\n\n- move the alternative ValueFactory implementation that\n  does not require a reference value to be a UUID from\n  jackrabbit-spi-commons to the o.a.j.value package.\n\n\n----------------------------------------------------------\njackrabbit-spi-commons\n----------------------------------------------------------\n\n- copy classes that have been deprecated in jcr-commons\n  to different packages in the spi-commons.\n  e.g.\n\n  > namespace handling      -> o.a.j.namespace\n  > name/path conversion    -> o.a.j.conversion\n  > creation Name/Path      -> o.a.j.name\n  > o.a.j.util.PathMap      -> o.a.j.name (?)\n  > o.a.j.util.Locked       -> o.a.j.lock (?)\n\n- replace usages of QName/Path within the conversion\n  and utility classes with Name/Path interfaces\n\n- provide default factories for both Name and Path based\n  on the current QName and Path classes.\n\n- get rid of duplicate conversion functionality provided\n  both by *Resolver interfaces and by *Format classes.\n  i would opt for using the *Resolver interfaces.\n\n- add o.a.j.name.NameConstants for the various predefined\n  and widely used names.\n\n- since the proposed Name/Path interfaces do currently\n  not make usage of the BaseException but rather use\n  RepositoryException, i would in addition suggest to\n  make the various internal exceptions extend RepositoryExc.",
+            "date": "2007-10-09T14:57:23.218+0000",
+            "id": 0
+        },
+        {
+            "author": "angela",
+            "body": "see JCR-996 (https://issues.apache.org/jira/browse/JCR-996) for the patch defining Path/Name interfaces and the corresponding factories.",
+            "date": "2007-10-10T06:17:46.426+0000",
+            "id": 1
+        },
+        {
+            "author": "angela",
+            "body": "tobi suggested not to hide the Name/Path parsing in the NameResolver and PathResolver but instead\nprovide separate classes that take both Resolver and the Factory in order to validate the jcrName/jcrPath\nand return the Name/Path objects.\n\nthe default implementation of the Resolver would then rather use that Builder/Format classes than\nimplementing the parsing itself.\n\ni will integrate that suggestion in the spi-commons and upload an improved patch.\n\nangela\n\n",
+            "date": "2007-10-11T08:15:59.570+0000",
+            "id": 2
+        },
+        {
+            "author": "angela",
+            "body": "patch including suggestions by tobi:\n\n- o.a.j.conversion.NameParser \n- o.a.j.conversion.PathParser\n\nthat provide parsing utilities for JCR names (parsing code written by tobi).\nthey are now used within the ParsingNameResolver and ParsingPathResolver instead of having a separate parsing there. \n\nIn addition i decided to\n\n- remove the NameCache interface.\n  This has been used by NamespaceResolver orginally. Now that the \n   NamespaceResolver is limited to its original functionality (namespaces) and\n   does not deal with Name any more.\n   For caching Names and Paths the Caching*Resolver (or a similar \n   implementation of the Name- and PathResolver interfaces should be used.\n\n- Name- and PathResolver interfaces destinguish between \n  > IllegalNameException and \n  > MalformedPathException.\n\n",
+            "date": "2007-10-11T16:55:05.795+0000",
+            "id": 3
+        },
+        {
+            "author": "angela",
+            "body": "if nobody objects within the next couple of days, i assume that we are having lazy consensus on this issue\nand will commit the changes.\n\nin the mean time i will take a closer look at the various main projects and the contribs.\nas long as jackrabbit-core still uses the deprecated QName/Path/*Resolver classes everything (except the spi\ncontribs) is expected to work fine.\n\nstill i think we should refactor jackrabbit-core not to use the deprecated classes anymore. I already started doing so\nwhile waiting for feedback and will provide a patch. In any case this which will affect those contribs, that have a dependency on jackrabbit-core.\n\nfrom what i have seen at a first glance these are:\n\n- jackrabbit-jcr-import-export-tool\n- jcrlog\n\nall other contribution either don't depend on the core OR depend on a older version of the core. in those cases\ni guess there is nothing we have to do.",
+            "date": "2007-10-16T16:05:10.497+0000",
+            "id": 4
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "I wouldn't be too concerned about breaking the contrib projects. If peopel are actively using the tools, they'll come up with patches to keep up with latest changes. If not, then the contrib project in question isn't worth maintaining in the first place.\n\nIn fact breaking the contrib builds every now and then is actually a good way to check whether there's enough interest in promoting them into release components. :-)",
+            "date": "2007-10-16T16:18:42.401+0000",
+            "id": 5
+        },
+        {
+            "author": "angela",
+            "body": "> I wouldn't be too concerned\n\nyes, but i know how it feels running after changes in the core. that is really embarrassing :)\n\nafter all...\ni think the 'version' entry in the pom.xml (or project.xml) gives pretty much a hint, whether\na contrib is being used.\n\n",
+            "date": "2007-10-17T08:50:37.362+0000",
+            "id": 6
+        },
+        {
+            "author": "angela",
+            "body": "the new distribution of the commons classes is committed with rev. 586059.\n\nplease note, that up to know jackrabbit-core has not be touched and therefore still uses the deprecated jcr-commons classes that have been transfered to the spi-commons.\n\nsince jackrabbit-core should be adapted in order to reflect the changes made along with this \nissue, i'll leave it open and attach a patch as soon as i'm done (hopefully beginning next week).",
+            "date": "2007-10-18T18:49:55.514+0000",
+            "id": 7
+        },
+        {
+            "author": "angela",
+            "body": "Patch for jackrabbit-core replacing the usage of deprecated jcr-commons classes by\nspi-commons.\n\nNote, that i tried to minimize the number of lines changed instead of optimizing and passing *Resolver and *Factory classes around.\n\nPlease comment.\n\n",
+            "date": "2007-10-22T10:18:34.893+0000",
+            "id": 8
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "+1 I like the direction we're going with this.\n\nI guess the main counter-argument to the patch would be the introduction of the spi and spi-commons dependencies in jackrabbit-core. I'm in favor of introducing those dependencies already now, in time for 1.4.\n\nPS. Could we put everything in jackrabbit-spi-commons into org.apache.jackrabbit.spi.commons subpackages? With the current layout it's not obvious which component contains a class like org.apache.jackrabbit.name.NameConstants.",
+            "date": "2007-10-22T10:44:18.315+0000",
+            "id": 9
+        },
+        {
+            "author": "angela",
+            "body": "> Could we put everything in jackrabbit-spi-commons into org.apache.jackrabbit.spi.commons\n\nfine with me.\nhowever, i would first refactor the core and rearrange the packages afterwards (i.e. let the develoment\nenvironment adjust the import statements).",
+            "date": "2007-10-22T12:09:46.129+0000",
+            "id": 10
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Angela:\n> i would first refactor the core and rearrange the packages afterwards\n\nThat's probably the best way to handle this. I created a new issue (JCR-1181) for the package reorganization.",
+            "date": "2007-10-22T12:17:07.022+0000",
+            "id": 11
+        },
+        {
+            "author": "angela",
+            "body": "any objects regarding the changes to be made to jackrabbit-core?\n\nsince QName/NamespaceResolver is omnipresent throughout jackrabbit-core, i'd like to apply the changes\nsoon in order to avoid a lot of conflicts with ongoing improvements and bug fixing.",
+            "date": "2007-10-24T13:05:42.427+0000",
+            "id": 12
+        },
+        {
+            "author": "Julian Reschke",
+            "body": "Please go ahead. The sooner the changes are in, the more time we have to do fine-tuning before 1.4.\n",
+            "date": "2007-10-24T13:26:13.689+0000",
+            "id": 13
+        },
+        {
+            "author": "angela",
+            "body": "committed changes to jackrabbit-core (see patch) with minor adjustments due to recent changes\nmade to the query packages.\n\ncompleted with revision: 590014  \n",
+            "date": "2007-10-30T10:06:04.406+0000",
+            "id": 14
+        }
+    ],
+    "component": "jackrabbit-core, jackrabbit-spi",
+    "description": "jukka started a discussion regarding distribution of commons classes a while ago:\n\nhttp://www.mail-archive.com/dev@jackrabbit.apache.org/msg06698.html\n\n",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "JCR-1169",
+    "issuetypeClassified": "REFACTORING",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Major",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "Distribution of commons classes",
+    "systemSpecification": true,
+    "version": ""
+}

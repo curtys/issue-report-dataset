@@ -1,0 +1,113 @@
+{
+    "comments": [
+        {
+            "author": "Yonik Seeley",
+            "body": "The point at the exception uses a signed shift instead of unsigned, but that shouldn't matter unless the buffer pool is huge?\nAaron, what are your index settings (like ramBufferSizeMB?)\n",
+            "date": "2009-10-19T19:30:18.118+0000",
+            "id": 0
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Spooky!  It does look likely we overflowed int, because (1 + Integer.MAX_VALUE) >> 15 is -65536.",
+            "date": "2009-10-19T20:47:10.955+0000",
+            "id": 1
+        },
+        {
+            "author": "Aaron McKee",
+            "body": "I make no claims to the reasonableness of these settings, I only recently began efforts to tune our prototype. =)\n\nuseCompoundFile: false\nmergeFactor: 10\nmaxBufferedDocs: 5000000\nramBufferSizeMB: 8192 \nmaxFieldLength: 10000\nreopenReaders: true\n\nMy system has 24gb and my index is typically ~16gb, so I set some of these values a bit high. If the ram buffer is being indexed with an int, that could certainly be my issue; I feel a bit silly for not having thought of that, already.  I'll try setting it down to 2048 and see if the problem disappears.",
+            "date": "2009-10-19T21:01:00.089+0000",
+            "id": 2
+        },
+        {
+            "author": "Yonik Seeley",
+            "body": "lol - well, there we go.  Looks like perhaps a JavaDoc fix (and a comment in solrconfig.xml)?  The buffered size was never meant to be quite so large :-)\n\nMike - I think keeping the signed shift is the right thing to do... a zero-cost check against silent corruption.\nBut I'm not sure if 2048MiB is safe either... I'm not sure of one could overflow the number of buffers somehow as well (is every buffer except the last fully utilized?)\n",
+            "date": "2009-10-19T21:21:01.553+0000",
+            "id": 3
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "That's a nice large RAM buffer :)\n\nbq. Mike - I think keeping the signed shift is the right thing to do... a zero-cost check against silent corruption.\n\nAhh good point, OK we'll keep it as is.\n\nbq. But I'm not sure if 2048MiB is safe either\n\n2048 probably won't be safe, because a large doc just as the buffer is filling up could still overflow.  (Though, RAM is also used eg for norms, so you might squeak by).\n\nI'll update the javadocs to note the limitation!",
+            "date": "2009-10-19T21:36:02.527+0000",
+            "id": 4
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Thanks Aaron!  Maybe someday Lucene will allow a larger RAM buffer than 2GB...",
+            "date": "2009-10-20T09:07:20.403+0000",
+            "id": 5
+        },
+        {
+            "author": "Fuad Efendi",
+            "body": "I am recalling a bug in Arrays.sort() (Joshua Bloch) which was fixed after 9 years; \"signed\" instead of \"unsigned\"...",
+            "date": "2009-10-24T18:46:08.205+0000",
+            "id": 6
+        },
+        {
+            "author": "Mark Miller",
+            "body": "If your talking about the merge sort/binary sort fix, that was Martin Buchholz. Joshua Bloch just helped spread the word.\n\nSpeaking of which, there is another one of these in the flex branch ;)\n\nSimpleStandardTermsIndexReader, binary search\n\n",
+            "date": "2009-10-24T21:09:56.934+0000",
+            "id": 7
+        },
+        {
+            "author": "Fuad Efendi",
+            "body": "Joshua writes in his Google Research Blog:\n\"The version of binary search that I wrote for the JDK contained the same bug. It was reported to Sun recently when it broke someone's program, after lying in wait for nine years or so.\"\nhttp://googleresearch.blogspot.com/2006/06/extra-extra-read-all-about-it-nearly.html\n\nAnyway, this is specific use case of reporter; I didn't have ANY problems with ramBufferSizeMB: 8192 during a month (at least) of constant updates (5000/sec)... Yes, I am using term vectors (as Michael niticed it plays a role)... \n\nAnd what exactly causes the problem is unclear; having explicit check for 2048 is just workaround... quick shortcut...",
+            "date": "2009-10-24T21:27:33.056+0000",
+            "id": 8
+        },
+        {
+            "author": "Mark Miller",
+            "body": "{quote}\nJoshua writes in his Google Research Blog:\n\"The version of binary search that I wrote for the JDK contained the same bug. It was reported to Sun recently when it broke someone's program, after lying in wait for nine years or so.\"\nhttp://googleresearch.blogspot.com/2006/06/extra-extra-read-all-about-it-nearly.html\n{quote}\n\nRight - thats Joshua spreading the word. The guy who found the bug also gave the implemented fix. Hence, to him goes the credit of both the bug find and the fix. Simple as that.",
+            "date": "2009-10-24T21:30:43.889+0000",
+            "id": 9
+        },
+        {
+            "author": "Fuad Efendi",
+            "body": "But who did the bug? Joshua writes, it's him :) - based on other's famous findings and books...\n===\n\" it just contains a few lines of code that calculates a \ndouble value from two document fields and then stores that value in one of these dynamic fields\"\nAnd problem happens when he indexes document number 15,000,000...\n- I am guessing he is indexing \"double\"... ((type=tdouble, indexed=t, stored=f)... Why do we ever need to index multi-valued field \"double\"? Cardinality is the highest possible... I don't know Lucene internals; I am thinking that (double, docID) will occupy 12 bytes, and with multivalued (or dynamic) field we may need a lot of RAM for 15 mlns docs... especially if we are trying to put into buskets some objects using hash of \"double\"...\n\n",
+            "date": "2009-10-24T22:22:42.184+0000",
+            "id": 10
+        },
+        {
+            "author": "Yonik Seeley",
+            "body": "bq. Anyway, this is specific use case of reporter; I didn't have ANY problems with ramBufferSizeMB: 8192\n\nWe've been over this on solr-user.  If your usage actually went above 2GB, you would have had a problem.  8192 is not a valid value, we don't support it, and now we'll throw an exception if it's over 2048.\n\nbq. And what exactly causes the problem is unclear; having explicit check for 2048 is just workaround... quick shortcut...\n\nNo, we only support a max of 2GB ram buffer, by design currently.  So the explicit check is so you get the error immediately instead of far into an indexing process.",
+            "date": "2009-10-24T22:53:55.684+0000",
+            "id": 11
+        },
+        {
+            "author": "Mark Miller",
+            "body": "bq. But who did the bug? Joshua writes, it's him\n\nWow you like being obstinate. He put the code in Sun's JVM, but he didn't come up with the algorithm. He took it, and the bug with it, from elsewhere. He didn't \"do\" the bug either. He just propagated it.",
+            "date": "2009-10-24T23:39:10.419+0000",
+            "id": 12
+        },
+        {
+            "author": "Fuad Efendi",
+            "body": "bq. He took it, and the bug with it, from elsewhere. He didn't \"do\" the bug either. He just propagated it.\n\nThis is even worse. Especially for such classic case as Arrays.sort(). Buggy propagating...\n\n     * The sorting algorithm is a tuned quicksort, adapted from Jon\n     * L. Bentley and M. Douglas McIlroy's \"Engineering a Sort Function\",\n     * Software-Practice and Experience, Vol. 23(11) P. 1249-1265 (November\n     * 1993).  This algorithm offers n*log(n) performance on many data sets\n     * that cause other quicksorts to degrade to quadratic performance.\n\nbq.  If your usage actually went above 2GB, you would have had a problem. 8192 is not a valid value, we don't support it, and now we'll throw an exception if it's over 2048.\nNow I think my actual usage was below 2Gb... \n\nbq. No, we only support a max of 2GB ram buffer, by design currently. \nThanks for confirmation... However, JavaDoc didn't mention explicitly that, and \"by design\" is unclear wordings... it's already several years \"by design\"...\n\nbq. 2048 probably won't be safe, because a large doc just as the buffer is filling up could still overflow. (Though, RAM is also used eg for norms, so you might squeak by).\n- Uncertainness...",
+            "date": "2009-10-25T02:45:01.273+0000",
+            "id": 13
+        },
+        {
+            "author": "Fuad Efendi",
+            "body": "bq. bq. If your usage actually went above 2GB, you would have had a problem. 8192 is not a valid value, we don't support it, and now we'll throw an exception if it's over 2048.\nbq. Now I think my actual usage was below 2Gb... \nHow I was below 2048 if I had few segments created by IndexWriter during a day, without any \"SOLR-commit\"?.. may be I am wrong, it was few weeks ago... I am currently using 1024 because I need memory for other staff too, and I don't want to try again...",
+            "date": "2009-10-25T03:11:30.485+0000",
+            "id": 14
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Bulk close all 2.9.1 issues.",
+            "date": "2009-11-07T14:57:30.751+0000",
+            "id": 15
+        }
+    ],
+    "component": "core/index",
+    "description": "http://search.lucidimagination.com/search/document/f29fc52348ab9b63/arrayindexoutofboundsexception_during_indexing",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "LUCENE-1995",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "ArrayIndexOutOfBoundsException during indexing",
+    "systemSpecification": true,
+    "version": "2.9"
+}

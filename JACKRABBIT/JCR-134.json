@@ -1,0 +1,131 @@
+{
+    "comments": [
+        {
+            "author": "Jukka Zitting",
+            "body": "Schedule for 1.0",
+            "date": "2005-06-30T23:15:09.000+0000",
+            "id": 0
+        },
+        {
+            "author": "C\u00e9dric Damioli",
+            "body": "On node.removeMixin(\"mix:versionable\"), should the VersionHistory also be deleted ?\nMay a Node be versionable in a workspace and not in another one ?\nThe above proposal (remove the VH when no node and no version references it) would be great, but I think there is no easy and cheap way ATM to check all corresponding nodes on a node or version deletion. Or am I missing something ?",
+            "date": "2006-12-11T12:10:51.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Tobias Bocanegra",
+            "body": "> but I think there is no easy and cheap way ATM to check all corresponding nodes on a node or \n> version deletion.\nyou're right. one would have to check all workspaces if no corresponding node exist anymore.\n",
+            "date": "2006-12-11T13:06:18.000+0000",
+            "id": 2
+        },
+        {
+            "author": "C\u00e9dric Damioli",
+            "body": "And about the two other points :\n - should the VH be deleted on node.removeMixin(\"mix:versionable\") ? would it be safe ?\n - may a Node be versionable in a workspace and not in another one ? I think the spec allows it (it doesn't actually forbid it). But I need confirmation.\n\nSo the only way to do this is IMHO the following algorithm :\n - when removing a Version, if this is the last version (only the jcr:rootVersion is left), and there is no references to the jcr:rootVersion, one can remove the VH\n - when removing a Node, if it is versionable, and references the jcr:rootVersion (ie have never been checked in) and there is no other references to the VH (in others workspaces), then delete the VH\n - when removing the mix:versionable, either delete directly the VH (see my first question in this post), either check if there is only the jcr:rootVersion left, and then delete the VH.\n\nWDYT ?\n",
+            "date": "2006-12-11T18:13:38.000+0000",
+            "id": 3
+        },
+        {
+            "author": "Tobias Bocanegra",
+            "body": ">  - should the VH be deleted on node.removeMixin(\"mix:versionable\") ? \n>    would it be safe ?\nyes, unless it's not used by another node in another workspace. the only usecase i can think of is that the application wants to restore the 'versionability' of the node again by adding the mix:versionable again. it might be desirable if the old versions still exist then.\n\n> - may a Node be versionable in a workspace and not in another one ? I think the\n> spec allows it (it doesn't actually forbid it). But I need confirmation.\ni think so, too\n\n> So the only way to do this is IMHO the following algorithm :\n> - when removing a Version, if this is the last version (only the jcr:rootVersion is\n>   left), and there is no references to the jcr:rootVersion, one can remove the VH\nyes.\n\n> - when removing a Node, if it is versionable, and references the jcr:rootVersion\n>   (ie have never been checked in) and there is no other references to the VH (in\n>   others workspaces), then delete the VH\nyes.\n\n> - when removing the mix:versionable, either delete directly the VH (see my first\n>  question in this post), either check if there is only the jcr:rootVersion left, and \n> then delete the VH. \nyes.\n\nin general: after any operation that affects the references to the version storage, check for orphaned VH and remove them.\n\nthe big problem hereby is, that it's not easy or, lets say, not cheap to check if there is any node that still references the VH. Since there can be a lot of workspaces, which might be idle. the best would probably be to keep a ref count on the VHs.\n",
+            "date": "2006-12-11T18:46:45.000+0000",
+            "id": 4
+        },
+        {
+            "author": "Julian Reschke",
+            "body": "Isn't it a common use case that version histories need to be preserved even after the last reference is gone? It seems to me that this may be a valuable feature, so maybe this needs to be configurable.\n",
+            "date": "2006-12-11T19:13:37.000+0000",
+            "id": 5
+        },
+        {
+            "author": "C\u00e9dric Damioli",
+            "body": "The VH need only to be kept when there are remaining Version attached to it.\nIn many apps, it would be great to get rid of empty VH (ie no more Version, and no more Node referencing it).",
+            "date": "2006-12-11T19:40:14.000+0000",
+            "id": 6
+        },
+        {
+            "author": "Tobias Bocanegra",
+            "body": "yes, of course:\nempty VH, no references -> remove\nnon-empty VH, no references -> keep (or at least configurable).",
+            "date": "2006-12-12T08:45:12.000+0000",
+            "id": 7
+        },
+        {
+            "author": "C\u00e9dric Damioli",
+            "body": "Concerning the eventual ref count kept on VHs, is it allowed to store it in the repository, as a new property of the VH ? If yes there would be a compatibility problem whith existing repositories.\nOtherwise, how would you see the storage of this ref count ?",
+            "date": "2006-12-12T14:37:17.000+0000",
+            "id": 8
+        },
+        {
+            "author": "Oleg Alexeyev",
+            "body": "Is there any chance of having this fixed in 1.4?\n\nOur use case is as follows: data format (node structure) for an application may change from one app's version to another (currently it happens pretty often, as it's not stable yet) and nodes are versionable. Conversion is done by creating another nodes' tree and copying properties there, original nodes are deleted. And they, of course, should be deleted completely, along with all the versions and VH...\n\nThanks,\n--oleg",
+            "date": "2007-12-24T17:17:42.067+0000",
+            "id": 9
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "> Is there any chance of having this fixed in 1.4? \n\nNo, at least not in the scope you envision, see Tobias' summary comment above.",
+            "date": "2007-12-28T11:42:09.528+0000",
+            "id": 10
+        },
+        {
+            "author": "S\u00e9bastien Launay",
+            "body": "As no one reply to my thread for fixing this issue:\nhttp://markmail.org/message/7boajk2b2mnhe4xf\ni will try to submit a fix :).\n\nThe solution that i propose is based on the following facts:\n- if there is no references to the VersionHistory node then no one node is alive.\n- if the VersionHistory node has only two children (root version and version labels) then there is no version for restoring the content.\n\nThese tests are computed in InternalVersionHistoryImpl#removeVersion(Name).\n\nThe following use cases are supported:\n- committed node.remove() followed by multiple versionHistory.removeVersion(..)\nthe version history is then deleted in the same time as the last version is removed.\n\nThe following use cases are not supported (yet):\n- node.removeMixin(\"mix:versionable\")\n- node.remove() after all versions (except the root version) have been deleted (don't know if this is possible)\n\nThis patch comes with a test case to validate version history cleaning.\n\nI will be waiting for your feedbacks.",
+            "date": "2008-08-11T13:25:23.996+0000",
+            "id": 11
+        },
+        {
+            "author": "Oleg Alexeyev",
+            "body": "IMO, this covers at least the most important use case.\n\nActually, \"node.remove() after all versions (except the root version) have been deleted\" is not possible as the node refers to one of the versions. So, we tried to clean up VH, we used node.remove() and then VH.removeVersion() for each Version returned by getAllVersions() enumeration except the root one. This approach works, but leaves VH and root version nodes.\n\nThanks for approaching this issue! :)",
+            "date": "2008-08-11T13:34:41.023+0000",
+            "id": 12
+        },
+        {
+            "author": "C\u00e9dric Damioli",
+            "body": "may the attached patch be reviewed and eventually committed, so this issue can be part of the upcoming 1.5.1 release ?\nIMHO, many users have the same concern (see recent thread on users@)",
+            "date": "2009-01-06T09:42:58.747+0000",
+            "id": 13
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Looks good, thanks! Patch applied in revision 778645. I'll merge it also to the 1.x branch for inclusion in the 1.6 release.\n",
+            "date": "2009-05-26T10:32:00.695+0000",
+            "id": 14
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Merged to the 1.x branch in revision 778680.",
+            "date": "2009-05-26T12:47:52.731+0000",
+            "id": 15
+        },
+        {
+            "author": "Marek Slama",
+            "body": "There is one use case where it fails: When I have versionable node but never create version using VersionManager so there is only rootVersion. I assume VersionHistory removal is triggered by removing last non root Version so it is understandable. To fix this it would be good to have some way how to explicitly remove also rootVersion after versionable node remove so this removal of rootVersion could trigger removal of version history. It would be good to allow rootVersion removal when its versioned node is already removed. Does it make sense to create issue for this use case?\n\n(Yes it is our mistake as we set versionable node which was not actually used as versioned node. We could workaround it by creating one additional regular version and then removing node, this new version to do full version history cleanup.)",
+            "date": "2012-02-15T13:58:40.541+0000",
+            "id": 16
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "> It would be good to allow rootVersion removal when its versioned node is already removed.\n\nSounds like a reasonable idea.\n\n> Does it make sense to create issue for this use case? \n\nYes, please do.",
+            "date": "2012-02-15T14:24:24.820+0000",
+            "id": 17
+        },
+        {
+            "author": "Marek Slama",
+            "body": "Done. I filed JCR-3238.",
+            "date": "2012-02-17T13:48:38.043+0000",
+            "id": 18
+        }
+    ],
+    "component": "versioning",
+    "description": "since the creation of a VersionHistory is triggered by the creation of a mix:versionable node, the removal should happen automatically, as soon as no references to that version histroy exist anymore. this is the case, when all mix:versionable nodes (in all workspaces) belonging to that VH are deleted, and all the versions in the VH are removed i.e. only the jcr:rootVersion is left. At this point, the VH should be deleted aswell.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "JCR-134",
+    "issuetypeClassified": "RFE",
+    "issuetypeTracker": "RFE",
+    "priority": "Minor",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "Unreferenced VersionHistory should be deleted automatically.",
+    "systemSpecification": true,
+    "version": ""
+}

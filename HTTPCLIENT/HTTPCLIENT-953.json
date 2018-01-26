@@ -1,0 +1,59 @@
+{
+    "comments": [
+        {
+            "author": "Guillaume",
+            "body": "Attached sample code to trigger the behaviour.",
+            "date": "2010-06-09T17:02:10.029+0000",
+            "id": 0
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Guillaume\n\nMany thanks for a such a precise and detailed analysis of the problem. Do you think you could submit your fix in the udiff format?\n\nOleg",
+            "date": "2010-06-09T21:25:32.971+0000",
+            "id": 1
+        },
+        {
+            "author": "Guillaume",
+            "body": "Well, I really needed a workaround, (as we do not, as a policy, use self-patched libs in our dev process), so I had to understand what was going on.\n\nI'll try to produce a patch later in the day, I have to qualify my workaround today.\nIt's the usual SVN checkout (I suppose starting from the trunk is the best way to go ? Would you prefer a patch against 4.0.1 specifically ?), and then a svn diff ?\n\nThe solution presented in my first post clearly is not the most efficient (carrying a boolean around 2 method invocations beats calculating a Route's hashCode() any time), but given the rare nature of the condition that triggers it, I guess safer is better. It also is a good way to clearly state in context, that the rospl instance may be unsafe for use (dirty) after deleteLeastUsedConnection.",
+            "date": "2010-06-10T07:33:12.460+0000",
+            "id": 2
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Another workaround you might want to investigate could be disabling the state tracking for SSL connections. \n\n> Would you prefer a patch against 4.0.1 specifically ?), \n\nSVN trunk. I'll back-port the fix onto the 4.0.x branch once it is ready and reasonably tested.\n\n> and then a svn diff ? \n\nYep. 'svn diff > patch.diff'\n\n> The solution presented in my first post clearly is not the most efficient\n\nThis does not matter. It is always easier to start with something that works and then improve on it\n\nMeanwhile I will be trying to reproduce the problem with a test case that does not involve SSL and external resources.\n\nOleg",
+            "date": "2010-06-10T08:00:27.499+0000",
+            "id": 3
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Guillaume,\n\nHere's the test case reproducing the problem using the HttpClient's testing framework. Feel free to incorporate it in your patch.\n\nOleg",
+            "date": "2010-06-10T10:03:07.038+0000",
+            "id": 4
+        },
+        {
+            "author": "Guillaume",
+            "body": "Here's my unified patch.\nJust corrected a few comments on the unit test - because I guess the test comments should not say that the test will fail but rather what it will test.\n\nSuggested fix was applied, which succeeds, in my tests, with no impact on the other tests' results. It also worked in the original context that triggered my observations in the first place.\n\n==\n\nAbout the workaround, I finally adopted a solution that uses a custom UserTokenHandler on the client. It basically removes the SSL part of the default one.\nThe reason I chose this path is threefold :\n- It interacts nicely with my code (not leaking the workaround to higher level classes)\n- My HttpClient(s) are created per SSL Socket factory, with single certs per Key/Trust Manager, so I know for sure there is only one possible principal for any request \n- This enables actual connection reuse, which is good as SSL handshakes (+ hostname checks, ...) have a somewhat noticeable impact on my app",
+            "date": "2010-06-13T00:18:05.146+0000",
+            "id": 5
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Fix committed to SVN trunk and 4.0.x branch. Many thanks, Guillaume.",
+            "date": "2010-06-13T16:53:38.988+0000",
+            "id": 6
+        }
+    ],
+    "component": "HttpClient (classic)",
+    "description": "Hi all,\n\nI encountered an issue on ConnPoolByRoute / RouteSpecificPool on HTTPClient 4.0.1, akin to HTTPCLIENT-747 (it also leads to a java.lang.IllegalStateException: No entry created for this pool. HttpRoute[{}XXX] ), but it is not a concurrency issue (no race condition, just a logic error if I understood it correctly).\n\nFrom my understanding, the error lies in ConnPoolByRoute#getEntryBlocking\nQuoting from the code (line 309-314) :\nRouteSpecificPool rospl = getRoutePool(route, true);\n... \n} else if (hasCapacity && !freeConnections.isEmpty()) {\n\ndeleteLeastUsedEntry();\nentry = createEntry(rospl, operator);\n\n} else { ...\n\nThe short version of the issue is : under certain circumstances, #deleteLeastUsedEntry can remove rospl from the map of known RootSpecificPool. But as this code still holds on to the rospl instance, it will modify its state in a way the pool will never recover from later, not having any other way to access this instance when the connection gets released.\n\nA Step by Step guide to what's going wrong.\n0) You have to be in a condition that leads to the execution of said code extract (i.e. no free entry on the current route - but the route already is registered to the global pool -, current Route has capacity, max connections reached for the global pool, but there are free connections to destroy).\n2) We arrive in deleteLeastUsedEntry(). We get the last entry from a queue. It can be that this entry is bound to the same (hashCode() wise) Route that the one we are getting a connection to (i.e. rospl instance held in the #getEntryBlocking context)\n3) this entry can be the last of its pool, thus at this point, rospl.isUnused() == true\n4) As a consequence, deleteEntry() will remove rospl from the routeToPool map\n5) Back in the getEntryBlocking method, we do entry = createEntry(rospl, operator), which will do createdEntry() on the \"locally-scoped\" rospl instance that has just been removed from routeToPool \n6) When the connexion from this new entry is released at some point in the future, the rospl instance that got the createdEntry() does not exist anymore, and it is a new one that gets the freeEntry() call\n7) App breaks : this newly created RouteSpecificPool throws IllegalStateException.\n\nStep 0, though, is a rare condition that I only reached during stress tests, and on a SSL client-auth server. This is so because this is the only condition that I know of in HTTPClient, where there is a keep-alive connection in the RouteSpecificPool that can not be reused (when the State is set to the X500 principals of the client cert in the pool, but not in the request).\n\nPossible fix (from what I understand) :\nThe rospl instance variable in the context of getEntryBlocking() should be protected against the consequences of #deleteLeastUsedEntry().\nNot being confortable with all issues at hand, nor with the code base, the simplest thing I can think of would be to preemptively reset the rospl variable after deleteLeastUsedEntry(), thus writing the previous code extract as :\n\n} else if (hasCapacity && !freeConnections.isEmpty()) {\n\ndeleteLeastUsedEntry();\n// delete may have made deprecated the RouteSpecificPool instance\nrospl = getRoutePool(route, true);\nentry = createEntry(rospl, operator);\n\n} else { ...\n\n\nI have a test case that I will attach to this issue ASAP.\nIt is a simple example that triggers the above conditions with 3 HttpGet calls, in a serial fashion. As stated previsouly, these calls need nothing particular, except that one of these calls must go to a HTTPS server with client-side certificate authentication (I guess NTLM would be OK, anything that will place a non null state along with the route in BasicEntryPool).\n\nI hope code is self-explainatory. I get 100% failure in my setup. Just configure your 2 URLS, configure classpath, set your keystores system properties, and launch.\n\nWorkaround :\nBest workaround I found is : do not get to step 0.\nThe most robust way I found to do that (i.e. a way that does not involve things like setting max pool size to a gigantic number that can never be reached, ...) is to actively set the ClientContext.USER_TOKEN attribute in an exec context while submitting the request to the client.\nStep 0 triggers when there is an idle connection that waits, and when this idle connection can not be reused, which can only happen if the request's \"USER_TOKEN\" does not match the BasicPoolEntry#getState(). As, in the SSL case, the state is the SSL Cert's X500PrincipalName, and I know it in advance, it's easy to set up front.\n\nBy the way, this taught me that I never could benefit from connection reuse strategies in this SSL case, as connections would always get into the pool with a USER_TOKEN that my requests never had. Don't know if it's mentionned somewhere in the documentation, but this is a noteworthy fact to me.\n\nPlease feel free to comment / correct any mistakes.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "HTTPCLIENT-953",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "HTTPCLIENT",
+    "project": "HTTPCLIENT",
+    "summary": "ConnPoolByRoute driving RouteSpecificPool to IllegalState",
+    "systemSpecification": true,
+    "version": "4.0.1"
+}

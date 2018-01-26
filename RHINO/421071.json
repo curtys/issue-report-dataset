@@ -1,0 +1,65 @@
+{
+    "comments": [
+        {
+            "author": "krzysztof.karczmarczyk@sabre.com",
+            "body": "By TopLevelScope I meant ImporterTopLevel.",
+            "date": "20080307T12:23:25",
+            "id": 0
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "Looking at the latest CVS source, I'm not seeing this behavior.\n\nI put a breakpoint on NativeJavaPackage.getPkgProperty, then access a globally defined variable, both before and after executing importPackage. I don't get any calls to NativeJavaPackage.getPkgProperty for variables that are defined at the top level. \n\nIn your example code, I was assuming that \"application\" and \"Calendar\" were defined by your application. Are you using shared scopes or any other configuration that might come into play here?\n\nAnd as far as intent, I was not trying to detect dynamically loaded classes by repeatedly attempting to load them. I'm fine with Rhino only attempting to load a class once and upon failure thereafter assuming it doesn't exist.",
+            "date": "20080307T14:28:53",
+            "id": 1
+        },
+        {
+            "author": "krzysztof.karczmarczyk@sabre.com",
+            "body": "OK, using 1.6R5 and below example code you should be able to reproduce.\n\n/*\n * @(#)Bug421071Test.java\n *\n * Copyright (c) 2008 Sabre, Inc. All rights reserved.\n */\n\npackage org.mozilla.bugs.bug421071;\n\nimport junit.framework.TestCase;\nimport org.mozilla.javascript.Context;\nimport org.mozilla.javascript.ImporterTopLevel;\nimport org.mozilla.javascript.Script;\nimport org.mozilla.javascript.Scriptable;\n\npublic class Bug421071Test extends TestCase\n{\n   private TopLevelScope globalScope;\n   private Script script;\n\n   public void testProblemReplicator() throws Exception\n   {\n      // before debugging please put the breakpoint in the NativeJavaPackage.getPkgProperty() and observe names passed in there\n      script = compileScript();\n      runTestScript();           // this one does not get to the NativeJavaPackage.getPkgProperty() on my variables\n      runTestScript();           // however this one does\n   }\n\n   private Script compileScript()\n   {\n      String scriptSource = \"importPackage(java.util);\\n\" +\n         \"var searchmon = 3;\\n\" +\n         \"var searchday = 10;\\n\" +\n         \"var searchyear = 2008;\\n\" +\n         \"var searchwkday = 0;\\n\" +\n         \"\\n\" +\n         \"var myDate = Calendar.getInstance();\\n // this is a java.util.Calendar\" +\n         \"myDate.set(Calendar.MONTH, searchmon);\\n\" +\n         \"myDate.set(Calendar.DATE, searchday);\\n\" +\n         \"myDate.set(Calendar.YEAR, searchyear);\\n\" +\n         \"searchwkday.value = myDate.get(Calendar.DAY_OF_WEEK);\";\n      Script script;\n      Context context = Context.enter();\n\n      try\n      {\n         script = context.compileString(scriptSource, \"testScript\", 1, null);\n         return script;\n      }\n      finally\n      {\n         Context.exit();\n      }\n   }\n\n   private void runTestScript() throws InterruptedException\n   {\n      // will start new thread to get as close as possible to original environment, however the same behavior is exposed using new ScriptRunner(script).run();\n      Thread thread = new Thread(new ScriptRunner(script));\n      thread.start();\n      thread.join();\n   }\n\n   private TopLevelScope createGlobalScope()\n   {\n      Context context = Context.enter();\n      //noinspection deprecation\n      context.setCompileFunctionsWithDynamicScope(true); // this does not seem to matter\n      TopLevelScope globalScope = new TopLevelScope(context);\n      Context.exit();\n      return globalScope;\n   }\n\n   protected void setUp() throws Exception\n   {\n      super.setUp();\n      globalScope = createGlobalScope();\n   }\n\n   private class TopLevelScope extends ImporterTopLevel\n   {\n      public TopLevelScope(Context context)\n      {\n         super(context);\n      }\n   }\n\n   private class ScriptRunner implements Runnable\n   {\n      private Script script;\n\n      public ScriptRunner(Script script)\n      {\n         this.script = script;\n      }\n\n      public void run()\n      {\n         Context context = Context.enter();\n         try\n         {\n            // Run each script in its own scope, to keep global variables\n            // defined in each script separate\n            Scriptable threadScope = context.newObject(globalScope);\n            threadScope.setPrototype(globalScope);\n            threadScope.setParentScope(null);\n            script.exec(context, threadScope);\n         }\n         catch (Exception ee)\n         {\n            ee.printStackTrace();\n         }\n         finally\n         {\n            Context.exit();\n         }\n      }\n   }\n}\n\n",
+            "date": "20080310T11:49:37",
+            "id": 2
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "Created attachment 312652\nProposed patch\n\nThanks--that test case illustrated what was going on. \n\nWhen a script is first started, Rhino must look up variables defined in the script and merge them with previous definitions. To perform this merge it has to look them up in the scope, and with importerTopLevel having package imports it causes a call to getPkgProperty for each variable. The first call to runTestScript didn't trigger this behavior because the importPackage calls had not yet been made. \n\nI think the best option here is, as you suggest, to maintain a cache of misses so we don't retry the class lookup. I've attached a proposed patch. Can you let me know if this change addresses the performance issue?\n\nThanks for your help.",
+            "date": "20080331T01:17:23",
+            "id": 3
+        },
+        {
+            "author": "krzysztof.karczmarczyk@sabre.com",
+            "body": "I tried the patch and it works fine now.\n\nThank you!",
+            "date": "20080331T10:43:45",
+            "id": 4
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "Committed (slightly modified from proposed patch):\n\nChecking in src/org/mozilla/javascript/NativeJavaPackage.java;\n/cvsroot/mozilla/js/rhino/src/org/mozilla/javascript/NativeJavaPackage.java,v  <--  NativeJavaPackage.java\nnew revision: 1.43; previous revision: 1.42\ndone\n",
+            "date": "20080331T13:32:38",
+            "id": 5
+        },
+        {
+            "author": "arunwagle123@gmail.com",
+            "body": "Which is the latest release that has this fix.\nwe are facing the same issue.",
+            "date": "20081021T14:49:46",
+            "id": 6
+        },
+        {
+            "author": "dhartnoll@gpslsolutions.com",
+            "body": "I think the fix to this bug caused a regression, but as it's so old, I created a new report. Please see bug 694286.",
+            "date": "20111013T12:24:16",
+            "id": 7
+        }
+    ],
+    "component": "Core",
+    "description": "User-Agent:       Mozilla/5.0 (Windows; U; Windows NT 5.1; en-US; rv:1.8.1.12) Gecko/20080201 Firefox/2.0.0.12\nBuild Identifier: 1.6R5\n\nThere seems to be a problem between 1.5 and 1.6 release when using importPackage(). \n\nReproducible: Always\n\nSteps to Reproduce:\nFor below snippet:\n\nimportPackage(java.util);\nvar searchmon = application.data[\"month\"].value;\nvar searchday = application.data[\"day\"].value;\nvar searchyear = application.data[\"year\"].value;\nvar searchwkday = application.data[\"wkDay\"];\n\nvar myDate = Calendar.getInstance();\nmyDate.set(Calendar.MONTH, searchmon);\nmyDate.set(Calendar.DATE, searchday);\nmyDate.set(Calendar.YEAR, searchyear);\nsearchwkday.value = myDate.get(Calendar.DAY_OF_WEEK);\n\nActual Results:  \nAn approximate performance drop is at magnitude of 10. Once you replace importPackage() with importClass(), there is no performance issue.\n\nExpected Results:  \nThe performance is the same or better with newer release (1.6x)\n\nAfter investigation it turned out the problem is either in caching inside the\nNativeJavaPackage.getPkgProperty(String name, Scriptable start, boolean createPkg), or in the general approach in the TopLevelScope. It looks like EVERY variable goes through the package evaluation process whenever importPackage has been used. The getPkgProperty() takes care of the previously FOUND classes but does not cache the information about classes that HAVE NOT BEEN FOUND, thus searching over and over for the classes that does not exist and failed previously.\n\nAs a workaround I used my own class loaded that caches the information about not found classes and fails fast. However, either the clarification on the actual intent (read - 'yes, we want to dynamically check for new classes') or the fix is needed here.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "421071",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "BUG",
+    "priority": "-- normal",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "Performance problems after using importPackage",
+    "systemSpecification": true,
+    "version": "other"
+}

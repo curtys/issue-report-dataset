@@ -1,0 +1,227 @@
+{
+    "comments": [
+        {
+            "author": "Robert Sauer",
+            "body": "The test driver is relatively simple as it just involves multiple threads reading from the repository in parallel sessions. Downside is just that I'm currently using an in house developed library on top of JCR which unfortuantely I cannot pass around.\n\nWorking on an isolated test driver that talks just plain JCR, though.\n",
+            "date": "2010-03-10T12:27:45.080+0000",
+            "id": 0
+        },
+        {
+            "author": "Claus K\u00f6ll",
+            "body": "Could you attach your Implementation of ISM ?",
+            "date": "2010-03-10T13:38:21.505+0000",
+            "id": 1
+        },
+        {
+            "author": "Robert Sauer",
+            "body": "I tried to be conservative and not replace DefaultISMLocking. Instead I just installed a special ISMLocking instance for AbstractVersionManager which uses the XID aware implementation if an XID is present or falls back to DefaultISMLocking otherwise.\n\nThis patch was created against the 1.6.1 tag. Test for both jackrabbit-core and jackrabbit-jca are passing.\n\nThe initial implementation was using java.util.concurrent APIs and my ad hoc tests indicate this had a somewhat higher througput than the oswego-concurrent based implementation contained in this patch (200 TX/s vs 165 TX/s).\n\nWith this patch applied my test driver could repeatedly perform about 45.000 TXs from 45 concurrent threads without deadlocking connections.",
+            "date": "2010-03-10T17:10:53.989+0000",
+            "id": 2
+        },
+        {
+            "author": "Robert Sauer",
+            "body": "Attaching my test driver. This is currently using a proprietary service tier in front of the JCR session but still the intention should be clear.\n\nThe getFolder call basically just looks for the appropriate nt:folder node via the given path, and extracts some core atributes as well as sub nodes.\n\nWhere can I find an example on how to provide a plain JackRabbit test case that can be deployed to an app server?",
+            "date": "2010-03-10T17:38:15.700+0000",
+            "id": 3
+        },
+        {
+            "author": "Claus K\u00f6ll",
+            "body": "Hi Robert,\n\nThank you for the Attachements ..  i will take a look on it so i look forward to create a good patch against the deadlock\n\ngreets\nclaus",
+            "date": "2010-03-11T06:38:59.318+0000",
+            "id": 4
+        },
+        {
+            "author": "Claus K\u00f6ll",
+            "body": "Hi Robert,\n\nDou you have seen the warn message \"Unable to set the ActiveXid while a other one is associated with a different GloalTransactionId with this RWLock.\"\nwith the original DefaultISMLocking ?\n\ngreets\nclaus",
+            "date": "2010-03-11T10:32:12.121+0000",
+            "id": 5
+        },
+        {
+            "author": "Robert Sauer",
+            "body": "Essentially yes. I had breakpoint on all critical places, and this one was triggered.\n\nI assume the call sequences is as follows (having the JCA adapter driven by a WLS workmanager pool):\n1. thread-a invokes prepare on behalf of XID_1\n  - the write lock is granted to thread-a\n  - XID_1 is stored as the ActiveXID\n2. thread-a now invokes prepare on behalf of XID_2\n  - tries to acquire the write lock, theoretically it should block until XID_1 was committed\n  - but due to the previous association between the write lock and thread-a locking succeeds\n  - thread-a now tries to set the ActiveXID to XID_2, but as XID_1 is still active, it will just trace a warning\n3. thread-b invokes commit on behalf of XID_1\n  - the ActiveXID is cleared\n  - the write lock gets released\n4. eventually some thread invokes commit on behalf of XID_2, but as the ActiveXID was not set, signalling readers fails\n\nI did not know how to easily fix 2. as the lock-to-thread association seems to be fundamentally wrong in this case. So I started with the different approach contained in the patch.",
+            "date": "2010-03-11T10:53:27.024+0000",
+            "id": 6
+        },
+        {
+            "author": "Claus K\u00f6ll",
+            "body": "You are absolutly right with your assumption.\n\nI have tried to create a TestCase but it is a little bit hard but i will try to create one :-)\nThe Problem is that the prefered locking strategy in the DefaultISMLocking is per Thread. I will\nwrite a patch that hanldes this a little bit easier than yours one without having two ISMLocking Instances.\n\ngreets\nclaus",
+            "date": "2010-03-11T11:38:55.740+0000",
+            "id": 7
+        },
+        {
+            "author": "Claus K\u00f6ll",
+            "body": "Can you please test this patch in your environment ?\nthanks",
+            "date": "2010-03-11T11:40:45.046+0000",
+            "id": 8
+        },
+        {
+            "author": "Claus K\u00f6ll",
+            "body": "Found one more problem .. i will investigate and let you know if it works\ngreets",
+            "date": "2010-03-11T12:43:24.675+0000",
+            "id": 9
+        },
+        {
+            "author": "Robert Sauer",
+            "body": "Ok, I was just about to verify but will wait then.\n\nAdmittedly your patch is pretty elegant due to the small change required.\nStill I have some reservation on having the underlying assumption of locks being bound to threads, and working around this assumption if an XID is present. Wonder how this carries over to java.util.concurrency eventually.\n\nThanks\nRobert\n\n\n",
+            "date": "2010-03-11T12:58:31.053+0000",
+            "id": 10
+        },
+        {
+            "author": "Claus K\u00f6ll",
+            "body": "Now at first the Xid's will be checked and then the default thread bound logic will work if we are not in a XAEnvironment.",
+            "date": "2010-03-11T15:11:35.816+0000",
+            "id": 11
+        },
+        {
+            "author": "Robert Sauer",
+            "body": "About to test this. But I think there still is a race condition with markedXid. It should be a SynchronizedRef as it is written from an unguarded code block.\n\n\n",
+            "date": "2010-03-11T15:38:32.162+0000",
+            "id": 12
+        },
+        {
+            "author": "Robert Sauer",
+            "body": "With Xid_v2 applied It's still hitting the error condition in DefaultISMLocking:136. Concurent threads are now deadlocking in DefaultISMLocking:67.",
+            "date": "2010-03-11T16:15:01.147+0000",
+            "id": 13
+        },
+        {
+            "author": "Robert Sauer",
+            "body": "Xid_v2 + SynchronizedRef for markedXid. Still the same error.",
+            "date": "2010-03-11T16:25:15.093+0000",
+            "id": 14
+        },
+        {
+            "author": "Claus K\u00f6ll",
+            "body": "A new patch that creates a lock on a mutex to prevent race conditions. i think we can use the DefaultISMLocking instance itself as mutex but\nit would be fine if you could test this patch first ..\nthanks\nclaus",
+            "date": "2010-03-12T07:57:20.149+0000",
+            "id": 15
+        },
+        {
+            "author": "Claus K\u00f6ll",
+            "body": "i think that the internal Xid check is now ok but the problem is the race condition as we see in your picture attachement. i don't know\nhow you implemented the SynchronizedRef but i hope with a sync on a mutex should help now :-)",
+            "date": "2010-03-12T08:00:05.858+0000",
+            "id": 16
+        },
+        {
+            "author": "Claus K\u00f6ll",
+            "body": "Better to synchronize on the Object iteslf",
+            "date": "2010-03-12T09:00:01.934+0000",
+            "id": 17
+        },
+        {
+            "author": "Robert Sauer",
+            "body": "Unfortunately still the same error.\n\nWould you mind if we try to work backwards from my known to be good patch and provide a variant that covers both scenarios with one class? I think the core change will be adjusting the XidLockInfo class towards a simple LockInfo that may either be associated with an XID or just a thread.\nEven if something like this would end up in an additional class (similar to FineGrainedISMLocking) that can be configured in repository.xml if someone likes that would be pretty fine with me.",
+            "date": "2010-03-12T09:55:52.295+0000",
+            "id": 18
+        },
+        {
+            "author": "Claus K\u00f6ll",
+            "body": "I would like to have the XA specific locking based on Xids working in the DefaultISMLocking so that nobody must configure something special\nif you change your environment to XA. \nI don't know how it is still possible to acquire a writeLock and then the setActiveXid has a other globalTransactionId than the Xid first marked inside a synchronized block \nthat creates a lock on the instance itself ?\nI will try to investigate more time to create a TestCase to get more informations about that race condition ..\n",
+            "date": "2010-03-12T10:16:51.411+0000",
+            "id": 19
+        },
+        {
+            "author": "Robert Sauer",
+            "body": "Fully understood.\n\nDo you know of any scenario where one instance of ISMLocking might need to serve both XA as well as non-XA requests? \n\n",
+            "date": "2010-03-12T10:34:29.178+0000",
+            "id": 20
+        },
+        {
+            "author": "Claus K\u00f6ll",
+            "body": "I don't think that there is such scenario to handle both requests at one time.",
+            "date": "2010-03-14T12:33:39.330+0000",
+            "id": 21
+        },
+        {
+            "author": "Claus K\u00f6ll",
+            "body": "Implemented a Patch that checks in similar way as your patch if there is a Xid present and switches between 2 ReentrantReadWriteLocks.\nThe different is that it is handled inside the DefaultISMLocking and uses the reentrant logic from used concurrent package.",
+            "date": "2010-03-14T12:42:48.925+0000",
+            "id": 22
+        },
+        {
+            "author": "Robert Sauer",
+            "body": "Thanks, Claus. The v4 patch seems to do the trick.\n\nOne question: the allowReader() method in XidRWLock does not consult the waitingWriters_ member, contrary to the super implementation of allowReader(). I guess not doing so will loose the writer-preference property of the super class. Was this intended?\nI applied this change locally and still things look fine.\n\nWill this patch go into 1.6.2? Is there already a release date planned for 1.6.2? We're very eager to be able to put the fix into production.\n\nI agree that reusing edu-concurrent is probably be the safer way to implement this fix right now. However, in face of JCR-2089 I'm curious how this will translate eventually.",
+            "date": "2010-03-15T12:22:37.440+0000",
+            "id": 23
+        },
+        {
+            "author": "Claus K\u00f6ll",
+            "body": "Sounds good that it works now :-)\n\nI dont know if we should consult the waitingWriters_ because this code was introduced in the internal RWLock while ago .. and i don't know exactly why ?\nYes you are right we will look how we migrate that code to the java1.5 concurrent implementation ...\n\nI will tag this issue to 1.6.2 so it will be in that release but i don't know the release date. \nPlease feel free to post to the dev-mailing list so we can discuss release date there\ngreets\nclaus",
+            "date": "2010-03-15T14:46:29.640+0000",
+            "id": 24
+        },
+        {
+            "author": "Claus K\u00f6ll",
+            "body": "Fixed in rev. 923277",
+            "date": "2010-03-15T15:09:41.545+0000",
+            "id": 25
+        },
+        {
+            "author": "Robert Sauer",
+            "body": "\nMy interpretation is that it implements the WriterPreference part of the WriterPreferenceReadWriteLock super class. Essentially allowing no new readers as long as there is someone waiting to write (see JavaDoc of WriterPreferenceReadWriteLock).\nI would suggest to stay as close as possible to the super implementation of overridden methods. It's part of both allowWriter() implementations for ReentrantWriterPreferenceReadWriteLock as well as WriterPreferenceReadWriteLock.\n\nPractical side effect should be that TX-finalization will tend to be quicker in a mixed read/write scenario as parallel readers will not be able to starve 2PC requests.\n\n",
+            "date": "2010-03-15T15:22:33.159+0000",
+            "id": 26
+        },
+        {
+            "author": "Claus K\u00f6ll",
+            "body": "I have taken a look at JCR-1600 and JCR-447 where the code was introduced but i found no reason why this code was modified in that way to ignore the waitingWriters_ variable. I will change the code to work as the SuperClass should work.\ngreets",
+            "date": "2010-03-16T06:42:14.266+0000",
+            "id": 27
+        },
+        {
+            "author": "Claus K\u00f6ll",
+            "body": "Found one more deadlock problem must reopen it ..",
+            "date": "2010-03-18T09:22:55.393+0000",
+            "id": 28
+        },
+        {
+            "author": "Robert Sauer",
+            "body": "What's the background? I would like to extend my test driver to may be expose this issue locally, too.\n\nThanks\nRobert \n\n\n",
+            "date": "2010-03-18T09:46:29.387+0000",
+            "id": 29
+        },
+        {
+            "author": "Claus K\u00f6ll",
+            "body": "On the first look i think the problem is in the LockManagerImpl. With the last commit I have reverted the code from the internal lockMapLock (ReentrantLock).\nIn that ReentrantLock there was a code with Xid aware but i have removed that because i thought that we do not need it anymore but in our\nenvironment it causes deadlocks. I will take a deeper look on that.\ngreets",
+            "date": "2010-03-18T10:06:08.602+0000",
+            "id": 30
+        },
+        {
+            "author": "Claus K\u00f6ll",
+            "body": "Implemented a Xid aware ReentrantLock in LockManagerImpl and now no deadlocks have been occured anymore in our environment.",
+            "date": "2010-03-22T07:41:07.047+0000",
+            "id": 31
+        },
+        {
+            "author": "Robert Sauer",
+            "body": "Thanks, Claus. Can you provide a patch against 1.6.1 so I can additionally verify against our environment, too?\n\n",
+            "date": "2010-03-22T12:26:32.382+0000",
+            "id": 32
+        },
+        {
+            "author": "Claus K\u00f6ll",
+            "body": "Hi .. here is the patch ...\n\ngreets\nclaus",
+            "date": "2010-03-23T10:20:48.628+0000",
+            "id": 33
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Merged to the 1.6 branch in revision 938462.",
+            "date": "2010-04-27T14:15:12.785+0000",
+            "id": 34
+        }
+    ],
+    "component": "jackrabbit-core",
+    "description": "In one of our client deployments on WebLogic 9.2 we observed JackRabbit sessions going stale in a load test. This was observed against release 1.6.1 (to which we migrated due to concurrency related issues JCR-2081 and JCR-2237). Same effect with 2.0.0.\n \nI could finally reproduce this issue locally. And it seems to boil down to WLS invoking the sequence of <prepare> ... <release> ... <commit> on one XA session from multiple threads, as it seems breaking assumptions of the thread-bound java.util.concurrent-RWLock based DefaultISMLocking class.\nEffectively the setActiveXid(..) method on DefaultISMLocking$RWLock fails as the old active XID was not yet cleared. With the result of more and more sessions deadlocking in below's invocation stack.\n\n{code}\n\"[ACTIVE] ExecuteThread: '27' for queue: 'weblogic.kernel.Default (self-tuning)'\" daemon prio=1 tid=0x33fc3ec0 nid=0x2324 in Object.wait() [0x2156a000..0x2156beb0] at java.lang.Object.wait(Native Method) - waiting on <0x68a54698> (a EDU.oswego.cs.dl.util.concurrent.WriterPreferenceReadWriteLock$WriterLock) at java.lang.Object.wait(Object.java:474) at EDU.oswego.cs.dl.util.concurrent.WriterPreferenceReadWriteLock$WriterLock.acquire(Unknown Source) - locked <0x68a54698> (a EDU.oswego.cs.dl.util.concurrent.WriterPreferenceReadWriteLock$WriterLock) at org.apache.jackrabbit.core.state.DefaultISMLocking$1.<init>(DefaultISMLocking.java:64) at org.apache.jackrabbit.core.state.DefaultISMLocking.acquireWriteLock(DefaultISMLocking.java:61) at org.apache.jackrabbit.core.version.AbstractVersionManager.acquireWriteLock(AbstractVersionManager.java:146) at org.apache.jackrabbit.core.version.XAVersionManager$1.prepare(XAVersionManager.java:562) at org.apache.jackrabbit.core.TransactionContext.prepare(TransactionContext.java:154) - locked <0x6dc2ad88> (a org.apache.jackrabbit.core.TransactionContext) at org.apache.jackrabbit.core.XASessionImpl.prepare(XASessionImpl.java:331) at org.apache.jackrabbit.jca.TransactionBoundXAResource.prepare(TransactionBoundXAResource.java:68) at weblogic.connector.security.layer.AdapterLayer.prepare(AdapterLayer.java:397) at weblogic.connector.transaction.outbound.XAWrapper.prepare(XAWrapper.java:297) at weblogic.transaction.internal.XAServerResourceInfo.prepare(XAServerResourceInfo.java:1276) at weblogic.transaction.internal.XAServerResourceInfo.prepare(XAServerResourceInfo.java:499) at weblogic.transaction.internal.ServerSCInfo$1.execute(ServerSCInfo.java:335) at weblogic.kernel.Kernel.executeIfIdle(Kernel.java:243) at weblogic.transaction.internal.ServerSCInfo.startPrepare(ServerSCInfo.java:326) at weblogic.transaction.internal.ServerTransactionImpl.localPrepare(ServerTransactionImpl.java:2516) at weblogic.transaction.internal.ServerTransactionImpl.globalPrepare(ServerTransactionImpl.java:2211) at weblogic.transaction.internal.ServerTransactionImpl.internalCommit(ServerTransactionImpl.java:266) at weblogic.transaction.internal.ServerTransactionImpl.commit(ServerTransactionImpl.java:227) at weblogic.transaction.internal.TransactionManagerImpl.commit(TransactionManagerImpl.java:283) at org.springframework.transaction.jta.JtaTransactionManager.doCommit(JtaTransactionManager.java:1028) at org.springframework.transaction.support.AbstractPlatformTransactionManager.processCommit(AbstractPlatformTransactionManager.java:709) at org.springframework.transaction.support.AbstractPlatformTransactionManager.commit(AbstractPlatformTransactionManager.java:678)\n{code}",
+    "hasPatch": true,
+    "hasScreenshot": true,
+    "id": "JCR-2554",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Critical",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "Deadlock inside XASession on Weblogic",
+    "systemSpecification": true,
+    "version": "1.6.1, 2.0"
+}

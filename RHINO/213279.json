@@ -1,0 +1,71 @@
+{
+    "comments": [
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 128148\nTest case as Java source\n\nTo run the test, compile the Test.java and run it. Currently it produces:\n\n~/tmp> java Test\nExecuting: java.lang.System.out.println.__proto__ === Function.prototype\nFirst execution result:  true\nSecond execution result: false\n\nwhile the expected resultis is true for both executions.",
+            "date": "20030721T11:13:15",
+            "id": 0
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 128416\nPreliminary work: separation of reflection data and corresponding JavaScript wrappers.\n\nThe patch changes JavaMemebers to separate between Java fields and methods with\nthe same name and corresponding JavaScript wrappers.\n\nI added MemberFamily class to hold all members with the same name including\nsynthetic bean properties. In addition the class contains sharedWrapper field\nto hold a JS wrapper for the given Java name that does not require\ncorresponding Java object.  Internal hash tables in JavaMemebers now always\ncontain instances of this class as values instead of mixed bag of\nNativeJavaMethod, BeanInfo and Field instances.\n\nThe other notable change is that FieldAndMethods that is used to wrap Java\nfield and methods with the same name now uses delegation to call\nNativeJavaMethod in () or new context instead of extending from\nNativeJavaMethod. In this way a single shared NativeJavaMethod will be used to\nrepresent method part of all FieldAndMethods objects. In addition instances of\nFieldAndMethods corresponding to the same name static field and methods is also\nshared since neither field nor methods need java object in this case.\n\nNow the bug emphasis itself in presence of MemberFamily.sharedWrapper with\nexplicit scope references that is stored in a static cache of JavaMemberse and\na fix would require to store sharedWrapper in scope instead.",
+            "date": "20030724T12:33:20",
+            "id": 1
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 130812\nMove NativeJavaPackage.TopLevelPackage into a separated source file NativeTopJavaPackage\n\nAnother preliminary patch. It moves internal NativeJavaPackage.TopLevelPackage\nclass into a separated source file under the new name NativeTopJavaPackage. The\nidea is to store a class cache there and pass it around to other classes that\nuses JavaMembers.",
+            "date": "20030903T09:02:47",
+            "id": 2
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 130818\nSmall fixes for the previous patch",
+            "date": "20030903T10:41:12",
+            "id": 3
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "I committed the previous patch.",
+            "date": "20030903T10:46:13",
+            "id": 4
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 130832\nFix: store caches inside global scope\n\nThe patch adds new class, omj.GlobalScope that is supposed to serve as a global\nscope for the standard library and which stores previously static caches. \n\nThe class contains a static method get(Scriptable) to extract a class instance\nfrom a scope object. JavaMembers and FunctionObject is updated to use this\nmethod to access the caches. The method searches the prototype chain for\ninstance of GlobalScope and if it found, it is returned. If not, then a\nproperty __globalScope is queried for the class instance. If that does work, a\nnew allocated object is returned so  GlobalScope.get() will never return null.\n\nContext.initStandardObjects will create __globalScope property in the scope\nobject when explicitly passed scope is not an instance of GlobalScope. Another\nway to address compatibility would be to point explicit scope prototype to a\nnew allocated GlobalScope instance, but it may bring more issues if an\napplication assumes a particular structure of its global scope prototype chain.",
+            "date": "20030903T14:47:49",
+            "id": 5
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 130834\nPrevious fix with indentation fixes",
+            "date": "20030903T14:56:08",
+            "id": 6
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "I committed the fix.",
+            "date": "20030905T14:36:00",
+            "id": 7
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Trageting as resolved against 1.5R5",
+            "date": "20040213T11:36:00",
+            "id": 8
+        }
+    ],
+    "component": "Core",
+    "description": "Rhino uses JavaMembers.classTable which is a static Hashtable to cache\nreflection information about Java classes. Currently the cache stores not only\nMethod and Field instances for a particular class, but also top level scope of\nthe first script that initializes a cache entry for a particular class. It not\nonly prevents scope objects from garbage collection but also allows to access\nobjects from this scope from different runtime invocation. \n\nThe following attached Java source demonstrate this incorrect exposure by\nexecuting 2 times\n\njava.lang.System.out.println.__proto__ === Function.prototype\n\nin 2 different scopes fully initialized with their own instances of the runtime\nlibrary objects.\n\nThe first execution produces the expected true result while the second gives\nfalse since cached JS wrapper for java.lang.System.out.println still points with\nits prototype to Function.prototype from the first scope.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "213279",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "-- normal",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "Scope should not be cached through JavaMembers.classTable",
+    "systemSpecification": false,
+    "version": "other"
+}

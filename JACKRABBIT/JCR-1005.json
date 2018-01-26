@@ -1,0 +1,47 @@
+{
+    "comments": [
+        {
+            "author": "Claus K\u00f6ll",
+            "body": "A patch that would help me.\nHope somebody will look at and comment it ...",
+            "date": "2007-08-08T15:48:55.001+0000",
+            "id": 0
+        },
+        {
+            "author": "Stefan Guggisberg",
+            "body": "first of all thanks  for the patch!\n\ni have the following concerns regarding the patch:\n\n- the permission constants READ, WRITE and REMOVE are bitmask flags,\n  i.e. any new constant would need to be a power of 2\n- the current flags apply to the target, i.e. WRITE permission on the node to \n  be modified etc. the new constant ADD refers to the parent of the target\n  which seems to be inconsistent.\n- the patch is incomplete. it doesn't cover all locations that check permissions.\n  check for usages of AccessManager.isGranted()\n- i am afraid that the proposed change wouldn't be backward compatible\n  with existing AccessManager implementations\n\ncheers\nstefan",
+            "date": "2007-08-09T13:08:15.221+0000",
+            "id": 1
+        },
+        {
+            "author": "Claus K\u00f6ll",
+            "body": "thanks for your hints stefan\nok i see my patch was too fast. sorry that it is not complete\n\ni also thought that there is maybe a problem with backward compatibility, but i have the problem as described\nand maybe there is a other solution ?\n\nyou say that the current flags apply to the target and not to the parent but in the SessionImpl Method checkPermission()\nthere is my problem. In my scenario the user trys to add a new node (File->Save As) on a parent node and i should now\nif he try to save the original file or if he try to save the file with a other name ....\n\n/**\n * \"add_node\" action:\n * requires WRITE permission on parent item\n*/\nif (set.contains(ADD_NODE_ACTION)) {\n  try {\n    parentPath = targetPath.getAncestor(1);\n    parentId = hierMgr.resolvePath(parentPath);\n    if (parentId == null) {\n      // parent does not exist (i.e. / was specified), throw exception\n      throw new AccessControlException(ADD_NODE_ACTION);\n    }\n    accessMgr.checkPermission(parentId, AccessManager.WRITE);\n    } catch (AccessDeniedException re) {\n      // otherwise the RepositoryException catch clause will\n      // log a warn message, which is not appropriate in this case.\n      throw new AccessControlException(ADD_NODE_ACTION);\n    }\n}\n\n\nhope for help\nclaus",
+            "date": "2007-08-09T14:21:43.810+0000",
+            "id": 2
+        },
+        {
+            "author": "Stefan Guggisberg",
+            "body": "> there is my problem. In my scenario the user trys to add a new node (File->Save As) on a parent node and i should now\n> if he try to save the original file or if he try to save the file with a other name ....\n\nif the user saves the original file the parent node shouldn't be modified; OTOH if he saves the file with a new name the parent node will be modified.\n",
+            "date": "2007-08-15T14:50:24.155+0000",
+            "id": 3
+        },
+        {
+            "author": "angela",
+            "body": "i guess this issue has been addressed already some time ago with the overall security rework related to JCR-1588",
+            "date": "2008-08-27T15:38:27.195+0000",
+            "id": 4
+        }
+    ],
+    "component": "security",
+    "description": "It would be fine to have one more Permission Flag on node add.\nAt the moment there are 3 flags. We need to know if a node will be updated or created.\nThis is not possible with the current implementation because on node add the permission flag \nAccessManager.WRITE will be used. This is a Problem in a  WebDav Scenario with Microsoft-Word because if i open a Node and \ntry to save it i need write permissions on the parent node. this is ok. If a user trys to save the file with a other name\nhe can because the same PermissionFlag will be used.\nMaybe there is a other solution for this problem ?\nBR,\nclaus",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "JCR-1005",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Major",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "More Fine grained Permission Flags",
+    "systemSpecification": true,
+    "version": "1.3"
+}

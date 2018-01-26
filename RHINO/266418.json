@@ -1,0 +1,47 @@
+{
+    "comments": [
+        {
+            "author": "szegedia@freemail.hu",
+            "body": "Can somebody reassure me that regexp literals occurring in a script using the /.\n../ syntax are stored inside inside InterpretedData, so if I'm taking care to \nstub InterpretedData instances in serialization, they won't get serialized at \nall, and this problem only arises if a regexp is dinamically constructed by a \nscript. Right?",
+            "date": "20041028T09:39:06",
+            "id": 0
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 163670\nPatch to make NativeRegExp serializable \n\nThe patch adds \"impelments Serializable\" to classes representing compiled\nregexps and ads proper synchronization for code to initialize RECharSet lazily.",
+            "date": "20041028T10:23:12",
+            "id": 1
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "(In reply to comment #1)\n> Can somebody reassure me that regexp literals occurring in a script using the /.\n> ../ syntax are stored inside inside InterpretedData, so if I'm taking care to \n> stub InterpretedData instances in serialization, they won't get serialized at \n> all, and this problem only arises if a regexp is dinamically constructed by a \n> script. Right?\n\nAlthough its true that compiled scripts are stored in the InterpreterData, they\nstill will be serialized even if InterpreterData would be stubbed.\n\nInterpreterFunction during initialization wraps the compiled regexps as\nNativeRegExp to store them in InterpreterFunction.functionRegExps and that\nforces serialization.\n\n",
+            "date": "20041028T10:33:35",
+            "id": 2
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "I committed the fix.",
+            "date": "20041028T11:31:58",
+            "id": 3
+        },
+        {
+            "author": "szegedia@freemail.hu",
+            "body": "(In reply to comment #3)\n\nWould it be possible to add some kind of public accessor to InterpeterData.\nitsRegExpLiterals, either through the DebuggableScript interface or some other \nway? That way I could access its elements to create stubs for them too.\n",
+            "date": "20041028T15:36:26",
+            "id": 4
+        }
+    ],
+    "component": "Core",
+    "description": "User-Agent:       Opera/7.54 (Windows NT 5.0; U)  [en]\nBuild Identifier: \n\nAn attempt to serialize a regular expression (i.e. as part of a continuation) \nwill fail since the classes org.mozilla.javascript.regexp.RECompiled and org.\nmozilla.javascript.regexp.RECharSet (defined in file NativeRegExp.java) are not \nserializable.\n\nReproducible: Always\nSteps to Reproduce:\nExecute the following snippet of Java code:\n\nContext cx = Context.enter();\nScriptableObject s1 = new NativeObject();\ncx.initStandardObjects(s1);\ncx.compileString(\"var x = /^\\\\s*(.*)/;\", \"\", 1, null).exec(cx, s1);\nnew ScriptableOutputStream(new ByteArrayOutputStream(), s1).writeObject(s1.\nget(\"x\", s1));\nActual Results:  \nThe following exception was thrown:\n\njava.io.NotSerializableException: org.mozilla.javascript.regexp.RECompiled\n\tat java.io.ObjectOutputStream.writeObject0(ObjectOutputStream.java:1054)\n\tat java.io.ObjectOutputStream.defaultWriteFields(ObjectOutputStream.java:1332)\n\tat java.io.ObjectOutputStream.writeSerialData(ObjectOutputStream.java:1304)\n\tat java.io.ObjectOutputStream.writeOrdinaryObject(ObjectOutputStream.java:1247)\n\tat java.io.ObjectOutputStream.writeObject0(ObjectOutputStream.java:1052)\n\tat java.io.ObjectOutputStream.writeObject(ObjectOutputStream.java:278)\n\tat Test.main(Test.java:31)\n\nExpected Results:  \nsilently succeed",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "266418",
+    "issuetypeClassified": "OTHER",
+    "issuetypeTracker": "BUG",
+    "priority": "-- normal",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "Can not serialize regular expressions",
+    "systemSpecification": false,
+    "version": "other"
+}

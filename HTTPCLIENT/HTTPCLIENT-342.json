@@ -1,0 +1,83 @@
+{
+    "comments": [
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Created an attachment (id=11669)\nPatch against 2.0 branch (take 1)\n",
+            "date": "2004-05-26T05:04:17.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Folks, please review content- and language-wise.\n\nOleg",
+            "date": "2004-05-26T05:05:16.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Hi Oleg,\n\nIf I'm reading the code correctly I believe the part about being cautious when using preemptive \nauthentication (PA) is not warranted.  If the host name is specified when setting the credentials, the \ncredentials will only used for authentication with that host.  They will not be added when \ncommunicating with other hosts.  The only piece of info that's missing when using PA is the realm.  In \nparticular I'm looking at HttpAuthenticator line 166.\n\nMike",
+            "date": "2004-05-26T09:39:27.000+0000",
+            "id": 2
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Mike,\nI see three possibilities for the default credentials end up sent to untrusted\nweb  application:\n\n(1) when credentials are set for null host and null realm. We should have never\nallowed that in the very first place, but we did, and now we have to live with\nthat. I believe at the very least we should warn the users about security\nimplications of setting default credentials for null host and realm\n\n(2) HttpClient 2.0 does not take target port into consideration when selecting\ncredentials for the HTTP state. This also should have not have happened, but it\ndid. So, even if default credentials are set for a specific host, HttpClient can\nsend them to a untrusted application if it is hosted on a different port \n\n(3) I believe there are at least several web platforms capable of supporting\ndifferent authentication realms defined within the same virtual host. There's no\nway HttpClient can differentiate those realms unless it receives an\nauthorization challenge. \n\n2 and 3 are really fringe cases but they are not impossible. Think of a hosting\ncompany serving massive number of virtual sites off the same web platform\n\nI do admit that the part about being cautious when using preemptive may be badly\nworded, but I do think it should be there\n\nOleg",
+            "date": "2004-05-27T01:02:41.000+0000",
+            "id": 3
+        },
+        {
+            "author": "Michael Becke",
+            "body": "> (1) when credentials are set for null host and null realm. We should have never\n> allowed that in the very first place, but we did, and now we have to live with\n> that. I believe at the very least we should warn the users about security\n> implications of setting default credentials for null host and realm\n\nCompletely agree.  Having null host and realm is of little practical use.  I think we should just document \nit heavily and let people shoot themselves in the foot if they so choose.\n\n> (2) HttpClient 2.0 does not take target port into consideration when selecting\n> credentials for the HTTP state. This also should have not have happened, but it\n> did. So, even if default credentials are set for a specific host, HttpClient can\n> send them to a untrusted application if it is hosted on a different port \n\nTrue, but this applies to non-preemptive authentication as well.\n\n> (3) I believe there are at least several web platforms capable of supporting\n> different authentication realms defined within the same virtual host. There's no\n> way HttpClient can differentiate those realms unless it receives an\n> authorization challenge. \n\nAgreed.  Preemptive authentication, as is currently stands, cannot be effectively used in this case.\n \n> 2 and 3 are really fringe cases but they are not impossible. Think of a hosting\n> company serving massive number of virtual sites off the same web platform\n\nIn this case we should be okay, since each virtual host can be differentiated by host name.\n\n> I do admit that the part about being cautious when using preemptive may be badly\n> worded, but I do think it should be there\n\nGood, I think we're in agreement then :)  We should keep some warnings about preemptive \nauthentication, but try to focus on the areas where it could be a potential problem in practice.  In my \nopinion the only real issue is in regard to hosts with multiple realms.\n\nMike",
+            "date": "2004-05-28T10:05:21.000+0000",
+            "id": 4
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Created an attachment (id=11703)\nPatch (take 2)\n",
+            "date": "2004-05-31T19:04:15.000+0000",
+            "id": 5
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "OK. How about this?\n\nOleg",
+            "date": "2004-05-31T19:04:46.000+0000",
+            "id": 6
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Looks good to me.\n\nMike",
+            "date": "2004-05-31T21:33:27.000+0000",
+            "id": 7
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "No corrections language-wise?\n\nOleg",
+            "date": "2004-06-01T03:22:09.000+0000",
+            "id": 8
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Ok, perhaps a few corrections :)  The content I think is good now.  I would only suggest changes to the \nlast paragraph.   Here's my suggestion:\n\nOriginal Text - \n\nIt is highly recommended to avoid setting credentials for any host and realm (<code>null</code> host \nand <code>null</code> authentication realm) in productive applications. Use the least restrictive \ncredentials scope when debugging only.\n\nSuggested Text -\n\nSetting credentials with <code>null</code> host and realm values is highly discouraged in production \napplications.  Doing this will result in the credentials being sent for all authentication attempts (all \nrequests in the case of preemptive authentication).  Use of this setting should be limited to debugging \nonly.\n\nMike",
+            "date": "2004-06-01T10:18:27.000+0000",
+            "id": 9
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Thanks, Mike. The patch with your corrections committed to CVS HEAD and 2.0 branch\n\nOleg",
+            "date": "2004-06-02T04:00:33.000+0000",
+            "id": 10
+        }
+    ],
+    "component": "HttpClient (classic)",
+    "description": "HttpClient authentication guide does not reflect the fact that preemptive\nauthentication requires default credentials to be set. It should also mention\nthe security implications of preemptive authentication (default credentials sent\nwith EVERY request to ANY target / proxy server)",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "HTTPCLIENT-342",
+    "issuetypeClassified": "OTHER",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "HTTPCLIENT",
+    "project": "HTTPCLIENT",
+    "summary": "[API Doc] Improve the description of the preemptive authentication",
+    "systemSpecification": true,
+    "version": ""
+}

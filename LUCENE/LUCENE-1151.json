@@ -1,0 +1,71 @@
+{
+    "comments": [
+        {
+            "author": "Michael McCandless",
+            "body": "Attached patch that fixes the original bug (LUCENE-1068) by default, but offers system property & static method to keep backwards compatible yet buggy behavior.\n\nI'll commit in a day or two.",
+            "date": "2008-01-29T13:29:43.559+0000",
+            "id": 0
+        },
+        {
+            "author": "Grant Ingersoll",
+            "body": "Not necessarily related, but can you think of a way that we can keep WikipediaTokenizer and StandardTokenizer in sync for these kind of things.  I guess I need to go look in JFlex to see if there is a way to do inheritance.  Essentially, I want the WikiTokenizer to be StandardTokenizer plus handle the Wiki syntax appropriately.",
+            "date": "2008-01-29T15:20:31.581+0000",
+            "id": 1
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Very good question ... I don't know.  It would be awesome (and, amazing) if JFlex enabled some kind of inheritance.\n\nSince WikipediaTokenizer doesn't have the backwards compat requirement of StandardTokenizer, you can presumably just fix ACRONYM in WikipediaTokenizer to not match host names (ie hardwire to \"true\")?",
+            "date": "2008-01-29T17:10:12.682+0000",
+            "id": 2
+        },
+        {
+            "author": "Grant Ingersoll",
+            "body": "Here's the thread on JFlex for completeness, not that it it effects this patch: http://sourceforge.net/mailarchive/forum.php?thread_name=272037D7-6EA1-4D19-902F-B425A5309C2A%40apache.org&forum_name=jflex-users",
+            "date": "2008-01-29T19:19:30.327+0000",
+            "id": 3
+        },
+        {
+            "author": "J\u00f6rg Prante",
+            "body": "Hi Grant,\n\nhave you looked at JFlex %implements and %extends directives?\n\nI have used %implements successfully in building my parsers for inheritance, where the Tokens are all constants in an interface generated not by JFlex but by a parser generator.\n\nFor example\n\n%%\n%class ECQLLexer\n%implements ECQLTokens\n%unicode \n%integer\n%eofval{ \n    return 0; \n%eofval}\n%line\n%column\n\nI am quite sure %extends could also be used to build a tokenizer family.\n\nSee http://jflex.de/manual.html",
+            "date": "2008-01-30T15:24:48.003+0000",
+            "id": 4
+        },
+        {
+            "author": "Mark Lassau",
+            "body": "Michael,\nGreat work. I am glad we are moving to have the bug fixed by default, rather than the other way around.\n\nPlease indulge me a couple of small nitpicks before I get to my main point in another comment\n* Your comment above the static initializer is not correct:\n{noformat}\n  // Default to false (fixed the bug), unless the system prop is set\n{noformat}\nshould read:\n{noformat}\n  // Default to true (fixed the bug), unless the system prop is set\n{noformat}\n* The re-use of the variable a in TestStandardAnalyzer.testDomainNames() does not really guarantee that you are testing the default behaviour of StandardAnalyzer.\nI would recommend resetting a in setUp(), or explicitly constructing it in test method.\n\nGiven that the code is \"temporary\" until v3.0, feel free to ignore me ;)",
+            "date": "2008-09-05T06:36:04.204+0000",
+            "id": 5
+        },
+        {
+            "author": "Mark Lassau",
+            "body": "I love the solution you have come up with, but would suggest that it is moved to StandardTokenizer instead of StandardAnalyzer.\nStandardTokenizer is the class with the actual problem. Fixing it there would mean that everyone that uses StandardTokenizer gets a default fix, not just StandardAnalyzer.\n\nFor instance, see LUCENE-1373, where most of the contrib Analyzers still suffer the buggy behavior with no workaround available.\nI think that moving your \"defaulting logic\" to the tokenizer would fix all these Analyzers in one fell swoop.\n\nI would provide suggested patches, but I am just about to go on holidays for 3 weeks. Is there a planned release date for v2.3.3 or v2.4?",
+            "date": "2008-09-05T06:47:39.315+0000",
+            "id": 6
+        },
+        {
+            "author": "Mark Lassau",
+            "body": "Added a patch to LUCENE-1373 which moves the logic introduced here from StandardAnalyzer to StandardTokenizer. ",
+            "date": "2008-09-05T08:30:09.140+0000",
+            "id": 7
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "bq. Please indulge me a couple of small nitpicks before I get to my main point in another comment\n\nThanks for catching these Mark -- I'll commit a fix shortly.",
+            "date": "2008-09-06T10:57:20.996+0000",
+            "id": 8
+        }
+    ],
+    "component": "modules/analysis",
+    "description": "Coming out of the discussion around back compatibility, it seems best to default StandardAnalyzer to properly fix LUCENE-1068, while preserving the ability to get the back-compatible behavior in the rare event that it's desired.\n\nThis just means changing the replaceInvalidAcronym = false with = true, and, adding a clear entry to CHANGES.txt that this very slight non back compatible change took place.\n\nSpinoff from here:\n\n    http://www.gossamer-threads.com/lists/lucene/java-dev/57517#57517\n\nI'll commit that change in a day or two.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-1151",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Minor",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "Fix StandardAnalyzer to not mis-identify HOST as ACRONYM by default",
+    "systemSpecification": true,
+    "version": ""
+}

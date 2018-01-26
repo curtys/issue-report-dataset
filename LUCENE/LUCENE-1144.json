@@ -1,0 +1,41 @@
+{
+    "comments": [
+        {
+            "author": "Michael McCandless",
+            "body": "Indeed, it looks likely that you hit OOM, then DocumentsWriter is\ntrying to abort, but hits the NPE while aborting.  Can you try the\nattached patch to see if it lets you see the original OOM exception?\n",
+            "date": "2008-01-20T17:55:54.305+0000",
+            "id": 0
+        },
+        {
+            "author": "Daniel Naber",
+            "body": "Yes, I get the correct exception now with your patch. Thanks!\n\nException in thread \"main\" java.lang.OutOfMemoryError: Java heap space\n\tat org.apache.lucene.index.DocumentsWriter.recyclePostings(DocumentsWriter.java:3033)\n\tat org.apache.lucene.index.DocumentsWriter.access$0(DocumentsWriter.java:3028)\n\tat org.apache.lucene.index.DocumentsWriter$ThreadState$FieldData.resetPostingArrays(DocumentsWriter.java:1333)\n\tat org.apache.lucene.index.DocumentsWriter$ThreadState.resetPostings(DocumentsWriter.java:644)\n\tat org.apache.lucene.index.DocumentsWriter.resetPostingsData(DocumentsWriter.java:458)\n\tat org.apache.lucene.index.DocumentsWriter.abort(DocumentsWriter.java:423)\n\tat org.apache.lucene.index.DocumentsWriter.updateDocument(DocumentsWriter.java:2433)\n\tat org.apache.lucene.index.DocumentsWriter.addDocument(DocumentsWriter.java:2397)\n\tat org.apache.lucene.index.IndexWriter.addDocument(IndexWriter.java:1445)\n\tat org.apache.lucene.index.IndexWriter.addDocument(IndexWriter.java:1424)\n\tat LuceneCrash.myrun(LuceneCrash.java:35)\n\tat LuceneCrash.main(LuceneCrash.java:19)",
+            "date": "2008-01-20T18:29:15.041+0000",
+            "id": 1
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Super, thanks Daniel!\n\nI will commit to trunk & 2.3.  This is a low risk fix.  Keep testing!!",
+            "date": "2008-01-20T18:34:08.524+0000",
+            "id": 2
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Fixed on trunk & 2.3.",
+            "date": "2008-01-20T18:38:21.477+0000",
+            "id": 3
+        }
+    ],
+    "component": "core/index",
+    "description": "The attached class makes Lucene crash with an NPE when starting it with -Xmx10M, although there's probably an OutOfMemory problem. The stacktrace:\n\nException in thread \"main\" java.lang.NullPointerException\n\tat java.util.Arrays.fill(Unknown Source)\n\tat org.apache.lucene.index.DocumentsWriter$ByteBlockPool.reset(DocumentsWriter.java:2873)\n\tat org.apache.lucene.index.DocumentsWriter$ThreadState.resetPostings(DocumentsWriter.java:637)\n\tat org.apache.lucene.index.DocumentsWriter.resetPostingsData(DocumentsWriter.java:458)\n\tat org.apache.lucene.index.DocumentsWriter.abort(DocumentsWriter.java:423)\n\tat org.apache.lucene.index.DocumentsWriter.updateDocument(DocumentsWriter.java:2433)\n\tat org.apache.lucene.index.DocumentsWriter.addDocument(DocumentsWriter.java:2397)\n\tat org.apache.lucene.index.IndexWriter.addDocument(IndexWriter.java:1445)\n\tat org.apache.lucene.index.IndexWriter.addDocument(IndexWriter.java:1424)\n\tat LuceneCrash.myrun(LuceneCrash.java:32)\n\tat LuceneCrash.main(LuceneCrash.java:19)\n\nThe documents are quite big (some hundred KB each), I cannot attach them but I can send them via private mail if needed. The crash happens the first time reset() is called, after indexing 10 documents. I assume the bug is just that the error is misleading, there maybe should be an OOM error.\n",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-1144",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "NPE crash in case of out of memory",
+    "systemSpecification": true,
+    "version": "2.3"
+}

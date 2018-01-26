@@ -1,0 +1,77 @@
+{
+    "comments": [
+        {
+            "author": "rwaldhof",
+            "body": "Why would we invoke generateRequestLine with an already encoded request path \nattribute?  How is generateReuqestLine to distinguish between \"already encoded\" \npaths and those that happen to contain \"%\"?\n\nI'll mark this as invalid, if you'd like to discuss it further, let's move to \ncommons-dev@jakarta.apache.org.",
+            "date": "2002-02-25T23:32:49.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Xiaowei Jiang",
+            "body": "The resolution is pretty simple. In the initialization code for pathSafe in\nURIUtil, add the following \n \n         pathSafe.set('%');\n \nThis will make '%' a 'safe' character in path and it won't encode it again.\nJust need somebody to check in this change. thanks\n",
+            "date": "2002-07-18T06:16:34.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Jeff Dever",
+            "body": "This will require a patch that includes test cases.  Preferably tests that can\nbe run with test-nohost ant target.  Must ensure that the escaping is done at\nthe \"right\" time.  \n\n<cite href=\"http://www.ietf.org/rfc/rfc2396.txt\">\n2.4.2. When to Escape and Unescape\n\n   A URI is always in an \"escaped\" form, since escaping or unescaping a\n   completed URI might change its semantics.  Normally, the only time\n   escape encodings can safely be made is when the URI is being created\n   from its component parts; each component may have its own set of\n   characters that are reserved, so only the mechanism responsible for\n   generating or interpreting that component can determine whether or\n   not escaping a character will change its semantics. Likewise, a URI\n   must be separated into its components before the escaped characters\n   within those components can be safely decoded.\n</cite>",
+            "date": "2002-07-20T13:43:57.000+0000",
+            "id": 2
+        },
+        {
+            "author": "Xiaowei Jiang",
+            "body": "Created an attachment (id=2502)\nadd '%' to safePath variable\n",
+            "date": "2002-07-27T01:54:35.000+0000",
+            "id": 3
+        },
+        {
+            "author": "Jeff Dever",
+            "body": "Please add test cases as part of a complete patch and use unidiff format (cvs \ndicc -u).  Thanks.",
+            "date": "2002-07-27T05:08:40.000+0000",
+            "id": 4
+        },
+        {
+            "author": "Andrew Hyatt",
+            "body": "This is the least of the problems.  As I mentioned on the dev mailing list,\nURI's should not be encoded at all, as far as I can tell.  Encoded URI's don't\neven work with Jakarta Tomcat.  For example,\nhttp://server/servlet?foo=bar&baz=schmoo would be escaped, and let's say the\nservlet is a Jakarta one,  a call to req.getParameter(\"foo\") would return\nsomething like \"foo=bar%26baz=schmoo\", which of course is incorrect.  In my\nsources, I've taken the encoding of the URI out completely, and things work as\nnormal.\n\n--Andrew Hyatt\nahyatt@intraspect.com",
+            "date": "2002-09-25T23:36:40.000+0000",
+            "id": 5
+        },
+        {
+            "author": "Andrew Hyatt",
+            "body": "Oops, small correction.  getParameter(\"foo\") returns now something like\n\"bar&baz=schmoo\".  Perhaps this could be fixed by also not excaping \"&\" characters?",
+            "date": "2002-09-25T23:39:49.000+0000",
+            "id": 6
+        },
+        {
+            "author": "Ortwin Gl\u00fcck",
+            "body": "I thinks this is fixed. A test case is needed to verify this.",
+            "date": "2002-10-22T15:21:57.000+0000",
+            "id": 7
+        },
+        {
+            "author": "Jeff Dever",
+            "body": "I split of the handling of the HttpMethodBase constructor argument into its path\npart and its query part so that the encoding is handled seperately.  Really more\nshould be done to parse the argument as a stringified URL ...\nAdded some test cases for it.",
+            "date": "2002-10-29T15:56:28.000+0000",
+            "id": 8
+        },
+        {
+            "author": "Jeff Dever",
+            "body": "As far as I can tell, this is fixed.  Added test cases.",
+            "date": "2002-11-19T07:28:24.000+0000",
+            "id": 9
+        }
+    ],
+    "component": "HttpClient (classic)",
+    "description": "In HttpMethodBase.generateRequestLine(HttpConnection connection, String name, \nString reqPath, String qString, String protocol)\n\nthe path is always encoded using URIUtil.encode(reqPath,URIUtil.pathSafe()). \nHowever, if the path already contains an encoding space, i.e. %20, the % will \nbe encoded again, so we get %2520. This behavior is not correct. We shouldn't \nencode any % signs.",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "HTTPCLIENT-12",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "HTTPCLIENT",
+    "project": "HTTPCLIENT",
+    "summary": "double encoding of URLs",
+    "systemSpecification": true,
+    "version": "2.0 Alpha 1"
+}

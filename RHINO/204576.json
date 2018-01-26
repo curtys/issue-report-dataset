@@ -1,0 +1,65 @@
+{
+    "comments": [
+        {
+            "author": "igor@mir2.org",
+            "body": "Bug 204513 should wait until this regression will be fixed",
+            "date": "20030506T08:28:33",
+            "id": 0
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "I believe the problem was introduced with the revision 1.26 of NativeJavaMethod\nwhich fixed a problem of selecting overriden methods when used with Cistom wrap\nobjects:\n\n----------------------------\nrevision 1.26\ndate: 2002/04/11 12:56:24;  author: nboyd%atg.com;  state: Exp;  lines: +15 -0\nFix for following problem:\n\nhi Norris,\n\nin our product, which makes heavy use of Rhino, we have many Java Objects\nwe wrap with ECMAScript wrappers, which extend the ScriptableObject class\nand implement the Wrapper interface. Those wrappers automagically wrap the\nnative Java object with the help of a WrapHandler implementation.\n\nwe now ran into a problem :\n\nwe have a java class with two overloaded static methods like this :\n     public class Test {\n         public static String create(File f) {}\n         public static String create(Custom c) {}\n     }\n\nThe Custom class exists as a native Java implementation like\n     public class Custom {}\n\nand a accompanying ECMAScript wrapper like\n     public class CustomWrapper\n        extends ScriptableObject\n        implements Wrapper {}\n\nin our ECMAScripts we make the wrapper class known as a host object along\nthe lines of\n     defineClass(\"CustomWrapper\");\nand can then use the object as a normal ECMAScript host object. no big deal\nand working great.\n\nbut : the code\n     var s = Test.creat( new Custom( \"xyz\") );\nfails with the information, that the methods are ambiguous, which of course\nthey are not.\n\nLooking at the code of NativeJavaMethod.findFunction() and the helpers in\nNativeJavaObject it seems, that the fact of the Custom host object being a\nWrapper is not taken into account. in an easy fix of\nNativeJavaMethod.findFunction(), i simply replace all arguments, which are\nWrapper imlpementation by the wrapped object. this solves my problem, but\nof course i'm not sure on side effects.\n\ni attach the testcase as well as the fixed NativeJavaMethod class in the\njar file. to run the test with and without the fix, extract the jar and do\n     ant test\n\nplease let me know, what you think of this.\n\nregards and thanks, f.\n\nFelix Meschberger\n----------------------------\n\nThe problem is that the fix unconditionally unwraps wrapped java.lang.String\nwhich means that they are treated as JS primitive strings and that are not\nsupported with java.lang.CharSequence.\n\n",
+            "date": "20030506T09:09:49",
+            "id": 1
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 122558\nTest case for custom wrap problem as a patch file\n\nAny fix should not only address the problem itself but also keeps working\ncustom wrapping, so here is a test case to check that as well. To run it,\ncompile 204576/CustomWrapFactory.java and then run 204576/wrap_test.js with the\nRhino shell. It should print \nsize Vector: 0\nsize Hashtable: 0",
+            "date": "20030506T09:15:01",
+            "id": 2
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 122559\nFix: proper handling of custom wrappers\n\nThe fix idea is to make sure that all code like (obj instanceof\nNativeJavaObject) should be replaced by (obj instanceof Wrapper) since the idea\nof Wrapper interface introduction is to use it instead of NativeJavaObject in\nthe LiveConnect code. It turned out the only such place left is\nNativeJavaObject.getJSTypeCode which the patch replaces. Then the patch undo\nthe initial fix.",
+            "date": "20030506T09:22:54",
+            "id": 3
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "I committed the fix.",
+            "date": "20030506T10:57:27",
+            "id": 4
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "I put the fix to Rhino150R4_BRANCH as well. It a pity that the problem was found\nafter 1.5R4.1 but if someone wants a Rhino with just that version fixed, the\nbranch can be used.",
+            "date": "20030506T11:01:38",
+            "id": 5
+        },
+        {
+            "author": "pschwartau@meer.net",
+            "body": "Verified FIXED.\n\nWe compare Rhino1_5R3 vs. Rhino1_5R5pre before and after the fix:\n\nRhino1_5R3\n[ ] java -classpath \".;D:/JS_TRUNK/mozilla/js/rhino/build/rhino1_5R3/js.jar\" \n         org.mozilla.javascript.tools.shell.Main\nRhino 1.5 release 3 2002 01 24\njs> var length = Packages.test.length(java.lang.String(\"test\"))\njs> length\n4\n\n\nRhino1_5R5pre BEFORE\n[ ] java -classpath \".;D:/JS_TRUNK/mozilla/js/rhino/build/rhino1_5R5pre/js.jar\" \n         org.mozilla.javascript.tools.shell.Main\nRhino 1.5 release 5 0000 00 00\njs> var length = Packages.test.length(java.lang.String(\"test\"))\njs: \"<stdin>\", line 1: Can't find method test.length(string).\n\n\nRhino1_5R5pre AFTER\n[ ] java -classpath \".;D:/JS_TRUNK/mozilla/js/rhino/build/rhino1_5R5pre/js.jar\"  \n          org.mozilla.javascript.tools.shell.Main\nRhino 1.5 release 5 0000 00 00\njs> var length = Packages.test.length(java.lang.String(\"test\"))\njs> length\n4",
+            "date": "20030507T00:56:09",
+            "id": 6
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Targeting as resolved against 1.5R5",
+            "date": "20040213T11:42:16",
+            "id": 7
+        }
+    ],
+    "component": "Core",
+    "description": "Given the following script:\n\nvar length = Packages.test.length(java.lang.String(\"test\"))\nprint(length)\n\nwhere test is Java class \n\npublic class test\n{\n\tpublic static int length(CharSequence cs)\n\t{\n\t\treturn cs.length();\n\t}\n}\n\nRhino 1.5R3 correctly prints 4 while 1.5R4 and the current tip gives an error;\n\njs: \"/home/igor/w/js/x/test.js\", line 1: Can't find method test.length(string).",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "204576",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "-- normal",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "1.5R4 regression: java.lang.String can not be used when argument type is  java.lang.CharSequence",
+    "systemSpecification": false,
+    "version": "other"
+}

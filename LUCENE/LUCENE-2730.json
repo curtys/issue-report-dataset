@@ -1,0 +1,137 @@
+{
+    "comments": [
+        {
+            "author": "Robert Muir",
+            "body": "I've experienced this before too (even a few months ago).\n\nI'll try to find what rev this was introduced.",
+            "date": "2010-10-30T14:11:34.996+0000",
+            "id": 0
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Attached patch.\n\nThe deadlock in TestIndexWriterExceptions was due to locks being acquired in the wrong order; to fix this I've removed synchronized from TestHash.abort.  DocumentsWriter idles all other threads before calling abort so we don't need to sync.  I'll also remove this from trunk and 3.x.\n\nTestAtomicUpdate's deadlock only happens when autoCommit=true, when one thread has called commit and the flush by that commit tries to spawn new merges, which enters CMS who then hits the max merge thread count and waits for merge threads to finish while another merge thread is attempting an autoCommit.  I don't think we need to make any changes to 3.x/trunk for this (autoCommit is gone).",
+            "date": "2010-10-30T14:30:13.337+0000",
+            "id": 1
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "It's there since the very beginning of 2.9/3.0. I had the hangs also in some test runs when releaseing 3.0.0! I mendioned that, but we said \"its a test failure, lets ignore it).",
+            "date": "2010-10-30T14:49:47.935+0000",
+            "id": 2
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "It happens also in backwards tests (much more often!)",
+            "date": "2010-10-30T14:50:05.958+0000",
+            "id": 3
+        },
+        {
+            "author": "Robert Muir",
+            "body": "hmm ok, because I'm able to easily reproduce the TestIndexWriterExceptions with 3.0.2, \nbut i haven't had any luck with TestAtomicUpdate (seems like a different problem)\n\npretty sure TestAtomicUpdate doesn't hang often even in 3.0.x for me now, i'll try on linux\ntoo just in case.",
+            "date": "2010-10-30T15:00:03.871+0000",
+            "id": 4
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Windows 7 1.5.0_22 64 hangy very often in test-tag (every 2 times)",
+            "date": "2010-10-30T15:14:39.885+0000",
+            "id": 5
+        },
+        {
+            "author": "Robert Muir",
+            "body": "Right, mine hangs very often, but on TestIndexWriterExceptions, not TestAtomicUpdate.\n\nits the TestAtomicUpdate hang that is hard to reproduce for me",
+            "date": "2010-10-30T15:17:46.095+0000",
+            "id": 6
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "TestAtomicUpdate is the one that hangs for me in test-tag every 2 times. Don't know why, maybe the JVM or processor speed?",
+            "date": "2010-10-30T15:39:07.293+0000",
+            "id": 7
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Uwe can you test the patch and see if that fixes your TestAtomicUpdate hang?",
+            "date": "2010-10-30T15:41:22.838+0000",
+            "id": 8
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "OK so the TestAtomicUpdate hang only affects 2.9.x, since we removed autoCommit in 3.0.x.",
+            "date": "2010-10-30T15:43:41.129+0000",
+            "id": 9
+        },
+        {
+            "author": "Robert Muir",
+            "body": "bq. TestAtomicUpdate is the one that hangs for me in test-tag every 2 times. Don't know why, maybe the JVM or processor speed?\n\nNo, its because it does not hang in 3.0.x, only 2.9.x, they are not the same bugfix level :)",
+            "date": "2010-10-30T15:45:51.478+0000",
+            "id": 10
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "I have seen the synchronized also in TermsHash in 3.x... Do we need to remove it there, too?",
+            "date": "2010-10-30T15:47:50.335+0000",
+            "id": 11
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "bq. I have seen the synchronized also in TermsHash in 3.x... Do we need to remove it there, too?\n\nI will also remove from 3.x & trunk, but, this does not lead to deadlock because we've simplified how IW re-uses RAM, so this particular deadlock case can't occur.\n\nStill we should remove it, so I will...",
+            "date": "2010-10-30T15:58:13.458+0000",
+            "id": 12
+        },
+        {
+            "author": "Robert Muir",
+            "body": "I ran with the patch here on 2.9.x, and still encountered the hang in TestAtomicUpdate...",
+            "date": "2010-10-30T16:13:19.448+0000",
+            "id": 13
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "For me it now passes :-)\n\nIn my opinion we should remove the stupid synchronized in TermsHash completely (also trunk and 3.x, I removed at least the compact()-sync). This class needs no sync.",
+            "date": "2010-10-30T16:21:21.192+0000",
+            "id": 14
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Hangs in this and other tests can also come from incorrect test MT programming. Just think about Michael Busch's talk @ LuceneRev. The test uses some fields in the thread that are not volatile or synchronized on. The test is fixed in trunk/3.x during our total test overhaul. There are about 10 tests using the same wrong thread inner class.\n\nIf we want to fix that we must also fix backwards... happy tag creating again *g*",
+            "date": "2010-10-30T16:37:34.014+0000",
+            "id": 15
+        },
+        {
+            "author": "Robert Muir",
+            "body": "well, it still doesnt fix the problem for me, so i dont think we should go changing things yet, until we find the real cause of the hang.",
+            "date": "2010-10-30T16:40:46.288+0000",
+            "id": 16
+        },
+        {
+            "author": "Robert Muir",
+            "body": "I made my own test runner, and ran this test for hours, but i couldnt reproduce the hang.\n\nThere is a general problem on windows: if we run a test and it hangs there is no way to get the SIGQUIT stacktrace.\nif you use control-break, it only gives you the stacktrace of the 'ant' jvm itself... somehow I would like to fix this later.\n\nbut don't let me stand in the way here... perhaps i made some mistake/didn't ant clean, something silly! sorry!\n",
+            "date": "2010-10-31T12:13:01.472+0000",
+            "id": 17
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "OK I'll commit... we can reopen if the hangs happen again!",
+            "date": "2010-10-31T13:08:44.449+0000",
+            "id": 18
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "bq. In my opinion we should remove the stupid synchronized in TermsHash completely (also trunk and 3.x, I removed at least the compact()-sync). This class needs no sync.\n\nWe have to be somewhat careful w/ this.\n\nEg in 2.9.x/3.0.x some of the sync is needed because IW calls freeRAM \"freely\", ie, while other threads are indexing.  IW still calls freeRAM in 3.x/4.0, but it's a no-op there since we don't recycle RAM as aggressively anymore.  So likely we could remove sync from TermsHash on 3.x/trunk, but let's do that another day...",
+            "date": "2010-10-31T13:22:19.568+0000",
+            "id": 19
+        }
+    ],
+    "component": "core/index",
+    "description": "While backporting issues for 2.9.x/3.0.x release I hit deadlocks in these two tests, under both test-core and test-tag.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-2730",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "intermittent deadlock in TestAtomicUpdate,TestIndexWriterExceptions",
+    "systemSpecification": true,
+    "version": "2.9.3, 3.0.2"
+}

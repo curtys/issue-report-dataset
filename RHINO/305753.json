@@ -1,0 +1,59 @@
+{
+    "comments": [
+        {
+            "author": "szegedia@freemail.hu",
+            "body": "Created attachment 193687\nPatch that fixes the bug\n\nAttached a patch that fixes the bug. Also note I fixed the return value of\nClassCache.associate()",
+            "date": "20050824T13:30:01",
+            "id": 0
+        },
+        {
+            "author": "szegedia@freemail.hu",
+            "body": "Created attachment 193688\nSame patch, but with corrected formatting of opening brace\n\nAttached again - one opening brace was misplaced. I'll commit it early friday\nif there are no objections to it.",
+            "date": "20050824T13:32:05",
+            "id": 1
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "(In reply to comment #0)\n> As a solution, I propose that ClassCache stores the information about the scope \n> it is associated with (i.e. the shared scope), and JavaMembers are created \n> against that scope.\n> \n\n\nHere is some history behind ClassCache. Before its introduction Rhino stored\ncached instances of various objects for LiveConnect support in static variables.\nThat was wrong leading not only to memory leaks but also potential security\nbreaches via accessing independent runtime objects through __parent__/__proto__\nproperties.\n\nDuring the transition from static to ClassCache I hoped to separate caching of\nJava reflection helper with their JavaScript wrappers. In this way it would be\npossible to share ClassCache between independent scopes and save memory since\nwrappers would be created only when necessary (it was actual for the project I\nworked).\n\nThe idea was to create extremely lightweight version of NativeJavaMethod which\nwould be created each time when one need to accesses, for example, println, in\njava.lang.System.out. Then the wrapper for System.out would store only reference\nto small reflection helper object for println function without any scope refs\nallowing to cache that between independent scopes. \n\nMoreover, with some code generation tuning that wrapper object would be\nunnecessary in most cases since in\njava.lang.System.out.println() the wrapper is not visible and can be avoided\ncompletely.\n\nThe problem was with code like java.lang.System.out.println.foo = \"bar\" that\nLiveConnect allowed. It requires to store properties in wrappers persistently\nand I was never able to come up with simple solution without using weak\nhashtables which were not available on the JVM for the project.\n\nGiven that it is only right to store scope in ClassCache and document that\nsharing of ClassCache between scopes are not allowedand NEVER was.\n",
+            "date": "20050824T14:10:10",
+            "id": 2
+        },
+        {
+            "author": "szegedia@freemail.hu",
+            "body": "(In reply to comment #3)\n> \n> Given that it is only right to store scope in ClassCache and document that\n> sharing of ClassCache between scopes are not allowedand NEVER was.\n> \n\nSorry, I couldn't parse from what you wrote whether my patch is okay. :-) \n\nI'm not sharing ClassCache between scopes -- I'm having a \"master\" scope \n(scope_0) that is a prototype to multiple subscopes (scope_1...scope_n). The \nlookup of \"associated values\" in ScriptableObject is such that ClassCache.\nget(scope_1) == ... == ClassCache.get(scope_n) == ClassCache.get(scope_0). \nStrictly speaking, that ClassCache belongs to scope_0. Actually, I find it OK \nthis way, as the Function prototype (which is the prototype object of \nNativeJavaMethod objects) also lives in scope_0 (it is the one that has all \nstandard objects initialized in it). \n\nIt'd be rather inefficient if each scope_i (i > 0) would have its own \nClassCache, as that's mean each would need to do reflective discovery on its \nown, and these scopes are continually created and destroyed on 50 threads as \nthey process their work units.",
+            "date": "20050824T14:50:18",
+            "id": 3
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "(In reply to comment #4)\n> \n> Sorry, I couldn't parse from what you wrote whether my patch is okay. :-) \n\nThe patch is OK and fixes the real bug! What I wanted to say is that sharing of\nClassCache instances between *unrelated* scopes never worked since ClassCache\ndoes refer scope reference through NativeJavaMethod as you pointed out. In fact\nfor thos reason I would even sugest to add a new ClassCache(scope) constructor\nand deprecate default constructor/associate method there.\n",
+            "date": "20050824T17:31:32",
+            "id": 4
+        },
+        {
+            "author": "szegedia@freemail.hu",
+            "body": "(In reply to comment #5)\n> for thos reason I would even sugest to add a new ClassCache(scope) constructor\n> and deprecate default constructor/associate method there.\n> \n\nWill do -- for now I just committed the existing patch. As usual, there are some \nurgencies that need to be tended to in my paid work (you can tell that I \ndiscovered this bug while hunting for memory leaks with a profiler -- this was \nsort of a memory leak although fortunately not an unbounded one, but bound by \nthe total number of Java methods the scripts invoke), as it retained lots of \nparent scopes that were supposed to get garbage collected), so I'll get around \nto beautifying the solution a bit later.",
+            "date": "20050825T08:51:15",
+            "id": 5
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Closing this: potential improvments can go to a separated bug.",
+            "date": "20050827T18:19:08",
+            "id": 6
+        }
+    ],
+    "component": "Core",
+    "description": "User-Agent:       Opera/8.02 (Windows NT 5.0; U; en)\nBuild Identifier: \n\nI'm using a shared scope -- all scopes have it as their prototype. The \nClassCache is associated with the shared scope. Yet, when the Java binding \nmachinery creates new instances of NativeJavaMethod in JavaMembers.lookupClass(\n), the newly created NativeJavaMethod objects will have the NativeJavaObject's \nparent scope as their parent scope. However, this parent scope is temporary and \nshould get garbage collected, while the NativeJavaMethod persists in the \nClassCache associated with the shared scope, and holds a strong reference to the \ntemporary scope.\n\nAs a solution, I propose that ClassCache stores the information about the scope \nit is associated with (i.e. the shared scope), and JavaMembers are created \nagainst that scope.\n\nReproducible: Always",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "305753",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "-- normal",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "NativeJavaMethod objects have incorrect parent when using parent scopes",
+    "systemSpecification": false,
+    "version": "other"
+}

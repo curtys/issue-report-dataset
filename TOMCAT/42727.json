@@ -1,0 +1,53 @@
+{
+    "comments": [
+        {
+            "author": null,
+            "body": "Created attachment 20405\nChecks aggregator==null before returning null\n\nI attached a patch to check that aggregator==null before returning null.",
+            "date": "20070627T15:02:32",
+            "id": 0
+        },
+        {
+            "author": null,
+            "body": "*** Bug 44060 has been marked as a duplicate of this bug. ***",
+            "date": "20071211T13:10:25",
+            "id": 1
+        },
+        {
+            "author": null,
+            "body": "I have reproduce similar behavior. \nI cannot read anything from ServletRequest.getInputStream or getReader for\nTomcat ver 5.5.15+.\nAny idea?\n\nRegards\nMladen",
+            "date": "20080220T03:34:28",
+            "id": 2
+        },
+        {
+            "author": null,
+            "body": "Any chance of getting this fix in tomcat 5.5 ? \n\nAfter a few hours of debugging my application, i finally discovered this bug was the root cause. It's still there in Tomcat 5.5.26. ",
+            "date": "20080717T08:29:57",
+            "id": 3
+        },
+        {
+            "author": null,
+            "body": "Thanks for the patch. It has been applied to trunk and proposed for 6.0.x and 5.5.x.",
+            "date": "20080717T15:14:32",
+            "id": 4
+        },
+        {
+            "author": null,
+            "body": "This has been fixed in 5.5.x and will be included in 5.5.27 onwards.",
+            "date": "20080814T02:32:38",
+            "id": 5
+        }
+    ],
+    "component": "Connector:Coyote",
+    "description": "i have a webapp running on jboss-4.0.5.GA/apache-tomcat-5.5.20 that reads in \nthe http post request body and processes it.\n\ni noticed that for request bodies that didn't contain line separators and that \nhad sizes that were exact multiples of \norg.apache.catalina.connector.CoyoteReader.MAX_LINE_LENGTH (4096), i was \nreceiving null when calling org.apache.catalina.connector.CoyoteReader.readLine\n().\n\ni believe that the problem is at line 155 in \norg.apache.catalina.connector.CoyoteReader, where on the last iteration through \nthe loop, \"pos\" does equal zero and null is returned even though data has been \naggregated.\n\nhere's a command to run in cygwin to easily reproduce the problem:\nfor requestSize in 4095 4096 4097 8191 8192 8193; do dd if=/dev/zero bs=1c \ncount=$requestSize | tr '\\000' 'A' | curl --data-binary @- \nhttp://localhost:8080/DebugJboss/DebugServlet > $requestSize.txt; done;\n\noutput from directory listing (size filename):\n4095 4095.txt\n   0 4096.txt\n4097 4097.txt\n8191 8191.txt\n   0 8192.txt\n8193 8193.txt\n\nhere's the bulk of the servlet code i used to reproduce the problem:\npublic class DebugServlet extends HttpServlet {\n\tprotected void doPost(HttpServletRequest arg0, HttpServletResponse arg1)\n\t\t\tthrows ServletException, IOException {\n\t\tBufferedReader br = arg0.getReader();\n\t\tWriter writer = arg1.getWriter();\n\t\tString line = null;\n\t\twhile ((line = br.readLine()) != null) {\n\t\t\twriter.write(line);\n\t\t}\n\t\twriter.close();\n\t\tbr.close();\n\t}\n}\n\nit appears that a workaround is to wrap the requests's input stream instead:\nBufferedReader br = new BufferedReader(new InputStreamReader(arg0.getInputStream\n()));",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "42727",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "P3 normal",
+    "product": "Tomcat 5",
+    "project": "TOMCAT",
+    "summary": "CoyoteReader readLine returns null for some post request bodies that are a multiple of MAX_LINE_LENGTH in size",
+    "systemSpecification": false,
+    "version": "5.5.20"
+}

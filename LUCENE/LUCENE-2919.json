@@ -1,0 +1,149 @@
+{
+    "comments": [
+        {
+            "author": "Jason Rutherglen",
+            "body": "First cut.  Roughly divides an index by the exclusive mid term given.  ",
+            "date": "2011-03-03T19:04:59.767+0000",
+            "id": 0
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Patch looks good Jason!  Sorry for the long delay... I'll commit shortly.\n\nOne small thing I fixed: I think the term.compareTo(endTermExcl) > 0 should be a >= 0?",
+            "date": "2011-06-17T22:48:56.482+0000",
+            "id": 1
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "I would implement this stuff a little bit more flexible:\n\nYou could use a standard Filter to do the split, e.g. TermRangeFilter and use its returned DocIdSet as BitSet (if Filter returns no BitSet, can be checked by instanceof Bits, use OpenBitSetDISI as wrapper - like CachingWrapperFilter). This makes it more flexible, as this Filter again has some code duplication with the other IndexSplitter but is again very specific. A simple tool, let it be an DocumentExtractor, could extract parts of a bigger Index using any filter.\n\nHow about that?",
+            "date": "2011-06-17T23:00:50.268+0000",
+            "id": 2
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Too late, already committed :(\n\nI will still provide patch tomorrow!",
+            "date": "2011-06-17T23:02:29.604+0000",
+            "id": 3
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Here patch that changes PKIndexSplitter to use a Filter of \"allowed\" documents.\n\nIts yet hardcoded to be a TermRangeFilter, but a second flexible version could e.g. also use NumericRangeFilter, WildCardFilter or whatever.\n\nThe test in the committed code had a bug (the second half of the index had to contain 1 more document, maybe that was the bug Mike mentioned or introduced?). The documentation says: If the midTerm is in the index, its document will be in the second index.\n\nI think the test should also be improved to check indexes with deleted documents.\n\nMaybe the Filter could automatically be negated by a boolean parameter to the FilterIndexReader's ctor.",
+            "date": "2011-06-18T00:17:28.704+0000",
+            "id": 4
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "New patch:\n- simplified the Filter logic\n- added option to negate the filter in the IndexReader, this enabled use of only *one* TermRangeFilter and simply negate it for the second pass.\n- made code correctly close using IOUtils.closeSafely\n\nTests are still ugly.",
+            "date": "2011-06-18T08:27:18.855+0000",
+            "id": 5
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Patch looks great Uwe!  I love how generic it is now, that you can just provide any Filter.",
+            "date": "2011-06-18T09:35:39.318+0000",
+            "id": 6
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Here's patch for back-porting original approach to 3.x.",
+            "date": "2011-06-18T09:37:24.065+0000",
+            "id": 7
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "I will fix the test and commit this, then backport again, using your TermPositions.",
+            "date": "2011-06-18T09:55:50.288+0000",
+            "id": 8
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Final patch:\n- improved tests\n- changed api to be able to pass arbitrary filter\n\nThis ready to commit, will do this soon, as the current trunk is unfortunately broken (splits incorrect)",
+            "date": "2011-06-18T10:30:53.062+0000",
+            "id": 9
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Committed trunk revision: 1137162\n\nBackporting...",
+            "date": "2011-06-18T10:47:42.057+0000",
+            "id": 10
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Patch for 3.x (not merged one).",
+            "date": "2011-06-18T11:07:21.537+0000",
+            "id": 11
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Committed 3.x revision: 1137166",
+            "date": "2011-06-18T11:09:28.053+0000",
+            "id": 12
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Thanks Uwe!",
+            "date": "2011-06-18T12:53:17.186+0000",
+            "id": 13
+        },
+        {
+            "author": "Jason Rutherglen",
+            "body": "Thanks, committing this means I can remove a custom GitHub branch with only this patch.  Also, it'd be great if we somehow published nightly versions to Maven repositories.  Though they'd accumulate over time.",
+            "date": "2011-06-18T16:43:55.059+0000",
+            "id": 14
+        },
+        {
+            "author": "Ryan McKinley",
+            "body": "to get the current maven build, check:\nhttps://builds.apache.org/job/Lucene-Solr-Maven-trunk/lastSuccessfulBuild/artifact/maven_artifacts/\n",
+            "date": "2011-06-18T18:19:29.203+0000",
+            "id": 15
+        },
+        {
+            "author": "Jason Rutherglen",
+            "body": "@Ryan Thanks!  What would one place as the artifact info into the pom.xml?",
+            "date": "2011-06-18T18:22:08.748+0000",
+            "id": 16
+        },
+        {
+            "author": "Ryan McKinley",
+            "body": "Jason... not really sure what you are asking  4.0-SNAPSHOT?\nhttps://builds.apache.org/job/Lucene-Solr-Maven-trunk/lastSuccessfulBuild/artifact/maven_artifacts/org/apache/lucene/lucene-core/4.0-SNAPSHOT/maven-metadata.xml\n",
+            "date": "2011-06-18T19:00:39.635+0000",
+            "id": 17
+        },
+        {
+            "author": "Robert Muir",
+            "body": "bulk close for 3.3",
+            "date": "2011-07-02T02:40:16.335+0000",
+            "id": 18
+        },
+        {
+            "author": "Jason Rutherglen",
+            "body": "Sorry for the naive off/on-topic question.  \n\nRyan, what's the repository info that needs to be added to the pom.xml so that the project downloads the 4.0 snapshot?\n\nEg, I don't think it's:\n\n{code}\n<repository>\n  <id>lucene</id>\n  <url>https://builds.apache.org/job/Lucene-Solr-Maven-trunk/lastSuccessfulBuild/artifact/maven_artifacts/org/apache/</url>\n  <snapshots>\n    <enabled>true</enabled>\n  </snapshots>\n</repository>\n{code}",
+            "date": "2011-07-09T01:11:47.010+0000",
+            "id": 19
+        },
+        {
+            "author": "Elmer van Chastelet",
+            "body": "This was exactly what I was looking for!\n\nFTR, for this to work in Lucene 3.1.0 (and 3.2.0), only 2 calls to IOUtils.closeSafely(boolean suppressExceptions, Closeable... objects) need to be changed:\n\nIOUtils.closeSafely(!success, reader) -> IOUtils.closeSafely(reader)\nIOUtils.closeSafely(!success, w) -> IOUtils.closeSafely(w)",
+            "date": "2011-12-06T16:35:03.378+0000",
+            "id": 20
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Thanks!\nYou should upgrade to 3.5, 3.1 and 3.2 contains serious index corru(m)ption bugs! :-)",
+            "date": "2011-12-06T16:37:26.244+0000",
+            "id": 21
+        }
+    ],
+    "component": "",
+    "description": "Index splitter that divides by primary key term.  The contrib MultiPassIndexSplitter we have divides by docid, however to guarantee external constraints it's sometimes necessary to split by a primary key term id.  I think this implementation is a fairly trivial change.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-2919",
+    "issuetypeClassified": "RFE",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Minor",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "IndexSplitter that divides by primary key term",
+    "systemSpecification": true,
+    "version": "4.0-ALPHA"
+}

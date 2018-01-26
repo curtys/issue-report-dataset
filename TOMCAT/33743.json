@@ -1,0 +1,71 @@
+{
+    "comments": [
+        {
+            "author": null,
+            "body": "Created attachment 14362\nstandalone testcase\n\nTest produces output like the following:\n\nclass hox.util.Util\n\nintermingled with\n\njava.lang.ClassNotFoundException: hox.util.Util\n\tat\norg.apache.catalina.loader.WebappClassLoader.loadClass(WebappClassLoader.java:1332)\n\n\tat\norg.apache.catalina.loader.WebappClassLoader.loadClass(WebappClassLoader.java:1181)\n\n\tat org.apache.catalina.loader.test.WCT$1.run(WCT.java:35)",
+            "date": "20050225T18:06:33",
+            "id": 0
+        },
+        {
+            "author": null,
+            "body": "This will not be fixed for now.",
+            "date": "20050225T18:11:28",
+            "id": 1
+        },
+        {
+            "author": null,
+            "body": "Great. It leads to compiled JSP classes that do *not* recover by reloading. They\nhave a persistent \"NoClassDefFoundError\" attached.\n\nWill you apply the fix in 5.5 ?\n",
+            "date": "20050228T13:27:28",
+            "id": 2
+        },
+        {
+            "author": null,
+            "body": "No, I will not apply your proposed fix. As it is, I cannot reproduce any problem\nusing the provided tester (so if I cannot do it using a microtest, it is even\nless likely to occur in HTTP land). Maybe thread startup time is too slow on my\ntest machine.\n\nI see that there's a flaw in the current syncing, however, and I am willing to\napply the attached patch which should resolve the problem.",
+            "date": "20050329T16:59:15",
+            "id": 3
+        },
+        {
+            "author": null,
+            "body": "Created attachment 14585\nSyncing when checking binaryContent==null",
+            "date": "20050329T17:00:18",
+            "id": 4
+        },
+        {
+            "author": null,
+            "body": "My patch should address the possible race on entry.binaryContent.",
+            "date": "20050405T11:57:31",
+            "id": 5
+        },
+        {
+            "author": null,
+            "body": "On which version is this fixed?\n(kind of urgent for me to know...thanks!)\n",
+            "date": "20051125T21:53:22",
+            "id": 6
+        },
+        {
+            "author": null,
+            "body": "Hi, the bug was reported on 5.0.28, \nI've seen it on 5.0.27 and 5.0.30.\nA patch was made, but doesn't say which build is fixed.\n",
+            "date": "20051207T16:23:52",
+            "id": 7
+        },
+        {
+            "author": null,
+            "body": "Fixed in 5.5.10 onwards.",
+            "date": "20051207T20:12:05",
+            "id": 8
+        }
+    ],
+    "component": "Catalina",
+    "description": "WebAppClassLoader may fail if concurrent threads try to load a not-yet-loaded class.\n\nScenario:\ntwo threads enter loadClass(name, resolve) (line 1214) concurrently.\nnone of them finds a loaded class, so both enter findClass (827) and\nfindClassInternal (1559). \n\nNow one thread goes ahead, finds the resource and defines the class.\nConsequently, it sets entry.binaryContent to null (1633). Thread 2 now\nchecks binaryContent for null (1572) and throws a ClassNotFoundException.\n\nIn the field, this error occurs, if you start Tomcat and load a number of\ndifferent jsps concurrently that all use the same tag class.\n\nI also have a standalone testcase where I made WCL#addRepository(String,File)\npublic.\n\nAs it seems, #loadClass(String, boolean) (1211) should be synchronized, as in\nthe superclasses.\n\n\nMatthias",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "33743",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "P2 normal",
+    "product": "Tomcat 5",
+    "project": "TOMCAT",
+    "summary": "WebappClassLoader race condition",
+    "systemSpecification": true,
+    "version": "5.0.28"
+}

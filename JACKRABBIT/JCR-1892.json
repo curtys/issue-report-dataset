@@ -1,0 +1,59 @@
+{
+    "comments": [
+        {
+            "author": "Thomas Mueller",
+            "body": "Proposed JackrabbitValue interface",
+            "date": "2009-01-07T14:11:51.336+0000",
+            "id": 0
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "Implementation and tests for the JackrabbitValue.\nAdditionally, values already stored in the repository\nare not spooled again if the value is stored again.",
+            "date": "2009-01-07T14:13:15.315+0000",
+            "id": 1
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Good stuff! Some comments:\n\n* Should we set some expectations (not necessarily fixed limits) about the size of the content identity string? With the current definition the implementation could simply return the base64 encoding of the entire binary value!\n\n* Do we need the DataStore.hasRecord() method? If we use getRecord() directly we wouldn't need to worry about race conditions with the garbage collection.\n\n* In BinaryValueImpl.getContentIdentity() I'd use blob.getDataIdentifier().toString() (with appropriate null guards) to avoid surprises if we ever decide to make blob.toString() more expressive for debug purposes.\n\n* I wouldn't call getContentIdentity() internally in jackrabbit-core as we already have access to the DataIdentifier in the source value. Also, a malicious user could have passed in their own subclass that overrides getContentIdentity().\n\n",
+            "date": "2009-01-07T17:09:02.366+0000",
+            "id": 2
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "> expectations about the string length\n\nSure, what about \"The string is normally about 50 characters long.\"\n\n> With the current definition the implementation could simply return the base64 encoding of the entire binary value!\n\nFor very short binaries it may make sense to do that.\n\n> Do we need the DataStore.hasRecord() method?\n\nNo. Currently, DbDataStore.getRecord() throws an exception if the record doesn't exist, I wanted to avoid that.\n\n> race conditions with the garbage collection\n\nGood point! What about getRecordIfStored()? getRecord() would then just call that method and throw an exception if it returns null.\n\n> BinaryValueImpl.getContentIdentity() I'd use blob.getDataIdentifier().toString()\n\nUps, that was my plan...\n\n> not call getContentIdentity() internally\n\nYou are right of course.\n",
+            "date": "2009-01-08T14:13:07.889+0000",
+            "id": 3
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "> Sure, what about \"The string is normally about 50 characters long.\"\n\nOr: \"The returned string contains only ASCII letters and digits and is at most 128 characters long.\" Both limitations are generic enough for most identifier formats (even a hex representation of a huge 512-bit hash), and they allow client applications to easily (no quoting) and efficiently (bounded size) use the returned strings.\n\n> What about getRecordIfStored()?\n\nI think the current getRecord() is fine. If you already have a DataIdentifier for something, then it's highly likely that the corresponding record also exists in the DataStore, and an exception would truly be exceptional.\n",
+            "date": "2009-01-09T15:02:00.653+0000",
+            "id": 4
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "What about \n\n\"The identifier is opaque, meaning it can have any format and size, however\nit is at normally about 50 characters and at most 255 characters long.\nThe string only contains Unicode code points from 32 to 127 (including).\"\n\nFor some databases, the VARCHAR limit is 255. Unicode code points 32 to 127 are the same in ASCII, and I don't like to exclude ':' and '/' to support URLs; and I don't like to exclude base64 encoding.\n\n> If you already have a DataIdentifier for something, then it's highly likely that the corresponding record also exists in the DataStore\n\nOne use case is fast data migration (from one repository to another). In that case the record usually doesn't exist yet.\n\nI don't see any harm in getRecordIfStored().",
+            "date": "2009-01-12T09:42:19.551+0000",
+            "id": 5
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "Committed in revision 738119 (jackrabbit-core) and revision 738121 (jackrabbit-api).",
+            "date": "2009-01-27T16:13:33.196+0000",
+            "id": 6
+        }
+    ],
+    "component": "jackrabbit-jcr-commons",
+    "description": "BinaryValue should have a method get the unique identifier (if one is available). That way an application may not have to read the stream if that value is already processed.\n\nWhen the DataStore is used, a unique identifier is available, so probably this feature is quite simple to implement.\n\nSee also http://www.nabble.com/Workspace.copy()-Question-...-td20435164.html (but please don't reply to this thread from now on - instead add comments to this issue).\n\nAnother feature is getFileName() to get the file name if it is stored in the file system. This method may need a security mechanism, for example getFileName(Session s) so that the system can check it. In any case the file should not be modified, but maybe knowing the file name is already too dangerous in some cases.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "JCR-1892",
+    "issuetypeClassified": "RFE",
+    "issuetypeTracker": "RFE",
+    "priority": "Major",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "Unique ID for org.apache.jackrabbit.value.BinaryValue",
+    "systemSpecification": true,
+    "version": ""
+}

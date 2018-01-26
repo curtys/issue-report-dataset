@@ -1,0 +1,119 @@
+{
+    "comments": [
+        {
+            "author": "mguillemot@yahoo.fr",
+            "body": "Created attachment 277086\nPatch for arguments object including unit test",
+            "date": "20070817T14:41:25",
+            "id": 0
+        },
+        {
+            "author": "mguillemot@yahoo.fr",
+            "body": "any comment on bug and provided patch?",
+            "date": "20080114T09:02:58",
+            "id": 1
+        },
+        {
+            "author": "szegedia@freemail.hu",
+            "body": "Could you point out why is the current behaviour a problem?\n\n",
+            "date": "20080115T12:41:46",
+            "id": 2
+        },
+        {
+            "author": "mguillemot@yahoo.fr",
+            "body": "Extracted from the unit test in the provided patch;\n\n// 1: Rhino fails here as it returns Arguments\nfunction f() {\n  var t = typeof arguments;\n  if (t != 'object') throw 'Failed: got ' + t;\n}\nf();\n\n// 2: Rhino fails here too. Again \"Arguments\" where it should be \"Object\"\n\nfunction f() {\n  var t = arguments.toString();\n  if (t != '[object Object]') throw 'Failed: got ' + t;\n}\nf();\n",
+            "date": "20080115T12:47:42",
+            "id": 3
+        },
+        {
+            "author": "szegedia@freemail.hu",
+            "body": "Ah, okay, ECMA-262 section 10.1.8 actually prescribes:\n\n\"The value of the internal [[Prototype]] property of the arguments object is the original Object \nprototype object, the one that is the initial value of Object.prototype\"\n\nSo this is indeed a bug against the ECMA spec.",
+            "date": "20080115T12:52:33",
+            "id": 4
+        },
+        {
+            "author": "szegedia@freemail.hu",
+            "body": "Your patch changes it from IdScriptableObject to NativeObject, but doesn't address the problem that \"callee\", \"length\", and \"caller\" were provided on the arguments object via the IdScriptableObject mechanism.",
+            "date": "20080115T12:55:29",
+            "id": 5
+        },
+        {
+            "author": "mguillemot@yahoo.fr",
+            "body": "Isn't this already handled because NativeObject extends IdScriptableObject? (I haven't checked)",
+            "date": "20080115T13:00:01",
+            "id": 6
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "Created attachment 298637\nProposed patch\n\nIn my testing Rhino only fails \"// 2\" on comment #4. \n\nThe expression \n\n(function () { return arguments.__proto__ === Object.prototype; })() \n\nis true on both Rhino and SpiderMonkey, so I'm hoping the attached patch is sufficient to fix this. Comments?",
+            "date": "20080123T03:17:27",
+            "id": 7
+        },
+        {
+            "author": "szegedia@freemail.hu",
+            "body": "Norris, I'll show my ignorance of some of the Rhino implementation here, but is it safe to further subclass a class that is already subclassing IdScriptableObject? Will the IDs from the superclass (NativeObject) coexist peacefully with IDs in the subclass (Arguments)?",
+            "date": "20080123T08:17:46",
+            "id": 8
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "The problem is the usage models are different. \"Object\" has a constructor and defines a prototype, but \"arguments\" is an object that has Object.prototype as its prototype. So we don't want all the NativeObject features in this case.\n\n",
+            "date": "20080123T12:05:38",
+            "id": 9
+        },
+        {
+            "author": "mguillemot@yahoo.fr",
+            "body": "Norris, your patch seems ok to me. \n\nI don't remember how I got the failing result for \"// 1\" on comment #4, it's long ago. No matter.",
+            "date": "20080123T12:19:36",
+            "id": 10
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "Committed my patch:\n\nChecking in src/org/mozilla/javascript/Arguments.java;\n/cvsroot/mozilla/js/rhino/src/org/mozilla/javascript/Arguments.java,v  <--  Argu\nments.java\nnew revision: 1.32; previous revision: 1.31\ndone",
+            "date": "20080123T13:46:41",
+            "id": 11
+        },
+        {
+            "author": "mguillemot@yahoo.fr",
+            "body": "Cool!\n\nAnd the unit test?",
+            "date": "20080123T13:51:07",
+            "id": 12
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "Created attachment 300005\necma/ExecutionContexts/10.1.8-3.js\n\nProposed test for typeof arguments.",
+            "date": "20080129T14:27:37",
+            "id": 13
+        },
+        {
+            "author": "bob@bclary.com",
+            "body": "Comment on attachment 300005\necma/ExecutionContexts/10.1.8-3.js\n\nflipping type so it can be viewed.",
+            "date": "20080129T14:39:14",
+            "id": 14
+        },
+        {
+            "author": "bob@bclary.com",
+            "body": "Comment on attachment 300005\necma/ExecutionContexts/10.1.8-3.js\n\n>\n>var SECTION = \"10.1.8-2\";\n>var VERSION = \"ECMA_1\";\n>startTest();\n>var TITLE   = \"Arguments Object\";\n>\n>var expected = \"object\";\n>var actual = (function () { return typeof arguments; })();\n>reportCompare(expected, actual, \"typeof arguments == object\");\n>\n>writeHeaderToLog( SECTION + \" \"+ TITLE);\n\nnit: move the writeHeaderToLog to just below the var TITLE.  r+ with that.",
+            "date": "20080129T14:52:11",
+            "id": 15
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "Change made, test committed to cvs. Thanks for the quick review!",
+            "date": "20080129T15:02:43",
+            "id": 16
+        }
+    ],
+    "component": "Core",
+    "description": "User-Agent:       Mozilla/5.0 (X11; U; Linux i686; en-US; rv:1.8.1.6) Gecko/20060601 Firefox/2.0.0.6 (Ubuntu-edgy)\nBuild Identifier: \n\nThe \"arguments\" object available within function execution should be a \"normal\" object not an own type.\n\nThis leads currently to errors for instance for typeof or toString() (see unit test in attached patch)\n\nReproducible: Always\n\nSteps to Reproduce:\n1.\n2.\n3.\n\n\n\n[seems I can't attach a patch here. I try to open the issue first and attach then]",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "392593",
+    "issuetypeClassified": "OTHER",
+    "issuetypeTracker": "BUG",
+    "priority": "-- normal",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "Wrong type for arguments object",
+    "systemSpecification": true,
+    "version": "other"
+}

@@ -1,0 +1,137 @@
+{
+    "comments": [
+        {
+            "author": "Michael McCandless",
+            "body": "+1",
+            "date": "2011-06-14T00:01:07.027+0000",
+            "id": 0
+        },
+        {
+            "author": "Robert Muir",
+            "body": "I think for this one, I prefer to wait for Uwe's refactoring of MMap on LUCENE-3200.\nThen mmap is simpler, and i think we can even use the same indexinput implementation here.\n\nThis would mean no slowdown when searching CFS.\n",
+            "date": "2011-06-14T00:12:30.957+0000",
+            "id": 1
+        },
+        {
+            "author": "Robert Muir",
+            "body": "Initial patch for review. In this patch I only cut over MMapDirectory to using a special CompoundFileDirectory, all others use the default as before (but i cleaned up some things about it).\n\nPretty sure i can easily improve SimpleFS and NIOFS, i'll take a look at that now, but I wanted to get this up for review.\n",
+            "date": "2011-06-14T17:13:43.633+0000",
+            "id": 2
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Patch looks great!  Incredible that this means there's no penalty at all at search time when using CFS, if you use MMapDir.\n\nI like that CFS reader is now under oal.store not .index.",
+            "date": "2011-06-14T17:19:19.737+0000",
+            "id": 3
+        },
+        {
+            "author": "Robert Muir",
+            "body": "setting 3.3/4.0 as fix version, as the changes are backwards compatible (compoundfilereader is pkg-private still in 3.x)\n",
+            "date": "2011-06-14T17:29:15.985+0000",
+            "id": 4
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Hi Robert, great patch, exactly as I would have wished to have it when we discussed about it!\n\nPatch looks file, small bug:\n- FileSwitchDirectory should also override the openCompoundInput() from Directory and delegate to the correct underlying directory. Now it always uses the default impl, which is double buffering. So if you e.g. put MMapDirectory as a delegate for CFS files, those files would be opened like before your patch. Just copy'n'paste the code from one of the other FileSwitchDirectory methods.\n\nSome suggestions:\nWe currently map the whole compound file into address space, read the header/contents and unmap it again. This may be some overhead especially if unmapping is not supported.\n- We could use SimpleFSIndexInput to read CFS contents (we only need to pass the already open RAF there, alternatively use Dawids new wrapper IndexInput around a standard InputStream, got from RAF -> LUCENE-3202)\n- Only map the header of the CFS file, the problem: we dont know exact size.",
+            "date": "2011-06-14T18:56:41.559+0000",
+            "id": 5
+        },
+        {
+            "author": "Robert Muir",
+            "body": "I agree, the fileswitchdirectory should delegate the openCompoundInput.\n\nAs far as mapping small things, I think we should set this aside for another issue. \nas far as this issue goes, I don't mind returning the DefaultCompound impl if unmapping isn't supported, but i'd really rather defer the open the can of worms of 'mapping small things' to some other issue :)\n",
+            "date": "2011-06-14T19:10:01.765+0000",
+            "id": 6
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "We have LUCENE-1743 for the small files can of worms.",
+            "date": "2011-06-14T19:19:38.740+0000",
+            "id": 7
+        },
+        {
+            "author": "Robert Muir",
+            "body": "here is an updated patch, including impls for SimpleFS and NIOFS, fixing the FileSwitchDirectory thing uwe mentioned, and also mockdirectorywrapper and NRTCachingDirectory.\n\nall the tests pass with Simple/NIO/MMap but we need to benchmark. haven't had good luck today with luceneutil",
+            "date": "2011-06-14T21:42:14.241+0000",
+            "id": 8
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Robert: Very nice. Small thing:\n\n- NIOFSCompoundFileDirectory / SimpleFSCompoundFileDirectory / MMapCompoundFileDirectory are non-static inner classes but still get parent Directory in ctor. This is douplicated as javac also passes the parent around (the special ParentClassName.this one). I would remove the ctor param and use \"*FSDirectory.this\" as reference to outer class. I nitpick, because at some places it references the parent directory without the ctor param, so its inconsistent.\n\nThat's all for now, thanks for hard work!",
+            "date": "2011-06-14T22:00:14.254+0000",
+            "id": 9
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "this seems ready to commit... I think we should get that in so I can take it further on LUCENE-3218\n\nRobert is it ok for you if I commit this or are you gonig to do it?\n\nsimon",
+            "date": "2011-06-20T18:59:27.031+0000",
+            "id": 10
+        },
+        {
+            "author": "Robert Muir",
+            "body": "I didnt commit because I didn't measure any performance improvements from the patch (this frustrated me).\nAlso, I didn't address Uwe's last comment...\n\nIn general, I was thinking that this would be a good performance win, but it isn't. So we should consider it from a refactoring perspective only.\n",
+            "date": "2011-06-20T19:03:12.079+0000",
+            "id": 11
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "incorporated in LUCENE-3218 I will track backporting there",
+            "date": "2011-06-21T15:54:57.381+0000",
+            "id": 12
+        },
+        {
+            "author": "Robert Muir",
+            "body": "reopening, like LUCENE-3218, I think we should pull this stuff back and revisit.",
+            "date": "2011-08-20T09:09:10.995+0000",
+            "id": 13
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "My last comment was wrong, the impl was changed before commit so it reuses RAF.",
+            "date": "2011-08-20T09:19:28.411+0000",
+            "id": 14
+        },
+        {
+            "author": "Robert Muir",
+            "body": "thats just not true... but illustrates my point that this stuff is complicated and I think we need to take the safe option here and back it out.",
+            "date": "2011-08-20T09:19:35.813+0000",
+            "id": 15
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "I reverted my comment :-)",
+            "date": "2011-08-20T09:24:33.953+0000",
+            "id": 16
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "I think we can close this issue unless we plan to backport the CFS changes to 3.x? Opinions?",
+            "date": "2011-10-02T09:49:46.043+0000",
+            "id": 17
+        },
+        {
+            "author": "Robert Muir",
+            "body": "not a blocker, it was pulled from 3.x (and fixed in trunk)",
+            "date": "2011-10-07T19:34:26.210+0000",
+            "id": 18
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "I am closing this... if we feel like porting we can still reopen",
+            "date": "2011-10-07T21:57:14.111+0000",
+            "id": 19
+        }
+    ],
+    "component": "",
+    "description": "Currently CompoundFileReader could use some improvements, i see the following problems\n* its CSIndexInput extends bufferedindexinput, which is stupid for directories like mmap.\n* it seeks on every readInternal\n* its not possible for a directory to override or improve the handling of compound files.\n\nfor example: it seems if you were impl'ing this thing from scratch, you would just wrap the II directly (not extend BufferedIndexInput,\nand add compound file offset X to seek() calls, and override length(). But of course, then you couldnt throw read past EOF always when you should,\nas a user could read into the next file and be left unaware.\n\nhowever, some directories could handle this better. for example MMapDirectory could return an indexinput that simply mmaps the 'slice' of the CFS file.\nits underlying bytebuffer etc naturally does bounds checks already etc, so it wouldnt need to be buffered, not even needing to add any offsets to seek(),\nas its position would just work.\n\nSo I think we should try to refactor this so that a Directory can customize how compound files are handled, the simplest \ncase for the least code change would be to add this to Directory.java:\n\n{code}\n  public Directory openCompoundInput(String filename) {\n    return new CompoundFileReader(this, filename);\n  }\n{code}\n\nBecause most code depends upon the fact compound files are implemented as a Directory and transparent. at least then a subclass could override...\nbut the 'recursion' is a little ugly... we could still label it expert+internal+experimental or whatever.\n",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-3201",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Minor",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "improved compound file handling",
+    "systemSpecification": true,
+    "version": ""
+}

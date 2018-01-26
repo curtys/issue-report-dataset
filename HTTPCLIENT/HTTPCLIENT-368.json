@@ -1,0 +1,53 @@
+{
+    "comments": [
+        {
+            "author": "toraneko",
+            "body": "Created an attachment (id=12286)\npatch for handling header encoding\n",
+            "date": "2004-07-31T06:39:50.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Ortwin Gl\u00fcck",
+            "body": "Just a simple question:\nHow would the server know which encoding was used for the multipart headers?",
+            "date": "2004-08-02T14:00:07.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Adrian Sutton",
+            "body": "According to RFC 2388 (http://www.faqs.org/rfcs/rfc2388.html), section 3, the encoding of header \nvalues is ASCII but non-ASCII characters may be encoded according to RFC2047 (http://www.faqs.org/\nrfcs/rfc2047.html) which is MIME encoding.  So as far as I can tell this patch is incorrect but we may \nwant to consider having the capability for HttpClient to use RFC2047 encoding automatically when \nrequired.\n\nThe current workaround is to simply specify the header values pre-encoded according to RFC2047.\n\nDoes that seem right to anyone else?",
+            "date": "2004-08-02T14:52:37.000+0000",
+            "id": 2
+        },
+        {
+            "author": "Ortwin Gl\u00fcck",
+            "body": "Adrian,\n\nThanks for the hint to RFC-2388. However I am unsure if it really applies here,\nas RFC-2388 covers \"multipart/form-data\" only.",
+            "date": "2004-08-02T15:08:33.000+0000",
+            "id": 3
+        },
+        {
+            "author": "Adrian Sutton",
+            "body": "oops, you're right.  RFC 1867 is referenced in the JavaDocs for MultipartPostMethod and it says (in \nsection 7):\n\nField names originally in non-ASCII character sets may be encoded using the method outlined in RFC \n1522.\n\nRFC1522 is available at http://www.faqs.org/rfcs/rfc1522.html and is also MIME encoding (it's part two \nof the document that RFC 2047 is part three of).  One of the options is provides is:\n\n4.1. The \"B\" encoding\n\n   The \"B\" encoding is identical to the \"BASE64\" encoding defined by RFC\n   1521.\n\nWe already have BASE64 encoding available to us.  The other option seems to be quoted-printable.  I'd \nneed to read the spec in more detail to be sure about how it all works but it looks like the header values \ncould be pre-encoded according to RFC 1522 and then passed into HttpClient as I mentioned earlier.  It \nshould wind up looking something like:\n\n=?US-ASCII?Q?Keith_Moore?=\n\nWhich is the same format used in email headers.\n\nIn fact, our own JavaDocs quote the standard:\n\nField names originally in non-ASCII character sets may be encoded using the method outlined in RFC \n1522.\n\nWe probably should look at implementing support for this at some point then.",
+            "date": "2004-08-02T16:45:28.000+0000",
+            "id": 4
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Folks,\nI have already submitted Q-codec and B-codec implementations to the\ncommons-codec project. Both codecs are available as of release 1.3Folks,\nI have already submitted Q-codec and B-codec implementations to the\ncommons-codec project. Both codecs are available as of release 1.3\n\nhttp://jakarta.apache.org/commons/codec/changes-report.html#1_3\n\nWith just a few lines of code non-ascii character encoding can be implemented on\ntop of the stock version of HttpClient. Full integration of this feature is\ntargeted for 4.0\n\nOleg\n\n*** This bug has been marked as a duplicate of 24504 ***",
+            "date": "2004-08-08T20:06:06.000+0000",
+            "id": 5
+        }
+    ],
+    "component": "HttpClient (classic)",
+    "description": "Hi,\n\nCommons-Httpclient handle character encoding incorrect at multipart. This is \nsignificant problem for other than English people like me. Multipart has two \nencoding. First is header encoding which specify header of each part. Second \nis it's body encoding. Body encoding works well but header encoding is fixed \nas 'asc-ii'. This problem user following situation.\n\n* upload file which file name is described by other than \"asc-ii\".\n* use parameter which include other than \"asc-ii\" character.\n\nUnfortunately , It seems RFC doesn't define header encoding for multipart but \na lot of people needs set header encoding for thier own laungage. I attached\nthe patch. Please fix this problem.\n\nregards,\n\nTakashi Okamoto",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "HTTPCLIENT-368",
+    "issuetypeClassified": "RFE",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "HTTPCLIENT",
+    "project": "HTTPCLIENT",
+    "summary": "[PATCH]character encoding handling is invalid at multipart",
+    "systemSpecification": true,
+    "version": ""
+}

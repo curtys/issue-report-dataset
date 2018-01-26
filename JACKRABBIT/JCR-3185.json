@@ -1,0 +1,65 @@
+{
+    "comments": [
+        {
+            "author": "Julian Reschke",
+            "body": "Proposal.\n\n(We could add the code to the AbstractBundlePM as well, but I wanted to keep it separate)",
+            "date": "2011-12-19T17:41:19.772+0000",
+            "id": 0
+        },
+        {
+            "author": "Julian Reschke",
+            "body": "Proposed change.",
+            "date": "2011-12-20T13:02:05.871+0000",
+            "id": 1
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "+1 Looks straightforward enough, and moving the code outside the PM implementations make sense.\n\nI wonder if it might be a good idea to change getAllNodeIds() to return a Collection (or a Set) instead of an Iterable so we wouldn't need the extra getNumberOfBundles() call. AFAIUI all PM implementations in any case implement getAllNodeIds() with an in-memory list so the memory impact shouldn't be a problem (and if it is, the getAllNodeIds() signature already contains the maxCount option for dealing with that issue). And implementing getAllNodeIds() with an actual backend iterator opens up problems about when and how the resources used by the iterator can and should be released.\n\nPS. There's an svn:executable property in the patch that probably shouldn't be there.",
+            "date": "2011-12-20T17:07:56.653+0000",
+            "id": 2
+        },
+        {
+            "author": "Julian Reschke",
+            "body": "I agree that returning a collection/set/or list would make sense. However, if we ever change the code to use the paging feature we'll need the getCount() method anyway...",
+            "date": "2011-12-20T17:24:18.162+0000",
+            "id": 3
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "IIRC the paging feature in getAllNodeIds() was just added just so a client could iterate over all the nodes in chunks of predefined size. At least in that use case the total number of nodes was not needed.",
+            "date": "2011-12-20T17:32:12.677+0000",
+            "id": 4
+        },
+        {
+            "author": "Julian Reschke",
+            "body": "OK; so let's use a list for now, do not add getNumberOfBundles(), and address this in the future when we actually use paging,",
+            "date": "2011-12-20T17:50:54.473+0000",
+            "id": 5
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "Loading the whole list in memory will run out of memory in many cases.\n\nThe call isn't supposed to block other operations (specially for DataStore garbage collection).\n\nMany persistence manager implementations can't return the exact size() (specially, but not only because the call is non-blocking).\n\nTherefore the easiest solution is to revert the change, and don't log the size. Or add a method getNumberOfBundlesEstimate() or so.",
+            "date": "2012-01-05T12:59:57.875+0000",
+            "id": 6
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "> Loading the whole list in memory will run out of memory in many cases. \n\nThat's best handled on the client side, e.g. by making the consistency checker process things in chunks of say 1m nodes at a time. I'd track that as a separate issue.\n\n> don't log the size\n\nThat's what I'd do.",
+            "date": "2012-01-05T13:17:00.975+0000",
+            "id": 7
+        }
+    ],
+    "component": "jackrabbit-core",
+    "description": "see subject",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "JCR-3185",
+    "issuetypeClassified": "REFACTORING",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Minor",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "refactor consistency checks in BundleDBPersistenceManager into a standalone class that could be re-used for other PMs",
+    "systemSpecification": true,
+    "version": ""
+}

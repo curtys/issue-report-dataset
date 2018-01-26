@@ -1,0 +1,59 @@
+{
+    "comments": [
+        {
+            "author": "frankgroeneveld@gmail.com",
+            "body": "This fixes it:\n\n\nIndex: org/mozilla/javascript/ast/StringLiteral.java\n===================================================================\n--- org/mozilla/javascript/ast/StringLiteral.java       (revision 5538)\n+++ org/mozilla/javascript/ast/StringLiteral.java       (working copy)\n@@ -117,6 +117,7 @@\n         s = s.replaceAll(\"\\r\", \"\\\\\\\\r\");\n         s = s.replaceAll(\"\\t\", \"\\\\\\\\t\");\n         s = s.replaceAll(\"\\f\", \"\\\\\\\\f\");\n+        s = s.replaceAll(\"\\\\\\\\\", \"\\\\\\\\\\\\\\\\\");\n         return makeIndent(depth) + q + s + q;\n     }",
+            "date": "20091109T15:50:38",
+            "id": 0
+        },
+        {
+            "author": "hannesw@gmail.com",
+            "body": "I can't reproduce this with rhino head:\n\njs> (function() { var splitter = \"\\\\content\\\\\"; }).toSource()\n(function () {var splitter = \"\\\\content\\\\\";})\n\nDo I have to access the AST node directly to trigger this?",
+            "date": "20091110T10:12:44",
+            "id": 1
+        },
+        {
+            "author": "frankgroeneveld@gmail.com",
+            "body": "I haven't tried this from the js console. I experience this problem when parsing the JS into an AST and afterwards printing the toSource() from this AST (all from within JAVA).",
+            "date": "20091110T11:33:30",
+            "id": 2
+        },
+        {
+            "author": "frankgroeneveld@gmail.com",
+            "body": "My solution doesn't work, because something like:\nvar splitter = \"\\\"\";\nNow results in:\nvar splitter = \"\\\\\"\";\nWhich is invalid also.",
+            "date": "20091110T12:22:17",
+            "id": 3
+        },
+        {
+            "author": "frankgroeneveld@gmail.com",
+            "body": "This patch works:\n\nIndex: js_instrumentation_proxy/src/org/mozilla/javascript/ast/StringLiteral.java\n===================================================================\n--- js_instrumentation_proxy/src/org/mozilla/javascript/ast/StringLiteral.java(revision 5547)\n+++ js_instrumentation_proxy/src/org/mozilla/javascript/ast/StringLiteral.java(working copy)\n@@ -112,7 +112,8 @@\n         // TODO(stevey):  make sure this unescapes everything properly\n         String q = String.valueOf(getQuoteCharacter());\n         String rep = \"\\\\\\\\\" + q;\n-        String s = value.replaceAll(q, rep);\n+        String s = value.replace(\"\\\\\", \"\\\\\\\\\");\n+        s = s.replaceAll(q, rep);\n         s = s.replaceAll(\"\\n\", \"\\\\\\\\n\");\n         s = s.replaceAll(\"\\r\", \"\\\\\\\\r\");\n         s = s.replaceAll(\"\\t\", \"\\\\\\\\t\");",
+            "date": "20091110T12:31:30",
+            "id": 4
+        },
+        {
+            "author": "hannesw@gmail.com",
+            "body": "I changed StringLiteral.toSource() to use ScriptRuntime.escapeString() method which is also used by uneval(). This escapes all non-printable and multibyte characters, so we should be safe.\n\nPlease let me know if you still see any problems.\n\nChecking in src/org/mozilla/javascript/ast/StringLiteral.java;\n/cvsroot/mozilla/js/rhino/src/org/mozilla/javascript/ast/StringLiteral.java,v  <--  StringLiteral.java\nnew revision: 1.2; previous revision: 1.1",
+            "date": "20091110T12:42:19",
+            "id": 5
+        },
+        {
+            "author": "frankgroeneveld@gmail.com",
+            "body": "Works great. Thanks!",
+            "date": "20091110T12:52:44",
+            "id": 6
+        }
+    ],
+    "component": "Core",
+    "description": "User-Agent:       Mozilla/5.0 (Windows; U; Windows NT 6.1; nl; rv:1.9.1.4) Gecko/20091016 Firefox/3.5.4\nBuild Identifier: cvshead of november 6th\n\nIf I parse something like this with the new AST code:\n\nvar splitter = \"\\\\content\\\\\";\n\nAnd then I run toSource() which gives me:\n\nvar splitter = \"\\content\\\";\n\nThis is invalid javascript code, the \\ should be escaped.\n\nReproducible: Always\n\nSteps to Reproduce:\n1. Parse above js\n2. Run toSource() on the AST created\n3. Verify output is wrong\nActual Results:  \nThe output is \nvar splitter = \"\\content\\\";\n\nExpected Results:  \nThe output should be\n\nvar splitter = \"\\\\content\\\\\";",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "527452",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "-- normal",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "String with escaped characters gives wrong toSource() output",
+    "systemSpecification": true,
+    "version": "other"
+}

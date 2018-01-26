@@ -1,0 +1,125 @@
+{
+    "comments": [
+        {
+            "author": "Serge Huber",
+            "body": "Added fix version, please correct if needed.",
+            "date": "2010-12-08T14:36:35.609+0000",
+            "id": 0
+        },
+        {
+            "author": "Serge Huber",
+            "body": "\nI am attaching a patch to the LuceneQueryFactory that replaces the recursive Lucene queries with JCR sub-tree traversing. This seems to yield a little bit better performance (x3) in my tests, but this is still slow if the sub-tree has a lot of nodes.\n\nI welcome any feedback you may have. I am also ready to commit this if you'd like.\n\nBest regards,\n  Serge Huber.",
+            "date": "2010-12-08T14:40:51.727+0000",
+            "id": 1
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "This probably won't make it in the 2.2 timeframe, so targetting just 2.3 for now.\n\nWhen fixing this, we should start by adding a test case to the peformance test suite (possibly with an option to compare SQL2 against XPath). That way we'll have solid numbers to back any improvement ideas.\n\nIn general subtree queries are troublesome even for XPath, but there's still a lot we can do to bring SQL2 at least close to that level. One idea I had (but didn't yet have time to implement) was to collect the parent UUIDs of the entire subtree not by traversing each node separately, but by per-level queries like 1) parent-id=<uuid-of-ancestor>, 2) parent-id=<uuid-of-child1> parent-id=<uuid-of-child2> ..., 3) same for grandchildren, etc. That way we'd only need to execute a handful of Lucene queries per one subtree constraint.",
+            "date": "2010-12-08T19:16:08.966+0000",
+            "id": 2
+        },
+        {
+            "author": "Serge Huber",
+            "body": "Hello Jukka, \n\nThanks again for your quick answer.\n\nYes agreed we should provide a test case. Where should this be included ? I might have the opportunity to help develop this but I don't really know the best place to add such a case ?\n\nInteresting approach for the levels, this would indeed reduce the number of queries, although the clauses could get quite large, not sure if that's an issue for Lucene.\n\nBest regards,\n  Serge Huber.",
+            "date": "2010-12-09T07:42:15.068+0000",
+            "id": 3
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "See the ./test/performance directory within Jackrabbit trunk. I just added some instructions in the README.txt file for adding new tests. The simplest way to get started is to copy and adapt the SimpleSearchTest and SQL2SearchTest classes to something like DescendantSearchTest and SQL2DescendantSearchTest classes.\n\nRe: large clauses; Yes, we'd probably need some extra code that automatically splits the queries into smaller subqueries, like is currently being done by the QueryEngine.execute() method for large joins.",
+            "date": "2010-12-09T11:33:40.993+0000",
+            "id": 4
+        },
+        {
+            "author": "Serge Huber",
+            "body": "I am attaching a first pass at the descendant search tests. \nThese tests were performed on the trunk WITHOUT the proposed patch. I will work on implementing Jukka's proposal now that I have the tests.\n\nPlease review the XPath one as I am not that fluent in those queries. \n\nThe current difference is huge (provided my tests are correct) : \n\nXPath : \n# DescendantSearchTest                   min     10%     50%     90%     max\n2.2                                       25      34      43      59     265\n\nSQL-2 : \n\n# SQL2DescendantSearchTest               min     10%     50%     90%     max\n2.2                                   395318  395318  395318  395318  395318\n\nIf the test implementations look ok, I can commit them once reviewed. \n\nBest regards,\n   Serge Huber.",
+            "date": "2010-12-09T16:31:18.905+0000",
+            "id": 5
+        },
+        {
+            "author": "Serge Huber",
+            "body": "I just tested with the patch I proposed here, the results are slightly better, but still very far from the XPath implementation : \n\n# SQL2DescendantSearchTest               min     10%     50%     90%     max\n2.2                                   224662  224662  224662  224662  224662\n\nBest regards,\n  Serge Huber.",
+            "date": "2010-12-09T18:15:42.494+0000",
+            "id": 6
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Thanks for adding the test! Feel free to commit it.",
+            "date": "2010-12-10T00:10:00.612+0000",
+            "id": 7
+        },
+        {
+            "author": "Serge Huber",
+            "body": "Ok I have committed the perf tests in revision 1044239. \n\nI will be working on trying out your suggestion today.\n\nBest regards,\n  Serge Huber.",
+            "date": "2010-12-10T08:09:20.607+0000",
+            "id": 8
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "BTW, when adding new files, remember to always include the Apache license header. I added the header to the new test classes in revision 1044613 to fix the Hudson failure caused by this.",
+            "date": "2010-12-11T09:44:06.266+0000",
+            "id": 9
+        },
+        {
+            "author": "Serge Huber",
+            "body": "Sorry about that Jukka, my bad. Didn't know this could cause Hudson to fail.\n\nBtw unfortunately I didn't have the time to test your proposal. I was working on comparing the Lucene queries between the XPath and SQL-2 tests, and saw that the DescendantChildNodeQuery is being used in the case of XPath but not in the case of SQL-2. I'm not (yet) an expert at Lucene, but maybe that's a place to start ? \n\nI also notice that the SimpleQueryResult does not support result fetch size as the other SingleColumnQueryResult and MultipleColumnQueryResult do. I realize this is because of the join merging, but maybe we should look at being able to do \"progressive\" merging alongside with merges in order to reduce the number of results being loaded systematically. Again I haven't thought this through completely and maybe there is some limitation on doing so.\n\nThese query problems are difficult because we are basically rewriting a full-fledged SQL optimizer, and maybe we should look at how databases perform these ?\n\nRegards,\n  Serge Huber.",
+            "date": "2010-12-13T07:00:48.886+0000",
+            "id": 10
+        },
+        {
+            "author": "Thomas Draier",
+            "body": "Hi,\n\nI just made some improvements in the DescendantNode constraint, using the same kind of subquery we do in XPATH (DescendantSelfAxisQuery)\n\nFirst I had to slightly change the XPath test in order to make it more comparable with the one SQL-2, as the current query in DescendantSearchTest does not return any result :-)\n\nSo instead of : /testroot//*[@testcount=\" + i + \"]\"  \nI used :  /jcr:root/testroot//element(*,nt:base)[@testcount=\" + i + \"]\"\n(added a the jcr:root , and an nt:base constraint to have the same constraint as in sql-2 - btw this could also be improved, as a constraint on nt:base does not make much sense and does not need to be expanded to all sub types)\n\nBefore patching, i had theses figures - similar to what serge got before\n\n# DescendantSearchTest \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 min \u00a0 \u00a0 10% \u00a0 \u00a0 50% \u00a0 \u00a0 90% \u00a0 \u00a0 max\n2.2 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0411 \u00a0 \u00a0 416 \u00a0 \u00a0 430 \u00a0 \u00a0 450 \u00a0 \u00a0 690\n# SQL2DescendantSearchTest \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 min \u00a0 \u00a0 10% \u00a0 \u00a0 50% \u00a0 \u00a0 90% \u00a0 \u00a0 max\n2.2 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 203530 \u00a0203530 \u00a0203530 \u00a0203530 \u00a0203530\n\nAfter  patching :\n\n# DescendantSearchTest \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 min \u00a0 \u00a0 10% \u00a0 \u00a0 50% \u00a0 \u00a0 90% \u00a0 \u00a0 max\n2.3 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0420 \u00a0 \u00a0 429 \u00a0 \u00a0 448 \u00a0 \u00a0 479 \u00a0 \u00a01208\n# SQL2DescendantSearchTest \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 min \u00a0 \u00a0 10% \u00a0 \u00a0 50% \u00a0 \u00a0 90% \u00a0 \u00a0 max\n2.3 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0 \u00a0319 \u00a0 \u00a0 327 \u00a0 \u00a0 339 \u00a0 \u00a0 351 \u00a0 \u00a0 375\n\nWhich make the SQL2 queries even faster than the XPATH one. Basically, I use a DescendantSelfAxisQuery with subqueries when possible. Compared to Xpath, the context query is simpler ( the one that gets the ancestor node ), as it is based on nodeid instead of nested ChildAxisQuery queries - which can explain that sql-2 is slightly faster.\n\nFor example, an xpath query like : \" /jcr:root/folder1/folder2//element(*,nt:type) \"\nIs translated to :\n\n+DescendantSelfAxisQuery(\n      +ChildAxisQuery(\n            +ChildAxisQuery(\n                 _:PARENT:, \n                 {}folder1), \n            {}folder2), \n      +_:PROPERTIES:1570322:primaryType[14877513:type, \n      1)\n\nWhere an equivalent \" select * from [nt:type] as obj where ISDESCENDANTNODE(obj, '/folder1/folder2') \" gives :\n      \nDescendantSelfAxisQuery(_:UUID:a4137e73-6a16-4148-9d61-2353230a15d0, \n      +_:PROPERTIES:1570322:primaryType[14877513:type, \n      1)\n\nNote that it currently only works in the first level of constraint - an isDescendantNode constraint inside an OR / NOT boolean query won't use the subquery. I don't think it's a big issue for the OR - but it can be for the NOT .. \n\nThe patch is attached ..\n\nRegards\n",
+            "date": "2010-12-15T14:46:12.815+0000",
+            "id": 11
+        },
+        {
+            "author": "Serge Huber",
+            "body": "I have generated the performance graphs and indeed this patch looks really good !\n\nBtw I had a lot of trouble generating the graphs under Mac OS X. It took me a while to understand that I needed to install the following packages from fink : \n\nimagemagick2-svg\ngnuplot\n\nI have added to the README.txt instructions on how to use the script under Mac OS X to generate the graphs.\n\nIf nobody has any objections, I'd like to commit this patch since the results are really much better ?\n\nBest regards,\n  Serge Huber.",
+            "date": "2010-12-17T07:34:02.297+0000",
+            "id": 12
+        },
+        {
+            "author": "Serge Huber",
+            "body": "Also, maybe we should port this to 2.2.1 ? \n\nRegards,\n  Serge Huber.\n\n",
+            "date": "2010-12-17T08:01:37.737+0000",
+            "id": 13
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "+1 Looks great!\n\nRe: 2.2.1; Yes, I think it would be a good idea to backport this even though strictly speaking it's not just a bug fix. We don't introduce any externally visible API or behaviour changes, and this change should also fix the \"too many clauses\" problem already reported on users@.",
+            "date": "2010-12-17T10:47:02.028+0000",
+            "id": 14
+        },
+        {
+            "author": "Serge Huber",
+            "body": "Thanks Jukka, will you take care of the backport or should I do it ?\n\nRegards,\n  Serge... ",
+            "date": "2010-12-17T10:57:21.061+0000",
+            "id": 15
+        },
+        {
+            "author": "Serge Huber",
+            "body": "Ok I have committed this in the trunk, as revision 1050346\n\nRegards,\n  Serge Huber.",
+            "date": "2010-12-17T11:10:26.336+0000",
+            "id": 16
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Merged to the 2.2 branch in revision 1054716.",
+            "date": "2011-01-03T19:29:41.529+0000",
+            "id": 17
+        }
+    ],
+    "component": "jackrabbit-core, query",
+    "description": "Using the latest source code, I have noticed very bad performance on SQL-2 queries that use the ISDESCENDANTNODE constraint on a large sub-tree. For example, the query : \n\nselect * from [jnt:news] as news where ISDESCENDANTNODE(news,'/root/site') order by news.[date] desc \n\nexecutes in 600ms \n\nselect * from [jnt:news] as news order by news.[date] desc\n\nexecutes in 4ms\n\nFrom looking at the problem in the Yourkit profiler, it seems that the culprit is the constraint building, that uses recursive Lucene searches to build the list of descendant node IDs : \n\n    private Query getDescendantNodeQuery(\n            DescendantNode dn, JackrabbitIndexSearcher searcher)\n            throws RepositoryException, IOException {\n        BooleanQuery query = new BooleanQuery();\n\n        try {\n            LinkedList<NodeId> ids = new LinkedList<NodeId>();\n            NodeImpl ancestor = (NodeImpl) session.getNode(dn.getAncestorPath());\n            ids.add(ancestor.getNodeId());\n            while (!ids.isEmpty()) {\n                String id = ids.removeFirst().toString();\n                Query q = new JackrabbitTermQuery(new Term(FieldNames.PARENT, id));\n                QueryHits hits = searcher.evaluate(q);\n                ScoreNode sn = hits.nextScoreNode();\n                if (sn != null) {\n                    query.add(q, SHOULD);\n                    do {\n                        ids.add(sn.getNodeId());\n                        sn = hits.nextScoreNode();\n                    } while (sn != null);\n                }\n            }\n        } catch (PathNotFoundException e) {\n            query.add(new JackrabbitTermQuery(new Term(\n                    FieldNames.UUID, \"invalid-node-id\")), // never matches\n                    SHOULD);\n        }\n\n        return query;\n    }\n\nIn the above example this generates over 2800 Lucene queries, which is the culprit. I wonder if it wouldn't be faster to retrieve the IDs by using the JCR to retrieve the list of child IDs ?\n\nThis was probably also missed because I didn't seem to find any performance tests on this constraint.",
+    "hasPatch": true,
+    "hasScreenshot": true,
+    "id": "JCR-2835",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Major",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "Poor performance of ISDESCENDANTNODE on SQL 2 queries",
+    "systemSpecification": true,
+    "version": "2.2, 2.2.1, 2.3"
+}

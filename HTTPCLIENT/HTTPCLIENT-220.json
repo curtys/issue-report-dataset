@@ -1,0 +1,251 @@
+{
+    "comments": [
+        {
+            "author": "Michael Becke",
+            "body": "I believe that PostMethod handles parameters correctly.  ( and ) are not reserved characters and \ntherefore do not need to be encoded.  Are you using the addParameter() or \nthe setRequestBody(NameValuePair[]) methods of PostMethod?  If not my guess is that the content \ntype is not being set correctly.  When posting form values the content type should be \"application/\nx-www-form-urlencoded\", which is used when setting the params.  If the requestBody is set as a \nsingle string or stream the content type will need to be specified manually.  If setting the content \ntype doesn't fix the problem please post a wire log and some sample code if possible.\n\nhttp://jakarta.apache.org/commons/httpclient/logging.html",
+            "date": "2003-06-05T09:04:06.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Ortwin Gl\u00fcck",
+            "body": "Chris,\n\nIt does not matter what you see in the InputStream. You should access request\nparameters through the servlet API using\nHttpServletRequest::getParameter(String). Is there any difference using that\nfunction whether you send the POST through a web browser or through HttpClient?\n\nOdi",
+            "date": "2003-06-05T13:12:15.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Chris Mein",
+            "body": "Ortwin and Michael\n\nFirst to clear things up (sorry that I wasn't clear before). I have built a \nStruts based web application with a input form that posts information to a \nStruts 'form' that uses a map based attribute, hence the need for an input with \nthe format selected(c).\n\nWhen I access this web application directly everything works. When I use \nHttpClient to access the form (I am building a mini portlet) my application \nhangs and timesout. I turned on the Struts debugging and found that it failed \nwhen it was trying to read the request parameters using the request.getParameter \ncalls. It was then that I (after lots of other tinkering) looked directly at the \ninput stream (which of course is wrong) to see if there was a low level \ndifference. This is when I noticed that from the browser I received selected%\n28c%29 and from HttpClient I received selected(c). Hence the possible bug.\n\nWith regard to your information Michael I am 'screen scraping' to do my portal, \nre-writing the URLs etc. to get the effect I want. What I do is copy the headers \nover, adjusting the Content-Length if necessary and sending this to my back end \nStruts application. Again I'm not sure if this is very valid but I manage to \nkeep the sesison etc and it seems to work everywhere else. I do use the \nsetRequestBody(NameValuePair[]) method to reset the input parameters I get into \nthe PostMethod. I have attached the request headers I set as well...\n\nrequest name=Accept, header=image/gif\nrequest name=Accept, header=image/x-xbitmap\nrequest name=Accept, header=image/jpeg\nrequest name=Accept, header=image/pjpeg\nrequest name=Accept, header=application/vnd.ms-powerpoint\nrequest name=Accept, header=application/vnd.ms-excel\nrequest name=Accept, header=application/msword\nrequest name=Accept, header=application/x-shockwave-flash\nrequest name=Accept, header=*/*\nrequest name=Referer, header=http://localhost:\n8080/portal/search/advanced/display.do;JSESSIONID=1vm3jdykwh0a8\nrequest name=Accept-Language, header=en-gb\nrequest name=Content-Type, header=application/x-www-form-urlencoded\nrequest name=Accept-Encoding, header=gzip\nrequest name=Accept-Encoding, header=deflate\nrequest name=User-Agent, header=Mozilla/4.0 (compatible; MSIE 5.5; Windows NT 5.\n0)\nrequest name=Host, header=localhost:8080\n\nAnd I can see in there encoding header you mention.\n\nIf you can't think of anything else for me to try straight away I will build two \nsmall web apps that do what I am trying and will attach them.\n\nChris",
+            "date": "2003-06-05T15:47:58.000+0000",
+            "id": 2
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Chris,\n\nCould you provide an HttpClient wire log?  This may help to clear things up.\n\nhttp://jakarta.apache.org/commons/httpclient/logging.html\n\nMike",
+            "date": "2003-06-05T19:32:33.000+0000",
+            "id": 3
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Chris,\n\nAfter having read relevant specifications one more time: \n\n- Hypertext Markup Language - 2.0 \n  http://www.w3.org/MarkUp/html-spec/html-spec_8.html#SEC8.2.1\n- RFC1738 (Uniform Resource Locators)\n  http://www.w3.org/Addressing/rfc1738.txt\n\nI have to acknowledge that HttpClient does not handle\n'application/x-www-form-urlencoded' correctly. I'll be working on a fix. So,\nstay tuned\n\nOleg",
+            "date": "2003-06-12T20:25:00.000+0000",
+            "id": 4
+        },
+        {
+            "author": "Chris Mein",
+            "body": "Thank you for taking the time to read the specificaiton. I am away for the next \nfew days but am happy to test or write a test for this functionality when I am \nback.\n\nChris",
+            "date": "2003-06-12T20:44:09.000+0000",
+            "id": 5
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Created an attachment (id=6830)\nPatch (take 1)\n",
+            "date": "2003-06-14T22:40:13.000+0000",
+            "id": 6
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Chris,\nIf you could take the patch for a spin, once you are back, I would appreciate\nyour feedback\n\nOleg",
+            "date": "2003-06-14T22:44:54.000+0000",
+            "id": 7
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Are there any objections, comments to this patch?\n\nOleg",
+            "date": "2003-06-19T21:54:47.000+0000",
+            "id": 8
+        },
+        {
+            "author": "Michael Becke",
+            "body": "It looks good.  I think you have correctly interpreted the\napplication/x-www-form-urlencoded spec.  The wording is a little more confusing\nthat it seems initialy.  We also need to apply this change to the query\nparameters in HttpMethodBase.setQueryString().  These values should also use\nform encoding.\n\nMike",
+            "date": "2003-06-19T23:31:38.000+0000",
+            "id": 9
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Mike, \nI believe HttpMethodBase.setQueryString() is correct. Query part of URL should\nbe encoded as defined in RFC 1738.\n\nAccording to the RFC 1738 specification, \"only alphanumerics, the special\ncharacters \"$-_.+!*'(),\", and reserved characters used for their reserved\npurposes may be used unencoded within a URL.\"\n\nIf we all agree on this interpretation, I'll commit the patch\n\nOleg",
+            "date": "2003-06-20T03:22:36.000+0000",
+            "id": 10
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Oleg,\n\nSorry, you are correct. \n\nHttpMethodBase is using the 2396 URI spec instead of 1738 though. I think this\npach is good to go.\n\nMike",
+            "date": "2003-06-20T03:42:30.000+0000",
+            "id": 11
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Patch committed\n\nOleg",
+            "date": "2003-06-20T03:55:30.000+0000",
+            "id": 12
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Query params should also be form urlencoded.\n\nhttp://marc.theaimsgroup.com/?t=105621236900001&r=1&w=2",
+            "date": "2003-06-23T10:14:02.000+0000",
+            "id": 13
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Created an attachment (id=6933)\npatch2\n",
+            "date": "2003-06-23T10:14:29.000+0000",
+            "id": 14
+        },
+        {
+            "author": "Michael Becke",
+            "body": "This patch includes the following:\n\n - form urlencoding no longer encodes *-_.\n - the urlencoding method has been moved to HttpMethodBase\n - HttpMethodBase.setQueryString(NameValuePair[]) now urlencodes values.",
+            "date": "2003-06-23T10:17:32.000+0000",
+            "id": 15
+        },
+        {
+            "author": "Laura Werner",
+            "body": "The new patch looks good.  Thanks for doing it and sorry I didn't get to it!\n\nOne minor comment:  It might be better to split the new formUrlEncode method\ninto two pieces: one that loops through the parameters and builds up the query\nstring, and one that simply encodes a string using\napplication/x-www-form-urlencoded.  The string-encoding method would definitely\nbelong in commons-codec, but I'm not sure whether the \"loop over parameters\"\npart would.",
+            "date": "2003-06-23T10:59:38.000+0000",
+            "id": 16
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Hi Laura,\n\nThank you for looking over the patch.  I agree that we might want to spilt this functionality when \nmoving to codec.  For the moment though I think it's okay to keep it together.\n\nMike",
+            "date": "2003-06-23T19:29:18.000+0000",
+            "id": 17
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Patch committed.",
+            "date": "2003-06-24T06:46:26.000+0000",
+            "id": 18
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Non-ASCII values are incorrectly encoded (e.g. the German Umlaute).  Problem posted by Martin \nSchnyder.",
+            "date": "2003-07-14T04:55:19.000+0000",
+            "id": 19
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Created an attachment (id=7278)\nPatch 3\n",
+            "date": "2003-07-14T04:56:09.000+0000",
+            "id": 20
+        },
+        {
+            "author": "Michael Becke",
+            "body": "So I think the decision was to treat the query params as UTF-8.  Attached is a patch that makes \nthis change and adds a test.  It seems like such a simple change, is this really all that's needed?\n\nMike",
+            "date": "2003-07-14T04:58:40.000+0000",
+            "id": 21
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "We do not have to make it more complex than it needs to be. Looks good to me.\n\nOleg",
+            "date": "2003-07-14T16:27:41.000+0000",
+            "id": 22
+        },
+        {
+            "author": "Martin Schnyder",
+            "body": "I think UTF-8 is a good default but it would be helpful if an other encoding \ncould be specified as well. Some server applications may not properly decode \nthe request parameters if they are UTF-8 encoded. I use HttpClient e.g. to \naccess an SMS gateway. This gateway expects the URL parameters to be ISO-8859-1 \n(Latin-1) encoded. I can imagine that there are many other server applications \naround that require an encoding different from UTF-8. \n\nMartin",
+            "date": "2003-07-14T18:34:35.000+0000",
+            "id": 23
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Martin,\nNot that I disagree with you, but I just would like to point out two things:\n* UTF-8 has been designed to be backward compatible with Latin-1 encoding (as \nlong as only 8 bit characters are used)\n* HttpMethodBase#setQueryString(String) method allows to apply whatever \nencoding the user may see fit.\n\nOleg",
+            "date": "2003-07-14T18:56:26.000+0000",
+            "id": 24
+        },
+        {
+            "author": "Roland Weber",
+            "body": "Just to avoid confusion: UTF-8 is backward-compatible with US-ASCII,\nthat is 7 bit ISO-Latin only. They need the 8th bit to switch to\nmulti-byte character encodings.",
+            "date": "2003-07-14T19:30:26.000+0000",
+            "id": 25
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Roland, you are right. UTF-8 is not backward compatible with Latin-1. Sorry \nabout my misleading statement.\n\nOleg",
+            "date": "2003-07-14T19:42:53.000+0000",
+            "id": 26
+        },
+        {
+            "author": "Michael Becke",
+            "body": "HttpMethod.setQueryString(String) is definitely the way to use an encoding besides UTF-8. Oleg, \nperhaps we should try to expose HttpMethodBase.formUrlEncode().  This would make it quite \neasy for someone to use another encoding if necessary. If we decide to do this I think \nformUrlEncode() should probably be moved.\n\nMike",
+            "date": "2003-07-14T19:51:13.000+0000",
+            "id": 27
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "I agree. How about URIUtil#formUrlEncode?\n\nOleg",
+            "date": "2003-07-15T01:48:47.000+0000",
+            "id": 28
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Possibly.  It's not really URI related, but it's our only real choice unless we\nwant to add a new class.\n\nMike",
+            "date": "2003-07-15T02:10:03.000+0000",
+            "id": 29
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Actually, a completely new utility class does not seem to be such a bad idea at\nall. Anyways, I leave it to your discretion.\n\nOleg",
+            "date": "2003-07-15T02:16:34.000+0000",
+            "id": 30
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Okay,  I think we should opt for a new class.  Any thoughts on a name?  I would\nlike to pick something that we can actually reuse for other utility methods in\nthe future.  Something really generic like HttpClientUtil perhaps?  We could go\nmore specific and have an EncodingUtil.  What do you like?\n\nMike",
+            "date": "2003-07-15T02:35:19.000+0000",
+            "id": 31
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "HttpClientUtil is too close to being AllSortsOfStuffUtil IMO. I like\nEncodingUtil better.\n\nOleg",
+            "date": "2003-07-15T02:40:59.000+0000",
+            "id": 32
+        },
+        {
+            "author": "Michael Becke",
+            "body": "EncodingUtil it is.  I will take care of it tonight.\n\nMike",
+            "date": "2003-07-15T03:21:16.000+0000",
+            "id": 33
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Created an attachment (id=7296)\npatch 4\n",
+            "date": "2003-07-15T08:33:51.000+0000",
+            "id": 34
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Okay.  Here it is.  Please take a look and let me know what you think.",
+            "date": "2003-07-15T08:36:33.000+0000",
+            "id": 35
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Any more thoughts on this or should I commit the patch?\n\nMike",
+            "date": "2003-07-15T19:35:44.000+0000",
+            "id": 36
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "I think it is good to go\n\nOleg",
+            "date": "2003-07-15T19:38:28.000+0000",
+            "id": 37
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Applied to 2.0 and HEAD.\n\nMike",
+            "date": "2003-07-15T19:59:31.000+0000",
+            "id": 38
+        }
+    ],
+    "component": "HttpClient (classic)",
+    "description": "As always I'd like to pass on my thanks, I'm finding HttpClient really useful.\n\nThe problem occurs because I use Struts map based ActionForm and these generate \nrequest parameters of the form:\n\n<input type=\"text\" name=\"searchSelection(c)\">\n\nWhen this is submitted using the PostMethod class the generateRequestBody() is \ncalled and in turn this calls the URI.encode() method with a BitSet of the \nacceptable characters. In this case the '(' and ')' characters are marked as \nacceptable.\n\nThe problem is that this does not work correctly when I submit it to my remote \nserver. If however I issue the request directly (from a webpage rather than \nusing HttpClient) it works and when I examine the request input stream I can see \nthat the parameter has been re-written so that 'select(c)' is displayed as \n'select%28c%29'.\n\nThis may be my error because of encoding problems or the fact I am not setting \nthe content type etc. correctly. Or it could be a bug. I'm afraid my HTTP \nknowledge is not good enough.\n\nChris Mein",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "HTTPCLIENT-220",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "HTTPCLIENT",
+    "project": "HTTPCLIENT",
+    "summary": "HttpClient does not properly handle 'application/x-www-form-urlencoded' encoding",
+    "systemSpecification": true,
+    "version": "2.0 Beta 1"
+}

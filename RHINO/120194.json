@@ -1,0 +1,65 @@
+{
+    "comments": [
+        {
+            "author": "pschwartau@meer.net",
+            "body": "Here is the failure output from the testcase:\n\n*-* Testcase ecma/TypeConversion/9.5-2.js failed:\n\nPOSITIVE NUMBERS\n2147483648.25 << 0 = -2147483647 FAILED! expected: -2147483648\n2147483648.5 << 0 = -2147483647 FAILED! expected: -2147483648\n2147483648.75 << 0 = -2147483647 FAILED! expected: -2147483648\n4294967295.25 << 0 = 0 FAILED! expected: -1\n4294967295.5 << 0 = 0 FAILED! expected: -1\n4294967295.75 << 0 = 0 FAILED! expected: -1\n3000000000.25 << 0 = -1294967295 FAILED! expected: -1294967296\n3000000000.5 << 0 = -1294967295 FAILED! expected: -1294967296\n3000000000.75 << 0 = -1294967295 FAILED! expected: -1294967296\n\nNEGATIVE NUMBERS\n-2147483648.25 << 0 = 2147483647 FAILED! expected: -2147483648\n-2147483648.5 << 0 = 2147483647 FAILED! expected: -2147483648\n-2147483648.75 << 0 = 2147483647 FAILED! expected: -2147483648\n-4294967295.25 << 0 = 0 FAILED! expected: 1\n-4294967295.5 << 0 = 0 FAILED! expected: 1\n-4294967295.75 << 0 = 0 FAILED! expected: 1\n-3000000000.25 << 0 = 1294967295 FAILED! expected: 1294967296\n-3000000000.5 << 0 = 1294967295 FAILED! expected: 1294967296\n-3000000000.75 << 0 = 1294967295 FAILED! expected: 1294967296",
+            "date": "20020116T00:59:44",
+            "id": 0
+        },
+        {
+            "author": "scole@pacbell.net",
+            "body": "Created attachment 65905\nFix ala the Spidermonkey change\n\nSame algorithmic change as in bug 120083.  Note: I am not a Java programmer,\nand have *not* tested this patch.  Nevertheless, we tested the C-version in the\nspidermonkey bug, and I'm pretty sure this will fly.",
+            "date": "20020121T18:49:04",
+            "id": 1
+        },
+        {
+            "author": "scole@pacbell.net",
+            "body": "Created attachment 65906\n<sigh> Try #2.\n\nWell, that figures: Rhino has two places where this code lives.  (I hate code\nduplication!)\n\nPhil, the two different code paths come as conversions from doubles to int32s\nand conversions from jsvalues to int32s.  I'm *guessing* that we ought to test\nfor both the numeric form of these numbers, and the string form of these\nnumbers in order to hit both sections of the code.  Norris should be able to\nshed more light on just the right way to test both pieces, though.\n\n--scole",
+            "date": "20020121T19:00:05",
+            "id": 2
+        },
+        {
+            "author": "scole@pacbell.net",
+            "body": "Created attachment 65907\nActually changed the file I uploaded.\n\nWell, it's been quite a morning.  I didn't actually save the last patch before\nsubmitting it to bugzilla.  Here's the right one.",
+            "date": "20020121T19:02:51",
+            "id": 3
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 81407\ntested fix and code duplication removal\n\nThe previous fix from Steven actually does not work as it turned out it was\nnecessary to call floor/ceil before calling IEEEremainer. \n\nThe patch also removes code duplication by simply calling toInt32(double) from\ntoInt32(Object) and adds optimization for the case when number is already exact\nint. \n\nWith the patch rhino passes the tests.",
+            "date": "20020428T19:25:05",
+            "id": 4
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "Thanks, Igor, for the patch. I committed it.",
+            "date": "20020429T01:04:39",
+            "id": 5
+        },
+        {
+            "author": "pschwartau@meer.net",
+            "body": "Marking Verified Fixed.\n\nThe above testcase now passes in both the compiled and\ninterpreted modes of the Rhino shell -",
+            "date": "20020521T03:48:15",
+            "id": 6
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Targeting as resolved against 1.5R4",
+            "date": "20040213T12:20:20",
+            "id": 7
+        }
+    ],
+    "component": "Core",
+    "description": "This is the Rhino version of bug 120083,\n\"JavaScript toInt32 conversion doesn't match ECMAScript definition\"\n\nThe problem centers on numbers between 2^31 and 2^32 with fractional parts.\nThe JS internal function toInt32(x), available to the JS user as x | 0\nor  x << 0, is off by one on these. Same for negative numbers between\n-2^31 and -2^32 with fractional parts.\n\nRhino has the same problem as SpiderMonkey had. Tests to cover this\nissue were added to \n\n        mozilla/js/tests/ecma/TypeConversion/9.5-2.js\n\nThis test is now failing in the Rhino shell -",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "120194",
+    "issuetypeClassified": "OTHER",
+    "issuetypeTracker": "BUG",
+    "priority": "-- normal",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "JS toInt32(x) conversion doesn't match ECMAScript definition",
+    "systemSpecification": false,
+    "version": "other"
+}

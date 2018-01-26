@@ -1,0 +1,119 @@
+{
+    "comments": [
+        {
+            "author": "Robert Muir",
+            "body": "I agree i think its nice to see a patch to lucene that includes \nany changes to the backwards tests.\n\nMike did this with LUCENE-2111 and i was shocked, until\nI found out he was doing it manually with cat.",
+            "date": "2010-03-16T17:02:10.931+0000",
+            "id": 0
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "I think the ideal case for this would be that the backwards folder simply contains the src-folder of the previous branch (after creation). No extra folder like now in between, so it looks like \"/backwards/src/...\". After a release, one would first \"svn rm\" the old and then \"svn copy\" the src folder of the previously created release branch to trunk. I would add this to the release todo.\n\nOn this change, all committers must first manually do a operating-system \"rm -rf\" on the backwards folder by calling \"ant clean-backwards\" before svn up. Maybe create a patch before :-)",
+            "date": "2010-03-16T17:20:41.672+0000",
+            "id": 1
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "+1\n\nThis sounds sooo much better than what we do now.",
+            "date": "2010-03-16T20:42:15.046+0000",
+            "id": 2
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Here the patch, before applying do the following (in main checkout folder):\n\n{noformat}\nant clean-backwards\nsvn mkdir ./backwards\nsvn cp https://svn.apache.org/repos/asf/lucene/java/branches/lucene_3_0_back_compat_tests/src backwards/src\nsvn propset svn:externals \"data -r500 svn://svn.tartarus.org/snowball/trunk/data\" contrib/analyzers/common/src/test/org/apache/lucene/analysis/snowball\nsvn propdel svn:ignore contrib/analyzers/common/src/test/org/apache/lucene/analysis/snowball\n{noformat}\n\nThen apply patch and run svn up.",
+            "date": "2010-03-16T22:47:35.297+0000",
+            "id": 3
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "I added one thing (as discussed with rmuir):\nAs the snowball test data is too much, i excluded it from the src jar. The test will not fail, but instead print a warning, that the data is missing. So the test will also pass, if e.g. hudson fails to checkout the external svn repo.",
+            "date": "2010-03-16T23:11:26.794+0000",
+            "id": 4
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "New patch, which has some optimizations. It now also allows to run \"ant test\" from a source distribution ZIP/TGZ, which does not contain the backwards folder. The tests will not fail, instead print a warning message.",
+            "date": "2010-03-17T09:59:00.010+0000",
+            "id": 5
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Will commit soon to trunk and merge to flex.",
+            "date": "2010-03-17T09:59:23.572+0000",
+            "id": 6
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Committed revision: 924207",
+            "date": "2010-03-17T13:23:47.854+0000",
+            "id": 7
+        },
+        {
+            "author": "Robert Muir",
+            "body": "This use of svn:externals causes a problem for snowball, it does not always fetch the correct revision\n\n{quote}\n[junit] Testcase: testStemmers(org.apache.lucene.analysis.snowball.TestSnowballVocab): FAILED\n[junit] term 0 expected:<amtsgeheimnis[]> but was:<amtsgeheimnis[s]>\n[junit] junit.framework.ComparisonFailure: term 0 expected:<amtsgeheimnis[]> but was:<amtsgeheimnis[s]>\n{quote}\n\nThis is sporatic and not easy to reproduce.\n\nYou can clearly see that its fetching the wrong revision by looking at:\nhttp://svn.tartarus.org/snowball/trunk/data/german/output.txt?r1=432&r2=527\n\nWhere rev 527 expects \"amtsgeheimnis\", but rev 500 should expect \"amtsgeheimniss\"\n",
+            "date": "2010-03-18T05:00:13.300+0000",
+            "id": 8
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "What did you to for this to happen?\n\nYou can only reproduce this (and this was also possible with your previous setup), if you go onto the data folder and update there. If you update from top-level (outside the data folder), it works always. Maybe the problem lies in the fact, that you had the data already checked out before our reorganisation (from previous test runs). Can you simply delete the data folder with a OS' rm and update again?\n\nMaybe it was a problem with svn server?",
+            "date": "2010-03-18T07:24:19.407+0000",
+            "id": 9
+        },
+        {
+            "author": "Robert Muir",
+            "body": "bq. What did you to for this to happen? \n\nUwe, the problem happened to Mark... and this test data has *always* been rev 500.\n\nsvn.exe simply got the wrong revision. Its probably a bug in svn, I don't think you did anything wrong.\n\nBut at the same time, we don't want random test failures.",
+            "date": "2010-03-18T11:25:35.939+0000",
+            "id": 10
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Man, I reverted the snowball part.\n\nLets change to a zip file as the tests will never change. This svn in build.xml is too much dependent on your local installation of svn tools. I dont like it.",
+            "date": "2010-03-18T11:49:30.912+0000",
+            "id": 11
+        },
+        {
+            "author": "Robert Muir",
+            "body": "bq. Lets change to a zip file as the tests will never change\n\nI agree, but this zip file will be pretty large!\n\nThanks for temporarily changing it to do the checkout instead",
+            "date": "2010-03-18T11:56:34.323+0000",
+            "id": 12
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Here the patch without external references. The data dir was cleaned up (removed the large unneeded diff.txt files) and the zip compressed with -9.",
+            "date": "2010-03-18T13:32:47.562+0000",
+            "id": 13
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Sorry, ZIP file has wrong name. Fixed here locally (test+zip).",
+            "date": "2010-03-18T13:34:35.670+0000",
+            "id": 14
+        },
+        {
+            "author": "Robert Muir",
+            "body": "Thanks Uwe, this simplifies our tests.\n\nIts nice to remove a network connection (it seems reliable so far, but...)",
+            "date": "2010-03-18T13:42:45.141+0000",
+            "id": 15
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Committed revision: 924781 (with correct zip file name)",
+            "date": "2010-03-18T14:06:56.092+0000",
+            "id": 16
+        }
+    ],
+    "component": "",
+    "description": "As we often need to update backwards tests together with trunk and always have to update the branch first, record rev no, and update build xml, I would simply like to do a svn copy/move of the backwards branch.\n\nAfter a release, this is simply also done:\n{code}\nsvn rm backwards\nsvn cp releasebranch backwards\n{code}\n\nBy this we can simply commit in one pass, create patches in one pass.\n\nThe snowball tests are currently downloaded by svn.exe, too. These need a fixed version for checkout. I would like to change this to use svn:externals. Will provide patch, soon.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-2326",
+    "issuetypeClassified": "OTHER",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Major",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "Remove SVN.exe and revision numbers from build.xml by svn-copy the backwards branch and linking snowball tests by svn:externals",
+    "systemSpecification": true,
+    "version": ""
+}

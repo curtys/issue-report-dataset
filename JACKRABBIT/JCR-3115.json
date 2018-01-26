@@ -1,0 +1,89 @@
+{
+    "comments": [
+        {
+            "author": "Julian Reschke",
+            "body": "w-i-p test case, based on Alex' earlier work.",
+            "date": "2011-10-14T13:38:46.084+0000",
+            "id": 0
+        },
+        {
+            "author": "Julian Reschke",
+            "body": "A possible approach to work-around this issue would be to change the version cleanup to move the broken history to a different path.",
+            "date": "2011-10-14T13:42:06.511+0000",
+            "id": 1
+        },
+        {
+            "author": "Julian Reschke",
+            "body": "r1185228: added test case for breaking and fixing version storage (also add hook for running consistency check in \"fix\" mode)\n\nSo at least some types of broken versioning PM can be fixed by the bundle consistency check sufficiently to reenable versioning.",
+            "date": "2011-10-17T14:58:27.045+0000",
+            "id": 2
+        },
+        {
+            "author": "Julian Reschke",
+            "body": "1) adds test case\n2) augments InconsistentVersioningState with information about the VHR's nodeId\n3) enables RepositoryChecker to rename the VHR in place",
+            "date": "2011-10-18T12:30:42.382+0000",
+            "id": 3
+        },
+        {
+            "author": "Julian Reschke",
+            "body": "Updated patch: exception cleaned up, new constructor used in more places, RepositoryChecker extended so the VHR renaming occurs in more situations",
+            "date": "2011-10-18T12:55:54.450+0000",
+            "id": 4
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Looks good in general. Some comments in decreasing order of importance:\n\n* What happens if there are more than one children of a given version history parent need to be renamed? The current code seems to always generate a new modified parent node state.\n\n* Can we make all InconsistentVersioningState instances carry the version history ID? I'd remove all the constructors without the ID argument.\n\n* Instead of the instanceof InternalVersionManagerImpl check, I'd rather simply change the RepositoryChecker constructor to always take a InternalVersionManagerImpl instance.\n\n* Instead of the instanceof InconsistentVersioningState check, I'd have a separate catch block for such exceptions.\n\n* IIRC Calendar.getInstance() should already reflect the current time. No need for the setTimeInMillis(System.currentTimeMillis()) call.\n\n* The e.printStackTrace() call should be dropped.",
+            "date": "2011-10-18T12:57:14.365+0000",
+            "id": 5
+        },
+        {
+            "author": "Julian Reschke",
+            "body": "> What happens if there are more than one children of a given version history parent need to be renamed? The current code seems to always generate a new modified parent node state.\n\nNow re-using state from ChangeLog when present (please have a look)\n\n> Can we make all InconsistentVersioningState instances carry the version history ID? I'd remove all the constructors without the ID argument.\n\nNot all of them; for instance we throw it when the VH node is missing in which case we do not have a ID :-).\n\n> Instead of the instanceof InternalVersionManagerImpl check, I'd rather simply change the RepositoryChecker constructor to always take a InternalVersionManagerImpl instance.\n\nDone.\n\n> Instead of the instanceof InconsistentVersioningState check, I'd have a separate catch block for such exceptions.\n\nDone.\n\n>  IIRC Calendar.getInstance() should already reflect the current time. No need for the setTimeInMillis(System.currentTimeMillis()) call.\n\nDone.\n\n> The e.printStackTrace() call should be dropped. \n\nWas duplicated from existing code. Refactored to avoid code duplication.\n\nAlso now uses the proper nodeId for renaming (the node's ID, not the VH's ID), and tests that.",
+            "date": "2011-10-18T13:43:03.952+0000",
+            "id": 6
+        },
+        {
+            "author": "Julian Reschke",
+            "body": "trunk: 1185691 and 1185692 (test case)\n2.2: 1185711",
+            "date": "2011-10-18T15:11:12.816+0000",
+            "id": 7
+        },
+        {
+            "author": "Julian Reschke",
+            "body": "Additional fix in trunk (r1186285) and 2.2 (r1186294).",
+            "date": "2011-10-19T16:17:21.502+0000",
+            "id": 8
+        },
+        {
+            "author": "Julian Reschke",
+            "body": "Changed RepositoryChecker to obtain the VersionHistoryInfo first, in order to match more closely what other components do when enabling versioning (trunk: 1186802, 2.2: 1186294)",
+            "date": "2011-10-20T14:21:23.401+0000",
+            "id": 9
+        },
+        {
+            "author": "Julian Reschke",
+            "body": "Modify checker to also inspect \"candidate\" version histories (trunk: 1187344, 2.2: 1187345). Test case (trunk only): 1187354.",
+            "date": "2011-10-21T14:05:24.680+0000",
+            "id": 10
+        },
+        {
+            "author": "Julian Reschke",
+            "body": "trunk: [r1187345|http://svn.apache.org/r1187345] [r1187344|http://svn.apache.org/r1187344] [r1186802|http://svn.apache.org/r1186802] [r1186285|http://svn.apache.org/r1186285] [r1185692|http://svn.apache.org/r1185692] [r1185691|http://svn.apache.org/r1185691] [r1185228|http://svn.apache.org/r1185228]\n",
+            "date": "2017-03-09T18:48:31.580+0000",
+            "id": 11
+        }
+    ],
+    "component": "jackrabbit-core, versioning",
+    "description": "Jackrabbit's version recovery mode (org.apache.jackrabbit.version.recovery system property) disconnects all version histories that expose problems that manifest in unexpected exceptions being thrown. \"disconnects\" means removing the properties defined for mix:versionable and removing the mixin type. The actual versioning related nodes remain in place.\n\nThe problem: when re-adding mix:versionable, ItemSaveOperation.initVersionHistories tries to create the new version history in the same location (the path being derived from the versionable node's identifier), and consequently fails because of the broken underlying storage.\n\n(attaching a work-in-progress test case that illustrates the problem)",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "JCR-3115",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Minor",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "Versioning fixup leaves persistence in a state where the node can't be made versionable again",
+    "systemSpecification": true,
+    "version": ""
+}

@@ -1,0 +1,95 @@
+{
+    "comments": [
+        {
+            "author": "Tobias Bocanegra",
+            "body": "could have been introduced by JCR-546. ",
+            "date": "2006-12-12T11:14:47.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "You marked this as occurring in 1.1? If correct, then it shouldn't be caused by JCR-546, since it's not included in either 1.1 or 1.1.1.",
+            "date": "2006-12-12T12:53:17.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "The proper solution to this issue would probably be to acquire the SharedItemStateManager read lock for the entire checkin operation.",
+            "date": "2006-12-12T13:00:49.000+0000",
+            "id": 2
+        },
+        {
+            "author": "Przemo Pakulski",
+            "body": "It is occuring in trunk.\n\nI have checked 1.1 by accident then I couldn't change this ...",
+            "date": "2006-12-12T13:26:49.000+0000",
+            "id": 3
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Cleared the 1.1 tag.\n\nHowever, I still don't think this is caused by JCR-546, as the deadlock occurs on line 397 of the AbstractVersionManager.checkin() method. That line was covered by the AbstractVersionManager write lock already before JCR-546 extended the scope of that lock.\n\nCan you reproduce this issue on Jackrabbit 1.1.1?\n",
+            "date": "2006-12-13T13:49:10.000+0000",
+            "id": 4
+        },
+        {
+            "author": "Przemo Pakulski",
+            "body": "You're right deadlock has not been introduced by JCR-546, but it seems that currently is easier to reproduce it.\n\nInconsistent order of acquiring locks was already there. SharedItemStateManager  read lock should be acquired first, or if both components (SharedItemStateManager, AbstractVersionManager) ae really coupled together, maybe solution is to get rid of one and use single lock instead.\n\n\n\n",
+            "date": "2006-12-13T14:33:38.000+0000",
+            "id": 5
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "> You're right deadlock has not been introduced by JCR-546, but it seems that\n> currently is easier to reproduce it.\n\nThis sounds reasonable, since the write lock in AbstractVersionManager covers and extra getProperty(JCR_PREDECESSORS) call now after JCR-546. This increases the time the write lock is acquired, thus increasing the window when the deadlock can occur.\n\n> SharedItemStateManager read lock should be acquired first, or if both components\n> (SharedItemStateManager, AbstractVersionManager) ae really coupled together,\n> maybe solution is to get rid of one and use single lock instead.\n\nHaving two locks makes sense, since a versioning operation in one workspace shouldn't affect normal operations in another workspace. Thus I think the proper solution is indeed to extend the scope of the SharedItemStateManager read lock.",
+            "date": "2006-12-13T14:41:52.000+0000",
+            "id": 6
+        },
+        {
+            "author": "Sebastian Redl",
+            "body": "Is there anything a non-Jackrabbit-developer can do to help? This bug is regularly locking up one of my projects (and in consequence the entire Tomcat process) and I need it fixed ASAP, but I don't know my way around the codebase enough to fix it myself.",
+            "date": "2007-03-17T15:53:52.081+0000",
+            "id": 7
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "> Is there anything a non-Jackrabbit-developer can do to help?\n\nI'm afraid there's relatively little to do. Reporting all known deadlock occurrences with as much detail as possible would help, but in the end someone needs to bite the bullet and start rethinking the locking behaviour within jackrabbit-core.\n\nSome people have workarounds that explicitly synchronize all the versioning operations of concurrent sessions. Documenting such a workaround with example code on the Jackrabbit wiki would be appreciated, but of course it's still just a workaround.",
+            "date": "2007-03-18T09:12:01.922+0000",
+            "id": 8
+        },
+        {
+            "author": "Sebastian Redl",
+            "body": "> Reporting all known deadlock occurrences with as much detail as possible would help\n\nWell, there's not much to report. My stack traces are pretty much identical to the ones in the report. The program uses versioning, but no transactions.\n\n> Some people have workarounds that explicitly synchronize all the versioning operations of concurrent sessions.\n\nYes, looks like I'll have to take the performance hit and do that. (The extremely coarse-grained locking of this does not make me happy ...)",
+            "date": "2007-03-18T16:25:34.316+0000",
+            "id": 9
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "The calls to VirtualItemStateProvider.setNodeReferences() do not have to be within the scope of the write lock. All virtual item state providers are repository wide anyway and must implement their own locking. Locking the workspace where the call originated is unnecessary and does not help here.\n\nMoved the code further down where the write lock had been downgraded to a read-lock.\n\nAlso added test cases: ConcurrentVersioningTest\n\nThe tests cover the following cases:\n- concurrently create version histories\n- concurrently do checkin/checkouts\n- concurrently create version histories and do checkin/checkouts\n\nFixed in revision: 533152",
+            "date": "2007-04-27T16:01:51.099+0000",
+            "id": 10
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "Probably occurs in all released versions.",
+            "date": "2007-04-27T16:02:26.184+0000",
+            "id": 11
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Merged to the 1.3 branch in revision 544244.",
+            "date": "2007-06-04T20:22:06.509+0000",
+            "id": 12
+        }
+    ],
+    "component": "versioning",
+    "description": "Save and checkin operations are trying to acquire 2 locks in different order, what leads to deadlock.\n\n->save\n1.SharedItemStateManager.acquireWriteLock\n2.AbstractVersionManager.acquireWriteLock\t->\tlocked\n\n->checkin\n1.AbstractVersionManager.acquireWriteLock\n2.SharedItemStateManager.acquireReadLock\t->\tlocked\n\n\"Thread-4\" prio=6 tid=0x0312d840 nid=0x824 in Object.wait() [0x03cef000..0x03cefa68]\n\tat java.lang.Object.wait(Native Method)\n\t- waiting on <0x23210968> (a EDU.oswego.cs.dl.util.concurrent.WriterPreferenceReadWriteLock$WriterLock)\n\tat java.lang.Object.wait(Unknown Source)\n\tat EDU.oswego.cs.dl.util.concurrent.WriterPreferenceReadWriteLock$WriterLock.acquire(Unknown Source)\n\t- locked <0x23210968> (a EDU.oswego.cs.dl.util.concurrent.WriterPreferenceReadWriteLock$WriterLock)\n\tat org.apache.jackrabbit.core.version.AbstractVersionManager.acquireWriteLock(AbstractVersionManager.java:124)\n\tat org.apache.jackrabbit.core.version.VersionManagerImpl.setNodeReferences(VersionManagerImpl.java:413)\n\tat org.apache.jackrabbit.core.version.VersionItemStateProvider.setNodeReferences(VersionItemStateProvider.java:125)\n\tat org.apache.jackrabbit.core.state.SharedItemStateManager$Update.end(SharedItemStateManager.java:699)\n\tat org.apache.jackrabbit.core.state.SharedItemStateManager.update(SharedItemStateManager.java:810)\n\tat org.apache.jackrabbit.core.state.LocalItemStateManager.update(LocalItemStateManager.java:326)\n\tat org.apache.jackrabbit.core.state.XAItemStateManager.update(XAItemStateManager.java:313)\n\tat org.apache.jackrabbit.core.state.LocalItemStateManager.update(LocalItemStateManager.java:302)\n\tat org.apache.jackrabbit.core.state.SessionItemStateManager.update(SessionItemStateManager.java:295)\n\tat org.apache.jackrabbit.core.ItemImpl.save(ItemImpl.java:1204)\n\t- locked <0x2332eaa0> (a org.apache.jackrabbit.core.XASessionImpl)\n\tat JrTestDeadlock.run(JrTestDeadlock.java:87)\n\n\"Thread-3\" prio=6 tid=0x0312db18 nid=0xa04 in Object.wait() [0x03caf000..0x03cafae8]\n\tat java.lang.Object.wait(Native Method)\n\t- waiting on <0x232d1360> (a EDU.oswego.cs.dl.util.concurrent.WriterPreferenceReadWriteLock$ReaderLock)\n\tat java.lang.Object.wait(Unknown Source)\n\tat EDU.oswego.cs.dl.util.concurrent.WriterPreferenceReadWriteLock$ReaderLock.acquire(Unknown Source)\n\t- locked <0x232d1360> (a EDU.oswego.cs.dl.util.concurrent.WriterPreferenceReadWriteLock$ReaderLock)\n\tat org.apache.jackrabbit.core.state.SharedItemStateManager.acquireReadLock(SharedItemStateManager.java:1361)\n\tat org.apache.jackrabbit.core.state.SharedItemStateManager.hasItemState(SharedItemStateManager.java:270)\n\tat org.apache.jackrabbit.core.state.LocalItemStateManager.hasItemState(LocalItemStateManager.java:180)\n\tat org.apache.jackrabbit.core.state.XAItemStateManager.hasItemState(XAItemStateManager.java:252)\n\tat org.apache.jackrabbit.core.state.SessionItemStateManager.hasItemState(SessionItemStateManager.java:188)\n\tat org.apache.jackrabbit.core.ItemManager.itemExists(ItemManager.java:256)\n\tat org.apache.jackrabbit.core.NodeImpl.hasProperty(NodeImpl.java:1509)\n\tat org.apache.jackrabbit.core.version.InternalFrozenNodeImpl.checkin(InternalFrozenNodeImpl.java:276)\n\tat org.apache.jackrabbit.core.version.InternalFrozenNodeImpl.checkin(InternalFrozenNodeImpl.java:248)\n\tat org.apache.jackrabbit.core.version.InternalVersionHistoryImpl.checkin(InternalVersionHistoryImpl.java:440)\n\tat org.apache.jackrabbit.core.version.AbstractVersionManager.checkin(AbstractVersionManager.java:397)\n\tat org.apache.jackrabbit.core.version.VersionManagerImpl$2.run(VersionManagerImpl.java:289)\n\tat org.apache.jackrabbit.core.version.VersionManagerImpl$DynamicESCFactory.doSourced(VersionManagerImpl.java:611)\n\t- locked <0x2320c5d8> (a org.apache.jackrabbit.core.version.VersionManagerImpl$DynamicESCFactory)\n\tat org.apache.jackrabbit.core.version.VersionManagerImpl.checkin(VersionManagerImpl.java:285)\n\tat org.apache.jackrabbit.core.version.XAVersionManager.checkin(XAVersionManager.java:161)\n\tat org.apache.jackrabbit.core.NodeImpl.checkin(NodeImpl.java:2944)\n\tat JrTestDeadlock.run(JrTestDeadlock.java:103)\n",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "JCR-672",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "Deadlock on concurrent save/checkin operations possible",
+    "systemSpecification": true,
+    "version": "0.9, 1.0, 1.0.1, 1.1, 1.1.1, 1.2.1, 1.2.2, 1.2.3, 1.3"
+}

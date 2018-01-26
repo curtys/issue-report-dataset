@@ -1,0 +1,47 @@
+{
+    "comments": [
+        {
+            "author": "Karl Wettin",
+            "body": "I think I hit that problem this weekend. One of my writer threads died due to an OOME, but the other threads kept going as memory was released from the dying thread. I then hit this SegmentMerger#appendPostings exception each flush: \n\n{code}\n        if (doc < 0 || (df > 0 && doc <= lastDoc))\n          throw new CorruptIndexException(\"docs out of order (\" + doc +\n              \" <= \" + lastDoc + \" )\");\n{code}",
+            "date": "2008-02-25T22:04:27.313+0000",
+            "id": 0
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Karl, was that with trunk, 2.3.0 or 2.3.1?",
+            "date": "2008-02-25T22:13:32.905+0000",
+            "id": 1
+        },
+        {
+            "author": "Karl Wettin",
+            "body": "2.3.0",
+            "date": "2008-02-25T22:17:05.999+0000",
+            "id": 2
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "OK.  LUCENE-1171 fixed certain OOM cases after 2.3.0, and was backported to 2.3.1, and it may have fixed this although I didn't think there were cases that would lead to corruption of the posting lists.  If you also see this happen on 2.3.1 please report back!",
+            "date": "2008-02-25T22:24:59.437+0000",
+            "id": 3
+        },
+        {
+            "author": "Hoss Man",
+            "body": "targeted for 2.3.2 bug fix release",
+            "date": "2008-03-11T19:27:21.272+0000",
+            "id": 4
+        }
+    ],
+    "component": "core/index",
+    "description": "While progress has been made making IndexWriter robust to OOME, I\nthink there is still a real risk that an OOME at a bad time could put\nIndexWriter into a bad state such that if close() is called and\nsomehow it succeeds without hitting another OOME, it risks\nintroducing messing up the index.\n\nI'd like to detect if OOME has been hit in any of the methods that\nalter IW's state, and if so, do not commit changes to the index.  If\nclose is called after hitting OOME, I think writer should instead\nabort.\n\nAttached patch just adds try/catch clauses to catch OOME, note that\nit was hit, and re-throw it.  Then, sync() refuses to commit a new\nsegments_N if OOME was hit, and close instead calls abort when OOME\nwas hit.  All tests pass.  I plan to commit in a day or two.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-1191",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Minor",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "If IndexWriter hits OutOfMemoryError it should not commit",
+    "systemSpecification": true,
+    "version": "1.9, 2.0.0, 2.1, 2.2, 2.3, 2.3.1, 2.4"
+}

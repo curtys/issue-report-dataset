@@ -1,0 +1,59 @@
+{
+    "comments": [
+        {
+            "author": "user@apochta.com",
+            "body": "Created attachment 113675\nThe test case",
+            "date": "20030206T10:46:19",
+            "id": 0
+        },
+        {
+            "author": "user@apochta.com",
+            "body": "Since the bug is present in Rhino 1.5R3, the fix should wait until 1.5R4 is\nreleased.",
+            "date": "20030206T10:47:37",
+            "id": 1
+        },
+        {
+            "author": "pschwartau@meer.net",
+            "body": "Testcase added to JS testsuite:\n\n      mozilla/js/tests/js1_5/Object/regress-192105.js\n\nThis passes in SpiderMonkey and in Rhino when optimization < 1.\nBut, as Igor reported, it fails if Rhino optimization is set >=1:\n\njava org.mozilla.javascript.tools.shell.Main -opt 1\n                             -f mozilla/js/tests/js1_5/shell.js\n                             -f mozilla/js/tests/js1_5/Object/regress-192105.js\n\n\nFAILED!: [reported from test()] Section 3 of test -\nFAILED!: [reported from test()] Expected value 'true', Actual value 'false'\nFAILED!: [reported from test()]\nFAILED!: [reported from test()] Section 5 of test -\nFAILED!: [reported from test()] Expected value 'true', Actual value 'false'\nFAILED!: [reported from test()]\nFAILED!: [reported from test()] Section 7 of test -\nFAILED!: [reported from test()] Expected value 'true', Actual value 'false'\n\n\nSections 3, 5, and 7 are precisely those which test if the\nfunction is called as constructor from some other function -",
+            "date": "20030206T19:29:16",
+            "id": 2
+        },
+        {
+            "author": "user@apochta.com",
+            "body": "Created attachment 113729\nFixing incorrect double call to setPrototype when generating constructDirect\n\nThe reason for the bug is that emitDirectConstructor generates code to call\nsetPrototype twice instead of setPrototype/setParentScope pair during new JS\nobject construction. The fix replaces that setup by a single call to\nBaseFunction.createObject which is used by Interpreter as well.",
+            "date": "20030206T22:03:58",
+            "id": 3
+        },
+        {
+            "author": "user@apochta.com",
+            "body": "I commited the fix",
+            "date": "20030214T22:42:06",
+            "id": 4
+        },
+        {
+            "author": "pschwartau@meer.net",
+            "body": "Verified FIXED.\n\nThe above testcase now passes in the Rhino shell.\nI tested optimization levels -1, 0, 1, and 9.",
+            "date": "20030214T22:53:44",
+            "id": 5
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Targeting as resolved against 1.5R5",
+            "date": "20040213T12:11:58",
+            "id": 6
+        }
+    ],
+    "component": "Compiler",
+    "description": "User-Agent:       Mozilla/5.0 (X11; U; Linux i686; en-US; rv:1.0.1) Gecko/20021003\nBuild Identifier: Rhino CVS 2003-01-04\n\nWith optimization set to 1 or higher instanceof inside a function to test if the\nfunction is called as a constructor or not returns false if the function is\ncalled as constructor from some other function.\n\nReproducible: Always\n\nSteps to Reproduce:\nRun the following attached test case with rhino shell with optimization set to 1.\nActual Results:  \nThe test case prints FAILED\n\nExpected Results:  \nIt should print OK\n\nThe test case ecma_3/Exceptions/regress-181914.js from the js test suite fails\nwith an infinite recursion for exactly this reason, just run it via jsDriver.pl\nwith the engine set to rhino9.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "192105",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "-- normal",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "instanceof to check if function is a constructor is broken when optimization >= 1",
+    "systemSpecification": true,
+    "version": "other"
+}

@@ -1,0 +1,125 @@
+{
+    "comments": [
+        {
+            "author": null,
+            "body": "Can you help us out please?  I don't have Windows Vista to develop a patch on.",
+            "date": "20070325T09:33:48",
+            "id": 0
+        },
+        {
+            "author": null,
+            "body": "Updating with current information:  this problem still exists with Tomcat 5.5.25\nand Tomcat 6.0.14.   \n\nThe MSI for each, however, works fine.\n",
+            "date": "20071212T08:18:20",
+            "id": 1
+        },
+        {
+            "author": null,
+            "body": "FYI.\nI've just managed to install Tomcat 6.0.16 as a service on Vista Business.\n\nAlso, the issue seems to be specific to Vista as Tomcat 5.5 can installed as a service on Windows 2008\n",
+            "date": "20080720T22:32:41",
+            "id": 2
+        },
+        {
+            "author": null,
+            "body": "Vista with User Account Control (UAC) running causes a problem. Vista normally runs everybody ( including administrators ) in a non-administrative mode.\nThis provides additional security and makes it more difficult for intruders to run programs requiring administrative privileges.\n\nCurrently, there are two possible workaround that allow to install the windows service successfully:\n\nThe first option - Temporary disable UAC\n1. Temporary disable UAC (restart of OS required). It is done from\n\n    * run \"msconfig\" > tools > disable UAC or\n    * Start > Control Panel > User Accounts > Turn User Account Control on or off\n1. Install Tomcat.\n      3. Enable UAC - as per 2.\n      4. Restart OS\n\nThe second option - create a bat file and execute it as admin\n\n   1. Create a bat file that installs the service as per http://tomcat.apache.org/tomcat-5.5-doc/windows-service-howto.html\n   2. Click right button of mouse and select \"Run as administrator\"\n\nI've tried to initiate the installer with \"Run as administrator\", although it failed to install the service.",
+            "date": "20080721T16:56:46",
+            "id": 3
+        },
+        {
+            "author": null,
+            "body": "FYI. Microsoft Windows Vista 30-Day Eval VHD - http://www.microsoft.com/downloads/details.aspx?FamilyID=c2c27337-d4d1-4b9b-926d-86493c7da1aa&DisplayLang=en\n\n:D",
+            "date": "20080721T17:15:41",
+            "id": 4
+        },
+        {
+            "author": null,
+            "body": "The Microsoft Windows Installer schema for the CustomAction table (used to\nrun .bat, .exe. .vbs or whatever) has a specific 'Type' bit 2048 to cause\nmsidbCustomActionTypeNoImpersonate so the step runs at LocalSystem privilege.\n\nhttp://msdn.microsoft.com/en-us/library/aa368062.aspx\nhttp://msdn.microsoft.com/en-us/library/aa368069(VS.85).aspx\n\nI guess the Tomcat project is using NullSoft so go there to seek wisdom in how\nto resolve process elevation, that team should have already solved this puzzle\n(or you picked the wrong installer schema).",
+            "date": "20090526T11:21:12",
+            "id": 5
+        },
+        {
+            "author": null,
+            "body": "Reviewing further, I see that service.bat is invoked by the user after install,\nand not by the nullsoft installer.\n\nBogdan is correct in comment #4, however it seems more of a documentation issue.\nIf the user will be modifying the system environment from a command prompt, they\nmust do so from an admin cmd.exe shell, and there are only two ways to have one;\n\n1. right click on your cmd.exe (\"Command Prompt\" icon) and choose \"Run as\n   Administrator\".\n\n2. from the shell, invoke\n\n   runas user:administrator \"cmd.exe /k\"\n\n   which will open a new admin-privileged shell.\n\nThere is no way to associate service.bat with elevation via a .manifest or\notherwise.  Only actual .exe's can be associated.  There is a code elevation\nmodel for invoking programs as admin, see the am_RespawnAsUserAdmin() \nimplementation within the ApacheMonitor.exe app (which doesn't want to run-as\nadmin until it is absolutely required, and certainly not hang for a permission\nchange each time the user logs in!)  \nhttp://svn.apache.org/repos/asf/httpd/httpd/trunk/support/win32/ApacheMonitor.c",
+            "date": "20090526T12:09:56",
+            "id": 6
+        },
+        {
+            "author": null,
+            "body": "We could modify the service.bat allowing to call the install\nusing runas directy.\nThink I'll add the command option to service.bat so it can\ncall runas directly from within the batch file.",
+            "date": "20090526T23:31:12",
+            "id": 7
+        },
+        {
+            "author": null,
+            "body": "Can you check if the current trunk version works?\nYou will need to call the service.bat with something like:\nservice install /user Administrator\n\nNote that you will have to edit the service.bat and replace\nall instances of '@VERSION_MAJOR@' with '6'. This is done\nautomatically by ant during build stage, but you will need to\ndo a 'search/replace' manually.\n\nThe file can be found at:\nhttp://svn.apache.org/repos/asf/tomcat/trunk/bin/service.bat\n\nRegards",
+            "date": "20090527T01:23:42",
+            "id": 8
+        },
+        {
+            "author": null,
+            "body": "I installed vista on a VM to test this and it doesn't appear to work :(\n\nI did some Googling and, without installing some extras (eg power tools) there is no way to get something to run with admin privs from a batch file on Vista. This was with no service packs installed.\n\nRunning cmd as administrator and then invoking service.bat did work.",
+            "date": "20090527T10:05:02",
+            "id": 9
+        },
+        {
+            "author": null,
+            "body": "Mark, did you tried the new service.bat?\n\nservice.bat install /user Administrator\n\nwill first ask for admin password and then execute the service.bat again\nusing admin account. It works perfectly on my 2k8 VM.",
+            "date": "20090527T10:23:52",
+            "id": 10
+        },
+        {
+            "author": null,
+            "body": "Yep. Fails miserably on vista.",
+            "date": "20090527T10:27:43",
+            "id": 11
+        },
+        {
+            "author": null,
+            "body": "Well, I tested this on Vista/x86 and Server2k8/amd64 and it\nworks perfectly on both boxes.\n\nAre you sure you've replaced all @VERSION_MAJOR@ and @VERSION@ strings\nwith 6 and 6-something respectively?",
+            "date": "20090527T10:39:04",
+            "id": 12
+        },
+        {
+            "author": null,
+            "body": "Yep. I'm working with a build from trunk.\n\nOne thing that might be different. Are you testing this as a non-admin user specifying an administrator user?\n\nI am logged in as an administrator and service.bat fails with or without /user...\nI do get prompted for the password when I specify /user...",
+            "date": "20090527T10:43:57",
+            "id": 13
+        },
+        {
+            "author": null,
+            "body": "Nope. That isn't it. just created a non-Admin user to test this, specified my admin user and the service install still failed.",
+            "date": "20090527T10:51:25",
+            "id": 14
+        },
+        {
+            "author": null,
+            "body": "I've found that execute from an MSI drops privileges when you run exec commands.\n\nExecute from an EXE does not drop privileges.",
+            "date": "20090527T11:16:03",
+            "id": 15
+        },
+        {
+            "author": null,
+            "body": "I've got to the bottom of this. UAC was getting in the way.\n\nWithout UAC, the new /user switch works.\n\nWith UAC, you have to right-click on cmd.exe and select \"Run as administrator\"\n\nI'll update the docs.",
+            "date": "20090718T04:31:33",
+            "id": 16
+        },
+        {
+            "author": null,
+            "body": "I've updated the docs for trunk 6.0.x (will be in 6.0.21) and 5.5.x (will be in 5.5.29).",
+            "date": "20090718T05:04:49",
+            "id": 17
+        }
+    ],
+    "component": "Native:Packaging",
+    "description": "For our issue see <a\nhref=\"http://jira.atlassian.com/browse/JRA-12109\">JRA-12109</a>.  \n\nThe service.bat file included in Tomcat fails to install Tomcat as a service\nproperly in Windows Vista. Vista has changed the implementation of services and\nthe current services.bat does not do an adequate job at installing Tomcat as a\nservice.\n\nThe service gets added to the list of services, but it can't be started, stopped\nor removed. (due to service privileges missing)",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "41564",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "P3 major",
+    "product": "Tomcat 5",
+    "project": "TOMCAT",
+    "summary": "service.bat does not install tomcat as a service properly on Windows Vista",
+    "systemSpecification": true,
+    "version": "5.5.20"
+}

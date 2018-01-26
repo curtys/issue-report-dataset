@@ -1,0 +1,47 @@
+{
+    "comments": [
+        {
+            "author": "Bart van der Schans",
+            "body": "Hi Dominique,\n\nThe \"master\" (although in a JR cluster all nodes are equal) writes it's changes to the database in a clustered setup. The slave queries the database (and not the JR node) for changes. So even when all other nodes are down the slave will just pull the changes from the database. As long as the database is running there is no riks of loosing data or endangering the integrity. \n\nBTW, if you want to pull in changes on the slave you can do  a Session.refresh(). This will force the ClusterNode to perform a sync().\n\nRegards,\nBart",
+            "date": "2011-11-07T10:45:06.057+0000",
+            "id": 0
+        },
+        {
+            "author": "Dominique Pfister",
+            "body": "Hi Bart,\n\nThank you for your comment. You're absolutely right, in a standard cluster where the data itself is in shared storage such as a database, the slave will of course not talk to the master itself and the data does not get lost when the master crashes. We have a customized setup, however, where the data is not shared (every cluster node has a complete copy of the data) and where the slaves actually talk to the master: in order to support such a configuration, I'd like to make the sync loop more \"customizable\" by the actual journal implementation.\n\nKind regards\nDominique",
+            "date": "2011-11-07T10:55:13.853+0000",
+            "id": 1
+        },
+        {
+            "author": "Bart van der Schans",
+            "body": "Hi Dominique,\n\nThanks for explaining. I've been working on JCR-2968 to get a similar setup (full replicas), but then through database replication. Maybe we should combine this issues with that one? I guess you're mostly looking for a \"hook\" to plugin your customized code?\n\nBart",
+            "date": "2011-11-07T11:08:08.663+0000",
+            "id": 2
+        },
+        {
+            "author": "Dominique Pfister",
+            "body": "Hi Bart,\n\nnot quite: we already have our own journal implementation, derived from o.a.j.core.journal.AbstractJournal, and what I'd like to do now is break the body of doSync() into multiple steps that can be separately invoked by a subclass without having to resort to copy-paste. AFAICS, JCR-2968 is related to database journaling, whereas our implementation is not, so I don't think these two issues should be combined, what do you think?\n\nDominique",
+            "date": "2011-11-07T15:29:40.799+0000",
+            "id": 3
+        },
+        {
+            "author": "Dominique Pfister",
+            "body": "Implemented as optional behavior that can be switched on with a subclass overridable.",
+            "date": "2011-11-29T16:43:50.193+0000",
+            "id": 4
+        }
+    ],
+    "component": "clustering",
+    "description": "The cluster synchronization on a slave does always wait for some time (as specified in the sync delay) before fetching changes. If a lot of changes are being written to the master, a slave will considerably fall behind the master in term of revisions, which may endanger the integrity of the cluster if the master will crash. I therefore suggest that a slave should rather immediately contact the master again after some changes have been found, until it sees no more changes.",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "JCR-3138",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Major",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "Skip sync delay when changes are found",
+    "systemSpecification": true,
+    "version": "2.3.2"
+}

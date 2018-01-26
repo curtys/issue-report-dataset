@@ -1,0 +1,59 @@
+{
+    "comments": [
+        {
+            "author": null,
+            "body": "Are you reporting an actual problem, or is it just reading of the source code ?\n\nThe first part could make sense: I added entry.binaryContent = null after the\nrest, so the condition might be wrong.",
+            "date": "20041026T23:37:20",
+            "id": 0
+        },
+        {
+            "author": null,
+            "body": "This is a reproducible real problem.\n\nOur server uses tomcat 5.0 as a servlet engine. When it runs multiple worker\nthreads to execute a JavaScritpt (using Rhino) on the server side, it will\noccasionally but consistently throw NoClassDefFoundError on a class in Rhino\nlibrary, which is located in the WEB-INF\\lib directory. \n\nWe eventually figure out if two threads start to load same class concurrently\nfor WEB-INF/lib, one of them will fail if \n\na) the first thread manages to call defineClass on the resource entry and set\nthe binaryContent to null; \n\nb) when the second adds its entry to the HashMap, it will find an entry for that\n class already exists, so it will return the existing entry (the one whose\nbinaryContent is null); \n\nFor the second part, it has been reported by some other people. Please see the\nfollowing link\n\nhttp://www.cs.umd.edu/~pugh/java/memoryModel/DoubleCheckedLocking.html\n\nIt would be better to replace the code with single checked locking and make it\nthread-safe. ",
+            "date": "20041027T14:26:10",
+            "id": 1
+        },
+        {
+            "author": null,
+            "body": "You're not supposed to fork threads in your webapp.\n\nAs for the double check thing, try to post productive stuff, thanks.",
+            "date": "20041027T14:30:31",
+            "id": 2
+        },
+        {
+            "author": null,
+            "body": "It's well and good that you're \"not supposed to fork threads\", but let's get\nreal -- this is something that code needs to do more often than the strict\nletter of J2EE lets on.",
+            "date": "20041027T14:33:25",
+            "id": 3
+        },
+        {
+            "author": null,
+            "body": "\n\"You're not supposed to fork threads in your webapp.\"\n\nOh, this is the simpler fix, thanks.\n",
+            "date": "20041027T14:54:26",
+            "id": 4
+        },
+        {
+            "author": null,
+            "body": "The J2EE spec forbids it, and experience shows it can cause many tricky problems.\n\nThe change for entry.loadedClass == null is good, since I added the\nentry.binaryContent = null without seeing that the check would need an update.\nThis was introduced in 5.0.3.",
+            "date": "20041027T15:14:38",
+            "id": 5
+        },
+        {
+            "author": null,
+            "body": "Thanks Remy. It is forbidden to create threads in ejb container, and it is not\nrecommended to spawn threads in servlet container, but don't recall this is\nstrictly forbidden by the servlet spec (I might be wrong here). ",
+            "date": "20041027T16:20:41",
+            "id": 6
+        }
+    ],
+    "component": "Catalina",
+    "description": "WebappClassLoader may fail to load class from local repository when multiple\nthreads are trying to load same class concurrently. \n\nNeed to change method findClassInternal (line 1577 ),  \n\n        if ((entry == null) || (entry.binaryContent == null))\n            throw new ClassNotFoundException(name);\n\nto \n\n        if ((entry == null) || (entry.binaryContent == null &&\nentry.loadedClass==null))\n            throw new ClassNotFoundException(name);\n\nsince after one thread calls defineClass() on the entry, the entry's\nbinaryContent is set to null, but in this case, the class is already loaded, so\nthe code should not throw ClassNotFoundException. \n\nAlso in method findClassInternal, following code still use double checked\nlocking, which is proven broken -  \n\n        if (entry.loadedClass == null) {\n            synchronized (this) {\n                if (entry.loadedClass == null) {\n                    clazz = defineClass(name, entry.binaryContent, 0,\n                                        entry.binaryContent.length,\n                                        codeSource);\n                    entry.loadedClass = clazz;\n                    entry.binaryContent = null;\n                    entry.source = null;\n                    entry.codeBase = null;\n                    entry.manifest = null;\n                    entry.certificates = null;\n                } else {\n                    clazz = entry.loadedClass;\n                }\n            }\n        } else {\n            clazz = entry.loadedClass;\n        }",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "31903",
+    "issuetypeClassified": "OTHER",
+    "issuetypeTracker": "BUG",
+    "priority": "P3 normal",
+    "product": "Tomcat 5",
+    "project": "TOMCAT",
+    "summary": "WebappClassLoader fails to load class form local repository",
+    "systemSpecification": false,
+    "version": "5.5.3"
+}

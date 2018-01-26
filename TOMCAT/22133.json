@@ -1,0 +1,47 @@
+{
+    "comments": [
+        {
+            "author": null,
+            "body": "The following patch resolves _this specific_ problem but there might be other\nimplicit calls to 'this' lurking around:\n\n====\n//coremedia/thirdparty/apache/jakarta-jasper2/src/share/org/apache/jasper/compiler/JspUtil.java#2\n-\n/home/mernst/p4/main/thirdparty/apache/jasper2/src/share/org/apache/jasper/compiler/JspUtil.java\n====\n@@ -534,7 +534,7 @@\n          */\n        String jspCtxt = null;\n        if (isTagFile)\n-           jspCtxt = \"getJspContext()\";\n+           jspCtxt = \"this.getJspContext()\";\n        else\n            jspCtxt = \"pageContext\";\n",
+            "date": "20030805T12:50:17",
+            "id": 0
+        },
+        {
+            "author": null,
+            "body": "You can switch eclipse's compiler's \"compliance\" to 1.4 (what a multifaced beast !). Then it'll \ncompile that code.\n\nThe issue with 1.3 remains. How important is Jdk 1.3 compliance rated, by the way ?\n ",
+            "date": "20030806T08:11:59",
+            "id": 1
+        },
+        {
+            "author": null,
+            "body": "Ok, so your patch resolves JDK 1.3 compatibility then ?\nJDK 1.3 compatibility is important. the whole J2EE requires 1.4 now, but the web\ntier can (and should) still attempt to work with 1.3.",
+            "date": "20030806T10:23:28",
+            "id": 2
+        },
+        {
+            "author": null,
+            "body": "Well, my patch resolves the issue for this particular call to #getJspContext(). In general all \nunqualified method calls that resolve to methods in both SimpleTagSupport and \nJspFragmentHelper will be flagged by the 1.3.1 compiler. Looks like 'getParentTag()' might be \nanother candidate. Will check out.",
+            "date": "20030806T10:32:18",
+            "id": 3
+        },
+        {
+            "author": null,
+            "body": "I have applied your patch, and it will be included in 5.0.7. Thanks.\nReopen the bug if you find other occurances of this bug.",
+            "date": "20030808T10:26:21",
+            "id": 4
+        }
+    ],
+    "component": "Jasper",
+    "description": "A JSP Fragment in a tag file that does EL may lead to problematic Java code.\n\nJSP Fragments of tag files are compiled into inner classes:\n\n  public final class com_coremedia_jsp_NewsTicker_body_tag\n    extends javax.servlet.jsp.tagext.SimpleTagSupport\n  {\n    ...\n\n    private class com_coremedia_jsp_NewsTicker_body_tagHelper\n      extends org.apache.jasper.runtime.JspFragmentHelper\n    {\n      ...\n      public void invoke0( java.io.Writer out ) \n        throws Throwable\n      {\n         ...\n        \nout.write((java.lang.String)org.apache.jasper.runtime.PageContextImpl.proprietaryEvaluate(\"${rows}\",\njava.lang.String.class, (PageContext)getJspContext(), null, false)); <<<<<<\n         ...\n      }\n    }\n\nBoth javac 1.3 and Eclipse's JDT compiler flag the call to #getJspContext as\ninvalid as this method is both inherited and defined in the enclosing class: \n\n  com_coremedia_jsp_NewsTicker_body_tag.java:206: getJspContext() is inherited  \n  from org.apache.jasper.runtime.JspFragmentHelper and hides method in outer  \n  class org.apache.jsp.tag.web.com_coremedia_jsp_NewsTicker_body_tag.  An  \n  explicit 'this' qualifier must be used to select the desired instance.\n\nJavac 1.4.2 accepts this code and calls the inherited method.\n\nFrom my interpretation of the JLS, 1.4.2's behaviour seems correct and is the\nintended one, but the code won't be compilable with javac 1.3.",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "22133",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "P3 normal",
+    "product": "Tomcat 5",
+    "project": "TOMCAT",
+    "summary": "Scoping conflict for generated fragment helpers",
+    "systemSpecification": true,
+    "version": "5.0.6"
+}

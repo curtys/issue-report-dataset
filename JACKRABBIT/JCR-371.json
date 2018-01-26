@@ -1,0 +1,35 @@
+{
+    "comments": [
+        {
+            "author": "Giota Karadimitriou",
+            "body": "Just to add my experience on this, in case it helps:\nThis issue occured when while trying to perform concurrent versioning operations\nI did a remove version. I tracked down the problem and it seems that while trying to remove version7 of a document which had the following hierarchy:\n\n72d4c88e-5c86-40c8-bb98-1b9e32c1a421   //version 7 \n|\n|\ne33688f2-d230-4957-8a51-22433333e440   //versionHistory\n|\n|\n21e1bb18-5507-4cd9-9b91-1c25be0af0e4   //versionStorage\n|\n|\n75e0f33e-a58c-492c-b932-e544415f86e1   //versionStorage\n|\n|\n7b82e86f-c693-47cb-a898-82fb6d41bd29   //versionStorage\n|\n|\ndeadbeef-face-babe-cafe-babecafebabe\n\n\n'deadbeef-face-babe-cafe-babecafebabe' *lost* '7b82e86f-c693-47cb-a898-82fb6d41bd29' (first version storage).\n\nThis corrupted the document version graph and every create version or remove version operation then seemed hopeless since the version graph was corrupted and resulted in path errors. I saved the blob value of deadbeef-face-babe-cafe-babecafebabe from the database and checked its children and 7b82e86f-c693-47cb-a898-82fb6d41bd29 was not among them.\n\nThe exception I first got :\n\nUnable to resolve zombie path for item: 72d4c88e-5c86-40c8-bb98-1b9e32c1a421\norg.apache.jackrabbit.core.state.ItemStateException: Unable to resolve zombie path for item: 72d4c88e-5c86-40c8-bb98-1b9e32c1a421\n\tat org.apache.jackrabbit.core.observation.EventStateCollection.getZombiePath(EventStateCollection.java:519)\n\tat org.apache.jackrabbit.core.observation.EventStateCollection.createEventStates(EventStateCollection.java:316)\n\tat org.apache.jackrabbit.core.state.SharedItemStateManager$Update.begin(SharedItemStateManager.java:535)\n\tat org.apache.jackrabbit.core.state.SharedItemStateManager.beginUpdate(SharedItemStateManager.java:651)\n\tat org.apache.jackrabbit.core.state.XAItemStateManager.prepare(XAItemStateManager.java:150)\n\tat org.apache.jackrabbit.core.version.XAVersionManager.prepare(XAVersionManager.java:414)\n\tat org.apache.jackrabbit.core.TransactionContext.prepare(TransactionContext.java:128)\n\tat org.apache.jackrabbit.core.XASessionImpl.prepare(XASessionImpl.java:300)\n\t....\nCaused by: javax.jcr.ItemNotFoundException: failed to build path of 7b82e86f-c693-47cb-a898-82fb6d41bd29: deadbeef-face-babe-cafe-babecafebabe has no child entry for 7b82e86f-c693-47cb-a898-82fb6d41bd29\n\tat org.apache.jackrabbit.core.HierarchyManagerImpl.buildPath(HierarchyManagerImpl.java:327)\n\tat org.apache.jackrabbit.core.HierarchyManagerImpl.buildPath(HierarchyManagerImpl.java:316)\n\tat org.apache.jackrabbit.core.HierarchyManagerImpl.buildPath(HierarchyManagerImpl.java:316)\n\tat org.apache.jackrabbit.core.HierarchyManagerImpl.buildPath(HierarchyManagerImpl.java:316)\n\tat org.apache.jackrabbit.core.HierarchyManagerImpl.buildPath(HierarchyManagerImpl.java:316)\n\tat org.apache.jackrabbit.core.HierarchyManagerImpl.getPath(HierarchyManagerImpl.java:376)\n\tat org.apache.jackrabbit.core.observation.ChangeLogBasedHierarchyMgr.getZombiePath(ChangeLogBasedHierarchyMgr.java:84)\n\tat org.apache.jackrabbit.core.observation.EventStateCollection.getZombiePath(EventStateCollection.java:514)\n\t... 48 more\n\t -----\nI think at least in my case  the problem occurs in lines 156-167 of EventStateCollection because it deletes old parent but then fails to build the zombie path which includes the old parent (i use the source of jackrabbit 1.0rc1)\n\ntry {\n                            oldParent = (NodeState) changes.get(oldParentId);\n                        } catch (NoSuchItemStateException e) {\n                            // old parent has been deleted, retrieve from\n                            // shared item state manager\n                            oldParent = (NodeState) provider.getItemState(oldParentId);\n                        }\n\n                        NodeTypeImpl oldParentNodeType = getNodeType(oldParent, session);\n                        Set mixins = oldParent.getMixinTypeNames();\n                        Path newPath = getPath(n.getNodeId(), hmgr);\n                        Path oldPath = getZombiePath(n.getNodeId(), hmgr); //HERE\n\nwe use oracle application server, SimpleDBPersistenceManager and java version \"1.4.2_03\".\nAlso, jca is used to make jackrabbit a resource adapter.\n\n ",
+            "date": "2006-04-04T22:35:08.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Tobias Bocanegra",
+            "body": "fixed a major synchronizity problem in verisoning (see JCR-443) which probably solves this problem aswell.\n\nDate: Thu May 25 03:04:54 2006\nNew Revision: 409351",
+            "date": "2006-05-25T17:07:34.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Merged for 1.0.1 in revision 409626.",
+            "date": "2006-05-26T17:26:37.000+0000",
+            "id": 2
+        }
+    ],
+    "component": "versioning",
+    "description": "see tests in JCR-335\n\n\norg.apache.jackrabbit.core.state.ItemStateException: Unable to resolve path for item: 69d80165-7ef5-4b6b-8aa9-be9c9be1f994\n\tat org.apache.jackrabbit.core.observation.EventStateCollection.getPath(EventStateCollection.java:525)\n\tat org.apache.jackrabbit.core.observation.EventStateCollection.createEventStates(EventStateCollection.java:377)\n\tat org.apache.jackrabbit.core.state.SharedItemStateManager$Update.begin(SharedItemStateManager.java:547)\n\tat org.apache.jackrabbit.core.state.SharedItemStateManager.beginUpdate(SharedItemStateManager.java:668)\n\tat org.apache.jackrabbit.core.state.XAItemStateManager.prepare(XAItemStateManager.java:151)\n\tat org.apache.jackrabbit.core.version.XAVersionManager.prepare(XAVersionManager.java:431)\n\tat org.apache.jackrabbit.core.TransactionContext.prepare(TransactionContext.java:129)\n\tat org.apache.jackrabbit.core.XASessionImpl.prepare(XASessionImpl.java:309)\n\tat test.JCRUserTransaction.commit(JCRUserTransaction.java:74)\n\tat org.apache.jackrabbit.JRTestDeadlock.run(JRTestDeadlock.java:110)\nCaused by: javax.jcr.ItemNotFoundException: failed to build path of 69d80165-7ef5-4b6b-8aa9-be9c9be1f994: a0ecd4b0-a442-4b1e-a2f6-51441f40d452 has no child entry for 69d80165-7ef5-4b6b-8aa9-be9c9be1f994\n\tat org.apache.jackrabbit.core.HierarchyManagerImpl.buildPath(HierarchyManagerImpl.java:308)\n\tat org.apache.jackrabbit.core.HierarchyManagerImpl.getPath(HierarchyManagerImpl.java:357)\n\tat org.apache.jackrabbit.core.observation.EventStateCollection.getPath(EventStateCollection.java:520)\n\t... 9 more",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "JCR-371",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "ItemStateException on concurrently committing transactions of versioning operations",
+    "systemSpecification": true,
+    "version": "0.9"
+}

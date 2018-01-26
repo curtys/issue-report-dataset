@@ -1,0 +1,107 @@
+{
+    "comments": [
+        {
+            "author": "Daniel M\u00fcller",
+            "body": "the patch introduces a package locale SimpleDateFormatFactory which does cache instances of SimpleDateFormat threadlocal",
+            "date": "2007-06-10T13:52:10.394+0000",
+            "id": 0
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "I personally tend to avoid usingthreadlocals in libraries but in this case it seems justified. If I hear no objections, I'll commit the patch\n\nOleg",
+            "date": "2007-06-10T16:59:38.262+0000",
+            "id": 1
+        },
+        {
+            "author": "Roland Weber",
+            "body": "If there are many threads making few calls each to this method, we are opening a memory hole. In particular since a whole map of formats is stored. Can we please wrap the map in a SoftReference to allow garbage collection?\n\nThere is an @Override in the source code, and not inside a comment. I don't know what it's supposed to mean, but it is not valid Java 1.3 source.\n\ncheers,\n  Roland\n\n",
+            "date": "2007-06-10T17:14:17.073+0000",
+            "id": 2
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "> Can we please wrap the map in a SoftReference to allow garbage collection?\n\nSounds reasonable.\n\nOleg",
+            "date": "2007-06-10T19:11:26.691+0000",
+            "id": 3
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Will deal with it post-ALPHA5.\n\nOleg",
+            "date": "2007-06-16T19:18:09.213+0000",
+            "id": 4
+        },
+        {
+            "author": "Daniel M\u00fcller",
+            "body": "I searched for alternative approaches and digged up a FastDateFormat in commons.lang[1], which is fully threadsafe. Maybe http-core could use this one. I don't propose to introduce commons.lang as a dependency, but simply to incorporate the FastDateFormat (partial or whole) as a util into http-core. The code has no dependencies on the rest of commons.lang (only one call to Validate).\n\nJust some thoughts,\nDaniel\n\n[1] http://jakarta.apache.org/commons/lang/api/org/apache/commons/lang/time/FastDateFormat.html",
+            "date": "2007-06-17T12:56:45.786+0000",
+            "id": 5
+        },
+        {
+            "author": "Ortwin Gl\u00fcck",
+            "body": "I support the FastDateFormat approach. It solves the threadsafety problem in a much more elegant way.",
+            "date": "2007-06-17T13:02:50.091+0000",
+            "id": 6
+        },
+        {
+            "author": "Roland Weber",
+            "body": "You noticed that FastDateFormat is for formatting only, not for parsing?\nSince this is obviously a case where multiple implementations are available and have different advantages/drawbacks, maybe it is time to define an interface and make DateUtils - in it's current form - the default implementation. Optimizing static helper methods without a specified target environment is soooooo ugly.\n\ncheers,\n  Roland\n",
+            "date": "2007-06-17T13:16:07.444+0000",
+            "id": 7
+        },
+        {
+            "author": "Daniel M\u00fcller",
+            "body": "Yes, saw it. Unfortunately after I sent of the comment. So much for prudent investigation methods. I'll have a look if I can come up with something.\n\nAnd for the specified target environment: I guess this would be parsing and formatting of the three required formats:\n- RFC 1123 (EEE, dd MMM yyyy HH:mm:ss zzz)\n- RFC1036 (EEEE, dd-MMM-yy HH:mm:ss zzz)\n- ascitime() (EEE MMM d HH:mm:ss yyyy)\n\nCheers,\nDaniel",
+            "date": "2007-06-17T13:41:09.276+0000",
+            "id": 8
+        },
+        {
+            "author": "Roland Weber",
+            "body": "Hello Daniel,\n\ntarget _environment_ is...\na) client HTTP application, few threads, few operations -> current implementation is fine\nb) server application, few threads, many operations -> full per-thread caching is fine\nc) server application, many threads, few operations -> current implementation not so good, full caching not so good either\nd) ....\n\nWithin HttpCore, only formatting should be required. Date parsing is for cookies. So maybe reduce DateUtils to formatting only, based on FastDateFormat. Date parsing goes to HttpCookie and gets an interface for substituting different implementations.\n\ncheers,\n  Roland\n\n ",
+            "date": "2007-06-17T14:08:50.960+0000",
+            "id": 9
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Folks,\nIn fact the static methods of DateUtils are not being used in HttpCore AT ALL. HttpDateGenerator imports a few static variables from DateUtils, but that is it.\n\nthis.dateformat = new SimpleDateFormat(DateUtils.PATTERN_RFC1123, Locale.US);\nthis.dateformat.setTimeZone(DateUtils.GMT);\n\n(1) I suggest DateUtils gets moved to HttpClient\n(2) I am in favor of using ThreadLocals and SoftReferences to cache DateFormatters, but will not stand in your way should you decide to 'borrow' FastDateFormat from Commons Lang as long as it is not in Core\n\nOleg",
+            "date": "2007-06-17T15:04:14.972+0000",
+            "id": 10
+        },
+        {
+            "author": "Roland Weber",
+            "body": "I've taken a look at FastDateFormat. It maintains several internal caches in form of static HashMaps.\nI'd hate to introduce that as a default anywhere in HttpComponents.\n\nMoving DateUtils to HttpClient/Cookie sounds good. There we can take as many stabs at it as we want to.\n\ncheers,\n  Roland\n",
+            "date": "2007-06-17T15:09:07.200+0000",
+            "id": 11
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "This needs to be done before the code freeze for ALPHA5. Folks, if I hear no laud objections, I'll move DateUtils to HttpCookie within the next few days.\n\nOleg ",
+            "date": "2007-06-17T15:56:27.627+0000",
+            "id": 12
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "A small variation on the Daniel's original patch. HashMaps containing date format instances are now softly referecned by the thread local to allow for their garbage-collection. Please review.\n\nIf I hear no complaints, I'll check in the patch in a few days.\n\nOleg  \n ",
+            "date": "2007-10-18T15:54:17.508+0000",
+            "id": 13
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Patch checked in\n\nOleg",
+            "date": "2007-10-24T15:03:41.632+0000",
+            "id": 14
+        }
+    ],
+    "component": "HttpClient (classic)",
+    "description": "DateUtils create a SimpleDateFormat for each invocation of #formatDate and #parseDate. This can be optimized if SimpleDateFormat instances are cached. Since SimpleDateFormat is not threadsafe, the cache must be threadlocal.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "HTTPCLIENT-659",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Minor",
+    "product": "HTTPCLIENT",
+    "project": "HTTPCLIENT",
+    "summary": "DateUtils should cache SimpleDateFormat",
+    "systemSpecification": true,
+    "version": ""
+}

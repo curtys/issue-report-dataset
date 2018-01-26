@@ -1,0 +1,65 @@
+{
+    "comments": [
+        {
+            "author": "Robert Muir",
+            "body": "Peter: thank you very much for opening this issue.\n\nYour patch is correct - however I noticed this method is totally dead code in lucene.\nIts not used by any code or tests.\n\nI'm going to remove any dead code in BytesRef... this class is spiraling out of control.",
+            "date": "2011-11-24T13:22:52.631+0000",
+            "id": 0
+        },
+        {
+            "author": "Dawid Weiss",
+            "body": "I think I'm using it in that fst suggester patch, actually... Not that it cannot be hand-coded if necessary.",
+            "date": "2011-11-24T13:26:34.415+0000",
+            "id": 1
+        },
+        {
+            "author": "peter chang",
+            "body": "in fact, i use BytesRef.copy(short) in my code to store an id something like this, and since in lucene 4.0 return BytesRef when get binary value  of a field. i think this piece of code can be kept.",
+            "date": "2011-11-24T13:43:57.674+0000",
+            "id": 2
+        },
+        {
+            "author": "Robert Muir",
+            "body": "We really cannot just let BytesRef pile up into some mega API.\nWhen we add things to the public API, we have to eventually support this stuff in future releases.\n\nIf we are hell-bent to keep the api, we must fix the bogosities about it, otherwise its unmaintainable, and should be removed:\n* the fact it is copy(short) is wrong, if i delete the copy(short) and copy(int) methods everything compiles as normal, leading me to believe they are unused. this is because anything using thse gets promoted to copy(long). So the methods must be renamed to copyShort, copyInt, etc to prevent these types of mistakes.\n* why do we reset the offset to 0?\n\nIn general i'm just wondering why this is needed in bytesref itself... do people know about ByteArrayDataInput and ByteArrayDataOutput?\n\nSeparately, I'm still going to remove all unused bytesref methods at the current moment... i'll leave this one be though.\n",
+            "date": "2011-11-24T13:55:58.802+0000",
+            "id": 3
+        },
+        {
+            "author": "Dawid Weiss",
+            "body": "I agree with you in that to know what these methods actually do one has to look into the source code -- this is what I actually did. And I agree this isn't good from the API perspective. \n\nAs for ByteArrayDataInput/Output -- these are fine, we all know they're; I used BytesRef#copy(short) to avoid creating an extra object. ",
+            "date": "2011-11-24T14:02:21.038+0000",
+            "id": 4
+        },
+        {
+            "author": "Robert Muir",
+            "body": "{quote}\nAs for ByteArrayDataInput/Output \u2013 these are fine, we all know they're; I used BytesRef#copy(short) to avoid creating an extra object. \n{quote}\n\nIf you are worried about the object overhead of ByteArrayDataInput/Output in some loop or something, just reuse the same one with reset()....",
+            "date": "2011-11-24T14:05:00.341+0000",
+            "id": 5
+        },
+        {
+            "author": "Dawid Weiss",
+            "body": "I'd probably just push the two bytes myself to the byte array, to be honest ;)",
+            "date": "2011-11-24T14:09:19.084+0000",
+            "id": 6
+        },
+        {
+            "author": "Robert Muir",
+            "body": "Thanks Peter: I committed your fix",
+            "date": "2011-11-24T14:11:58.893+0000",
+            "id": 7
+        }
+    ],
+    "component": "core/other",
+    "description": "when storing a short type integer to BytesRef, BytesRef missed the length setting. then it will cause the storage size is ZERO if no continuous options on this BytesRef",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-3589",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "BytesRef copy short missed the length setting",
+    "systemSpecification": true,
+    "version": "4.0-ALPHA"
+}

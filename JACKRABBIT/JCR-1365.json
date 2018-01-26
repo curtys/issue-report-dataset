@@ -1,0 +1,47 @@
+{
+    "comments": [
+        {
+            "author": "Marcel Reutegger",
+            "body": "See TODO in source code: LuceneQueryBuilder#visit(LocationStepQueryNode, Object)",
+            "date": "2008-02-08T13:08:51.925+0000",
+            "id": 0
+        },
+        {
+            "author": "Alex Lukin",
+            "body": "Most users do not bother with complicated XPath query to find nodes. Usually content modeled such way that node contains subnodes of one type. So query //foo/*/bar is quite common. Speed of this query is simply depressive. 200 nodes in 3 levels makes debugger \"think\" on query.execute() for minutes and then minutes on getting trough iterator. \n\nIMHO, it is high priority task.I've herad a lot of bad words from colleagues about Lucene in general and about Lucene in Jackrabbit and I think that the cause of all it is bad speed on such simple queries.\n\nMay be It would be nice to be abble start guery not for entire workplace but for some node?\nCould it speedup search? ",
+            "date": "2008-02-08T13:58:27.696+0000",
+            "id": 1
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "Implemented a first series of improvements:\n\n- ChildAxisQuery does not look up child nodes anymore using the PARENT field. This is slow and there is no cache for this kind of information. Instead it now uses the HierarchyResolver like DescendantSelfAxisQuery. If no name test is specified ChildAxisQuery now looks up the child node entries on the respective NodeStates. This may cause access to the Persistence Manager.\n\n- Generalized DescendantSelfAxisQuery to work with any given level between context and sub query. So far only zero and one were supported. Zero made DescendantSelfAxisQuery act like the XPath descendant-or-self axis and one like a descendant axis.\n\n- ChildAxisQuery and DescendantSelfAxisQuery now optimize certain combinations of axis queries into a more compact form, which performs better.\n\nCommitted in revision: 620859",
+            "date": "2008-02-12T16:56:47.061+0000",
+            "id": 2
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "The chart shows the time to run the 20 most expensive queries executed by AxisQueryTest. Please note that NUM_LEVELS was set to 4 and NODES_PER_LEVEL was set to 10. This results in about 11k test nodes. CHECK_RESULTS was disabled. Furthermore respectDocumentOrder was set to false!\n\nThe vertical axis is logarithmic and shows the time in milliseconds.\n\n- first series: jackrabbit-core when this issue was reported\n- second series: with improvements implemented so far\n- third series: same as second series but cacheSize for DocNumberCache was set to 20'000",
+            "date": "2008-02-12T17:06:03.778+0000",
+            "id": 3
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "Implemented more performance optimizations. If the last location step is a child or descendant-or-self axis with a node test that matches any node, the implementation now uses context query result in conjunction with the regular API to find the matching nodes.\n\nThis again gives a performance improvement of a factor of 7 compared to 'series 2' and still a factor of 2 compared to 'series 3', where the cacheSize was increased significantly.\n\nsvn revision: 629453",
+            "date": "2008-02-20T13:44:22.065+0000",
+            "id": 4
+        }
+    ],
+    "component": "jackrabbit-core",
+    "description": "To resolve the * step the LuceneQueryBuilder currently creates a MatchAllQuery and checks every node for a foo ancestor. Instead, it should search for bar nodes and check for foo ancestors with at least one arbitrary hierarchy level in between.",
+    "hasPatch": false,
+    "hasScreenshot": true,
+    "id": "JCR-1365",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Minor",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "Query path constraints like foo//*/bar do not scale",
+    "systemSpecification": true,
+    "version": ""
+}

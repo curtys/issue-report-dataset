@@ -1,0 +1,71 @@
+{
+    "comments": [
+        {
+            "author": null,
+            "body": "Same here on OSX, with 5.5.25 and 5.5.20. This was definitely working with 5.0.28.\n\nThis can not have been unnoticed for so long, right? What's going on? I'm sure it's been reported many \ntimes, but bugzilla being so user-friendly, I could hardly find anything...\nAnyone knows if this was introduced in 5.5.2x or if it's there since 5.5.0 ?",
+            "date": "20071128T13:13:25",
+            "id": 0
+        },
+        {
+            "author": null,
+            "body": "Note that the exception is slightly different is your path only has one space (I get exactly the same \nbehaviour, i.e NCDFE on the second \"word\" if several spaces)\n\n$ ./startup.sh && tail -f ../logs/catalina.outUsing CATALINA_BASE:   /Applications/dev/test \ntest2/apache-tomcat-5.5.25\nUsing CATALINA_HOME:   /Applications/dev/test test2/apache-tomcat-5.5.25\nUsing CATALINA_TMPDIR: /Applications/dev/test test2/apache-tomcat-5.5.25/temp\nUsing JRE_HOME:       /System/Library/Frameworks/JavaVM.framework/Versions/1.5/Home\nException in thread \"main\" java.lang.NoClassDefFoundError: test2/apache-tomcat-\n5/5/25/conf/logging/properties\n^C\n\n",
+            "date": "20071128T13:16:03",
+            "id": 1
+        },
+        {
+            "author": null,
+            "body": "I encountered a similar problem this morning, with CATALINA_BASE containing a space.\n\nHere's what I have found:\n\n1. The problem seems to be in the setting of JAVA_OPTS in the following:\n# Set juli LogManager if it is present\nif [ -r \"$CATALINA_HOME\"/bin/tomcat-juli.jar ]; then\n  JAVA_OPTS=\"$JAVA_OPTS \"-Djava.util.logging.manager=org.apache.juli.ClassLoaderLogManager\" \"-\nDjava.util.logging.config.file=\"$CATALINA_BASE/conf/logging.properties\"\nfi\n\nIf CATALINA_BASE has spaces, the shell splits JAVA_OPTS on the spaces when running the Java \ncommand line, causing the NCDFE.\n\n2. I confirmed this by removing tomcat-juli.jar from bin, and tomcat started fine. This changed logging, \nso it wasn't a proper fix.\n\n3. I was able to get things running, including logging, by making the following changes to catalina.sh\n\n# Set juli LogManager if it is present\nif [ -r \"$CATALINA_HOME\"/bin/tomcat-juli.jar ]; then\n  JAVA_OPTS=\"$JAVA_OPTS -Djava.util.logging.manager=org.apache.juli.ClassLoaderLogManager\" \n  LOGGING_CONFIG=\"-Djava.util.logging.config.file=$CATALINA_BASE/conf/logging.properties\"\nfi\n\nand then adding \"$LOGGING_CONFIG\" (note the quotes) to all places where JAVA_OPTS is passed to the \njava command line. For example:\n\n      exec \"$_RUNJDB\" $JAVA_OPTS \"$LOGGING_CONFIG\" $CATALINA_OPTS \\\n\nI'm not sure if this is the best way to fix this, but it works by keeping the spaces inside CATALINA_BASE \nwithin quotes when passing the arguments to the java command line.\n\n4. The problem exists in the latest 5.5 (5.5.25) and 6.0 (6.0.14), but not in 5.0.x.\n\n",
+            "date": "20071129T04:53:05",
+            "id": 2
+        },
+        {
+            "author": null,
+            "body": "Thanks for the patch suggestion. This has been committed to trunk and proposed for 6.0.x and 5.5.x.",
+            "date": "20080425T15:09:00",
+            "id": 3
+        },
+        {
+            "author": null,
+            "body": "This has been applied to 6.0.x and will be included in 6.0.17 onwards.",
+            "date": "20080501T12:05:20",
+            "id": 4
+        },
+        {
+            "author": null,
+            "body": "Hi,\n\nI can't start tomcat with this patch at Mac OS X ( 10.4.11).\n\ncatalina.out\nException in thread \"main\" java.lang.NoClassDefFoundError: \n\n#!/bin/bash\nexport CATALINA_HOME=/Users/peter/xxxx/apache-tomcat-6.0.18\nexport CATALINA_BASE=/Users/peter/xxxx/node01\nexec $CATALINA_HOME/bin/catalina.sh start \"$@\"\n\nThe tomcat start fails as I set CATALINA_BASE to other directory then CATALINA_HOME. After I remove\nquotes from $LOGGING_CONFIG at $CATALINA_HOME/bin/catalina.sh it works. Strange! I have no spaces at my paths and with 6.0.16 tomcat start perfect.\n\nI think the LOGGING_CONFIG variable must also set at stop command at catalina.sh.\n\nPeter\n\n \n\n\n",
+            "date": "20080725T03:27:21",
+            "id": 5
+        },
+        {
+            "author": null,
+            "body": "(In reply to comment #6)\n\n> I can't start tomcat with this patch at Mac OS X ( 10.4.11).\n\nI've just tried this with R\u00e9my's 6.0.18 buildon Ubuntu Hardy and it works fine - regardless whether or not CATALINA_BASE contains spaces. So, this seems to be a MacOS-specific issue.\n\nWAG: What's /bin/sh on MacOS? Does altering the shebang in catalina.sh to\n#!/bin/bash\nhelp?",
+            "date": "20080725T05:12:23",
+            "id": 6
+        },
+        {
+            "author": null,
+            "body": "Hi Peter,\n\nsee\n\nhttp://marc.info/?l=tomcat-dev&m=121622230731754&w=2\n\n",
+            "date": "20080725T05:58:43",
+            "id": 7
+        },
+        {
+            "author": null,
+            "body": "This has been fixed in 5.5.x and will be included in 5.5.27 onwards",
+            "date": "20080827T13:51:42",
+            "id": 8
+        }
+    ],
+    "component": "Catalina",
+    "description": "I've managed to reproduce this on Fedora core 6 and Ubuntu Feisty using the\nbinary distribution tarballs of tomcat 6.0.14 and 5.5.25.\n\nexport JAVA_HOME=<path to java>\ntar xzf <path to tarball>/apache-tomcat-*.tar.gz\nmv apache-tomcat* \"my tomcat directory\"\nbash \"my tomcat directory/bin/catalina.sh\" run\n\nresult:\nUsing CATALINA_BASE:   /home/basil/test/my tomcat directory\nUsing CATALINA_HOME:   /home/basil/test/my tomcat directory\nUsing CATALINA_TMPDIR: /home/basil/test/my tomcat directory/temp\nUsing JRE_HOME:       /usr/lib/jvm/java-6-sun\nException in thread \"main\" java.lang.NoClassDefFoundError: tomcat\n\nif \"my tomcat directory\" is replaced with, for example, \"mytomcatdirectory\",\ntomcat starts with no error. This error will also occur if a parent directory\ncontains a space and CATALINA_HOME itself doesn't.",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "43578",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "P2 regression",
+    "product": "Tomcat 5",
+    "project": "TOMCAT",
+    "summary": "Tomcat fails to start on linux if CATALINA_HOME contains a space",
+    "systemSpecification": true,
+    "version": "Nightly Build"
+}

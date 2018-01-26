@@ -1,0 +1,143 @@
+{
+    "comments": [
+        {
+            "author": "Stefan Guggisberg",
+            "body": "the description of JCR-2936 states that \n\"There has been a slight interest in the past for adding JMX support.\".\n\nJCR-3040 however does come with a huge commit, affecting critical parts\nof jackrabbit-core, with (IMO) considerable risk of causing regressions. \n\ni would have appreciated if a patch had been provided for discussion rather \nthan committing the changes within 1 minute after creating the issue.\n\nif there's only 'slight interest' i am rather conservative WRT performing\nmajor changes in jackrabbit-core. \n",
+            "date": "2011-08-04T14:22:36.651+0000",
+            "id": 0
+        },
+        {
+            "author": "Alex Deparvu",
+            "body": "point taken on the patch.\n\nI've rolled-back everything, and I'm not re-submitting the JMX Session stats as a patch.\nI've also ran the performance tests (ConcurrentReadTest and ConcurrentReadWriteTest) and attached the results, to analyze the performance impact.\n\nThe problem with these tests is that I ran them on my machine, which I think is error-prone as it is also dependent on the background noise. I've tried to not stress it much (no eclipse running, etc), but I guess it is not 100% bullet proof.\nIt would be interesting to run the tests on a continuous integration machine, if there is any available.\n\nIn jr-test.log, you'll find the test results. I ran them 5 times, each time running the 2 versions of the code (with and without my changes to the session state object).\n\nI'm really interested in your opinion about the test results.\n\n",
+            "date": "2011-08-08T15:32:27.353+0000",
+            "id": 1
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "A few remarks:\n\nI don't really understand the statistics, but it looks like the patch made things 10% slower? Is that so? If yes, I don't understand why. Or did I missinterpret the statistics?\n\nAs far as I understand the code, \"opsPerSecond\" is the number of operations per second that were called between the first operation and the last operation. Right? For me, that was a bit confusing. I would expect it to mean number of operations divided by the number of seconds the operations took. Otherwise the number of \"operations per second\" doesn't actually depend on the performance of the write operations, but on how often the _application_ wrote. At least it should be documented:\n\nCoreStatManagerMBean doesn't contain any Javadocs.\n\nI would also return the total number of read and the total number of write operations.\n\nDo you really need to use read and write locks? It seems using volatile fields should be enough, as statistics are not supposed to be completely accurate anyway, but gathering statistics is supposed to be low-overhead (read write locks are not).\n\n> System.currentTimeMillis() - timeNs / 1000\n\nI would try to avoid divisions when _gathering_ data, as divisions are slow. Why not use System.nanoTime()? System.currentTimeMillis() is anyway problematic: it can go backwards, as uses the system time and not the elapsed time. Statistics will be completely wrong on summertime change, right?\n\n> BigDecimal\n\nI don't really understand why 'double' isn't enough.\n\n> (non-Javadoc) ...\n\nWhat is the reason for adding such comments?\n\n+        if (durationMs == 0) {\n+            durationMs = 1000;\n+        }\n\nI know you want to avoid 'divide by zero' but it might be easier to set the _results_ to 0 instead of changing the duration.\n\n",
+            "date": "2011-08-15T14:39:00.779+0000",
+            "id": 2
+        },
+        {
+            "author": "Stefan Guggisberg",
+            "body": "thanks for the patch and sharing some test results!\n\nWRT the results:\nthe spread of the test results is huge, i don't think that they allow any conclusion WRT to the potential performance impact.\n\nWRT the patch:\ni agree with thomas's comments. apart from those i've got a few remarks \nregarding the RepositoryImpl changes: \n\n- i'd prefer to move the sessionCreated() and sessionLoggedOut() calls outside\n  of the 'synchronized (activeSessions) {}' block. \n\n- MBeanServer.registerMBean() is called  on every startup, whether the stats are enabled or not.\n  i'd prefer if that call would only be made depending on e.g. a system property.\n\nWRT to adding JMX support to jackrabbit core:\n\njust based on 'slight interest' i'm rather reluctant adding major features to jackrabbit core\nwith considerable risk of causing regressions.",
+            "date": "2011-08-17T15:23:13.666+0000",
+            "id": 3
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "I'm working on tools for better managing and monitoring the repository, and increased JMX support seems like the best way to do this, so I'm in favor of going into this direction.\n\nHowever, I agree with the concerns raised here. There's no reason why collecting statistics or exposing them through JMX should have *any* noticeable impact on performance. If there is a measurable performance impact, then we're doing something wrong.",
+            "date": "2011-08-18T09:06:44.286+0000",
+            "id": 4
+        },
+        {
+            "author": "Alex Deparvu",
+            "body": "thanks for all the comments!\n\nthe biggest problem with the initial commit (now patch) was that the impact of the jmx support was unknown in a default scenario where everything is disabled but there still is an impact on the core operations.\nthat is what I'm trying to figure out now, as the results of the tests were not clear.\n\nto me performance with the stats enabled is not an issue in the first iteration, getting a good starting point is. I also needed to start pushing out code to be reviewed, as it piled up on my machine which in the end resulted in a huge commit, and then a huge headache :)\n\n@thomas: \n - 10% slower? where did you get the number from? the tests that I ran were inconclusive, see @stefan's comment\n\n  I agree with your observations, but it feels a bit like premature optimization until we actually get the code into JR core (currentTimeMillis vs nanoTime, BigDecimal vs double, locks vs volatile).\n\n@stefan\nYes, I'm refactoring to have just one bean (like a dynamic registry) enabled from the start, which would ideally be able to enable other jmx beans on demand.\nI don't like the system property idea, as it kinda defeats the purpose of having jmx support ootb without a restart.\n\n'slight interest' I should change the description at one point, the priorities constantly change, so should the issue description. \nI also don't see the regression risk, we test constantly for performance degradation on the core parts, plus we'll disable everything ootb. the jmx support has a lot of benefits too, I'm sure in the end it will be worth it.\n\n@jukka\n  - I completely agree on the performance, I still need to run some tests, once we all agree on what the basis of the jmx support will look like (and where it will reside).\n\nI'll concentrate on building a really low impact ootb jmx support (disabled and with a minimal footprint), then we can measure each component and optimize as needed.\n\nAs we appear to be having a vote for or against jmx support in general, I'll also send an email to the list, to gather some more info on this topic.",
+            "date": "2011-08-18T09:34:26.310+0000",
+            "id": 5
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "How about using a temporary branch for this to sync up on the code? Once the solution is stable enough we can merge it back to trunk. I'll probably need to work on JMX support (not on stats but more on general JMX bindings as discussed in JCR-2936), so it would be good if we could both work on the same baseline code.",
+            "date": "2011-08-18T09:50:31.778+0000",
+            "id": 6
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "> - 10% slower?\n\nI compared the 50% times. Example: test 4 no changes, ConcurrentReadWriteTest: 1902; with changes: 2317. Well, I don't even know if the numbers are \"ms\" or \"op/s\" - you tell me :-)\n\n> premature optimization\n\nMy comments are about simplicity and not that much about performance. Simplifying the code almost always makes sense. Simplifying early makes a lot of sense, because people tend to be afraid to simplify 'working' code later on. \n\nUsing double instead of BigDecimal just simpler. Avoiding divisions in methods that are called very often also seems logical, specially if the resulting code is actually simpler and better (that is: always correct, which it's not currently). Using volatile versus locks is also about simplicity, plus it avoids nasty deadlocks.\n\nThe rest of my comments are also not really about performance.\n",
+            "date": "2011-08-18T10:12:12.055+0000",
+            "id": 7
+        },
+        {
+            "author": "Stefan Guggisberg",
+            "body": "> I also don't see the regression risk, [...]\n\nhow about this one for example? ;)\n\n<https://builds.apache.org/job/Jackrabbit-trunk/ws/trunk/jackrabbit-core/src/main/java/org/apache/jackrabbit/core/jmx/query/QueryStatManager.java>:[107,37] type javax.management.openmbean.OpenType does not take parameters\n\ni am not a jmx expert but my gut feeling tells me that there could be potential issues with different deployments/environments/etc...\n\nthat's why i don't like ootb jmx support. in your patch you're calling javax.management.* code unconditionally from the RepositoryImpl constructor. \nIMO that should at least be made dependent on configuration. ",
+            "date": "2011-08-18T10:15:01.766+0000",
+            "id": 8
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "> i am not a jmx expert but my gut feeling tells me that there could be potential issues with different\n> deployments/environments/etc...\n\nJMX is included as a standard part of Java 5 and higher. The OpenType issue from above is simply a case of using Java 6 features when we should still be sticking with what's included in Java 5.",
+            "date": "2011-08-18T10:42:15.827+0000",
+            "id": 9
+        },
+        {
+            "author": "Bart van der Schans",
+            "body": "I would love to have more stats available from jackrabbit and jmx is a good way to expose them imo. I do agree with Stefan that we should have at least a global config option to turn all the stats gathering and/or jmx stuff off. \n\nAnother idea I've been playing with is to expose those stats (and config) also over jcr in the same manner that you have a \"/proc\" filesystem on linux systems. Once we actually gather the statistic it probably wouldn't be too hard to do that and it could make it really easy to fetch those stats for applications that are already connecting to the repository. ",
+            "date": "2011-08-18T11:29:05.297+0000",
+            "id": 10
+        },
+        {
+            "author": "Stefan Guggisberg",
+            "body": " > JMX is included as a standard part of Java 5 and higher. The OpenType issue from above is simply a case of using Java 6 features when we should still be sticking with what's included in Java 5.\n\nsure, however that issue showed up as the first regression right after the commit (QED ;).\n\nwhile jmx is a standard part of java >=5, i guess we'll have to deal with custom MBeanServer implementations depending on the deployment/environment. ",
+            "date": "2011-08-18T12:19:06.382+0000",
+            "id": 11
+        },
+        {
+            "author": "Alex Deparvu",
+            "body": "hi all, \n\nI'm attaching a reworked version of the JMX support.\nI'll attach it here, I see you like this task better, instead of the parent issue :)\n\nThe changes:\n - renamed to StatManager, as the core service will provide pure stats, and extra if needed also expose them via jmx. Pure stats should give anybody the freedom they need to build tools the way they need to.\n\n - there will be a system property 'enableJmxSupport' which will determine if the StatManager should start the jmx Server not\n\n - the default JMX support will include just one bean called 'DynamicRegistry' (see JmxRegistry for details), this allows anybody to enable jmx support for other Stats.\nSo you'll see (for now) 2 methods on the DynamicRegistry: enableCoreStatJmx and enableQueryStatJmx.\n\n - stats are disabled by default, this has nothing to do with JMX. If you want stats, you'll have to enable them, if you want stats via jmx, enable the jmx support for that Stat object.\n\n - unit tests to provide a clearer example based on some code.\n\nAgain, I'm not looking for feedback on performance of the code (yet!). The point of this patch was to build with the community's support a good starting point for stats/jmx, and to make sure that collecting stats does not interfere with the raw performance.\nAs Stefan suggested, OOTB stats should be disabled, and without any impact on the core. To me this is step one. Step 2 is what happens when you enable the stats :)\n\n> sure, however that issue showed up as the first regression right after the commit (QED ;). \nStefan, I have to say I'm sad that you would take a Java6 vs Java5 issue and turn it into an argument against jmx support. It is as simple as that, it was (my) tiny mistake, which I fixed after 5 mins of seeing it on the CI server.\nBut you have a good point, and now the Jmx is out of the default init of the repository.\n\nJukka, a dedicated branch for this effort sound great! How should be proceed?\n",
+            "date": "2011-08-19T13:40:10.470+0000",
+            "id": 12
+        },
+        {
+            "author": "Alex Deparvu",
+            "body": "second iteration of jmx support",
+            "date": "2011-08-19T13:40:41.909+0000",
+            "id": 13
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Let's use the JCR-2936 branch I created for this and other JMX work.",
+            "date": "2011-08-22T09:36:30.294+0000",
+            "id": 14
+        },
+        {
+            "author": "Stefan Guggisberg",
+            "body": "@alex\nthanks for the reworked patch (JCR-3040-v2.patch). \nlooks good so far.",
+            "date": "2011-09-09T12:21:40.762+0000",
+            "id": 15
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "The JCR-2936 branch is getting out of date, so I think we should start merging this to trunk. In revision 1180633 I committed the new o.a.j.core.jmx classes from the latest patch. I didn't yet commit the integration bits since I think we still have some work to do there. Most notably I'd rather have the JMX classes depending on other parts of Jackrabbit instead of the other way around.\n\nAlso, to make it easier to collect and expose statistics over a longer period, in revision 1180634 I introduced a simple mechanism for recording a time series using nothing but an AtomicLong instance as the event counter.",
+            "date": "2011-10-09T15:56:26.814+0000",
+            "id": 16
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "I merged more of the JCR-2936 branch to trunk in revision 1181060.",
+            "date": "2011-10-10T16:36:53.440+0000",
+            "id": 17
+        },
+        {
+            "author": "Bart van der Schans",
+            "body": "Hi,\n\nAbout the \"integration bits\": I spent some time looking at how other (apache) projects like tomcat, camel, cxf, servicemix, etc) try to solve this, but every project seems to have chosen a different solution. Is there some consensus on how we want to go about this? Is there some project that has done this already really well that we can take as example? It make sense to me to spend some time to get this right so we can easily gradually expose more and more over jmx without having to change the \"core\" code too much.\n\nBart",
+            "date": "2011-10-10T22:14:33.113+0000",
+            "id": 18
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "I'm not aware of any best practices beyond the basic JMX documentation, so for now I'd prefer to avoid having too many JMX dependencies inside Jackrabbit core. Ideally the repository itself would just collect all the interesting information and a deployment could then decide whether to make that information available through JMX.\n\nThe ways of making such information available should be flexible enough to allow for new bits to be exposed even without changing the APIs.",
+            "date": "2011-10-11T10:02:07.794+0000",
+            "id": 19
+        },
+        {
+            "author": "Alex Deparvu",
+            "body": "I'll mark this one as fixed since the code is already in and everybody is happy",
+            "date": "2011-11-22T22:35:49.082+0000",
+            "id": 20
+        }
+    ],
+    "component": "jackrabbit-core",
+    "description": "I've named them Core stats. This will include:\n - number of sessions currently opened\n - session read / write operations per second\n\nThe stats refresh once a minute.\nThis is disabled by default, so it will not affect performance.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "JCR-3040",
+    "issuetypeClassified": "RFE",
+    "issuetypeTracker": "",
+    "priority": "Major",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "JMX Stats for the Session",
+    "systemSpecification": true,
+    "version": ""
+}

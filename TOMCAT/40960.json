@@ -1,0 +1,47 @@
+{
+    "comments": [
+        {
+            "author": null,
+            "body": "Created attachment 19328\nPatch incorporating inline suggested code change",
+            "date": "20061229T12:09:23",
+            "id": 0
+        },
+        {
+            "author": null,
+            "body": "You're right, this is a regression bug inconsistency, and I've run into it\nmyself.  I've just put in your patch on the 5.5 branch, in time for the next\nrelease (5.5.24).  Thank you for contributing it.\n\nIt might also need to be applied in the Tomcat 6 tree, but I haven't checked and\nthere have been other relevant changes to the connector on that branch.",
+            "date": "20070325T09:21:23",
+            "id": 1
+        },
+        {
+            "author": null,
+            "body": "This one has been fixed in Tomcat6 using the same patch.",
+            "date": "20070327T07:34:54",
+            "id": 2
+        },
+        {
+            "author": null,
+            "body": "In the description it is told as the issue is there in 5.5.23,but in the\nchangelog of tomcat 5.5 it is been told that from the version 5.5.10 this issue\nis fixed.\n\n\"Fix NPE when POST size exceeds limit defined by maxPostSize. (markt)\".\n\nCan anyone help me that what i refering is correct or not\n\n(In reply to comment #0)\n> Timeout when reading from underlying socket does throw IOException with APR and\n> SocketTimeoutException without APR.\n> This difference causes servlet code handling \"timeout exceptions\" to break (and\n> not be fixeable) if APR is used.\n> In class \"org.apache.coyote.http11.InternalAprInputBuffer\" for method \"boolean\n> fill() throws IOException\":\n> (in block if (!parsingHeader) ) The return code for Socket.recvbb  is not\n> checked for Status.ETIMEDOUT or Status.TIMEUP, therefore an IOException is\n> thrown whatever the reason for the exception.  This is a behavior change from\n> non-APR HTTP 1.1 connector.\n> \n> The following new code for the fill method fixes the issue:\n>    /**\n>      * Fill the internal buffer using data from the undelying input stream.\n>      *\n>      * @return false if at end of stream\n>      */\n>     protected boolean fill()\n>         throws IOException {\n> \n>         int nRead = 0;\n> \n>         if (parsingHeader) {\n> \n>             if (lastValid == buf.length) {\n>                 throw new IOException\n>                     (sm.getString(\"iib.requestheadertoolarge.error\"));\n>             }\n> \n>             bbuf.clear();\n>             nRead = Socket.recvbb\n>                 (socket, 0, buf.length - lastValid);\n>             if (nRead > 0) {\n>                 bbuf.limit(nRead);\n>                 bbuf.get(buf, pos, nRead);\n>                 lastValid = pos + nRead;\n>             } else {\n>                 if ((-nRead) == Status.EAGAIN) {\n>                     return false;\n>                 } else {\n>                     throw new IOException(sm.getString(\"iib.failedread\"));\n>                 }\n>             }\n> \n>         } else {\n> \n>             buf = bodyBuffer;\n>             pos = 0;\n>             lastValid = 0;\n>             bbuf.clear();\n>             nRead = Socket.recvbb\n>                 (socket, 0, buf.length);\n>             if (nRead > 0) {\n>                 bbuf.limit(nRead);\n>                 bbuf.get(buf, 0, nRead);\n>                 lastValid = nRead;\n>             } else {\n> // CP: Start change\n> \t\tif ((-nRead) == Status.ETIMEDOUT || (-nRead) == Status.TIMEUP) {\n> \t\t\tthrow new java.net.SocketTimeoutException(sm.getString(\"iib.failedread\"));\n> \t\t} else {\n> \t\t\tthrow new IOException(sm.getString(\"iib.failedread\"));\n> \t\t}\n> // CP: End change\n>             }\n> \n>         }\n> \n>         return (nRead > 0);\n> \n>     }\n> \n> Since SocketTimeOutException is also an IOException, this modification cannot\n> break code that does not filter timeout exceptions.\n\n",
+            "date": "20070731T00:15:36",
+            "id": 3
+        },
+        {
+            "author": null,
+            "body": "(In reply to comment #4)\n> In the description it is told as the issue is there in 5.5.23,but in the\n> changelog of tomcat 5.5 it is been told that from the version 5.5.10 this issue\n> is fixed.\n\nYou are mis-reading the changelog. This issue does not appear in the changelog\nfor 5.5.23.\n\n> \"Fix NPE when POST size exceeds limit defined by maxPostSize. (markt)\".\n\nThe NPE fix has nothing to do with this bug.\n\nThe fix will be in 5.5.24 onwards.",
+            "date": "20070731T04:37:42",
+            "id": 4
+        }
+    ],
+    "component": "Connector:HTTP",
+    "description": "Timeout when reading from underlying socket does throw IOException with APR and\nSocketTimeoutException without APR.\nThis difference causes servlet code handling \"timeout exceptions\" to break (and\nnot be fixeable) if APR is used.\nIn class \"org.apache.coyote.http11.InternalAprInputBuffer\" for method \"boolean\nfill() throws IOException\":\n(in block if (!parsingHeader) ) The return code for Socket.recvbb  is not\nchecked for Status.ETIMEDOUT or Status.TIMEUP, therefore an IOException is\nthrown whatever the reason for the exception.  This is a behavior change from\nnon-APR HTTP 1.1 connector.\n\nThe following new code for the fill method fixes the issue:\n   /**\n     * Fill the internal buffer using data from the undelying input stream.\n     *\n     * @return false if at end of stream\n     */\n    protected boolean fill()\n        throws IOException {\n\n        int nRead = 0;\n\n        if (parsingHeader) {\n\n            if (lastValid == buf.length) {\n                throw new IOException\n                    (sm.getString(\"iib.requestheadertoolarge.error\"));\n            }\n\n            bbuf.clear();\n            nRead = Socket.recvbb\n                (socket, 0, buf.length - lastValid);\n            if (nRead > 0) {\n                bbuf.limit(nRead);\n                bbuf.get(buf, pos, nRead);\n                lastValid = pos + nRead;\n            } else {\n                if ((-nRead) == Status.EAGAIN) {\n                    return false;\n                } else {\n                    throw new IOException(sm.getString(\"iib.failedread\"));\n                }\n            }\n\n        } else {\n\n            buf = bodyBuffer;\n            pos = 0;\n            lastValid = 0;\n            bbuf.clear();\n            nRead = Socket.recvbb\n                (socket, 0, buf.length);\n            if (nRead > 0) {\n                bbuf.limit(nRead);\n                bbuf.get(buf, 0, nRead);\n                lastValid = nRead;\n            } else {\n// CP: Start change\n\t\tif ((-nRead) == Status.ETIMEDOUT || (-nRead) == Status.TIMEUP) {\n\t\t\tthrow new java.net.SocketTimeoutException(sm.getString(\"iib.failedread\"));\n\t\t} else {\n\t\t\tthrow new IOException(sm.getString(\"iib.failedread\"));\n\t\t}\n// CP: End change\n            }\n\n        }\n\n        return (nRead > 0);\n\n    }\n\nSince SocketTimeOutException is also an IOException, this modification cannot\nbreak code that does not filter timeout exceptions.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "40960",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "P2 normal",
+    "product": "Tomcat 5",
+    "project": "TOMCAT",
+    "summary": "Timeout when reading from underlying socket does throw IOException with APR and SocketTimeoutException without APR",
+    "systemSpecification": true,
+    "version": "5.5.22"
+}

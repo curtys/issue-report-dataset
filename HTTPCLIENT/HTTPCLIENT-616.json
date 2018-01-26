@@ -1,0 +1,29 @@
+{
+    "comments": [
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Uh. This is a pretty bad one. Many thanks for tracking it down\n\nOleg",
+            "date": "2006-12-13T10:10:27.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Fix applied. Many thanks, Jason\n\nOleg",
+            "date": "2006-12-13T14:06:58.000+0000",
+            "id": 1
+        }
+    ],
+    "component": "HttpClient (classic)",
+    "description": "The following code snippet is from the end of the HttpMethodDirector.executeWithRetry method:\n\n        } catch (IOException e) {\n            if (this.conn.isOpen()) {\n                LOG.debug(\"Closing the connection.\");\n                this.conn.close();\n            }\n            releaseConnection = true;\n            throw e;\n        } catch (RuntimeException e) {\n            if (this.conn.isOpen) {                                             <<<===========================   BAD!  :-)\n                LOG.debug(\"Closing the connection.\");\n                this.conn.close();\n            }\n            releaseConnection = true;\n            throw e;\n        }\n\nWhen an IOException is caught, you can see that the \"open\" status of the connection is accurately checked by calling the \"isOpen()\" method.\n\nWhen a RuntimeException is caught, however, the code mistakenly checks only the \"isOpen\" member field.  In the case where \"conn\" is, for example, a MultiThreadedHttpConnectionManager, the \"isOpen()\" method is overridden to check for a wrapped connection and returns the \"isOpen\" status of that connection.  In cases like that checking the \"isOpen\" member field is obviously wrong and we end up not calling \"close()\" and the connection is not cleaned up.  This causes issues with later calls.\n\nA very difficult bug to diagnose and <steps up on soapbox> one that could have been easily avoided by making member variables private! <steps down>  thank you.  :-)\n\n\n",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "HTTPCLIENT-616",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "HTTPCLIENT",
+    "project": "HTTPCLIENT",
+    "summary": "HttpMethodDirector.executeWithRetry method fails to close the underlying connection if a RuntimeException is thrown",
+    "systemSpecification": false,
+    "version": "3.1 Beta 1"
+}

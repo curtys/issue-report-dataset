@@ -1,0 +1,53 @@
+{
+    "comments": [
+        {
+            "author": null,
+            "body": "This still appears to exist in the trunk as of today's pull.\n\nI've got a one-liner that appears to fix it that I'll post soon.",
+            "date": "20081208T17:45:35",
+            "id": 0
+        },
+        {
+            "author": null,
+            "body": "Created attachment 23007\nPatch in ContextConfig.java\n\nTacking on a '/' to the end of both path strings helps to ensure full path parentage when performing the substring match.",
+            "date": "20081209T16:30:17",
+            "id": 1
+        },
+        {
+            "author": null,
+            "body": "I've attached a patch that fixes the immediate issue as per the bug report. However, there could easily be cases that this doesn't catch. Please review.\n\nThanks.",
+            "date": "20081209T16:33:18",
+            "id": 2
+        },
+        {
+            "author": null,
+            "body": "I've gone through HostConfig and appended File.separator where required. It needs to be File.separator rather than '/'. I have applied the fix to trunk and have proposed it for 6.0.x and 5.5.x",
+            "date": "20090209T11:42:16",
+            "id": 3
+        },
+        {
+            "author": null,
+            "body": "This has been fixed in 6.0.x and will be included in 6.0.19 onwards.",
+            "date": "20090306T07:21:19",
+            "id": 4
+        },
+        {
+            "author": null,
+            "body": "This has been fixed in 5.5.x and will be included in 5.5.28 onwards.",
+            "date": "20090324T05:54:41",
+            "id": 5
+        }
+    ],
+    "component": "Catalina",
+    "description": "I created a folder called \"webapps-war\" within the Tomcat installation directory\n(CATALINA_HOME). The host's default appBase is \"webapps\" in this directory.\n\nWhat I wanted to do is use the XML Context file deployment method, i.e. put my\nxml file into conf/catalina/localhost (in my case) and specify the docBase to\nlook for the war in ${catalina.home}/webapps-war/myapp.\n\nBut just because the name starts with \"webapps\", it misinterprets the docBase\nsetting and I get in tomcat.log:\n\"A docBase C:\\tomcat-5.5.16\\webapps-war\\myapp inside the host appBase has been\nspecified, and will be ignored\"\nand then my deployment fails.\n\nOn the other hand, if I name my folder \"somethingelse\" instead of \"webapps-war\",\nit works like a charm.\n\nSo not a big problem (trivial workaround) but would be nicer if the rule was\nperfectly implemented. And that would have saved me hours trying to figure out\nwhat was wrong in my deployment!...\n\nIf my investigation is correct, the problem can be traced back to\norg.apache.catalina.startup.HostConfig and below is my suggested change against\nthe download from SVN done today (17 March). I'm not an expert on the catalina\nsource, so it would need another pair of eyes and some testing before you can\nsay this is the resolution of this problem. The proposed solution is simply to\nmake sure the string comparaisons includes a trailing \"/\" after the default appBase.\n\nQuestions on the suggested resolution:\nI'm not sure in particular if you can use \"/\" as the directory separator for all\nplatform of if you'd need to use something like\nSystem.getProperty(\"file.separator\")?\nWould there be other places where this applies?\nIs there a compelling reason why this can't be done like that?\n\nDIFF FILE against $Revision: 386336 $ $Date: 2006-03-16 14:13:00 +0000 (Thu, 16\nMar 2006) $\nCompare:\n(<)D:\\work-bak\\tomcat\\container\\catalina\\src\\share\\org\\apache\\catalina\\startup\\HostConfig.java\n(45038 bytes)\n   with:\n(>)D:\\work-bak\\tomcat\\container\\catalina\\src\\share\\org\\apache\\catalina\\startup\\HostConfig.java.changed\n(44596 bytes)\n\n592c592\n<                 if\n(!docBase.getCanonicalPath().startsWith(appBase().getAbsolutePath())) {\n---\n>                 if\n(!docBase.getCanonicalPath().startsWith(appBase().getAbsolutePath() + \"/\")) {\n995,996c995,996\n<                             if\n((current.getAbsolutePath().startsWith(appBase().getAbsolutePath()))\n<                                     ||\n(current.getAbsolutePath().startsWith(configBase().getAbsolutePath()))) {\n---\n>                             if\n((current.getAbsolutePath().startsWith(appBase().getAbsolutePath() + \"/\"))\n>                                     ||\n(current.getAbsolutePath().startsWith(configBase().getAbsolutePath() + \"/\"))) {\n1035,1036c1035,1036\n<                         if\n((current.getAbsolutePath().startsWith(appBase().getAbsolutePath()))\n<                             ||\n(current.getAbsolutePath().startsWith(configBase().getAbsolutePath()))) {\n---\n>                         if\n((current.getAbsolutePath().startsWith(appBase().getAbsolutePath() + \"/\"))\n>                             ||\n(current.getAbsolutePath().startsWith(configBase().getAbsolutePath() + \"/\"))) {\n1052,1053c1052,1053\n<                         if\n((current.getAbsolutePath().startsWith(appBase().getAbsolutePath()))\n<                             ||\n((current.getAbsolutePath().startsWith(configBase().getAbsolutePath())\n---\n>                         if\n((current.getAbsolutePath().startsWith(appBase().getAbsolutePath() + \"/\"))\n>                             ||\n((current.getAbsolutePath().startsWith(configBase().getAbsolutePath() + \"/\")",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "39013",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "P2 minor",
+    "product": "Tomcat 5",
+    "project": "TOMCAT",
+    "summary": "Incorrect use of docBase from XML Context file deployment",
+    "systemSpecification": true,
+    "version": "5.5.16"
+}

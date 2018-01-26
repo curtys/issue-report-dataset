@@ -1,0 +1,77 @@
+{
+    "comments": [
+        {
+            "author": "Felix Meschberger",
+            "body": ">  String toString(Item item)\n\nCouldn't we just implement NodeImpl.toString and PropertyImpl.toString ?\n\n> addXXX\n\nlooks reasonable\n\n> setXXX\n\nsounds useful, but I the \"set\" prefix sounds a bit strange\n\nyet my alternative -- getOrAddXXX -- is probably not better ...",
+            "date": "2009-12-15T11:46:02.486+0000",
+            "id": 0
+        },
+        {
+            "author": "Alexander Klimetschek",
+            "body": "> Couldn't we just implement NodeImpl.toString and PropertyImpl.toString ?\n\nThey are implemented in JR 2.0. But they print \"node\"/\"property\" + the path only, not the node type.",
+            "date": "2009-12-15T12:19:08.450+0000",
+            "id": 1
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "> Node setNode(Node parent, String name, String type) \n> using addNode(name, type) or setPrimaryType(type) if needed.\n\nThat means, if a node exists with this name, the type of the node would be changed. Could you tell me the use case (when do you want to change the node type of an existing node)?\n\nI probably would throw an exception if a node with this name already exists, but with a different primary type. Then I would then prefer the method name getOrAddXXX.\n\n\n",
+            "date": "2009-12-15T13:24:46.554+0000",
+            "id": 2
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "> Item.toString() vs JcrUtils.toString(Item)\n\nI'd like to have something that works with any JCR backend, including all the remoting and decoration layers we have.\n\nIt may also be a bit troublesome to make the Item.toString() methods do more complex operations like retrieving the node type name or property values, since that may throw tools like debuggers off balance. It's best if that method is as \"safe\" as possible.\n\n> setXxx()\n\nI considered using getOrAddXxx() as the name, but that pattern doesn't work that well for the setFile() case where I'd like a method that will not just make sure that the file node exists, but also updates the content of the file.\n\nIf \"set\" sounds strange, how about \"put\" as in putNode(), putFolder(), putFile()?\n\n> setPrimaryType()\n\nGood point, throwing an exception instead of trying to coerce the node type seems like a better alternative.",
+            "date": "2009-12-15T14:39:45.125+0000",
+            "id": 3
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "+1 for JcrUtils.toString(Item) - same reason as Jukka\n\n+1 for putNode(), putFolder(), putFile() - like Map.put\n",
+            "date": "2009-12-15T15:18:30.162+0000",
+            "id": 4
+        },
+        {
+            "author": "S\u00e9bastien Launay",
+            "body": "For toString() methods I found the path very useful especially for nodes.\n\nI also prefers getOrAdd* instead of put* or set* because put and set are semantically speaking writable methods.\nIn some framework like Avalon [1] (RIP :)) they use an additional createNew boolean parameter to create an object if necessary and I think that the two use cases of createNew are interesting.\n\nWhat is done for files can also be done for resources like:\n- Node setResource(Node parent, String mime, InputStream data)\n- Node setResource(Node parent, String mime, Calendar date, InputStream data)\n\nHere use of set fits naturally as the method always modifies the node and/or parent node.\n\n[1] http://excalibur.apache.org/apidocs/org/apache/avalon/framework/configuration/Configuration.html#getChild(java.lang.String,%20boolean)",
+            "date": "2009-12-15T15:38:34.851+0000",
+            "id": 5
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "I've now added the following methods:\n\n    String toString(Item item) \n\n    Node getOrAddNode(Node parent, String name)\n    Node getOrAddNode(Node parent, String name, String type)\n\n    Node getOrAddFolder(Node parent, String name)\n\n    Node putFile(Node parent, String name, String mime, InputStream data)\n    Node putFile(Node parent, String name, String mime, Calendar date, InputStream data)\n\nThe naming isn't as consistent as originally proposed, but I think it now better matches the conceptual difference between the putFile() operation that always writes and the getOrAdd methods that write only if the child node does not already exist.",
+            "date": "2009-12-15T16:33:42.200+0000",
+            "id": 6
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Resolving as fixed. The methods I implemented work pretty well and the chosen method names should be a reasonable compromise that addresses all the points raised above.",
+            "date": "2009-12-16T13:07:28.076+0000",
+            "id": 7
+        },
+        {
+            "author": "Tobias Bocanegra",
+            "body": "sorry, but i saw this issue too late, i would not mix the sequence of arguments in the signatures like in:\n\n    Node putFile(Node parent, String name, String mime, InputStream data)\n    Node putFile(Node parent, String name, String mime, Calendar date, InputStream data) \n\nbut rather have:\n\n    Node putFile(Node parent, String name, String mime, InputStream data)\n    Node putFile(Node parent, String name, String mime, InputStream data, Calendar date) \n\nso that \"optional\" arguments always come at the end.",
+            "date": "2009-12-17T23:42:38.758+0000",
+            "id": 8
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Excellent point. I changed the order of arguments in revision 896513.",
+            "date": "2010-01-06T16:34:43.441+0000",
+            "id": 9
+        }
+    ],
+    "component": "jackrabbit-jcr-commons",
+    "description": "I'd like to add at least the following utility methods to JcrUtils:\n\nFor logging:\n\n    // Utility method to simplify log messages and debug prints:\n    // Node -> \"name [type]\"\n    // Property -> \"@name = value(s)\"\n    String toString(Item item)\n\nFor making sure that a node exists:\n\n    // Returns the identified child node. If the child does not already exist,\n    // it is added using the default node type from the parent.\n    Node setNode(Node parent, String name)\n\n    // Same as above, but ensures that isNodeType(type) is true for the\n    // returned node, using addNode(name, type) or setPrimaryType(type)\n    // if needed.\n    Node setNode(Node parent, String name, String type)\n\nFor adding (or setting, see above) nt:folder nodes:\n\n    // Adds a new nt:folder node with the given name\n    Node addFolder(Node parent, String name)\n\n    // Ensures that an nt:folder node with the given name exists\n    Node setFolder(Node parent, String name)\n\nFor adding (or setting) nt:file nodes:\n\n    // Adds a new nt:file/nt:resource structure\n    // If the mime type contains a charset parameter, then the jcr:encoding property is also set\n    Node addFile(Node parent, String name, String mime, InputStream data)\n    Node addFile(Node parent, String name, String mime, Calendar date, InputStream data)\n\n    // Ensures that an nt:file/nt:resource structure exists with the given data.\n    // Note that the type of a potential existing jcr:content node is not modified\n    Node setFile(Node parent, String name, String mime, InputStream data)\n    Node setFile(Node parent, String name, String mime, Calendar date, InputStream data)\n",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "JCR-2439",
+    "issuetypeClassified": "RFE",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Minor",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "More utility methods in JcrUtils",
+    "systemSpecification": true,
+    "version": ""
+}

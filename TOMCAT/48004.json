@@ -1,0 +1,47 @@
+{
+    "comments": [
+        {
+            "author": null,
+            "body": "*** Bug 48005 has been marked as a duplicate of this bug. ***",
+            "date": "20091015T11:31:43",
+            "id": 0
+        },
+        {
+            "author": null,
+            "body": "This has been fixed in trunk and proposed for 6.0.x and 5.5.x.\n\nNote that you can set the server attribute on the connector to override the default server name. I updated the HTTP connector docs to clarify how this works.",
+            "date": "20100112T13:39:06",
+            "id": 1
+        },
+        {
+            "author": null,
+            "body": "The patch has been applied to 6.0.x and will be included in 6.0.23 onwards.",
+            "date": "20100113T02:42:12",
+            "id": 2
+        },
+        {
+            "author": null,
+            "body": "This fix is imcomplete.\n\nThere should be a distinction between setting a header to an empty string \"\" and setting it to null (which should clear the header entirely since there is no .removeHeader() on http response).\n\nNevertheless, there is no way to completely avoid sending the \"Server\" header.\nSecurity audits fail just because of the header presence, under the assupmtion that the specific header, even if blank, is still revealing something about the server.\n\nThe solution I have is this (Http11Processor for now):\n\n1-add a field\n\"protected boolean addServerHeader = true;\"\n\n\n2-Implement the setServer() this way, to distinguish the desire to avoid the header completely. If the server.xml doesn't have a server property, the setServer() shouldn't be called and the default is to add server header.\n\n    public void setServer( String server ) {\n        if (server==null) {\n            this.server = null;\n            this.addServerHeader = true;\n        } else if (server.equals(\"\")) {\n            this.server = null;\n            this.addServerHeader = false;\n        } else {\n            this.server = server;\n            this.addServerHeader = true;\n        }\n    }\n\n\n3-At the end of prepareResponse(), conditionally add the server header:\n\n        if(addServerHeader) {\n        \tif (server != null) {\n            \t// Always overrides anything the app might set\n\t            headers.setValue(\"Server\").setString(server);\n        \t} else if (headers.getValue(\"Server\") == null) {\n            \t// If app didn't set the header, use the default\n\t            outputBuffer.write(Constants.SERVER_BYTES);\n        \t}\n        }\n\n\nThis is the proper fix which at least is tomcat specific and doesn't break the servlet spec. I won't argue about the httpresponse.setHeader(\"Server\", null) since it is not specified in the servelt spec (which means it should be legal to remove the header!).",
+            "date": "20100208T14:51:27",
+            "id": 3
+        },
+        {
+            "author": null,
+            "body": "This has been fixed in 5..5.x and will be included in 5.5.29 onwards.",
+            "date": "20100303T23:31:49",
+            "id": 4
+        }
+    ],
+    "component": "Unknown",
+    "description": "Hello,\nIn a servlet or in a filter (before passing the control to doFilter() or after) try the following\nHttpServletResponse myResponse = ...\nmyResponse.setHeader(\"Server\",\"My own server name because I do not want to expose the real server name to the public for security reasons\");\n...\n\nIn the headers of the response you will get\nServer\tApache-Coyote/1.1, My own server name...\n\nAccording to the J2EE API for HttpServletResponse.html.setHeader()\nhttp://java.sun.com/j2ee/sdk_1.3/techdocs/api/javax/servlet/http/HttpServletResponse.html#setHeader(java.lang.String,%20java.lang.String)\n...\nSets a response header with the given name and value. If the header had already been set, the new value overwrites the previous one. The containsHeader method can be used to test for the presence of a header before setting its value.\n...\nIn fact if I call myResponse.containsHeader(\"Server\") I even get a false!!!\n\nIf you look in the IDE at the response object and dig in the responses and wrappers, you will find at the end a buffer with some data already set by Tomcat with this value and other things\n.\nAs I understand it Tomcat (or Coyote) does not let this header to be changed while nothing in the specification says that it is special.\nI did not find either a parameter in server.xml or other where the server name is specified to be overiden.\n\nSo the spec is not implemented properly for this specific header.\nSome other values are in this buffer, my goal was not to change them but other headers or values could have the same issue.\n\nThis issue is the same in Tomcat 5.5.28 and Tomcat 6.0.20. Not tested on 7.x.\n\nThanks \nOlivier",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "48004",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "P2 normal",
+    "product": "Tomcat 5",
+    "project": "TOMCAT",
+    "summary": "setHeader() does not replace the previous value for a \"Server\"",
+    "systemSpecification": false,
+    "version": "5.5.28"
+}

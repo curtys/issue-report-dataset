@@ -1,0 +1,53 @@
+{
+    "comments": [
+        {
+            "author": "szegedia@freemail.hu",
+            "body": "Fixed:\n\ncvs ci -m \"Fix for Bug 403604 \u2013 Continuation support missing in Rhino 1.7 (cvs HEAD)\" -l \"/Rhino/src/org/mozilla/javascript/LazilyLoadedCtor.java\"\n    Checking in src/org/mozilla/javascript/LazilyLoadedCtor.java;\n    /cvsroot/mozilla/js/rhino/src/org/mozilla/javascript/LazilyLoadedCtor.java,v  <--  LazilyLoadedCtor.java\n    new revision: 1.26; previous revision: 1.25\n    done\n\n\nNorris or David -- can you confirm that the fix is indeed valid? It looks like the problem was caused by introduction of LazilyLoadedCtor.buildValue() in its 1.23 revision. I'm not 100% sure I understand the code, but it does seem to me that it was wrong the way it was, and my change indeed fixed the issue. ",
+            "date": "20071117T16:05:30",
+            "id": 0
+        },
+        {
+            "author": "hannesw@gmail.com",
+            "body": "I just checked, and although the Continuation constructor is now defined again, continuations aren't working. \n\nI tested various CVS snapshots narrow in the cause, and it looks like continuation support  was broken on 2007-11-02 (cvs update -D 2007-11-02 still works, 2007-11-03 doesn't). There were two major commits by Norris Boyd on that day, I think it's the first one which is to blame.\n\nI'll attach a little continuation test script shortly.",
+            "date": "20071219T15:37:17",
+            "id": 1
+        },
+        {
+            "author": "hannesw@gmail.com",
+            "body": "Created attachment 293857\nSimple test case for continuations\n\nA simple test case for continuations. It should print \"got: ok\". With current CVS HEAD; it prints nothing, i.e. the continuation in there but doesn't work.",
+            "date": "20071219T15:41:39",
+            "id": 2
+        },
+        {
+            "author": "hannesw@gmail.com",
+            "body": "Created attachment 293865\nPatch fixes continuation support\n\nOk, the problem seems to be that (for whatever reason) continuations simply don't work with LazilyLoadedCtor. This patch undos that change made in revision 1.281 of ScriptRuntime.java from 2007/11/02 and continuations are working again.\n\nI'm not sure whether the change Attila committed to LazilyLoadedCtor.java is still needed. I've left it in for now, as it don't seem to be any problems with it, but maybe somebody with more grasp should look again.",
+            "date": "20071219T16:13:16",
+            "id": 3
+        },
+        {
+            "author": "hannesw@gmail.com",
+            "body": "Created attachment 293872\nPatch to make continuations work with LazilyLoadedCtor\n\nThe problem is really trivial actually. LazilyLoadedCtor expects the static init() method to take three arguments: the context, scope and sealed flag. Continuation.init() only took the last two, so it failed.",
+            "date": "20071219T17:06:01",
+            "id": 4
+        },
+        {
+            "author": "szegedia@freemail.hu",
+            "body": "Thanks, I committed the patch.",
+            "date": "20071228T05:58:42",
+            "id": 5
+        }
+    ],
+    "component": "Core",
+    "description": "User-Agent:       Mozilla/5.0 (X11; U; Linux i686; de; rv:1.8.1.8) Gecko/20071022 Ubuntu/7.10 (gutsy) Firefox/2.0.0.8\nBuild Identifier: \n\nCurrent CVS HEAD seems to be missing continuation support - the Continuation function is not defined.\n\nReproducible: Always\n\nSteps to Reproduce:\nhannes@x20:~/cvs/rhino$ java -jar build/rhino1_7R1pre/js.jar -opt -1\nRhino 1.7 release 1 Pre 2007 11 13\njs> Continuation\njs: \"<stdin>\", line 2: uncaught JavaScript runtime exception: ReferenceError: \"Continuation\" is not defined.\njs>",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "403604",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "BUG",
+    "priority": "-- normal",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "Continuation support missing in Rhino 1.7 (cvs HEAD)",
+    "systemSpecification": true,
+    "version": "other"
+}

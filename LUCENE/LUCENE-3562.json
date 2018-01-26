@@ -1,0 +1,47 @@
+{
+    "comments": [
+        {
+            "author": "Michael McCandless",
+            "body": "Patch.",
+            "date": "2011-11-05T20:55:04.642+0000",
+            "id": 0
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "+1",
+            "date": "2011-11-05T22:17:36.696+0000",
+            "id": 1
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "mike I think you should commit this - patch looks good to me",
+            "date": "2011-11-14T10:18:41.979+0000",
+            "id": 2
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "New patch; also cuts over MultiPhraseQuery to save the TermStates from weight -> scorer, and optimizes BlockTree's TermsEnum to reduce cost of init + seekExact only usages.\n\nI think it's ready!",
+            "date": "2011-11-17T16:42:41.383+0000",
+            "id": 3
+        },
+        {
+            "author": "Robert Muir",
+            "body": "+1",
+            "date": "2011-11-17T17:32:09.680+0000",
+            "id": 4
+        }
+    ],
+    "component": "",
+    "description": "We have sugar methods in Terms.java (docFreq, totalTermFreq, docs,\ndocsAndPositions) that use a saved thread-private TermsEnum to do the\nlookups.\n\nBut on apps that send many threads through Lucene, and/or have many\nsegments, this can add up to a lot of RAM, especially if the codecs\nimpl holds onto stuff.\n\nAlso, Terms has a close method (closes the CloseableThreadLocal) which\nmust be called, but we fail to do so in some places.\n\nThese saved enums are the cause of the recent OOME in TestNRTManager\n(TestNRTManager.testNRTManager -seed\n2aa27e1aec20c4a2:-4a5a5ecf46837d0e:-7c4f651f1f0b75d7 -mult 3\n-nightly).\n\nReally sharing these enums is a holdover from before Lucene queries\nwould share state (ie, save the TermState from the first pass, and use\nit later to pull enums, get docFreq, etc.).  It's not helpful anymore,\nand it can use gobbs of RAM, so I'd like to remove it.\n",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-3562",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Major",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "Stop storing TermsEnum in CloseableThreadLocal inside Terms instance",
+    "systemSpecification": true,
+    "version": ""
+}

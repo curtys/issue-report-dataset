@@ -1,0 +1,65 @@
+{
+    "comments": [
+        {
+            "author": "igor@mir2.org",
+            "body": "CC to Hannes Wallnoefer",
+            "date": "20030731T12:43:50",
+            "id": 0
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 128945\nJava test case to check reflection support\n\nTo test, compile X.java, make all the resulting classes available to JVM and\nrun the following Java scripts in Rhino shell:\n\nprint(Packages.X.test().str())\nprint(Packages.X.test().str2())\n\nCurrenly only the first line works properly and prints TEST but the second line\ngives instead of printing TEST2:\n\nuncaught JavaScript exception: TypeError: str2 is not a function.\n\nNote that the second line is supposed to work only if SecurityManager allows to\naccess public methods of package-private classes, but even in that situation\nthe error should be about IllegalAccessException, not about non-existing\nfunction.",
+            "date": "20030731T12:53:33",
+            "id": 1
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 128947\nFix: allow to reflect package-private classes in JavaMembers.lookupClass\n\nThe reason for the regression is that now JavaMembers.lookupClass never\nattempts to reflect package-private classes. But this is wrong since even with\nSecirutyManager installed JVM allows to call Class.getMethos()( and returns\nlist of all public methods in the class and its super classes.\n\nThe patch removes the restrictions while making JavaMembers.lookupClass much\nsimpler.",
+            "date": "20030731T13:15:50",
+            "id": 2
+        },
+        {
+            "author": "hannesw@gmail.com",
+            "body": "Yep, patch works well for me!",
+            "date": "20030731T13:34:31",
+            "id": 3
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "I committed the patch.",
+            "date": "20030731T17:10:13",
+            "id": 4
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Now with the patch committed Rhino shell prints TEST2 for\nprint(Packages.X.test().str2()) if access permissions allows access to public\nmethods of package-private classes and when not it prints:\n\njs: \"<command>\", line 1: While attempting to call \"str2\" in class \"MyTest\"\nreceieved java.lang.IllegalAccessException\n\nwhich is expected.",
+            "date": "20030731T17:15:14",
+            "id": 5
+        },
+        {
+            "author": "pschwartau@meer.net",
+            "body": "Marking Verified per Comment #4",
+            "date": "20030731T17:41:48",
+            "id": 6
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Targeting as resolved against 1.5R5",
+            "date": "20040213T11:42:08",
+            "id": 7
+        }
+    ],
+    "component": "Core",
+    "description": "A work related to bug 201893 made the following regression as reported by Hannes\nWallnoefer in the comments at bug 201893#c6 :\n\n\nI think there are some problems with the patch you committed. I'm no longer able\nto invoke public methods on non-public classes. The error message I get is:\n\nTypeError: undefined is not a function.\n\nWhich may serve as clue, because it's not that we get a security exception when\ninvoking the method, the method is simply not there.\n\nAlso, when trying to invoke a public static method on a non-public class, I get\nthe following message:\n\norg.mozilla.javascript.EvaluatorException: Java class \"java.lang.Object\" has no\npublic instance field or method named \"foo\".",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "214608",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "-- normal",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "HEAD regression: no more access to public members of package private classes",
+    "systemSpecification": false,
+    "version": "other"
+}

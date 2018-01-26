@@ -1,0 +1,179 @@
+{
+    "comments": [
+        {
+            "author": "Marvin Humphrey",
+            "body": "Algorithm looks good.  The addition of the mandatory second argument works\nwell. Nice work.\n\nLooks like there's a typo in the currently unused constant \"NUM_BYTES_DOUBLT\".\n\nAs for the tests... Testing that optimizations like these are working properly\nis a pain, so I understand why you zapped 'em.  Sometimes inequality or\nproportional testing can work in these situations:\n\n{code}\n  assertTrue(t.termBuffer().length > t.termLength());\n{code}\n\nThat assertion wouldn't always hold true for this object, because sometimes\nthe term will fill the whole array.  And in a perfect world, you'd want to test that \neach and every array growth happens as expected -- but that's not practical.  \nStill, in my opinion, a fragile, imperfect test in this situation is OK.",
+            "date": "2010-01-15T18:46:26.829+0000",
+            "id": 0
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Thanks Marvin, I fixed the typo.\n\nI don't really like that test, since conceivably (though, unlikely) it could fail with a false positive.\n\nSo I made a new test case (TestArrayUtil), which in fact uncovered serious problems with my first patch, due to overflowing int!  Sigh.  I've fixed those problems and the test now passes.  The test measures the amortized copying cost over a series of reallocations, and then [somewhat arbitrarily] asserts that the cost per element is less than 10.0 through all reallocations up to size Integer.MAX_INT.\n\nAlso I found one more place where we were assuming ArrayUtil.grow(X) returned the same value regardless of type, which is no longer true.  Amazing how tricky such a low-level utility function is....",
+            "date": "2010-01-15T20:43:12.639+0000",
+            "id": 1
+        },
+        {
+            "author": "Dawid Weiss",
+            "body": "Not to be picky, Michael, but is long promotion required here? Would it be easier to see if you overflow into negative integers and if so, set to MAX_VALUE?\n\nAnother thing -- given the fact that the parameter is an int, you'll never be able to grow beyond Integer.MAX_VALUE (because no int value exists). I'd change the contract to reflect this fact -- if the signature takes two parameters (int currentSize, int expectedAdditions) then it's easy to throw an unchecked exception if you simply can't meet the contract:\n\nif (currentSize + expectedAdditions < 0)\n  throw new RuntimeException(\"Cannot allocate array larger than: \" + Integer.MAX_VALUE);\n\nWhen reallocating, you can call it with grow(currentSize, 1), just to make sure the array will be at least one element larger than previously; the method can then make its best effort in estimating the growth ratio, but have a cap on MAX_SIZE before overflowing into negative integers (and avoid looping endlessly when Integer.MAX_VALUE is passed as an input argument).\n\nThese are just thoughts of course -- I've just finished implementing something like this for another project...",
+            "date": "2010-01-16T13:01:02.198+0000",
+            "id": 2
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Yeah... it's not great promoting to long.  It's because of the intermediate computation, to do the byte alignment.  I could instead do that computation back in the \"num elements\" space... let me try that.  Then I can check for negative ints to catch the overflow.\n\nNote that the args are different from above -- first arg is \"min target size\", ie, this method must return a size >= that requested size.  2nd arg is the element size.  Like calloc.",
+            "date": "2010-01-16T19:05:46.813+0000",
+            "id": 3
+        },
+        {
+            "author": "Yonik Seeley",
+            "body": "Instead of masking with 7fff... you can mask with ffff... and let it naturally overflow to a negative.  No need to check the return value, it should then fail immediately when the value is used.",
+            "date": "2010-01-16T19:39:47.574+0000",
+            "id": 4
+        },
+        {
+            "author": "Dawid Weiss",
+            "body": "What Yonik suggested is yet another alternative, just return negative size and an exception will be thrown elsewhere.",
+            "date": "2010-01-16T21:39:16.117+0000",
+            "id": 5
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "bq. Instead of masking with 7fff... you can mask with ffff... and let it naturally overflow to a negative\n\nThe thing is, if we blindly add the extra allocation & return, we'll lose up to 1/8th of the usable size of the array?  Ie we'll return a negative number when in fact we could have returned MAX_INT and allowed the caller to use the full allowed extent for arrays in java.",
+            "date": "2010-01-17T10:32:26.551+0000",
+            "id": 6
+        },
+        {
+            "author": "Dawid Weiss",
+            "body": "How about if you assert that minTargetSize is not negative first, then check if minTargetSize + extra is negative, if so, round to the largest possible value that fits within the positive range?",
+            "date": "2010-01-17T11:05:00.225+0000",
+            "id": 7
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "New rev.  No longer promotes to long (does the rounding in \"element\" space instead of \"bytes\" space), uses wraparound on ints (to negative numbers) to detect overflow & return Integer.MAX_VALUE.",
+            "date": "2010-01-17T11:18:19.163+0000",
+            "id": 8
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "bq. How about if you assert that minTargetSize is not negative first, then check if minTargetSize + extra is negative, if so, round to the largest possible value that fits within the positive range?\n\nThat's the approach I took in the last patch.",
+            "date": "2010-01-17T11:19:37.692+0000",
+            "id": 9
+        },
+        {
+            "author": "Paul Elschot",
+            "body": "Perhaps the getNextSize method could be renamed to overAllocate or overAllocateSize.",
+            "date": "2010-01-17T13:24:52.945+0000",
+            "id": 10
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "I don't really like overAllocate/overAllocateSize, since this method isn't actually doing any allocation.  getNextAllocation?  getOverAllocation?  getOverAllocationSize (too verbose?)   Actually I sort of like grow/growth better -- getGrowth?  getNextGrowth?",
+            "date": "2010-01-17T13:45:32.262+0000",
+            "id": 11
+        },
+        {
+            "author": "Paul Elschot",
+            "body": "Translating from Dutch 'groeischeut':  how about getShootGrowth(fromSize) ?\n\n",
+            "date": "2010-01-17T15:15:21.566+0000",
+            "id": 12
+        },
+        {
+            "author": "Yonik Seeley",
+            "body": "bq. The thing is, if we blindly add the extra allocation & return, we'll lose up to 1/8th of the usable size of the array?\n\nYep - depends on what this is being used for.  Some thing you know will never go that high, something you don't.\nAll this generification is super-lightweight for arrays of any kind of size... but if it starts getting used very often for very small arrays, the overhead will start to matter.",
+            "date": "2010-01-17T16:07:02.895+0000",
+            "id": 13
+        },
+        {
+            "author": "Marvin Humphrey",
+            "body": "Seems like the one permutation of \"over\" \"allocation\" and \"size\" you've omitted\nis oversize(minimum, width). (It's a style thing, but I try to use get* for accessors \nand avoid it elsewhere.)",
+            "date": "2010-01-17T16:25:12.770+0000",
+            "id": 14
+        },
+        {
+            "author": "Marvin Humphrey",
+            "body": "> if it starts getting used very often for very small arrays, the overhead\n> will start to matter\n\nI think in most cases usage will only occur after an inequality test, when\nit's known that reallocation will be occurring.  In my experience, the\noverhead of allocation will tend to swamp this kind of calculation.\n\n{code}\nif (needed > capacity) {\n   int amount = ArrayUtil.oversize(needed, RamUsageEstimator.NUM_BYTES_CHAR);\n   buffer = new char[amount];\n}\n{code}",
+            "date": "2010-01-17T16:34:35.437+0000",
+            "id": 15
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "{quote}\nSeems like the one permutation of \"over\" \"allocation\" and \"size\" you've omitted\nis oversize(minimum, width). (It's a style thing, but I try to use get* for accessors \nand avoid it elsewhere.)\n{quote}\n\nActually I like oversize(minimum, width)!",
+            "date": "2010-01-17T16:34:38.147+0000",
+            "id": 16
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "New patch, just renaming to ArrayUtil.oversize.",
+            "date": "2010-01-19T16:55:54.287+0000",
+            "id": 17
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Here a patch that merges the duplicate test class.",
+            "date": "2010-01-21T17:26:46.890+0000",
+            "id": 18
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Patch looks good -- I'll commit.  Thanks Uwe!",
+            "date": "2010-01-21T18:11:51.352+0000",
+            "id": 19
+        },
+        {
+            "author": "Shai Erera",
+            "body": "This somehow found its way to 3x (I believe it was before the branch). And now we have a case where a code is compiled against 3.0.1 and does not run when 3.1 (dev version) is used. I don't this change on 3.0.2, so perhaps we should just rename it back on the 3x branch?",
+            "date": "2010-07-13T11:12:57.241+0000",
+            "id": 20
+        },
+        {
+            "author": "Shai Erera",
+            "body": "I just noticed it's lucene.internal so I guess the rename is justified. There is however a deprecated public ctor, which is silly because the class contains nothing but static methods. So why would anyone instantiate it? And why do we go overboard preventing it, by declaring a private ctor ... I think we can just remove the ctor. Any objections?",
+            "date": "2010-07-13T14:30:19.764+0000",
+            "id": 21
+        },
+        {
+            "author": "Chris Male",
+            "body": "Having a private constructor is a nice way of indicating that the class just contains static methods and will only ever contain static methods.",
+            "date": "2010-07-13T14:52:14.216+0000",
+            "id": 22
+        },
+        {
+            "author": "Shai Erera",
+            "body": "That's more the methodology w/ the singleton pattern. If we want to achieve what you mention, we can make the class abstract. But really - how stupid do we think our users are? It's a *Util class w/ static methods - why would they ever instantiate it?",
+            "date": "2010-07-13T15:06:22.892+0000",
+            "id": 23
+        },
+        {
+            "author": "Chris Male",
+            "body": "Then make it abstract.  My suggestion has nothing to do with user level, but stems from a pattern I see very regularly in code.  But since you seem so vehemently against it, I'll happily support removing it.",
+            "date": "2010-07-13T15:12:09.391+0000",
+            "id": 24
+        },
+        {
+            "author": "Shai Erera",
+            "body": "I'm not vehemently against anything :). It's just that in the rest of our classes (or at least UnicodeUtil, which I was reading few minutes ago) we didn't follow that behavior, so why with this one?",
+            "date": "2010-07-13T15:26:44.390+0000",
+            "id": 25
+        },
+        {
+            "author": "Chris Male",
+            "body": "Thats a good question.  Its definitely best to be consistent so if its just this in this class then lets remove it.",
+            "date": "2010-07-13T15:29:59.710+0000",
+            "id": 26
+        }
+    ],
+    "component": "",
+    "description": "Spinoff from java-dev thread \"Dynamic array reallocation algorithms\" started on Jan 12, 2010.\n\nHere's what I did:\n\n  * Keep the +3 for small sizes\n\n  * Added 2nd arg = number of bytes per element.\n\n  * Round up to 4 or 8 byte boundary (if it's 32 or 64 bit JRE respectively)\n\n  * Still grow by 1/8th\n\n  * If 0 is passed in, return 0 back\n\nI also had to remove some asserts in tests that were checking the actual values returned by this method -- I don't think we should test that (it's an impl. detail).",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-2213",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Minor",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "Small improvements to ArrayUtil.getNextSize",
+    "systemSpecification": true,
+    "version": ""
+}

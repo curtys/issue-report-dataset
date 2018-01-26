@@ -1,0 +1,53 @@
+{
+    "comments": [
+        {
+            "author": "igor@mir2.org",
+            "body": "Could you post the full stack trace and sample script causing the exception? The\nstack size is precalculated during regexp parsing and index-of-bonds indicates\nthe bug in the parsing code.",
+            "date": "20040908T12:11:05",
+            "id": 0
+        },
+        {
+            "author": "gilles.barnier@veritas.com",
+            "body": "The array gData.stateStack is initialized in the function matchRegExp using the \nconstant:\n\n        final int INITIAL_STATESTACK = 20;\n\nWhile accessing this array from the function executeREBytecode in the case \nREOP_ALT, the array bonds are not checked and may raise an exception. \n\nUnfortunately, I cannot attach a simple example to reproduce the problem.",
+            "date": "20040908T12:22:27",
+            "id": 1
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "(In reply to comment #2)\n> Unfortunately, I cannot attach a simple example to reproduce the problem.\n\nWhat about complex exemple? Without the example it would take too much time to\ntrace stack size miscalculation during parsing or improper stack head movements\nduring matching. Which in turn means the bug would not be fixed.\n",
+            "date": "20040908T12:44:09",
+            "id": 2
+        },
+        {
+            "author": "gilles.barnier@veritas.com",
+            "body": "It happens in www.dmdata.dk while running the 4'th <script> which is\n\nhttp://maerskdata.netminers.dk/tracker/dispatch.aspx?\naction=log&n=0.7196296599022292&nav=http%3a%2f%2fwww.dmdata.dk%2fdmd-index.htm%\n3f_qpaq%3d1&cid=maerskdata&ref=http%3a%2f%\n\nBut it is simple to see that the array is accessed without a size check.\n",
+            "date": "20040908T16:01:49",
+            "id": 3
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Fixed: I committed a patch to use linked list for state statck.\n",
+            "date": "20040922T10:08:37",
+            "id": 4
+        },
+        {
+            "author": "gilles.barnier@veritas.com",
+            "body": "Created attachment 160912\nThis is the change in the code we made in order to make things work\n\nThe INITIAL_STATESTACK and INITIAL_BACKTRACK  have been set to 100;",
+            "date": "20041003T12:04:47",
+            "id": 5
+        }
+    ],
+    "component": "Core",
+    "description": "User-Agent:       Mozilla/4.0 (compatible; MSIE 6.0; Windows NT 5.0; .NET CLR 1.0.3705)\nBuild Identifier: \n\nI exceeded a java.lang.ArrayIndexOutOfBoundsException.\nThe exception is raised at org.mozilla.javascript.regexp.NativeRegExp, when \naccessing gData.stateStack. I have noticed that the stateStack is a fixed size \narray, and there are no checks on its size when accessing it from the method\n    \n    executeREBytecode(REGlobalData gData, REMatchState x,\n                      char[] chars, int end)\n    in\n\n    case REOP_ALT:\n\n\n\n\nReproducible: Always\nSteps to Reproduce:\n1.\n2.\n3.\n\n\n\nExpected Results:  \ncheck array access and resize the array size if necessary.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "258417",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "-- major",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "java.lang.ArrayIndexOutOfBoundsException in org.mozilla.javascript.regexp.NativeRegExp",
+    "systemSpecification": true,
+    "version": "other"
+}

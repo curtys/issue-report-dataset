@@ -1,0 +1,107 @@
+{
+    "comments": [
+        {
+            "author": "Shai Erera",
+            "body": "Can we stick with just a File argument, no String?",
+            "date": "2009-06-01T13:56:57.466+0000",
+            "id": 0
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "But the File argument has the same problem with passing all these closeDirectory arguments around. If we wrap this using this FilterIndexReader, ok, but as discussed yesterday, I would prefer to simply only allow Directory as input parameter and leave specifying the dir impl to the user. Automatically use FSDir.open() is also not the best choose, because then user ask again of java-user (how to specify another impl and so on).\nFor the user it is just a little bit more code and the additional close() call (which can normally left out for standard directories...)",
+            "date": "2009-06-01T14:06:00.042+0000",
+            "id": 1
+        },
+        {
+            "author": "Shai Erera",
+            "body": "Ooops, my fault. I didn't read the subject and description carefully.\n\nYep, sticking w/ Dir ctorsshould definitely simplify things.",
+            "date": "2009-06-01T14:13:24.114+0000",
+            "id": 2
+        },
+        {
+            "author": "Earwin Burrfoot",
+            "body": "Yahoo! I was going to create the same issue :)",
+            "date": "2009-06-01T14:14:45.544+0000",
+            "id": 3
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Here is a first patch, deprecating all usages of File/String to specify a directory. I am not sure, if I hit all, if somebody knows another one, tell it.\n\nThis patch also replaces FSDirectory.getDirectory() by FSDirectory.open() for all non-deprecated methods. The deprecated IndexReader/IndexWriter and so on methods still use FSDir.getDirectory because they sometimes depend on refCounting (which is wrong). This is a bug related to LUCENE-1453.\n\nI will post a later patch that fixes this by wrapping all IndexReaders instantiated by File/String with a FilterIndexReader that manages the closing of the underlying directory. All closeDirectory/closeDir pass-throughs everywhere can then be removed.\n\nThis also fixes a small bug in IndexModifier to close the directory on close() when dir was given as File/String.\n\nI also removed File/String in the segment file finder (non-public API).",
+            "date": "2009-06-02T13:20:05.871+0000",
+            "id": 4
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Updated patch merged with Mike's last commit.",
+            "date": "2009-06-03T11:51:32.579+0000",
+            "id": 5
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Patch looks good Uwe!  You don't really need to deprecate methods in IndexModifier, since the whole class is deprecated.",
+            "date": "2009-06-03T12:20:32.204+0000",
+            "id": 6
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "With IndexModifier, you are right. I was just adding this closeDir stuff (which is missing here and is a real bug) and deprecated these methods. In the JavaDocs every method is deprecated automatically, so I do not need to do it specifically.\n\nI will later try to solve this problem with the closeDir inside the different IndexReaders (but maybe Earwin has done it already in LUCENE-1651) with a filtered IndexReader returned by the open() methods taking a String/File. I can then revert/remove all these closeDir parameters/members.",
+            "date": "2009-06-03T14:23:29.115+0000",
+            "id": 7
+        },
+        {
+            "author": "Earwin Burrfoot",
+            "body": "bq. I will later try to solve this problem with the closeDir inside the different IndexReaders (but maybe Earwin has done it already in LUCENE-1651)\nMy issue removes closeDir from SegmentReader, as it cannot 'own' a directory anymore. MSR-to-be-DirectoryReader still has this flag.",
+            "date": "2009-06-03T15:00:20.490+0000",
+            "id": 8
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Nice. And DirectoryIR/MSR still have this Flag, but reopening a MSR always returns a MSR again (even if it only consists of one segment)?\nIf this is so, I wait for your issue to be closed and then rework here.\n\nTo test, if the closedir (LUCENE-1453) issue is correctly solved, try to replace FSDir.getDirectory by FSDir.open(). in IndexReader.open() taking File/String. If TestIndexReaderReopen then passes (even with different random seeds, so run test multiple times) always, it is really fixed.",
+            "date": "2009-06-03T15:14:52.578+0000",
+            "id": 9
+        },
+        {
+            "author": "Earwin Burrfoot",
+            "body": "bq. And DirectoryIR/MSR still have this Flag, but reopening a MSR always returns a MSR again (even if it only consists of one segment)?\nExactly.",
+            "date": "2009-06-03T15:55:07.575+0000",
+            "id": 10
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Mike: Thanks for committing LUCENE-1651!\nI will update this patch and commit sometime this evening.\nBefore I do this, I will also check, if now reopen() works correctly when replacing all FSDir.getDir() by FSDir.open().",
+            "date": "2009-06-07T16:55:55.639+0000",
+            "id": 11
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Excellent!",
+            "date": "2009-06-07T17:33:44.860+0000",
+            "id": 12
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Updated patch. I commit shortly and close this issue.",
+            "date": "2009-06-07T21:44:46.394+0000",
+            "id": 13
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Fixed revision 782469.",
+            "date": "2009-06-07T21:57:15.853+0000",
+            "id": 14
+        }
+    ],
+    "component": "",
+    "description": "During investigation of LUCENE-1658, I found out, that even LUCENE-1453 is not completely fixed.\nAs 1658 deprecates all FSDirectory.getDirectory() static factories, we should not use them anymore. As the user is now free to choose the correct directory implementation using direct instantiation or using FSDir.open() he should no longer use all ctors/methods in IndexWriter/IndexReader/IndexSearcher & Co. that simply take path names as String or File and always instantiate the Directory himself.\n\nLUCENE-1453 currently works for the cached directory implementations from FSDir.getDirectory, but not with uncached, non refcounting FSDirs. Sometime reopen() closes the directory (as far as I see, when a SegmentReader changes to a MultiSegmentReader and/or deletes apply). This is hard to track. In Lucene 3.0 we then can remove the whole bunch of closeDirectory parameters/fields in these classes and simply do not care anymore about closing directories.\n\nTo remove this closeDirectory parameter now (before 3.0) and also fix 1453 correctly, an additional idea would be to change these factories that take the File/String to return the IndexReader wrapped by a FilteredIndexReader, that keeps track on closing the underlying directory after close and reopen. This is simplier than passing this boolean between different DirectoryIndexReader instances. The small performance impact by wrapping with FilterIndexReader should not be so bad, because the method is deprecated and we can state, that it is better to user the factory method with Directory parameter.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-1672",
+    "issuetypeClassified": "OTHER",
+    "issuetypeTracker": "OTHER",
+    "priority": "Major",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "Deprecate all String/File ctors/opens in IndexReader/IndexWriter/IndexSearcher",
+    "systemSpecification": true,
+    "version": "2.9"
+}

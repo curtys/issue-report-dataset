@@ -1,0 +1,41 @@
+{
+    "comments": [
+        {
+            "author": "Yonik Seeley",
+            "body": "1.9 is the earliest \"affects\" version we have in JIRA, but this underflow detection issue goes all the way back to the original floatToByte code added in v1.3\n\nThe problem is that the code only checked for underflow by checking the exponent:\n{code}\n    if (exponent < 0) {                           // underflow: use min value\n      exponent = 0;\n      mantissa = 1;\n    }\n{code}\n\nBut it's also underflow if the exponent is 0 and the mantissa bits are also 0.\nSo for the old code, this should be:\n\n{code}\n    if (exponent < 0 || exponent == 0 && mantissa == 0) {  // underflow: use min value\n      exponent = 0;\n      mantissa = 1;\n    }\n{code}\n\nNow the trick is to find the most efficient way to make an equivalent fix SmallFloat",
+            "date": "2011-02-23T16:40:49.548+0000",
+            "id": 0
+        },
+        {
+            "author": "Yonik Seeley",
+            "body": "Here's a patch - the fix to SmallFloat turned out easier than I thought, and since we are working with the exponent and mantissa together, doesn't slow down the code at all (the less-than is just changed to a less-than-or-equals).\n\nI also re-ran TestSmallFloat.testAllFloats() to both verify that SmallFloat matches the original floatToByte after that was also fixed, and verified that no positive float maps to byte #0",
+            "date": "2011-02-23T17:17:43.739+0000",
+            "id": 1
+        },
+        {
+            "author": "Robert Muir",
+            "body": "Thanks Yonik. I tested the patch, this solves the issues i have been seeing with my silly tests (they are not very interesting, just weaker versions of TestAllFloats looking for f>0 && b==0)\n",
+            "date": "2011-02-23T17:34:06.740+0000",
+            "id": 2
+        },
+        {
+            "author": "Grant Ingersoll",
+            "body": "Bulk close for 3.1",
+            "date": "2011-03-30T15:50:15.071+0000",
+            "id": 3
+        }
+    ],
+    "component": "",
+    "description": "Underflow detection in small floats has a bug, and can incorrectly result in a byte value of 0 for a non-zero float.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-2937",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Minor",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "small float underflow detection bug",
+    "systemSpecification": true,
+    "version": "1.9"
+}

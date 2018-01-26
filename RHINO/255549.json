@@ -1,0 +1,47 @@
+{
+    "comments": [
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 156055\nFix: proper ambiguity resolution\n\nThe reason for the bug is that NativeJavaMethod.findFunction tested the method\napplicability only if the search loop did not see any ambiguity yet. After that\nit would check methods only against ambiguity. Thus if JVM returns for X.Other\nclasses:\n\ntest(String[],String[],String)\ntest(String,String,String)\n\nthen code will reject the first as inapplicable and choose the second case. If\nthe order would be\n\ntest(String,String,String)\ntest(String[],String[],String)\n\nthen code will picks up first method as applicable and then see ambiguity when\ncalling second and report error.\n\nThe patch fixes that and changes loop to track all currently best fitted\nmethods instead of doing a separated search after.",
+            "date": "20040813T18:28:44",
+            "id": 0
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 156056\nFix for the last fix\n\nThe previous patch contained broken counting of unprefered methods:\n   --worseCounr;\n\nThat should be \n    ++worseCount;",
+            "date": "20040813T18:41:38",
+            "id": 1
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "I committed the fix.",
+            "date": "20040813T19:32:04",
+            "id": 2
+        },
+        {
+            "author": "merten.schumann@asg.com",
+            "body": "Many thanx for investigating/fixing this issue, Igor!!! :-)\nWill try it with next Rhino release ...\n   Merten",
+            "date": "20040816T08:05:02",
+            "id": 3
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Marking as verified since Merten Schumann confirmed that fix resolved original\nproblem.",
+            "date": "20040817T10:05:55",
+            "id": 4
+        }
+    ],
+    "component": "Core",
+    "description": "As of 2004-08-13 when calling overloaded Java methods Rhino does not implement\nproper ambiguity resolution as specified by LC3 specs, \nhttp://www.mozilla.org/js/liveconnect/lc3_method_overloading.html . \n\nConsider the following Java class which is based on example provided by Merten\nSchumann:\n\npublic class X\n{\n\tpublic static class Order1\n\t{\n\t\tpublic static int test(String[] array1, String[] array2, String s)\n\t\t{\n\t\t\treturn 1;\n\t\t}\n\n\t\tpublic static int test(String s1, String s2, String s)\n\t\t{\n\t\t\treturn 2;\n\t\t}\n\t}\n\n\tpublic static class Order2\n\t{\n\t\tpublic static int test(String s1, String s2, String s)\n\t\t{\n\t\t\treturn 2;\n\t\t}\n\n\t\tpublic static int test(String[] array1, String[] array2, String s)\n\t\t{\n\t\t\treturn 1;\n\t\t}\n\n\t}\n\n}\n\nAccording to LC3 the following calls\n\nPackages.X.Order1.test(\"x\", null, null)\nPackages.X.Order2.test(\"x\", null, null)\n\nshould call test(String, String, String) of X.Order1 or X.Order2 correspondingly\nsince test(String[], String[], String) is not applicable. But depending on\ncompiler and JVM in Rhino either the first line or the second line produces:\n\njs: \"test.js\", line 1: The choice of Java constructor test matching JavaScript\nargument types (string,null,null) is ambiguous; candidate constructors are: int\ntest(java.lang.String[],java.lang.String[],java.lang.String), int\ntest(java.lang.String,java.lang.String,java.lang.String)",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "255549",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "-- normal",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "JVM-dependent resolution of ambiguity when calling Java methods",
+    "systemSpecification": false,
+    "version": "head"
+}

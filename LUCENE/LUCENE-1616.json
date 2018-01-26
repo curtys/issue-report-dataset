@@ -1,0 +1,149 @@
+{
+    "comments": [
+        {
+            "author": "Michael McCandless",
+            "body": "Should we deprecate the separate setters with this addition?",
+            "date": "2009-04-27T09:16:16.975+0000",
+            "id": 0
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Not really, the attributes API was added for 2.9, so it did not appear until now in official releases, it could be just removed.",
+            "date": "2009-04-27T09:26:58.577+0000",
+            "id": 1
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Oh yeah :)  Good!  I'm losing track of what's not yet released...\n\nEks, can you update the patch with that?  Thanks.",
+            "date": "2009-04-27T09:35:33.460+0000",
+            "id": 2
+        },
+        {
+            "author": "Earwin Burrfoot",
+            "body": "Separate setters might have their own use? I believe I had a pair of filters that set begin and end offset in different parts of the code.",
+            "date": "2009-04-27T10:34:42.326+0000",
+            "id": 3
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "But surely that's a very rare case (the exception, not the rule).  Ie nearly always, one sets start & end offset together?",
+            "date": "2009-04-27T11:05:42.903+0000",
+            "id": 4
+        },
+        {
+            "author": "Earwin Burrfoot",
+            "body": "I have two cases.\nIn one case I can't access the start offset by the time I set end offset, and therefore have to introduce a field on the filter for keeping track of it (or use the next case's solution twice), if separate setters are removed.\nIn other case I only need to adjust end offset, so I'll have to do attr.setOffset(attr.getStartOffset(), newEndOffset).\nNothing deadly, but I don't see the point of removing methods that might be useful and don't interfere with anything.",
+            "date": "2009-04-27T11:16:54.376+0000",
+            "id": 5
+        },
+        {
+            "author": "Eks Dev",
+            "body": "I am ok with both options, removing separate looks a bit better for me as it forces users to think \"attomic\" about offset <=> {start, end}. \n\nIf you separate start and end offset too far in your code, probability that you do not see mistake somewhere is higher compared to the case where you manage start and end on your own in these cases (this is then rather \"explicit\" in you code)... \n\nBut that is all really something we should not think too much about it :) We make no mistakes eather way\n \nI can provide new patch, if needed. ",
+            "date": "2009-04-27T11:49:03.512+0000",
+            "id": 6
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "bq. removing separate looks a bit better for me as it forces users to think \"attomic\" about offset <=> {start, end}.\n\nThis is my thinking as well.\n\nAnd in general I prefer one clear way to do something (the Python way) instead providing various different ways to do the same thing (the Perl way).",
+            "date": "2009-04-27T14:33:10.606+0000",
+            "id": 7
+        },
+        {
+            "author": "Earwin Burrfoot",
+            "body": "bq. removing separate looks a bit better for me as it forces users to think \"attomic\" about offset <=> {start, end}.\nAnd if it's not atomic by design?\n\nbq. If you separate start and end offset too far in your code, probability that you do not see mistake somewhere is higher compared to the case where you manage start and end on your own in these cases (this is then rather \"explicit\" in you code)...\nInstead of having one field for Term, which you build incrementally, you now have to keep another field for startOffset. Imho, that's starting to cross into another meaning of 'explicit' :)\nAnd while you're trying to prevent bugs of using setStartOffset and forgetting about its 'End' counterpart, you introduce another set of bugs - overwriting one end of interval, when you only need to update another.\n\nbq. And in general I prefer one clear way to do something\nAnd force everyone who has slightly different use-case to jump through the hoops. Span*Query api is a perfect example.\n\nWell, whatever.",
+            "date": "2009-04-27T15:05:40.303+0000",
+            "id": 8
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "bq. And force everyone who has slightly different use-case to jump through the hoops.\n\n\"Simple things should be simple and complex things should be possible\" is a strong guide when I'm thinking about APIs, configuration, etc.\n\nMy feeling here is for the vast majority of the cases, people set start & end offset together, so we should shift to the API that makes that easy.  This is the \"simple\" case.\n\nFor the remaining minority (your interesting use case), you can still do what you need but yes there are some hoops to go through.  This is the \"complex\" case.\n\nbq. Span*Query api is a perfect example.\n\nCan you describe the limitations here in more detail?",
+            "date": "2009-04-27T15:53:25.478+0000",
+            "id": 9
+        },
+        {
+            "author": "Eks Dev",
+            "body": "the same as the first patch, just with removed setStart/EndOffset(int) ",
+            "date": "2009-04-27T17:24:17.025+0000",
+            "id": 10
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Thanks Eks.  You also need to fix all the places that call the old methods (things don't compile w/ the new patch).",
+            "date": "2009-04-27T17:33:13.588+0000",
+            "id": 11
+        },
+        {
+            "author": "Eks Dev",
+            "body": "whoops, this time it compiles :)",
+            "date": "2009-04-27T17:36:17.670+0000",
+            "id": 12
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "I still get compilation errors:\n{code}\n    [mkdir] Created dir: /lucene/src/lucene.offsets/build/classes/java\n    [javac] Compiling 372 source files to /lucene/src/lucene.offsets/build/classes/java\n    [javac] /lucene/src/lucene.offsets/src/java/org/apache/lucene/analysis/KeywordTokenizer.java:62: cannot find symbol\n    [javac] symbol  : method setStartOffset(int)\n    [javac] location: class org.apache.lucene.analysis.tokenattributes.OffsetAttribute\n    [javac]       offsetAtt.setStartOffset(0);\n    [javac]                ^\n    [javac] /lucene/src/lucene.offsets/src/java/org/apache/lucene/analysis/KeywordTokenizer.java:63: cannot find symbol\n    [javac] symbol  : method setEndOffset(int)\n    [javac] location: class org.apache.lucene.analysis.tokenattributes.OffsetAttribute\n    [javac]       offsetAtt.setEndOffset(upto);\n    [javac]                ^\n    [javac] /lucene/src/lucene.offsets/src/java/org/apache/lucene/analysis/standard/StandardTokenizer.java:164: cannot find symbol\n    [javac] symbol  : method setStartOffset(int)\n    [javac] location: class org.apache.lucene.analysis.tokenattributes.OffsetAttribute\n    [javac]         offsetAtt.setStartOffset(start);\n    [javac]                  ^\n    [javac] /lucene/src/lucene.offsets/src/java/org/apache/lucene/analysis/standard/StandardTokenizer.java:165: cannot find symbol\n    [javac] symbol  : method setEndOffset(int)\n    [javac] location: class org.apache.lucene.analysis.tokenattributes.OffsetAttribute\n    [javac]         offsetAtt.setEndOffset(start+termAtt.termLength());\n    [javac]                  ^\n    [javac] /lucene/src/lucene.offsets/src/java/org/apache/lucene/index/DocInverterPerThread.java:56: cannot find symbol\n    [javac] symbol  : method setStartOffset(int)\n    [javac] location: class org.apache.lucene.analysis.tokenattributes.OffsetAttribute\n    [javac]       offsetAttribute.setStartOffset(startOffset);\n    [javac]                      ^\n    [javac] /lucene/src/lucene.offsets/src/java/org/apache/lucene/index/DocInverterPerThread.java:57: cannot find symbol\n    [javac] symbol  : method setEndOffset(int)\n    [javac] location: class org.apache.lucene.analysis.tokenattributes.OffsetAttribute\n    [javac]       offsetAttribute.setEndOffset(endOffset);\n    [javac]                      ^\n    [javac] Note: Some input files use or override a deprecated API.\n    [javac] Note: Recompile with -Xlint:deprecation for details.\n    [javac] 6 errors\n{code}",
+            "date": "2009-04-27T18:02:32.294+0000",
+            "id": 13
+        },
+        {
+            "author": "Eks Dev",
+            "body": "me too, sorry! \nEclipse left me blind for some funny reason\nwaiting for test to complete before I commit again ... ",
+            "date": "2009-04-27T18:08:41.223+0000",
+            "id": 14
+        },
+        {
+            "author": "Earwin Burrfoot",
+            "body": "bq. > Span*Query api is a perfect example.\nbq. Can you describe the limitations here in more detail?\nTake a look at SpanNearQuery and SpanOrQuery.\n\n1. They don't provide incremental construction (i.e. add() method, like in BooleanQuery), and they can be built only from an array of subqueries. So, if you don't know exact amount of subqueries upfront, you're busted. You have to use ArrayList, which you convert to array to feed into SpanQuery, which is converted back to ArrayList inside!!\n2. They can't be edited. If you have a need to iterate over your query tree and modify it in one way or another, you need to create brand new instances of Span*Query. And here you hit #1 again, hard.\n3. They can't be even inspected without creating a new array from the backing list (see getClauses).\n\nI use patched versions of SpanNear/OrQueries, which still use backing ArrayList, but accept it in constructor, have utility 'add' method and getClauses() returns this very list, which allows for zero-cost inspection and easy modification if the need arises.",
+            "date": "2009-04-27T18:48:45.327+0000",
+            "id": 15
+        },
+        {
+            "author": "Eks Dev",
+            "body": "ok, maybe this time it will work, I hope I managed to clean it up (core build and test pass). \n\nThe only thing that fails is contrib, but I guess this has nothing to do with it? \n\n\n[javac] D:\\Repository\\SerachAndMatch\\Lucene\\lucene\\java\\trunk\\contrib\\highlighter\\src\\java\\org\\apache\\lucene\\search\\highlight\\WeightedSpanTermExtractor.java:306: cannot find symbol\n    [javac]       MemoryIndex indexer = new MemoryIndex();\n    [javac]       ^\n    [javac]   symbol:   class MemoryIndex\n    [javac]   location: class org.apache.lucene.search.highlight.WeightedSpanTermExtractor\n    [javac] D:\\Repository\\SerachAndMatch\\Lucene\\lucene\\java\\trunk\\contrib\\highlighter\\src\\java\\org\\apache\\lucene\\search\\highlight\\WeightedSpanTermExtractor.java:306: cannot find symbol\n    [javac]       MemoryIndex indexer = new MemoryIndex();\n    [javac]                                 ^\n    [javac]   symbol:   class MemoryIndex\n    [javac]   location: class org.apache.lucene.search.highlight.WeightedSpanTermExtractor\n    [javac] Note: Some input files use unchecked or unsafe operations.\n    [javac] Note: Recompile with -Xlint:unchecked for details.\n    [javac] 3 errors",
+            "date": "2009-04-27T19:59:11.470+0000",
+            "id": 16
+        },
+        {
+            "author": "Mark Miller",
+            "body": "bq. The only thing that fails is contrib, but I guess this has nothing to do with it?\n\nlooks like an issue with highlighters dependency on memory index. what target produces the problem? We have seen something like it in the past.",
+            "date": "2009-04-27T20:10:07.554+0000",
+            "id": 17
+        },
+        {
+            "author": "Eks Dev",
+            "body": "ant build-contrib ",
+            "date": "2009-04-27T20:13:36.739+0000",
+            "id": 18
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "bq. I use patched versions of SpanNear/OrQueries, which still use backing ArrayList, but accept it in constructor, have utility 'add' method and getClauses() returns this very list, which allows for zero-cost inspection and easy modification if the need arises.\n\nThat sounds useful -- is it something you can share?",
+            "date": "2009-04-27T20:15:24.237+0000",
+            "id": 19
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "OK all tests pass.  I had to fix a few back-compat tests (that were using the new TokenStream API, I think because we created the back-compat branch from trunk after the new TokenStream API landed).\n\nI'll commit in a day or two.  Thanks Eks!",
+            "date": "2009-04-27T21:07:08.060+0000",
+            "id": 20
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Thanks Eks!",
+            "date": "2009-04-28T21:18:15.125+0000",
+            "id": 21
+        }
+    ],
+    "component": "modules/analysis",
+    "description": "add OffsetAttribute. setOffset(startOffset, endOffset);\n\ntrivial change, no JUnit needed\n\nChanged CharTokenizer to use it",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-1616",
+    "issuetypeClassified": "REFACTORING",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Trivial",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "add one setter for start and end offset to OffsetAttribute",
+    "systemSpecification": true,
+    "version": ""
+}

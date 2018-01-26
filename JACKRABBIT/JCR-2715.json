@@ -1,0 +1,233 @@
+{
+    "comments": [
+        {
+            "author": "Jukka Zitting",
+            "body": "I'm currently working on this, targeting the 2.2 release. The optimization plan I'm following is:\n\n1. Map single-selector queries directly to underlying Lucene queries, like we've so far done for XPath and SQL1\n2. Split join queries into a set of per-selector queries, and combine these partial results into the join result set\n3. When splitting join queries, use the results of the already executed left component query to turn the join condition into an extra constraint for the right component query",
+            "date": "2010-09-01T14:01:40.645+0000",
+            "id": 0
+        },
+        {
+            "author": "Serge Huber",
+            "body": "We are seeing this issue also, so we would be very interested in the work you are doing. Is there anything already available to test ?\n\nRegards,\n  Serge Huber.",
+            "date": "2010-10-13T10:02:35.421+0000",
+            "id": 1
+        },
+        {
+            "author": "Serge Huber",
+            "body": "If I understand this ticket properly, this doesn't only happen for join queries but for all SQL-2 queries no ?\n\nIn the first solution, do you mean you intend to map the single selector queries along with using BooleanQuery objects to map constraints directly to the underlying Lucene query ?\n\nAnyway, I'd be willing to help anyway possible as this is become the biggest performance issue we are seeing in testing Jackrabbit with non-trivial data sets and loads.\n\nRegards,\n  Serge Huber.",
+            "date": "2010-10-15T13:09:33.764+0000",
+            "id": 2
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Sorry about the delay on this, and thanks for the offer to help in testing! I'll start pushing my changes to svn now.",
+            "date": "2010-10-18T09:34:12.778+0000",
+            "id": 3
+        },
+        {
+            "author": "Serge Huber",
+            "body": "Thank you for your reply, I will pull the changes from SVN, test it and give you feedback. \n\nI am using another unit test that does a lot of concurrent read, writes and searches. Maybe this is something I could contribute but it is not yet generic to Jackrabbit and currently has dependencies t our product. Basically we are testing with larger loads than the currently available tests do.\n\nRegards,\n  Serge Huber.",
+            "date": "2010-10-18T12:51:51.527+0000",
+            "id": 4
+        },
+        {
+            "author": "Serge Huber",
+            "body": "Hello Jukka, \n\nI see you have been committing quite a lot of changes yesterday. Thank you very much ! I have been looking at the changes. Do you still have more to commit ? I have some trouble understanding how it works currently, as there seems to be no references to the QueryEngine in the code. I'm assuming you haven't \"glued\" it together yet, is that correct or that you will commit this soon ? Did I miss something ? \n\nBest regards, \n  Serge Huber.",
+            "date": "2010-10-19T07:30:20.613+0000",
+            "id": 5
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Yes, I'm still working on fixing some remaining issues before I plug the new implementation in as the QueryObjectModelImpl.execute() method. I also have some pending work on tighter integrating the new join query code with the underlying Lucene index so we can avoid the extra layer of SQL1 queries that the implementation now uses.\n\nFor now it's possible to use this implementation by directly instantiating the QueryEngine class like this:\n\n    QueryObjectModel qom = ...;\n    QueryResult result  = new QueryEngine(session).execute(\n            qom.getColumns(), qom.getSource(),\n            qom.getConstraint(), qom.getOrderings());\n",
+            "date": "2010-10-19T07:55:08.030+0000",
+            "id": 6
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "As of revision 1024283 the new join implementation has been hooked up for handling inner equi-joins. Support for other join types still requires more work, and I still need to add the tighter Lucene integration.",
+            "date": "2010-10-19T15:44:49.328+0000",
+            "id": 7
+        },
+        {
+            "author": "Serge Huber",
+            "body": "Thanks for all the work ! I've tested the QueryEngine and results do indeed seem to be faster, although I had an issue I'm not sure is due to my code regarding reading results twice.\n\nAlso, concerning limits, do they currently work with sorting ? If I limit to 100 results, will it be the sorted 100 first results ? Or is sorting done after limiting ?\n\nLet me know how I can help,\nBest regards,\n  Serge Huber.",
+            "date": "2010-10-20T06:50:03.854+0000",
+            "id": 8
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Good point about the limits! The current code applies limits before sorting, which is obviously wrong. I'll fix that.",
+            "date": "2010-10-20T14:02:36.022+0000",
+            "id": 9
+        },
+        {
+            "author": "Serge Huber",
+            "body": "Hi Jukka, \n\nI just tested the latest commits, and it's looking quite good. I only saw 2 tests that don't seem to work yet, but I'm assuming you're already aware of this ? \n\nEquiJoinConditionTest\n\n\ttestInnerJoin1(org.apache.jackrabbit.test.api.query.qom.EquiJoinConditionTest)\t0.692\n\ttestInnerJoin2(org.apache.jackrabbit.test.api.query.qom.EquiJoinConditionTest)\t0.608\n\ttestRightOuterJoin1(org.apache.jackrabbit.test.api.query.qom.EquiJoinConditionTest) + [ Detail ]\t0.138\n|/testroot/node1| is not part of the result set\t\n\ttestRightOuterJoin2(org.apache.jackrabbit.test.api.query.qom.EquiJoinConditionTest)\t0.09\n\ttestLeftOuterJoin1(org.apache.jackrabbit.test.api.query.qom.EquiJoinConditionTest)\t0.103\n\ttestLeftOuterJoin2(org.apache.jackrabbit.test.api.query.qom.EquiJoinConditionTest) + [ Detail ]\t0.071\n/testroot/node1|| is not part of the result set\t\n\nBest regards,\n  Serge Huber.",
+            "date": "2010-10-22T13:07:25.425+0000",
+            "id": 10
+        },
+        {
+            "author": "Serge Huber",
+            "body": "Hello Jukka,\n\nI was going over some performance tests, and I was wondering if the new code could be used for general SQL-2 queries ? I noticed that in the QueryObjectModelImpl we have the following check in the execute method: \n\n            if (JCR_JOIN_TYPE_INNER.equals(join.getJoinType())\n                    && join.getJoinCondition() instanceof EquiJoinCondition) {\n\nBut in the execution of the query engine we seem to be able to handle non-join cases in an optimized way that delegates back to the SQL-1 implementation.\n\nBecause it seems that in the case of simple queries like SELECT * FROM [nt:base] where CONDITION we are still going through non-optimized code that checks the constraints after loading all the results from Lucene.\n\nBest regards,\n  Serge Huber.",
+            "date": "2010-11-18T14:33:35.913+0000",
+            "id": 11
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "There are still a few failing TCK tests with the new SQL2 query engine. I'll remove the extra condition from the code once I've fixed all those tests.",
+            "date": "2010-11-24T15:54:09.895+0000",
+            "id": 12
+        },
+        {
+            "author": "Serge Huber",
+            "body": "Ok nice to know. Do you think this can be done for 2.2.0 ?\n\nBest regards,\n  Serge Huber.",
+            "date": "2010-11-24T16:02:57.638+0000",
+            "id": 13
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Yes, I'm still targeting 2.2.0 for having this fully resolved.",
+            "date": "2010-11-24T16:07:08.123+0000",
+            "id": 14
+        },
+        {
+            "author": "Serge Huber",
+            "body": "Great ! Thanks a lot. I'll be away in the next few days but I'll test it as soon as possible.",
+            "date": "2010-11-24T16:08:53.022+0000",
+            "id": 15
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "I fixed the last TCK test failures in revision 1039888 and enabled the new implementation for all QOM and SQL2 queries. There's still some minor cleanup, documentation and testing to be done, but overall the implementation should now be ready for release.",
+            "date": "2010-11-28T15:07:13.969+0000",
+            "id": 16
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "See the attached graphs for the achieved performance improvements. That's two orders of magnitude (from 1341ms to 10ms) for a two-way join, and almost as much (from 1851ms to 90ms) for a three-way join.",
+            "date": "2010-11-30T10:11:59.649+0000",
+            "id": 17
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Resolving as fixed.",
+            "date": "2010-11-30T10:12:39.739+0000",
+            "id": 18
+        },
+        {
+            "author": "Serge Huber",
+            "body": "Great improvements, thanks a lot. Did you also test simple (non join) SQL-2 performance as you also improved this part ? I wanted to run these tests but as I am traveling I probably won't be able to do so until next week.\n\nBest Regards,\n  Serge Huber\n\n",
+            "date": "2010-11-30T10:20:33.741+0000",
+            "id": 19
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Yes, also non-join SQL2 query performance is now significantly better. The attached SQL2SearchTest graph shows the performance of a simple non-join SQL2 query that selects 100 nodes out of a set of 10k nodes using a simple property constraint. The performance improvement is pretty impressive, from 9740ms to 189ms per 100 queries.",
+            "date": "2010-11-30T10:47:27.971+0000",
+            "id": 20
+        },
+        {
+            "author": "Serge Huber",
+            "body": "Very impressive indeed ! Thanks for answering so fast :)\n\nBest Regards,\n  Serge Huber",
+            "date": "2010-11-30T11:18:41.780+0000",
+            "id": 21
+        },
+        {
+            "author": "Clemens Wyss",
+            "body": "I see big improvements too :-) thanks!\n\nBUT I have some real world examples where a simple sql2 queries perform very bad compared to their sql1 pendants. The query .\n\nSQL1:\nselect * from project order by jcr:score\nreturns 1'126 nodes and takes 84ms :-)\n\nSQL2:\nselect * from [project] order by [jcr:score]\nreturns 1'126 nodes and takes 600ms , absolutely seen still ok, but compared to the sql1 execution time\n\nSQL1: \nselect * from task order by jcr:score\nreturns 76'281 nodes/rows and takes ~1.5s :-)\n\nSQL2:\nselect * from [task] order by [jcr:score]\nreturns 76'281 nodes/rows and takes, fasten your seat belt, ~95s (!) :-(\n\nMy test where performed with the latest-greatest JR sources (2.3 SNAPSHOT)",
+            "date": "2010-11-30T14:58:17.261+0000",
+            "id": 22
+        },
+        {
+            "author": "Serge Huber",
+            "body": "Hello Clement,\n\nThank you for the feedback. Could you provide more information about your tests ? Maybe there is something that can be put into a unit test so that performance analysis is easier to reproduce ? Or at the minimum the CND ? \n\nBest Regards,\n  Serge Huber",
+            "date": "2010-11-30T15:15:06.892+0000",
+            "id": 23
+        },
+        {
+            "author": "Clemens Wyss",
+            "body": "As I have no special node types (cnd)\n\n...\n[project] > nt:unstructured, mix:shareable\n[task] > nt:unstructured, mix:shareable\n...\n\nmy guess is that it has to do with the \"amount of nodes\" being returned/looked up...",
+            "date": "2010-11-30T15:23:42.374+0000",
+            "id": 24
+        },
+        {
+            "author": "Serge Huber",
+            "body": "Ok thanks. \n\nIt is plausible that the number of results if affecting performance because from previous traces I saw that some constraints seemed to be evaluated on the results. But I didn't get around to testing the latest code yet. Would it be possible for your to capture some snapshots with Yourkit or an equivalent ?\n\nBest regards,\n  Serge Huber",
+            "date": "2010-11-30T15:31:39.404+0000",
+            "id": 25
+        },
+        {
+            "author": "Clemens Wyss",
+            "body": "jRat output. Hope this helps...?",
+            "date": "2010-11-30T16:24:03.684+0000",
+            "id": 26
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Did you measure just the query.execute() time or also the time it takes to iterate over the results? The SQL2/QOM implementation loads all matching rows into memory during the execute() call, so you'll see an expensive query.execute() but can then very quickly iterate over the query results.",
+            "date": "2010-11-30T16:46:46.245+0000",
+            "id": 27
+        },
+        {
+            "author": "Clemens Wyss",
+            "body": "just the query.execute() time...",
+            "date": "2010-11-30T16:50:41.089+0000",
+            "id": 28
+        },
+        {
+            "author": "Serge Huber",
+            "body": "Thanks Clemens for the JRat data.\n\nFrom looking at it seems that the sorting of the results is taking up the most time, so I wonder how the sorting is done in the case of the SQL-1 implementation ?\n\nJukka, is there a reason why we load all the data in the SQL-2/QOM implementations at query execution time ?\n\nBest regards,\n  Serge... ",
+            "date": "2010-12-05T15:18:37.834+0000",
+            "id": 29
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "> Jukka, is there a reason why we load all the data in the SQL-2/QOM implementations at query execution time?\n\nThe SQL2/JQOM code needs to take joins and some new constraint types into account, which makes it easiest to simply load the full result set into memory during execute(). In practice this only causes problems when your query matches lots of rows but you're only interested in some of them (see JCR-2830).\n",
+            "date": "2010-12-05T19:10:19.817+0000",
+            "id": 30
+        },
+        {
+            "author": "Serge Huber",
+            "body": "Hello Jukka, \n\nThanks for clarifying this. But it seems to me that a lot of developers will generate such queries. I'll continue on the other ticket anyway, so that we can close this one.\n\nBest regards,\n  Serge Huber.",
+            "date": "2010-12-06T07:27:06.678+0000",
+            "id": 31
+        },
+        {
+            "author": "Manfred Sattler",
+            "body": "Hello\n\ni have attached a script.\n\nThe execution gives different results in the new implemention and the old one(before 2.2).\nAlso some annotiations:\nWith large Nodeset in the left Side of left outer join the executiontime is very big. (Minutes)\n\nThis query is not possible:\nSelect * from [sling:SamplePage] as c left outer join [sling:SampleContent] as a on ISDESCENDANTNODE(a,c) where contains(c.key1,'value1') or contains(a.key1,'value1')\nI think this is a correct query and in the old implementation it works.\n\nI have also attached an hacked SQL2-Code from 2.1.\n\nThis implementation is very fast and gives the same Results as before 2.2.\nYou can dropin this in 2.3-Source tree and it works\n ",
+            "date": "2011-01-22T13:06:04.479+0000",
+            "id": 32
+        },
+        {
+            "author": "Manfred Sattler",
+            "body": "The groovy script  runs in Sling\n\nthe expected output\n\nOutput(2.2)\n(contact1)|(activity1)|\n\nOutput(2.3)\n(contact1)|activity1)|\n(contact2)||\n(contact3)||\n\n",
+            "date": "2011-01-22T13:33:33.192+0000",
+            "id": 33
+        },
+        {
+            "author": "Manfred Sattler",
+            "body": "Testing joins in jackrabbit 2.1 and 2.3",
+            "date": "2011-01-22T13:35:19.255+0000",
+            "id": 34
+        },
+        {
+            "author": "Manfred Sattler",
+            "body": "Hacked SQL2-Code from Jackrabbit 2.1\ncan be used in 2.3.\n\nPerformance improvend",
+            "date": "2011-01-22T13:38:18.783+0000",
+            "id": 35
+        }
+    ],
+    "component": "jackrabbit-core, query",
+    "description": "Our current implementation of SQL2 join queries does not perform very well on pretty much any non-trivial data set.",
+    "hasPatch": false,
+    "hasScreenshot": true,
+    "id": "JCR-2715",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Major",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "Improved join query performance",
+    "systemSpecification": true,
+    "version": ""
+}

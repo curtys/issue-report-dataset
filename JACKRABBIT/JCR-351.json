@@ -1,0 +1,47 @@
+{
+    "comments": [
+        {
+            "author": "Stefan Guggisberg",
+            "body": "the JAAS configuration is not required. the automatic configuration should default to:\n\n        <LoginModule class=\"org.apache.jackrabbit.core.security.SimpleLoginModule\"/>\n\nSimpleLoginModule used with SimpleAccessManager provides full read/write access\nfor arbitrary credentials, out of the box. \n",
+            "date": "2006-03-13T22:03:42.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "The problem with SimpleLoginModule (and in fact any AccessManager that would want to provide some default access level) is that it only works if the user has provided a Credentials instance to the Session.login() method. If you use empty Session.login() signature, that would be the reasonable default for cases where you have not specified any explicit user accounts, RepositoryImpl.login() will throw an LoginException saying \"No Subject associated with AccessControlContext\".\n\nThis example class:\n\n    import javax.jcr.*;\n    import org.apache.jackrabbit.core.TransientRepository;\n    public class Example {\n        public static void main(String[] args) {\n            try {\n                Repository repository = new TransientRepository();\n                Session session = repository.login();\n                session.logout();\n            } catch (Exception e) {\n                e.printStackTrace();\n            }\n        }\n    }\n\nwill output:\n\n    javax.jcr.LoginException: No Subject associated with AccessControlContext\n            at org.apache.jackrabbit.core.RepositoryImpl.login(RepositoryImpl.java:1064)\n            at org.apache.jackrabbit.core.TransientRepository.login(TransientRepository.java:319)\n            at org.apache.jackrabbit.core.TransientRepository.login(TransientRepository.java:371)\n            at Example.main(Example.java:7)\n\nWhen run without JAAS configuration.\n",
+            "date": "2006-03-13T22:20:24.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Stefan Guggisberg",
+            "body": "ok, i agree.\n\n> We could even have this behaviour disabled by default, but enabled in the configuration file \n> used with the JCR-348 automatic configuration. \n\n+1\n\nstefan",
+            "date": "2006-03-13T22:51:05.000+0000",
+            "id": 2
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Attached a patch that fixes this issue by defaulting to anonymous access when no credentials are given in Session.login() and JAAS is not configured. I also added a defaultUserId configuration option to SimpleLoginModule that allows null credentials to be mapped to some other user than anonymous.\n\nThe patch contains the following changes:\n\n   * RepositoryImpl: Pass null Credentials to a LoginModule for interpretation rather than directly throwing an exception when a JAAS Subject is not available.\n   * SimpleLoginModule: Default to anonymous access when null Credentials are given. Added (disabled by default) a defaultUserId property  for using some other user than anonymous by default.\n   * repository.xml: Added a note about the new defaultUserId property and a commented out example on how to use it.\n\nThe only impact on existing environments is that null Credentials will now be passed to configured LoginModules with CredentialsCallback.setCallback(null) instead of explicitly throwing a LoginException when a JAAS Subject is not available.\n\nI'd like to have this issue as well included in 1.0, as it considerably helps to simplify initial setup. Please comment if you see any problems with this approach or think that the change is too risky for inclusion in 1.0.",
+            "date": "2006-03-15T15:21:45.000+0000",
+            "id": 3
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Patch committed in revision 386415. Merged in the 1.0 branch in revision 386416.",
+            "date": "2006-03-17T02:57:08.000+0000",
+            "id": 4
+        }
+    ],
+    "component": "security",
+    "description": "Even though JCR-348 made easier to start a Jackrabbit repository with default configuration, the user still needs to take care of the JAAS configuration. It would be more user-friendly to log a warning and default to superuser access rather than throwing a LoginException when JAAS has not been configured. This behaviour should be limited to only default credential logins (Session.login() with null Credentials) and it should be possible to disable it with a configuration option. We could even have this behaviour disabled by default, but enabled in the configuration file used with the JCR-348 automatic configuration.\n\nThis is a case against the \"secure by default\" design principle, but I think that in this case the benefits in easier setup outweight the security drawbacks, especially if coupled with the above restrictions and a clear documentation note about the insecure default.\n\n[Update: As mentioned by Stefan, this is  not a JAAS configuration issue but a problem in handling null Credentials. A more proper alternative for superuser access would be to default to anonymous access when credentials are not given.]",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "JCR-351",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Minor",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "Default to anonymous access when no Credentials are given",
+    "systemSpecification": false,
+    "version": "0.9"
+}

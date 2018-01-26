@@ -1,0 +1,95 @@
+{
+    "comments": [
+        {
+            "author": "Uwe Schindler",
+            "body": "This only affects Lucene 4.0, as 3.x has no DocValues. The PKIndexSplitter per-segment variant could be backported to 3.x, but the MultiPassIndexSplitter working on absolute doc-Ids cannot handle that as AtomicReaderContext containing the docBase is not available in 3.x.",
+            "date": "2011-12-07T17:20:01.405+0000",
+            "id": 0
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Correction: It could work, but it does not rectify the complexity.",
+            "date": "2011-12-07T17:21:20.079+0000",
+            "id": 1
+        },
+        {
+            "author": "Robert Muir",
+            "body": "this issue is *not* broken by LUCENE-3624.\n\nPrior to LUCENE-3624, you just got a NullPointerException instead of a UnsupportedOperationException!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n",
+            "date": "2011-12-07T20:49:12.830+0000",
+            "id": 2
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Instead of complaining help to fix it. There was no better relation for it.",
+            "date": "2011-12-07T20:54:17.417+0000",
+            "id": 3
+        },
+        {
+            "author": "Robert Muir",
+            "body": "I'm not complaining, but you marked my issue as breaking this functionality? thats insanity!\n\nLets revisit the situation:\n* As of yesterday, if you used one of these tools, *all* docvalues fields were *silently dropped* and merge succeeded (data loss)\n* I fixed this in LUCENE-3623, but in testing exposed the fact that with the data loss fixed, if you had a sortedsource, you would get a non-obvious NullPointerException deep in the docvalues codec stack.\n* Because of this LUCENE-3624 changes the NullPointerException to UnsupportedOperationException so that its clear that this isn't working, and why.\n",
+            "date": "2011-12-07T21:01:42.938+0000",
+            "id": 4
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Change the relations if you like and find better ones, I am out of this issue now - unassigned myself and I will unassign from other Lucene issues now because of this stupidness. Goodbye.",
+            "date": "2011-12-07T21:05:53.540+0000",
+            "id": 5
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Shouldn't we just fix MultiDV to \"handle\" SortedSource?  Ie, merge the terms & assign ords, across all subs, just like FieldCache does (using MultiTermsEnum) if you ask for DocTermsIndex on a SlowMRWrapper.\n\nIt's OK for this op to be costly -- SlowMRReader advertises this...",
+            "date": "2011-12-08T15:47:08.658+0000",
+            "id": 6
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Mike, I agree with that! +1\n\nStill we might think about making the index splitter work per segment. The PKIndexSpliter already works with a standard Lucene Filter (by default TermRangeFilter), so it could handle the segmentreaders directly.",
+            "date": "2011-12-08T16:57:31.528+0000",
+            "id": 7
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Patch that makes PKIndexSplitter and MultiPassIndexSplitter work per segment.\n\nIt also fixes the stupid MultiReader initialize method which prevents finalness of fields. It also makes MultiReader.starts[]/readerIndex() public to get the doc bases.",
+            "date": "2011-12-10T15:31:49.109+0000",
+            "id": 8
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "New patch for the changes in trunk. It is ready to commit.",
+            "date": "2011-12-10T19:06:42.812+0000",
+            "id": 9
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "This can be backported to 3.6",
+            "date": "2011-12-10T22:06:48.772+0000",
+            "id": 10
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Committed trunk revision: 1212894",
+            "date": "2011-12-10T22:08:03.301+0000",
+            "id": 11
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Committed 3.x revision: 1212906",
+            "date": "2011-12-10T22:35:19.792+0000",
+            "id": 12
+        }
+    ],
+    "component": "modules/other",
+    "description": "Spinoff from LUCENE-3624: DocValuesw merger throws exception on IW.addIndexes(SlowMultiReaderWrapper) as string-index like docvalues cannot provide asSortedSource.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-3626",
+    "issuetypeClassified": "RFE",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Major",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "Make PKIndexSplitter and MultiPassIndexSplitter work per segment",
+    "systemSpecification": true,
+    "version": "3.5, 4.0-ALPHA"
+}

@@ -1,0 +1,71 @@
+{
+    "comments": [
+        {
+            "author": "Ortwin Gl\u00fcck",
+            "body": "It works the other way round. The method overwrites whatever is specified on the\nHttpClient level. In your case, just use relative URIs on the method.",
+            "date": "2005-12-22T18:39:29.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Peter,\nAn absolute request URI _always_ overrides the corresponding HostConfiguration\nsettings. If you want to set a virtual host for a given physical one please use\nHostParams\n\nhttp://jakarta.apache.org/commons/httpclient/apidocs/org/apache/commons/httpclient/params/HostParams.html#setVirtualHost(java.lang.String)\n\nHttpClient httpclient = new HttpClient();\nHostConfiguration hostconf = new HostConfiguration();\nhostconf.setHost(\"www.google.com\");\nhostconf.getParams().setVirtualHost(\"www.google.nz\");\n// Must be a relative URL!!!\nGetMethod httpget = new GetMethod(\"/\");\ntry {\n  httpclient.executeMethod(hostconf, httpget);\n  // do stuff\n} finally {\n  httpget.releaseConnection();\n}\n\nOleg",
+            "date": "2005-12-22T18:41:05.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Peter Bryant",
+            "body": "Hi.  Please try the following code.  It would expect it to use .104 IP address\nwhen connecting to the google server.  It does not.  It will instead use\nwww.google.com (and use whatever IP is chosen by your dns server).  \n\nHttpClient httpclient = new HttpClient();\nHostConfiguration hostconf = new HostConfiguration();\nhostconf.setHost(\"66.249.89.104\");\nhostconf.getParams().setVirtualHost(\"www.google.com\");\n// Must be a relative URL!!!\nGetMethod httpget = new GetMethod(\"/\");\ntry {\n  httpclient.executeMethod(hostconf, httpget);\n  // do stuff\n} finally {\n  httpget.releaseConnection();\n}\n\n",
+            "date": "2005-12-22T20:10:29.000+0000",
+            "id": 2
+        },
+        {
+            "author": "Ortwin Gl\u00fcck",
+            "body": "$ nslookup www.google.com\nNon-authoritative answer:\nName:    www.l.google.com\nAddresses:  216.239.59.103, 216.239.59.104, 216.239.59.147, 216.239.59.99\nAliases:  www.google.com\n\nHttpClient correctly connects to the server you specified:\n\n2005/12/22 12:22:32:312 CET [DEBUG] HttpConnection - -Open connection to\n66.249.89.104:80\n",
+            "date": "2005-12-22T20:24:16.000+0000",
+            "id": 3
+        },
+        {
+            "author": "Peter Bryant",
+            "body": "GetMethod(\"/\") in your example produces the behavior I would expect.  Thank you\nfor bringing that to my attention.\n\nSo my workaround would be to parse my uri and convert it to a relative uri.  \n\nGetMethod(\"http://google.com/\") does not work as I expect.  It will ignore the\nHost I set.  This is not desirable.  \n\nI wish the request to go to a particular server.  domains can resolve to a\nnumber of different IPs.  \n\nSo specifying GetMethod(\"http://google.com/\") is not inconsistent with also\nspecifying a specific host to which that request is sent (in my case I'll be\nusing an IP address).\n\nIs there a particular reason you wish to restrict httpclient so it does not\npermit a specific host to override a more general uri domain?\n\nThe following example demonstrates the problem (and reproduces the redirect\nproblem to boot).\n\n            HttpClient httpclient = new HttpClient();\n            HostConfiguration hostconf = new HostConfiguration();\n            // or whatever IP you wish\n            hostconf.setHost(\"127.0.0.1\");\n            hostconf.getParams().setVirtualHost(\"google.com\");\n            // Should not have to be a relative URL!!!\n            GetMethod httpget = new GetMethod(\"http://google.com/\");\n            try {\n              httpclient.executeMethod(hostconf, httpget);\n              System.out.println(httpget.getResponseBodyAsString());\n            } finally {\n              httpget.releaseConnection();\n            }            \n",
+            "date": "2005-12-22T20:44:57.000+0000",
+            "id": 4
+        },
+        {
+            "author": "Ortwin Gl\u00fcck",
+            "body": "See comment #2. Even if you don't like it, the API has been designed to work\ndifferently than what you expect.  A solution for your problem has been provided.\n\n",
+            "date": "2005-12-22T21:11:46.000+0000",
+            "id": 5
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "(In reply to comment #5)\n> GetMethod(\"/\") in your example produces the behavior I would expect.  Thank you\n> for bringing that to my attention.\n> \n> So my workaround would be to parse my uri and convert it to a relative uri.  \n> \n> GetMethod(\"http://google.com/\") does not work as I expect.  It will ignore the\n> Host I set.  This is not desirable.  \n> \n\nThis issue has been beaten to death on the httpclient-dev. The host name\nspecified in the request URI overrides the corresponding settings in the\nHostConfiguration. Period. \n\nI admit the existing API is suboptimal. We are perfectly aware of this fact, but\nwe cannot change the way HttpClient behaves (or misbehaves if you please) for\nthe 3.0 series of releases\n\nOleg",
+            "date": "2005-12-22T21:12:35.000+0000",
+            "id": 6
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "(In reply to comment #5)\n\n>             HttpClient httpclient = new HttpClient();\n>             HostConfiguration hostconf = new HostConfiguration();\n>             // or whatever IP you wish\n>             hostconf.setHost(\"127.0.0.1\");\n...\n>             GetMethod httpget = new GetMethod(\"http://google.com/\");\n>             try {\n>               httpclient.executeMethod(hostconf, httpget);\n>               System.out.println(httpget.getResponseBodyAsString());\n>             } finally {\n>               httpget.releaseConnection();\n>             }            \n> \n\nFolks,\nActually, come to think of it, this does seem to be a better way of handling\nvirtual hosts. Let us revisit this discussion in the course of the 4.0 API redesign\n\nOleg",
+            "date": "2005-12-22T21:49:50.000+0000",
+            "id": 7
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "HttpClient 4.0 API now provides several ways of dealing with virtual hosts:\n(1) by providing a custom protocol interceptor intended to generate the 'Host' request header\n(2) by setting a virtual host parameter in HttpParams \n\nOleg",
+            "date": "2007-05-21T18:38:39.308+0000",
+            "id": 8
+        }
+    ],
+    "component": "HttpClient (classic)",
+    "description": "HttpClient is ignoring an explicity set host.  e.g. if you set the host like\nclient.getHostConfiguration().setHost(\"127.0.0.1\") then execute a method looking\nup say http://google.com then the program will connect to google.com rather than\nthe localhost.\n\nThe fix that works for me:\ndiff -Naur\n../../t2/commons-httpclient/src/java/org/apache/commons/httpclient/HttpClient.java\nsrc/java/org/apache/commons/httpclient/HttpClient.java\n---\n../../t2/commons-httpclient/src/java/org/apache/commons/httpclient/HttpClient.java\n2005-12-22 01:06:54.000000000 +1300\n+++ src/java/org/apache/commons/httpclient/HttpClient.java\t2005-12-22\n19:13:30.000000000 +1300\n@@ -383,7 +383,9 @@\n         if (hostconfig == defaulthostconfig || uri.isAbsoluteURI()) {\n             // make a deep copy of the host defaults\n             hostconfig = new HostConfiguration(hostconfig);\n-            if (uri.isAbsoluteURI()) {\n+\t    // if the host is explicity set already (e.g. to the IP of the virtual host\n+\t    // on which we are executing a method), just leave it\n+            if (uri.isAbsoluteURI()  && hostconfig.getHost()==null) {\n                 hostconfig.setHost(uri);\n             }\n\nNote: Why do we care that the host is specified?  Why not just use the uri\nauthority?  In my case I have a virtual host running on several servers/IPs and\nI need to make sure the request goes through to a specific IP and the response\nthat comes back is for the virtual host I am testing.",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "HTTPCLIENT-541",
+    "issuetypeClassified": "RFE",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Minor",
+    "product": "HTTPCLIENT",
+    "project": "HTTPCLIENT",
+    "summary": "Redesign virtual host API",
+    "systemSpecification": true,
+    "version": ""
+}

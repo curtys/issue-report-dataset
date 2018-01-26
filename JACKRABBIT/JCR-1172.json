@@ -1,0 +1,83 @@
+{
+    "comments": [
+        {
+            "author": "angela",
+            "body": "Is my assumption correct that \"After saving a...\" means that you modify an existing resource and that\nthe mimetype was original (after creating the resource) correct?\n\nin this case the change you propose is:\n\nModify DefaultHandler.java in order not to set the jcr:mimeType property if is already present.\nThe drawback would be, that the mimetype will not be adjusted even if the file node gets replaced by a file\nwith a different mimetype. For that - maybe not realistic (?) - case, the used would have to remove the resource and add the replacement.\n\nif that is would you are looking for and if you consider the drawback as negligible, i will make that\nmodification.\n\nkind regards\nangela\n\nregarding the mimetypes.properties file: i think it would be wise to allow for some extension mechanism via the configuration. the only think that inhibited me from doing so, was the static nature of the MimeResolver and the IOUtil, which are not connected the dav servlet (and its config)... ideas welcome :)\n\n ",
+            "date": "2007-10-11T08:07:03.502+0000",
+            "id": 0
+        },
+        {
+            "author": "Julian Reschke",
+            "body": "What WebDAV client are you using? My recollection is that the MS Webfolder client does not send a MIME type upon PUT, and that some versions of Office send a broken one upon \"save as\".\n\nSo are you sure that the client indeed sends a Content-Type header?\n\n\n",
+            "date": "2007-10-11T08:28:27.256+0000",
+            "id": 1
+        },
+        {
+            "author": "Claus K\u00f6ll",
+            "body": "hi julian.\n\ni am using the new Office 2007 products as webdav client. \nWe do not have webfolders we crap the content always with the ApplicationClient itself.\ni dont know if MsWord sends a header with the mimetype but i will check it ..\n\n--- angela ----\n> Is my assumption correct that \"After saving a...\" means that you modify an existing resource and that \n> the mimetype was original (after creating the resource) correct? \nyes thats true\n\n> The drawback would be, that the mimetype will not be adjusted even if the file node gets replaced by a file \n> with a different mimetype. For that - maybe not realistic (?) - case, the used would have to remove the resource and add the replacement. \n\ni think this scenrio that you open a word file and then save as excel is not realistic.\n\nto add mimetypes through a configuration would be fine so we can add other formats.\n\nBR\nclaus\n",
+            "date": "2007-10-11T09:30:37.157+0000",
+            "id": 2
+        },
+        {
+            "author": "Claus K\u00f6ll",
+            "body": "i have traced the PUT request on a save operation and ms word does not send any content type headers.\nso what do you think about my suggestion not modify the mimytype ? for us its important that jackrabbit\ndoes not modify the mimetype because we can not test the new office formats because after on save the mimetype will be\nchanged to default mimetype.\nBR\nclaus",
+            "date": "2007-10-15T06:48:11.519+0000",
+            "id": 3
+        },
+        {
+            "author": "angela",
+            "body": "i'm in favor of this modification as long as only PUT request are affected.\na PROPPATCH that tries to set the mimetype (or remove the property alltogether) should still succeed.\nbut (not having looked at the code) i guess this should be feasible.\n\ndo you want to provide a patch or should i change it?\n\nangela",
+            "date": "2007-10-16T07:12:39.367+0000",
+            "id": 4
+        },
+        {
+            "author": "Claus K\u00f6ll",
+            "body": "hi angela.\n\ni'm not very familiar with the code in the server project.\nif you have time to change the code i think its faster if you change it otherwise i will look into it.\nBR\nclaus",
+            "date": "2007-10-16T07:24:44.807+0000",
+            "id": 5
+        },
+        {
+            "author": "angela",
+            "body": "ok. i'll take a look at it.",
+            "date": "2007-10-16T07:43:29.916+0000",
+            "id": 6
+        },
+        {
+            "author": "angela",
+            "body": "fixed with rev. 587149\n\ntests: litmus test suite and some manual tests using DavExplorer.",
+            "date": "2007-10-22T16:50:41.862+0000",
+            "id": 7
+        },
+        {
+            "author": "Claus K\u00f6ll",
+            "body": "hi angela,\nif i add a node to jackrabbit i add the jcr:content node as nt:resource.\nif i open now this document with webdav i found that the DefaultHandler\nlooks if the jcr:content node is from type nt:unstructured,.if not \nthe child properties of the content node will be deleted and the properties will be set again.\nso there is also a problem with the mimetype. if i do that with a office 07 document (.docx)\nthe original mimetype \"application/msword\" will be changed to \"application/octet-stream\".\ni think we must restore the original mimetype.\nwhat do you think ?\nBR,\nclaus",
+            "date": "2008-02-12T12:27:36.718+0000",
+            "id": 8
+        },
+        {
+            "author": "Claus K\u00f6ll",
+            "body": "one more question ...\nwhat is the recommended nodetype for the jcr:content node,\nand why will it be changed in the DefaultHandler ?\n",
+            "date": "2008-02-12T13:37:34.244+0000",
+            "id": 9
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Please don't reopen issues that have already been closed for a release.\n\nRegressions should be filed as new bug reports and additional improvements as new improvement requests.",
+            "date": "2008-02-15T15:01:33.969+0000",
+            "id": 10
+        }
+    ],
+    "component": "jackrabbit-webdav",
+    "description": "After saving a Excel File through WebDAV the mimetype will be changed.\nThe mimetype for a Win2000 Exel File is application/vnd.ms-excel. This will be changed to application/msexcel.\nAlso problems makes the new office 07 format (docx,xlsx,pptx). They will also be changed to application/octet-stream (default mimetype).\nWe have a lot of file types that we store in jackrabbit that are not in the properties file (MSInfoPath-, OutlookMsg-, MsAccess-Files, ...)\nI think it will be better to let the mimetype property untouched if a mimetype is present so we must not put all the possible mimetypes in the property file.\n\nBR\nclaus",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "JCR-1172",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Major",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "Better MimeType Handling",
+    "systemSpecification": true,
+    "version": "1.3"
+}

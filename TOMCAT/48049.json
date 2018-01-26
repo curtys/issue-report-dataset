@@ -1,0 +1,35 @@
+{
+    "comments": [
+        {
+            "author": null,
+            "body": "Thanks for the patch. It has been committed to trunk and proposed for 6.0.x and 5.5.x",
+            "date": "20091122T14:58:51",
+            "id": 0
+        },
+        {
+            "author": null,
+            "body": "This has been fixed in 6.0.x and will be in 6.0.21 onwards.\n\nThanks again for the patch.",
+            "date": "20091216T03:38:25",
+            "id": 1
+        },
+        {
+            "author": null,
+            "body": "Fixed in 5.5, will be in 5.5.29 onwards. Thank you.",
+            "date": "20100127T00:39:10",
+            "id": 2
+        }
+    ],
+    "component": "Catalina",
+    "description": "Below is the original implementation of destroySubcontext(Name name) method:\n\npublic void destroySubcontext(Name name)\n        throws NamingException {\n        \n        checkWritable();\n        \n        while ((!name.isEmpty()) && (name.get(0).length() == 0))\n            name = name.getSuffix(1);\n        if (name.isEmpty())\n            throw new NamingException\n                (sm.getString(\"namingContext.invalidName\"));\n        \n        NamingEntry entry = (NamingEntry) bindings.get(name.get(0));\n        \n        if (entry == null) {\n            throw new NameNotFoundException\n                (sm.getString(\"namingContext.nameNotBound\", name.get(0)));\n        }\n        \n        if (name.size() > 1) {\n            if (entry.type == NamingEntry.CONTEXT) {\n                ((Context) entry.value).unbind(name.getSuffix(1));\n            } else {\n                throw new NamingException\n                    (sm.getString(\"namingContext.contextExpected\"));\n            }\n        } else {\n            if (entry.type == NamingEntry.CONTEXT) {\n                ((Context) entry.value).close();\n                bindings.remove(name.get(0));\n            } else {\n                throw new NotContextException\n                    (sm.getString(\"namingContext.contextExpected\"));\n            }\n        }\n        \n    }\n\n\nHowever, the method invokes 'unbind' method rather than invokes itself recursively. \n\nif (name.size() > 1) {\n            if (entry.type == NamingEntry.CONTEXT) {\n                ((Context) entry.value).unbind(name.getSuffix(1));\n            } else {\n                throw new NamingException\n                    (sm.getString(\"namingContext.contextExpected\"));\n            }\n\nshould be: \n\nif (name.size() > 1) {\n            if (entry.type == NamingEntry.CONTEXT) {\n                ((Context) entry.value).destroySubcontext(name.getSuffix(1));\n            } else {\n                throw new NamingException\n                    (sm.getString(\"namingContext.contextExpected\"));\n            }",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "48049",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "P2 normal",
+    "product": "Tomcat 5",
+    "project": "TOMCAT",
+    "summary": "org.apache.naming.NamingContext's destroySubcontext() method doesn't  invoke itself recursively, but invoke unbind() method",
+    "systemSpecification": true,
+    "version": "5.5.28"
+}

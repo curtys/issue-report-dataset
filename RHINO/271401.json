@@ -1,0 +1,155 @@
+{
+    "comments": [
+        {
+            "author": "igor@mir2.org",
+            "body": "Marking as invalid:\n\nScritableObject use getDeclaredMethods by design to allow to implement host\nobjects that follow prototype-based inheritance of JavaScript runtime. To get\nwhat you need to set the prototype chain of B.prototype to A.prototype in JS.\nFor example, use something like:\n\n\npublic class A extends ScriptableObject {\n  \n  public getClassName() { return \"A\"; }\n  \n  public String jsGet_name() {\n    return \"A\";\n  }\n}\n\npublic class B extends A {\n  public getClassName() { return \"B\"; }\n}\n\n....\n\nScriptableObject.defineClass(scope, A.class);\nScriptableObject.defineClass(scope, B.class);\n\nScriptableObject.getClassPrototype(scope, \"B\").\n\tsetPrototype(ScriptableObject.getClassPrototype(scope, \"A\"));\n\t\n\nNow in JS the following would work:\n\nvar b = new B();\nprint(b.name); // should call jsGet_name\n\nprint(b instanceof B); // should print true\nprint(b instanceof A); // should also print true\n\nNote also that comments in FunctionObject refer to the fact that some JVMs with\nSecurityManager installed getDeclaredMaethods() may throw an exception while\ngetMethods() works so as a workaround code calls getMethods() and strip\nsuper-class only methods.",
+            "date": "20041123T20:26:07",
+            "id": 0
+        },
+        {
+            "author": "djgredler@gmail.com",
+            "body": "My complaint is that:\n1) getDeclaredMethods() is used if possible (it should never be used)\n2) if getMethods() is used, super-class methods are stripped (they should always\nbe included)\n\nI don't think super-class methods should ever be excluded, thus I don't think\ngetDeclaredMethods should ever be used. I don't see the sense in only allowing\naccess to declared methods, not inherited methods. That's the whole point of\nJava: polymorphism.\n\nMy use case is HttpUnit, by the way. HTMLElement extends ScriptableObject, and\nDocument extends HTMLElement. I don't understand why I need to override a\nproperty in Document that is already defined in HTMLElement. It's nonsensical in\nan OO world.\n",
+            "date": "20041123T22:16:42",
+            "id": 1
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "> \n> My use case is HttpUnit, by the way. HTMLElement extends ScriptableObject, and\n> Document extends HTMLElement. I don't understand why I need to override a\n> property in Document that is already defined in HTMLElement. It's nonsensical in\n> an OO world.\n\nScriptableObject machinery is intended to support JavaScript prototype-based\ninheritance which is very different from class-based inheritance og Java. \n\nI also think that using ScriptableObject as a base for \nDOM objects is not a very idea. It is much better IMO to create something\nsimilar to NativeJavaObject+dependable classes to create a special wrapper for\nJava DOM. In at least one Java-based browser it allowed to emulate all MSIE-5.5\nspecific peculiarities and shortcuts for DOM.",
+            "date": "20041123T22:35:48",
+            "id": 2
+        },
+        {
+            "author": "djgredler@gmail.com",
+            "body": "I think I understand what you're saying, but let me ask a couple of questions\njust to make sure:\n\n> ScriptableObject machinery is intended to support JavaScript\n> prototype-based inheritance which is very different from class-based\n> inheritance of Java.\n\nGiven that the two inheritance mechanisms are fundamentally different, would it\nbe ludicrous to maybe map from one to the other automatically when\nScriptableObject.defineClass() gets called? So the setting of the prototypes\nwould occur automatically based on the inheritance tree of the Java class\nspecified. Maybe even do this optionally be adding a boolean parameter to\ndefineClass(). It may be a stupid question, given that you think this is the\nwrong way to solve our problem, regardless.\n\n> I also think that using ScriptableObject as a base for DOM objects is\n> not a very [good] idea.\n\nWhy is this not the best way to do it? What problem was ScriptableObject meant\nto solve if not this one?\n\n> It is much better IMO to create something similar to\n> NativeJavaObject + dependable classes to create a special wrapper\n> for Java DOM.\n\nBy \"dependable classes\" do you mean NativeJavaArray, NativeJavaClass,\nNativeJavaMethod, etc?\n\n> In at least one Java-based browser it allowed to emulate all\n> MSIE-5.5 specific peculiarities and shortcuts for DOM.\n\nWell, that's what we're trying to do, ultimately :) What browser was this? Is\nthe code open?\n\nThanks for clarifying all this!\n",
+            "date": "20041124T15:02:10",
+            "id": 3
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "(In reply to comment #4)\n> \n> Given that the two inheritance mechanisms are fundamentally different, would it\n> be ludicrous to maybe map from one to the other automatically when\n> ScriptableObject.defineClass() gets called? So the setting of the prototypes\n> would occur automatically based on the inheritance tree of the Java class\n> specified. Maybe even do this optionally be adding a boolean parameter to\n> defineClass(). \n\nOriginally ScriptableObject was heavily used to implement the standard\nECMAScript objects like Array, Data, Math etc where automatic Java inheritance\nwould bring more harm then explicit prototype chain manipulation due to numerous\nspecial cases. Later it was replaced by explicit string switches to gain\nsignificantly in performance and reduce memory consumption. \n\nNow Rhino does not use ScriptableObject support for jsGet_ etc internally and it\nis intended as a simple way for applications to create host objects that\nresemble the standard objects. Thus automated support for inheritance chain\nwould indeed lead to less surprises in application code and would not affect\nRhino internals but then somebody has to write the code.\n> \n> > I also think that using ScriptableObject as a base for DOM objects is\n> > not a very [good] idea.\n> \n> Why is this not the best way to do it? What problem was ScriptableObject meant\n> to solve if not this one?\n\nYou already have implementation of DOM interfaces in Java, right? In this case\nyou would end up with js_ wrapper methods that would simply call their\ncounterpart in Java DOM world.\n\nBut even if you create JS-only implementation, then JavaScript bindings would\noften require (as far as I remember) direct access to JS arguments array forcing\nto use generic jsFunction_xxx(Context cx, Scriptable thisObj, Object[] args,\nFunction funObj) form with manual type conversion. Plus the fact that Rhino does\nnot pass scope argument can cause problems when access to that argument is\nrequired to get the right frame reference.\n\nAnd memory consumption/initialization time is much higher since you would need\nto store all those constructor/prototype objects in the scope which even with\nlazy initialization is costly.\n\n> \n> > It is much better IMO to create something similar to\n> > NativeJavaObject + dependable classes to create a special wrapper\n> > for Java DOM.\n> \n> By \"dependable classes\" do you mean NativeJavaArray, NativeJavaClass,\n> NativeJavaMethod, etc?\n\nIt is not that bad, you need just a copy of NativeJavaObject, JavaMemebers and\nNativeJavaMethod. Then you can strip from the copies any support for static\nfunctions and public fields simplifying code significantly. Then if you have\nJava implementation of HTMLSomething interfaces it would be simple to implement,\nfor example, collection mapping from a[i] into a.item(i) or provide various\naliases for methods.\n\n> \n> > In at least one Java-based browser it allowed to emulate all\n> > MSIE-5.5 specific peculiarities and shortcuts for DOM.\n> \n> Well, that's what we're trying to do, ultimately :) What browser was this? \n\nICEbrowser, www.icesoft.com (Declaimer: I worked for them in past)\n\n>Is the code open?\n> \n\nNope.",
+            "date": "20041124T20:52:24",
+            "id": 4
+        },
+        {
+            "author": "djgredler@gmail.com",
+            "body": "> It is not that bad, you need just a copy of NativeJavaObject,\n> JavaMemebers and NativeJavaMethod. Then you can strip from the\n> copies any support for static functions and public fields\n> simplifying code significantly. Then if you have Java\n> implementation of HTMLSomething interfaces it would be simple to\n> implement, for example, collection mapping from a[i] into a.item(i)\n> or provide various aliases for methods.\n\nDo you have any examples of doing this? All the examples on the website use\neither the Scriptable interface, or the default implementation,\nScriptableObject. I can't find any examples of doing it the way you mention.\n\nAlso, has it been absolutely ruled out to provide a DOM implementation in Rhino\nitself, since most JavaScript is used to manipulate HTML documents? It just\nseems that many projects that use Rhino have to roll their own DOM host objects,\nand it would be much easier to pool resources and effort and have just one\nimplementation.\n",
+            "date": "20041203T23:49:38",
+            "id": 5
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Sorry, I can not provide examples. And you are right that this not documented.\nAnd certanly DOM implementation in Rhino would be extremely welcome. But it\nwould remain like that until somebody writes it. \n\nUnfortunately I can not help with this much since besides the lack of time a\nsomewhat traumatic experience of trying to support all MSIE 5 quirks few years\nago lead to inevitable desire to avoid writing anything related to Java\nimplementation of MSIE DOM ;)\n",
+            "date": "20041204T00:55:41",
+            "id": 6
+        },
+        {
+            "author": "djgredler@gmail.com",
+            "body": "Created attachment 168021\nmap Java inheritance to JS prototype-based inheritance\n\n> Now Rhino does not use ScriptableObject support for jsGet_ etc\n> internally and it is intended as a simple way for applications\n> to create host objects that resemble the standard objects. Thus\n> automated support for inheritance chain would indeed lead to\n> less surprises in application code and would not affect Rhino\n> internals but then somebody has to write the code.\n\nI'm attaching a patch that does just this. This is my first time tinkering with\nRhino internals, so please advise as to possible improvements.",
+            "date": "20041206T13:24:49",
+            "id": 7
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Comment on attachment 168021\nmap Java inheritance to JS prototype-based inheritance\n\n> \n>+        // Map Java inheritance to JS prototype-based inheritance.\n>+        Class superclass = clazz.getSuperclass();\n>+        if (superclass != null) {\n>+            String name = superclass.getName();\n>+            Scriptable superProto = ScriptableObject.getClassPrototype(scope, name);\n>+            if (superProto != null) {\n>+                proto.setPrototype(superProto);\n>+            }\n>+        }\n>+\n\nThat does not work since the name of Java class and the name of constructor\nobject also known as JS \"class\" object (like String, Date, Array etc.) are\nunrelated and you need the later here. But to get that you need an instance of\nthe superclass to be able to call getClassName on it. \n\nOne possibility would be to have a version of defineClass that loops through\nthe parent chain defining the necessary classes if that is not already done.",
+            "date": "20041206T14:11:44",
+            "id": 8
+        },
+        {
+            "author": "djgredler@gmail.com",
+            "body": "Created attachment 168034\nmap Java inheritance to JS prototype-based inheritance\n\nI didn't realize the the class name was not the Java class name in that\ncontext. Here's another patch, let me know what you think. It changes the\ndefineClass API so that it returns the class name of the prototype defined,\nwhich wouldn't break existing code but might still be a no-no. Let me know.",
+            "date": "20041206T16:58:58",
+            "id": 9
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Reopening as enhancment and changing the title",
+            "date": "20041206T21:34:29",
+            "id": 10
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Comment on attachment 168034\nmap Java inheritance to JS prototype-based inheritance\n\n>+        Class superClass = clazz.getSuperclass();\n>+        if (superClass != null && !superClass.isAssignableFrom(Object.class)) {\n\nThat should be superClass != ScriptableObject.class or since x.class leads to\nsignificant class file bloat:\nsuperClass != ScriptRuntime.ScriptableObjectClass\nsince the recursion should stop on ScriptableObject",
+            "date": "20041206T21:42:32",
+            "id": 11
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "(In reply to comment #10)\n> Created an attachment (id=168034)\n> map Java inheritance to JS prototype-based inheritance\n> \n> I didn't realize the the class name was not the Java class name in that\n> context. Here's another patch, let me know what you think. It changes the\n> defineClass API so that it returns the class name of the prototype defined,\n> which wouldn't break existing code but might still be a no-no. \n\nIt would break binary compatibility plus it changes the method semantic\nsignificantly which is no go. I suggest to add one more signature of defineClass\nwith int flag field with explicit flag constants which would also take care\nabout sealed.\n\nRegards, Igor",
+            "date": "20041206T21:49:30",
+            "id": 12
+        },
+        {
+            "author": "djgredler@gmail.com",
+            "body": "Created attachment 168056\nmap Java inheritance to JS prototype-based inheritance\n\nHmm, I wasn't aware of the x.class overhead... This project seems to be pretty\nperformance-conscious, from this and other things I have seen in the code :) I\nchanged the statement in question to the following:\n\n+\t if (superClass != null &&\n+\t     superClass != ScriptRuntime.ObjectClass &&\n+\t     superClass != ScriptRuntime.ScriptableObjectClass) {\n\nI'm leaving the check for null and ObjectClass in because of the\nClass.getSuperclass() contract (from Javadoc):\n\n> Returns the <code>Class</code> representing the superclass of the\n> entity (class, interface, primitive type or void) represented by\n> this <code>Class</code>.  If this <code>Class</code> represents\n> either the <code>Object</code> class, an interface, a primitive\n> type, or void, then null is returned.  If this object represents\n> an array class then the <code>Class</code> object representing the\n> <code>Object</code> class is returned.",
+            "date": "20041206T21:57:30",
+            "id": 13
+        },
+        {
+            "author": "djgredler@gmail.com",
+            "body": "> It would break binary compatibility plus it changes the method\n> semantic significantly which is no go. I suggest to add one more\n> signature of defineClass with int flag field with explicit flag\n> constants which would also take care about sealed.\n\nI tend to dislike numeric flag fields, since using simple booleans\nis usually much clearer. Do you have anything against just adding a\ndefineClass(Scriptable,Class,boolean,boolean) method?",
+            "date": "20041206T22:02:42",
+            "id": 14
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "(In reply to comment #15)\n> > It would break binary compatibility plus it changes the method\n> > semantic significantly which is no go. I suggest to add one more\n> > signature of defineClass with int flag field with explicit flag\n> > constants which would also take care about sealed.\n> \n> I tend to dislike numeric flag fields, since using simple booleans\n> is usually much clearer. \n\nWell, it is more clear at the definition side but at the caller side trying to\nfigure out what defineClass(..., false, true) for example would mean is harder.\n\n> Do you have anything against just adding a\n> defineClass(Scriptable,Class,boolean,boolean) method?\n\nI do not have anything against that, the idea of using int was just a suggestion\nin case a third boolean would be necessary. But then perhaps a whole new\ndefineClass should be defined.",
+            "date": "20041206T22:13:55",
+            "id": 15
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "(In reply to comment #14)\n> Created an attachment (id=168056)\n> map Java inheritance to JS prototype-based inheritance\n> \n> Hmm, I wasn't aware of the x.class overhead... \n\nTry to compare the size of compiled\nclass Foo\n{\n    Class bar() { return \"\".getClass(); }\n}\n\nand \n\nclass Foo\n{\n    Class bar() { return String.class; }\n}\n\nThen multiply that by 50 or so cases where Rhino would need to access Class objects.\n\n...\n> I\n> changed the statement in question to the following:\n> \n> +\t if (superClass != null &&\n> +\t     superClass != ScriptRuntime.ObjectClass &&\n> +\t     superClass != ScriptRuntime.ScriptableObjectClass) {\n> \n> I'm leaving the check for null and ObjectClass in because of the\n> Class.getSuperclass() contract (from Javadoc):\n> \n> > Returns the <code>Class</code> representing the superclass of the\n> > entity (class, interface, primitive type or void) represented by\n> > this <code>Class</code>.  If this <code>Class</code> represents\n> > either the <code>Object</code> class, an interface, a primitive\n> > type, or void, then null is returned.  If this object represents\n> > an array class then the <code>Class</code> object representing the\n> > <code>Object</code> class is returned.\n> \n\nNote that the code before already created an instance of your class and casted\nit to Scriptable so the check for null is not necessary since the class is not\nObject. \n\nBut you are right that lone superClass != ScriptRuntime.ScriptableObjectClass is\nnot enough since defineClass should work with any class as long as it implements\nScriptable. Which tells me that the check should be something like:\n\n> +\t if (ScriptRuntime.ScriptableClass.isAssignableFrom(superClas)) {",
+            "date": "20041206T22:23:45",
+            "id": 16
+        },
+        {
+            "author": "djgredler@gmail.com",
+            "body": "What is the next version of Rhino going to be? 1.6R2? For the @since javadoc tag...",
+            "date": "20041206T22:30:41",
+            "id": 17
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "The next version would be 1.6R1.1 but that would include strictly bug fixes so\nit is OK to use @since 1.6R2\n",
+            "date": "20041206T22:43:27",
+            "id": 18
+        },
+        {
+            "author": "djgredler@gmail.com",
+            "body": "Created attachment 168061\nmap Java inheritance to JS prototype-based inheritance\n\nAlright, here's a patch that maintains backward compatibility in the API by\nadding a new method that allows inheritance mapping from Java-world to\nJavaScript-world. It also makes use of the\nScriptRuntime.ScriptableClass.isAssignableFrom(superClass) check. Let me know\nwhat you think.",
+            "date": "20041206T22:57:14",
+            "id": 19
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "The patch is OK, I will commit it after regression testing.",
+            "date": "20041206T23:04:44",
+            "id": 20
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "I committed the patch after replacing tabs by spaces. ",
+            "date": "20041207T00:13:38",
+            "id": 21
+        },
+        {
+            "author": "djgredler@gmail.com",
+            "body": "> I committed the patch after replacing tabs by spaces.\n\nSounds good! I guess I can claim to have contributed to the Mozilla project now? ;)",
+            "date": "20041207T00:21:42",
+            "id": 22
+        }
+    ],
+    "component": "Core",
+    "description": "User-Agent:       Mozilla/5.0 (Windows; U; Windows NT 5.0; en-US; rv:1.7.5) Gecko/20041107 Firefox/1.0\nBuild Identifier: Mozilla/5.0 (Windows; U; Windows NT 5.0; en-US; rv:1.7.5) Gecko/20041107 Firefox/1.0\n\nClasses that extend ScriptableObject cannot use polymorphism to define\nJavaScript-accessible properties and functions, because\nFunctionObject.getMethodList(Class) uses Class.getDeclaredMethods() instead of\nClass.getMethods() whenever it can, apparently as an optimization. The reason\nthat getDeclaredMethods() is faster is that they are fundamentally different\nmethods: getDeclaredMethods() excludes inherited methods, but getMethods()\nincludes them. So for example if I have:\n\npublic class A extends ScriptableObject {\n  public String jsGet_name() {\n    return \"A\";\n  }\n}\n\npublic class B extends A {\n}\n\nthen as far as the JavaScript is concerned, an instance of B does not have a\nproperty \"name\". Unless, of course, calling getDeclaredMethods() fails with a\nSecurityException, in which case FunctionObject will use getMethods(), and\ninstances of B *will* have a property \"name\".\n\nReproducible: Always\nSteps to Reproduce:\n1. Create a Java class A that extends ScriptableObject and has a JavaScript\nattribute \"att\".\n2. Create a Java class B that extends A.\n3. In JavaScript, create an instance of B and try to access inherited attribute\n\"att\".\n\nActual Results:  \nThe attribute \"att\" cannot be found comes back as undefined.\n\nExpected Results:  \nThe attribute \"att\" should have been found via polymorphism, in class A.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "271401",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "RFE",
+    "priority": "-- enhancement",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "JS prototypes for superclasses with ScriptableObject.defineClass",
+    "systemSpecification": true,
+    "version": "other"
+}

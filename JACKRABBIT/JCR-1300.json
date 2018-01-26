@@ -1,0 +1,53 @@
+{
+    "comments": [
+        {
+            "author": "angela",
+            "body": "(wrong component)",
+            "date": "2008-02-05T10:59:28.084+0000",
+            "id": 0
+        },
+        {
+            "author": "angela",
+            "body": "please find attached a quick hack that add the following changes:\n\n----------------------------------------------------------------------------------------------------------------------------------\nspi2dav\n----------------------------------------------------------------------------------------------------------------------------------\n\n- addProperty(NodeId, Name, QValue)\n  sends a PUT with a StringRequestEntity or InputStreamRequestEntity.\n  using a custom contentType (see jcr-server)\n\n- addProperty(NodeId, Name, QValue[])\n  Not changed. Still sends xml-request body with a ValuesProperty.\n  TODO: added instructions what need to be changed on the server in order to get rid of that.\n\n- setValue(PropertyId, QValue)\n  sends a PUT with a StringRequestEntity or InputStreamRequestEntity.\n  using a custom contentType (see jcr-server)\n  TODO: PUT is not totally correct since 'setValue' should fail if the property\n  does not exist on the server.\n\n- setValue(PropertyId, QValue[])\n   Not changed. Still makes a PROPPATCH request containing ValuesProperty\n   TODO: find a way to avoid the xml (see addProperty).\n\n- getItemInfos:\n  since Batch-READ has not yet been implemented, the method returns the same as getNodeInfo.\n  Added code that builds PropertyInfo objects for jcr:uuid, jcr:primaryType and jcr:mixins\n  if the corresponding info is present in the NodeInfo.\n\n- getPropertyInfo:\n  Changed PROPFIND request to retrieve 'length' or 'lengths' of the prop-values instead\n  of retrieving the values themselves.\n  A ValueLoader takes care of requesting the prop-values on demand and not by default.\n\n\n----------------------------------------------------------------------------------------------------------------------------------\njcr-server\n----------------------------------------------------------------------------------------------------------------------------------\n\nItemResourceConstants: defines a new constant that represent the start of the content-type\nto be used, when a property-value is sent without enclosing ValueProperty.\n\nDefaultItemCollection.addMember has been modified:\nif the contentType matches the new custom content-type (see above) the request body\nis not parsed into a xml-Document. instead the stream is passed to Node.setProperty\n(Binary types only) or converted into a String and the passed to Node.setProperty(String, int)\n\n\nTest:\ni quickly let the general read, property read and property write test from the TCK run\non a setup jcr2spi-spi2dav-jcrserver. \nI.e. not really tested if the modification don't break any (or are beneficial).\n\nJozef, could you try if that helps you? (testing is delegated to you ;)\n\nthanks\nangela\n\n",
+            "date": "2008-02-19T17:09:46.616+0000",
+            "id": 1
+        },
+        {
+            "author": "Jozef Wagner",
+            "body": "Thank you Angela, I'll try it and will report my findings here.\nJozef",
+            "date": "2008-02-21T10:23:54.524+0000",
+            "id": 2
+        },
+        {
+            "author": "angela",
+            "body": "> I'll try it and will report my findings here. \n\nperfect.\nthere is 1 thing i know is missing: proper handling of failures during value-loading (which is postponed)... currently this results in runtime exception which is definitely wrong. what should happen is an 'InvalidItemStateException' or 'RepositoryException' on the jcr-2-spi level... but as said... i didn't have time to closely look at that one... a 'null' return value would be one possibility. but currently jcr2spi doesn't handle that .",
+            "date": "2008-02-21T10:34:46.704+0000",
+            "id": 3
+        },
+        {
+            "author": "Jozef Wagner",
+            "body": "I was able to apply these patches and so far it is working well. (I tried binary properties up to 60mb of size, will do more tests). \n\nOne thing I noticed is that when I call getNode(), I think it loads whole node with its children. I would prefer lazy fetching of nodes and its properties. Anyway, I'll investigate it a bit more.\n",
+            "date": "2008-03-03T12:40:07.081+0000",
+            "id": 4
+        },
+        {
+            "author": "angela",
+            "body": "committed improved patch (avoiding the separate value loader)",
+            "date": "2008-08-20T13:19:05.802+0000",
+            "id": 5
+        }
+    ],
+    "component": "jackrabbit-jcr-server, sandbox",
+    "description": "Sending large binary properties over spi2dav is slow and requires a lot of heap space in both client and server.\nOne problematic part is base64 conversion of the property value.\n\nOn the contrary, using 'normal' webdav interface (/repository/default/ instead of /server) for uploading a file (through traditional webdav client) it is pretty fast and don't have such impact on heap space.\n\nSome suggestions from the previous discussion:\n - avoid temporary copies of the data, and persist large objects as early as possible. \n - transfer large objects in blocks from the Jackrabbit SPI client to the server (and back).\n - make usage of the global data store (JCR-926). \n - straight forward PUT for single-valued properties\n\nLink to discussion: http://www.mail-archive.com/dev@jackrabbit.apache.org/msg09481.html\n",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "JCR-1300",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Major",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "spi2dav Improve performance for large binary properties",
+    "systemSpecification": true,
+    "version": ""
+}

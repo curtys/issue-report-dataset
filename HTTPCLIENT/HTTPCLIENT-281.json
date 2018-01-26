@@ -1,0 +1,89 @@
+{
+    "comments": [
+        {
+            "author": "Brian Scully",
+            "body": "I've got a similiar issue in both org.apache.commons.httpclient.URI (my \nmodified code follows):\n\n        // in order to support platform encoding\n        try {\n          defaultDocumentCharsetByPlatform = System.getProperty\n(\"file.encoding\");\n          if (defaultDocumentCharset == null) {\n            // set the default document charset\n            defaultDocumentCharset = defaultDocumentCharsetByPlatform;\n          }\n        }\n        catch (SecurityException dontCare) { }\n\nas well as org.apache.commons.httpclient.HttpClient:\n\n    static {\n\n        if (LOG.isDebugEnabled()) {\n            try {\n              LOG.debug(\"Java version: \" + System.getProperty(\"java.version\"));\n              LOG.debug(\"Java vendor: \" + System.getProperty(\"java.vendor\"));\n              LOG.debug(\"Java class path: \" + System.getProperty\n(\"java.class.path\"));\n              LOG.debug(\"Operating system name: \" + System.getProperty\n(\"os.name\"));\n              LOG.debug(\"Operating system architecture: \" + System.getProperty\n(\"os.arch\"));\n              LOG.debug(\"Operating system version: \" + System.getProperty\n(\"os.version\"));\n            }\n            catch (SecurityException dontCare) { }\n\n            Provider[] providers = Security.getProviders();\n",
+            "date": "2003-10-10T04:02:29.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Brian Scully",
+            "body": "Hopefully this is the last sandbox case: \norg.apache.commons.httpclient.cookie.CookiePolicy\n\n        String s = null;\n        try { s = System.getProperty(SYSTEM_PROPERTY); }\n        catch (SecurityException dontCare) { }\n\n        if (\"COMPATIBILITY\".equalsIgnoreCase(s)) {\n",
+            "date": "2003-10-10T04:12:22.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "We are planning to remove all the System.getProperty() calls in the future\nreleases of HttpClient. For the time being I'll apply the suggested fix.\n\nOleg",
+            "date": "2003-10-10T04:37:19.000+0000",
+            "id": 2
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Oleg,\n\nAre you going to put this in 2.0 or HEAD?  There are also all of the debug statements in HttpClient.  \nMost likely there are other problems as well.\n\nMike",
+            "date": "2003-10-10T09:46:04.000+0000",
+            "id": 3
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "I am planning to provide a patch for both 2.0 branch and head, as the suggested \nfix is merely an additional safe-guard and should have no functional impact on \nthe existing code\n\nOleg",
+            "date": "2003-10-10T14:45:24.000+0000",
+            "id": 4
+        },
+        {
+            "author": "Brian Scully",
+            "body": "FYI - after those fixes were applied, I could use HttpClient in my applet.  \nThere should be no other (sandbox-related) security issues.",
+            "date": "2003-10-10T18:29:34.000+0000",
+            "id": 5
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Sounds good to me.\n\nMike",
+            "date": "2003-10-10T19:24:24.000+0000",
+            "id": 6
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Created an attachment (id=8521)\nPatch against 2.0 branch (take 1)\n",
+            "date": "2003-10-10T20:38:14.000+0000",
+            "id": 7
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Created an attachment (id=8523)\nPatch against HEAD (take 1)\n",
+            "date": "2003-10-10T20:49:16.000+0000",
+            "id": 8
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Any objections to committing the patches?\n\nOleg",
+            "date": "2003-10-11T23:06:18.000+0000",
+            "id": 9
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Go for it.\n\nMike",
+            "date": "2003-10-11T23:34:58.000+0000",
+            "id": 10
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Patches committed.\n\nOleg",
+            "date": "2003-10-12T02:50:26.000+0000",
+            "id": 11
+        }
+    ],
+    "component": "HttpClient (classic)",
+    "description": "The DefaultHttpParamsFactory in nightly build 20031009 makes two calls to \nSystem.getProperties().  This is by default verboten in an applet.  I have \npatched the source to catch the security exceptions and set the properties to a \ndefault value.  My modified code block follows:\n\n        // TODO: To be removed. Provided for backward compatibility\n        try {\n          String agent = System.getProperties().getProperty\n(\"httpclient.useragent\");\n          if (agent != null) {\n            params.setParameter(HttpMethodParams.USER_AGENT, agent);\n          }\n        }\n        catch (SecurityException dontCare) { }\n\n        // TODO: To be removed. Provided for backward compatibility\n        try {\n          String preemptiveDefault = System.getProperties()\n              .getProperty(\"httpclient.authentication.preemptive\");\n          if (preemptiveDefault != null) {\n            preemptiveDefault = preemptiveDefault.trim().toLowerCase();\n            if (preemptiveDefault.equals(\"true\")) {\n              params.setParameter\n(HttpClientParams.PREEMPTIVE_AUTHENTICATION, \"on\");\n            }\n            else if (preemptiveDefault.equals(\"false\")) {\n              params.setParameter\n(HttpClientParams.PREEMPTIVE_AUTHENTICATION, \"off\");\n            }\n          }\n        }\n        catch(SecurityException dontCare) { }",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "HTTPCLIENT-281",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "HTTPCLIENT",
+    "project": "HTTPCLIENT",
+    "summary": "DefaultHttpParamsFactory violates applet sandbox",
+    "systemSpecification": true,
+    "version": ""
+}

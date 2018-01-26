@@ -1,0 +1,101 @@
+{
+    "comments": [
+        {
+            "author": "Jeff Dever",
+            "body": "I'm not sure when or how this is fixed, but it appears to be working well.\n\nI tried it with both setting the default credentials as a startSession()\nargument and by adding particular credentials for a specific authentication\nrealm with setCredentials().\n\nIn HttpMethodBase.execute, the following code checks to see if an authentication\nwas done on the \"<path>:<type> realm=<realm>\" string.  If it has, then it breaks\nout and returns from execute.  If it has not been tried, it sets the\nauthentication and trys again.\n<code>\n                    if (realms.contains(pathAndCreds)) {\n                        if (log.isInfoEnabled()) {\n                            log.info(\"Already tried to authenticate to \\\"\" +\nwwwauth.getValue() + \"\\\" but still receiving \" + HttpStatus.SC_UNAUTHORIZED +\n\".\");\n                        }\n                        break;\n                    } else {\n                        realms.add(pathAndCreds);\n                    }\n</code>\nThat being said, the code above is in a for(;;) loop with some complicated code\nin it.  It does have some good error checking code in there for infinite\nre-direction and such, but I have not attempted to test all the possibilities.\n\nPerhaps the reporter of this bug could re-test and provide a more detailed test\nscenario if it still occurs.",
+            "date": "2002-07-10T11:39:40.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Paul Canavese",
+            "body": "Sorry for the delay, but I am again looking into this, as I am trying to use \nthe newest version of HttpClient and am having the same problem as before.  I \nam trying this with yesterday's source code (9/9/02).\n\nLooking at the code, it does not match the previous explanation (perhaps it's \nbeen changed again).\n\nAt line 701, in HttpMethodBase.execute():\n\n<code>\n  case HttpStatus.SC_UNAUTHORIZED:\n  case HttpStatus.SC_PROXY_AUTHENTICATION_REQUIRED:\n      log.debug(\"Authorization required\");\n      if (doAuthentication) { //process authentication response\n          //if the authentication is successful, return the statusCode\n          //otherwise, drop through the switch and try again.\n          if (processAuthenticationResponse(state, conn)) {\n              return statusCode;\n          }\n      } else { //let the client handle the authenticaiton\n          return statusCode;\n      }\n      break;\n</code>\n\nThe comment indicates that the code will retry if the authentication attempt \nfails.  This would make sense if an end user was being prompted for new \ncredentials, but this is not the case for me.  It will try the same credentials \nover and over (up to maxForwards=100).\n\nLet me know if you need more details.  Best regards, Paul.",
+            "date": "2002-09-11T03:27:58.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Paul Canavese",
+            "body": "I'm adding my new email address to the CC: list, as I'm not sure the old one \nwill continue to work.\n\nI'm also switching the version to \"Nightly Builds\".",
+            "date": "2002-09-11T03:32:57.000+0000",
+            "id": 2
+        },
+        {
+            "author": "Ortwin Gl\u00fcck",
+            "body": "WFM with current code",
+            "date": "2002-10-11T19:03:00.000+0000",
+            "id": 3
+        },
+        {
+            "author": "Paul Canavese",
+            "body": "This bug is fixed... sorry I didn't mark this as verified earlier.",
+            "date": "2003-03-19T05:38:27.000+0000",
+            "id": 4
+        },
+        {
+            "author": "Marc Guillemot",
+            "body": "I encounter the same problem with 3.0 RC 3.",
+            "date": "2005-08-10T01:25:21.000+0000",
+            "id": 5
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Please provide a wirelog, a test case or at least a code snippet to demonstrate\nthe problem",
+            "date": "2005-08-10T03:00:31.000+0000",
+            "id": 6
+        },
+        {
+            "author": "Marc Guillemot",
+            "body": "I use httpclient through htmlunit to call a page needing Basic authorization\nusing a wrong credential.\n\nThe htmlunit code is quite simple:\n final WebClient webClient = new WebClient();\n final DefaultCredentialsProvider cp = new DefaultCredentialsProvider();\n cp.addCredentials(\"toto\", \"tototo\");\n webClient.setCredentialsProvider(cp);\n webClient.getPage(new URL(\"http://localhost:8080/jn/public/xml2/toto\"));\n\nbasically it just sets the provided credential provider as parameter of the\nHttpClient:\n client.getParams().setParameter( CredentialsProvider.PROVIDER,\ngetWebClient().getCredentialsProvider() );\n\nThe wirelog looks like:\n[DEBUG] 10:03:59,371 httpclient.wire.header  - >> \"GET /jn/public/xml2/toto\nHTTP/1.1[\\r][\\n]\"\n[DEBUG] 10:03:59,372 httpclient.wire.header  - >> \"User-Agent: Mozilla/4.0\n(compatible; MSIE 6.0b; Windows 98)[\\r][\\n]\"\n[DEBUG] 10:03:59,372 httpclient.wire.header  - >> \"Authorization: Basic\ndG90bzp0b3RvdG8=[\\r][\\n]\"\n[DEBUG] 10:03:59,372 httpclient.wire.header  - >> \"Host: localhost:8080[\\r][\\n]\"\n[DEBUG] 10:03:59,372 httpclient.wire.header  - >> \"[\\r][\\n]\"\n[DEBUG] 10:03:59,385 httpclient.wire.header  - << \"HTTP/1.1 401\nUnauthorized[\\r][\\n]\"\n[DEBUG] 10:03:59,385 httpclient.wire.header  - << \"Server:\nApache-Coyote/1.1[\\r][\\n]\"\n[DEBUG] 10:03:59,385 httpclient.wire.header  - << \"Pragma: No-cache[\\r][\\n]\"\n[DEBUG] 10:03:59,385 httpclient.wire.header  - << \"Cache-Control: no-cache[\\r][\\n]\"\n[DEBUG] 10:03:59,385 httpclient.wire.header  - << \"Expires: Thu, 01 Jan 1970\n01:00:00 CET[\\r][\\n]\"\n[DEBUG] 10:03:59,385 httpclient.wire.header  - << \"WWW-Authenticate: Basic\nrealm=\"Jugendnetz restricted area\"[\\r][\\n]\"\n[DEBUG] 10:03:59,385 httpclient.wire.header  - << \"Content-Type:\ntext/html;charset=utf-8[\\r][\\n]\"\n[DEBUG] 10:03:59,385 httpclient.wire.header  - << \"Content-Length: 952[\\r][\\n]\"\n[DEBUG] 10:03:59,385 httpclient.wire.header  - << \"Date: Wed, 10 Aug 2005\n08:03:58 GMT[\\r][\\n]\"\n[DEBUG] 10:03:59,388 httpclient.wire.header  - >> \"GET /jn/public/xml2/toto\nHTTP/1.1[\\r][\\n]\"\n[DEBUG] 10:03:59,389 httpclient.wire.header  - >> \"User-Agent: Mozilla/4.0\n(compatible; MSIE 6.0b; Windows 98)[\\r][\\n]\"\n[DEBUG] 10:03:59,389 httpclient.wire.header  - >> \"Authorization: Basic\ndG90bzp0b3RvdG8=[\\r][\\n]\"\n[DEBUG] 10:03:59,389 httpclient.wire.header  - >> \"Host: localhost:8080[\\r][\\n]\"\n[DEBUG] 10:03:59,389 httpclient.wire.header  - >> \"[\\r][\\n]\"\n[DEBUG] 10:03:59,393 httpclient.wire.header  - << \"HTTP/1.1 401\nUnauthorized[\\r][\\n]\"\n[DEBUG] 10:03:59,393 httpclient.wire.header  - << \"Server:\nApache-Coyote/1.1[\\r][\\n]\"\n[DEBUG] 10:03:59,393 httpclient.wire.header  - << \"Pragma: No-cache[\\r][\\n]\"\n[DEBUG] 10:03:59,393 httpclient.wire.header  - << \"Cache-Control: no-cache[\\r][\\n]\"\n[DEBUG] 10:03:59,393 httpclient.wire.header  - << \"Expires: Thu, 01 Jan 1970\n01:00:00 CET[\\r][\\n]\"\n[DEBUG] 10:03:59,393 httpclient.wire.header  - << \"WWW-Authenticate: Basic\nrealm=\"Jugendnetz restricted area\"[\\r][\\n]\"\n[DEBUG] 10:03:59,394 httpclient.wire.header  - << \"Content-Type:\ntext/html;charset=utf-8[\\r][\\n]\"\n[DEBUG] 10:03:59,394 httpclient.wire.header  - << \"Content-Length: 952[\\r][\\n]\"\n[DEBUG] 10:03:59,394 httpclient.wire.header  - << \"Date: Wed, 10 Aug 2005\n08:03:58 GMT[\\r][\\n]\"\n[DEBUG] 10:03:59,396 httpclient.wire.header  - >> \"GET /jn/public/xml2/toto\nHTTP/1.1[\\r][\\n]\"\n[DEBUG] 10:03:59,397 httpclient.wire.header  - >> \"User-Agent: Mozilla/4.0\n(compatible; MSIE 6.0b; Windows 98)[\\r][\\n]\"\n[DEBUG] 10:03:59,397 httpclient.wire.header  - >> \"Authorization: Basic\ndG90bzp0b3RvdG8=[\\r][\\n]\"\n[DEBUG] 10:03:59,397 httpclient.wire.header  - >> \"Host: localhost:8080[\\r][\\n]\"\n[DEBUG] 10:03:59,397 httpclient.wire.header  - >> \"[\\r][\\n]\"\n\netc... (allways the same thing again and again).\n\nIf you prefer, I can extract the problem from htmlunit and provide sample code\nusing only httpclient. I don't know how to provide a unit test for this: how\nshould the server part be simulated?\nLooking at the code, it seems to me that in\norg.apache.commons.httpclient.HttpMethodDirector (line 90 for v1.34) is\nincorrect and should allow only 1 retry when credential has been provided:\n\n if (processAuthenticationResponse(method)) {\n   LOG.debug(\"Retry authentication\");\n   retry = true;\n }",
+            "date": "2005-08-10T17:14:22.000+0000",
+            "id": 7
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Marc,\n\nPlease refer to this discussion thread for detailed explanations\n\nhttp://www.mail-archive.com/commons-user%40jakarta.apache.org/msg12368.html\n\nOleg",
+            "date": "2005-08-10T18:01:04.000+0000",
+            "id": 8
+        },
+        {
+            "author": "Marc Guillemot",
+            "body": "In this case, it would be helpfull to have \nCredentialsProvider.getCredentials(...)\nprovide information to know if it is a retry or not (or even better the number\nof failed retry).",
+            "date": "2005-08-11T03:58:35.000+0000",
+            "id": 9
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "(In reply to comment #10)\n> In this case, it would be helpfull to have \n> CredentialsProvider.getCredentials(...)\n> provide information to know if it is a retry or not (or even better the number\n> of failed retry).\n\nMarc, \nCustom credentials providers are meant to maintain a map of credentials and\nreturn null if credentials have already been tried for the given auth scope\n\nOleg",
+            "date": "2005-08-11T04:16:59.000+0000",
+            "id": 10
+        },
+        {
+            "author": "Marc Guillemot",
+            "body": "This means that a CredentialProvider is only asked once for an auth scope when\nthe returned credential works. Is that correct? Does the HttpClient cache the\nvalid returned credentials?",
+            "date": "2005-08-11T04:22:53.000+0000",
+            "id": 11
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "(In reply to comment #12)\n> This means that a CredentialProvider is only asked once for an auth scope when\n> the returned credential works. Is that correct? Does the HttpClient cache the\n> valid returned credentials?\n\nYes, it does. That's what HttpState is for\n\nOleg",
+            "date": "2005-08-11T04:26:02.000+0000",
+            "id": 12
+        },
+        {
+            "author": "Marc Guillemot",
+            "body": "Thanks. I can make the fix in htmlunit without impact on the API.",
+            "date": "2005-08-11T04:27:15.000+0000",
+            "id": 13
+        }
+    ],
+    "component": "HttpClient (classic)",
+    "description": "If incorrect credentials are assigned to the request, HttpClient will loop \nforever.  It should only try once, and fail with an HttpException if a request \nwith credentials set fails.\n\nIn org.apache.commons.httpclient.HttpMethodBase.execute(), a check is needed to \ntrack if credentials have been sent before.",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "HTTPCLIENT-25",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "HTTPCLIENT",
+    "project": "HTTPCLIENT",
+    "summary": "[httpclient] Incorrect credentials loop infinitely",
+    "systemSpecification": false,
+    "version": ""
+}

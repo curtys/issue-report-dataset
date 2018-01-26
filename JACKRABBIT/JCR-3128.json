@@ -1,0 +1,71 @@
+{
+    "comments": [
+        {
+            "author": "Claus K\u00f6ll",
+            "body": "Hi,\nSingle and double quote are valid since JCR 2.0",
+            "date": "2011-10-25T07:22:33.995+0000",
+            "id": 0
+        },
+        {
+            "author": "Sascha Theves",
+            "body": "I know but the provided test case shouldn`t fail. I think I need backward compatible escaping/unescaping methods in the Text util and the provided test case should also work.",
+            "date": "2011-10-25T07:27:38.129+0000",
+            "id": 1
+        },
+        {
+            "author": "Claus K\u00f6ll",
+            "body": "Yes you are right it is not backward compatible,\nbut the Method works as designed. Please look into the TextTest.testEscapeIllegalJcrChars() Method.",
+            "date": "2011-10-25T07:33:03.233+0000",
+            "id": 2
+        },
+        {
+            "author": "Sascha Theves",
+            "body": "Then the design/contract of the method is wrong because unescaping and then escaping should produce the origin string...",
+            "date": "2011-10-25T08:43:19.108+0000",
+            "id": 3
+        },
+        {
+            "author": "Julian Reschke",
+            "body": "(1) What was it escaped with?\n\n(2) No, the contract would be unescape(escape(x)) == x, not the other way around.",
+            "date": "2011-10-25T08:50:33.071+0000",
+            "id": 4
+        },
+        {
+            "author": "Sascha Theves",
+            "body": "1) It was escaped with the Text util from Jackrabbit 1.6: Text.escapeIllegalJcrChars.\n\nIn my opinion you really have a problem here when migrating from Jackrabbit 1.6. But anyway I solved my problem with copying the jackrabbit 1.6 code of escaping/unescaping to my app and now I am using that code instead of Text util. That works in this case.",
+            "date": "2011-10-25T08:57:18.078+0000",
+            "id": 5
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Yep, this is a clear backwards compatibility issue if you're using escapeIllegalJcrChars() for example to map arbitrary strings to JCR names. An upgrade shouldn't break that mapping.\n\nUnfortunately changing the mapping again now would just create another backwards compatibility issue. So my recommendation would be to either resolve this just as Won't Fix with a recommendation to use Sascha's workaround from above, or to add a new escapeIllegalJcr10Chars() method for use by clients that rely on the older mapping. In either case a client code change is needed for the 1.x to 2.x upgrade in cases where the client relies on this mapping.",
+            "date": "2011-10-25T09:10:27.111+0000",
+            "id": 6
+        },
+        {
+            "author": "Sascha Theves",
+            "body": "Totally agree with Jukka and for me the best solution would be to have a escapeIllegalJcr10Chars() method so I don`t need to copy the old jackrabbit code.",
+            "date": "2011-10-25T09:47:00.047+0000",
+            "id": 7
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "I committed such a escapeIllegalJcr10Chars() method in revision 1188590 and merged it to the 2.2 branch in revision 1188595.\n\nIntroducing new method signature in a patch release like 2.2.10 is a bit troublesome (ideally there'd be no API changes), but since this is a workaround for a backwards compatibility issue I consider the benefits to outweight the potential drawbacks.",
+            "date": "2011-10-25T10:24:16.749+0000",
+            "id": 8
+        }
+    ],
+    "component": "jackrabbit-core",
+    "description": "The following unit test fails:\n\n{code}\nimport static org.junit.Assert.*;\n\nimport org.apache.jackrabbit.util.Text;\nimport org.junit.Test;\n\npublic class TestEscaping\n{\n   @Test\n   public void testEscaping() throws Exception\n   {\n      // expect this as an escaped string (e.g. formerly escaped with jackrabbit 1.6)\n      String escaped = \"nam%27e\";\n      String unescaped = Text.unescapeIllegalJcrChars(escaped);\n      assertEquals(escaped, Text.escapeIllegalJcrChars(unescaped));\n   }\n}\n{code}\n\nThis is a major problem when upgrading from 1.6.x to 2.2.9. The node names that were escaped in jackrabbit 1.6 are not longer escaped and that breaks the backward compatibility. I think the problem comes in with JCR-2198. ",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "JCR-3128",
+    "issuetypeClassified": "OTHER",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "Problem with formerly escaped JCR node names when upgrading to Jackrabbit 2.2.9",
+    "systemSpecification": true,
+    "version": "2.2.9"
+}

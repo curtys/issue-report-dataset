@@ -1,0 +1,35 @@
+{
+    "comments": [
+        {
+            "author": "igor@mir2.org",
+            "body": "Reassigning to please_see_bug_288433@eml.cc pending resolution of bug 288433",
+            "date": "20060401T12:27:35",
+            "id": 0
+        },
+        {
+            "author": "inonit@inonit.com",
+            "body": "This bug may have been fixed by the patch for bug 290715.  In any case, the provided test case works now (when running with XMLBeans, but see bug 355677 for a new non-XMLBeans E4X implementation).  Closing as FIXED.",
+            "date": "20070208T14:30:25",
+            "id": 1
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "Adding target milestone of 1.6R6 based on the date this bug was resolved FIXED.",
+            "date": "20070518T15:10:16",
+            "id": 2
+        }
+    ],
+    "component": "E4X",
+    "description": "User-Agent:       Mozilla/5.0 (X11; U; Linux i686; en-US; rv:1.7.12) Gecko/20050920 Firefox/1.0.7 SUSE/1.0.7-0.1\nBuild Identifier: Mozilla/5.0 (X11; U; Linux i686; en-US; rv:1.7.12) Gecko/20050920 Firefox/1.0.7 SUSE/1.0.7-0.1\n\nThe following test attempts to append an XML object to an existing XML object (x). Two different constructors are used to create the XML child (y).\nCreating from an E4X literal produces an XML object that is not consistent with construction from an XmlObject this results in an IllegalArgumentException\nfor the E4X operation x.* += y2;\n\nTest Case\n---------------------------------\n\nimportPackage(Packages.org.apache.xmlbeans);\nimportPackage(Packages.java.lang);\n\nx= <a><b>test</b></a>;\n\n//y1 is an XML literal - uses XML(String) constructor\ny1= <c>hello</c>;\nxo=y1.getXmlObject();\nSystem.out.println(\"y1\\n\");\nSystem.out.println(y1.toXMLString());\nxo.dump();\n\nx.* += y1;\n\n//y2 is identical but constructed from an XmlObject.\nxo=XmlObject.Factory.parse(\"<c>hello</c>\");\ny2= new XML(xo);\nxo=y2.getXmlObject();\nSystem.out.println(\"y2\\n\");\nSystem.out.println(y2.toXMLString());\nxo.dump();\n\n//This should not throw an exception.\nx.* += y2;\n\nSystem.out.println(\"result\\n\");\nSystem.out.println(x.toXMLString());\n\n-----------------------------------\n\nFails with java.lang.IllegalArgumentException - Can't move/copy/insert a whole document.\n\norg.apache.xmlbeans.impl.store.Cursor.complain() line:145\norg.apache.xmlbeans.impl.store.Cursor.checkInsertionValidity() line:155\norg.apache.xmlbeans.impl.store.Cursor._copyXml() line:1513\norg.apache.xmlbeans.impl.store.Cursor.twoLocaleOp() line:1903\norg.apache.xmlbeans.impl.store.Cursor.twoLocaleOp() line:1881\norg.apache.xmlbeans.impl.store.Cursor.copyXml() line:1926\norg.mozilla.javascript.xmlimpl.XML.copy() line:711\norg.mozilla.javascript.xmlimpl.XML.moveSrcToDest() line:661\norg.mozilla.javascript.xmlimpl.XML.insertChild() line:759\norg.mozilla.javascript.xmlimpl.XML.insertChild() line:770\norg.mozilla.javascript.xmlimpl.XML.appendChild() line:1940\norg.mozilla.javascript.xmlimpl.XML.setChildren() line:2742\norg.mozilla.javascript.xmlimpl.XML.putXMLProperty() line:1274\norg.mozilla.javascript.xmlimpl.XMLObjectImpl.ecmaPut() line:233\norg.mozilla.javascript.ScriptRuntime.setObjectProp() line:1430\norg.mozilla.javascript.ScriptRuntime.setObjectProp() line:1422\norg.mozilla.javascript.gen.c2._c0() line:14\norg.mozilla.javascript.gen.c2.call()\norg.mozilla.javascript.ContextFactory.doTopCall() line:337\norg.mozilla.javascript.ScriptRuntime.doTopCall() line:2755\norg.mozilla.javascript.gen.c2.call()\norg.mozilla.javascript.gen.c2.exec()\n\n\nIn XML.java the XScriptAnnotation bookmark is set on the document *element* when constructed from a literal and on the *start* document when constructed from XmlObject.\n\nLiteral Constructor..\nhttp://lxr.mozilla.org/mozilla/source/js/rhino/xmlimplsrc/org/mozilla/javascript/xmlimpl/XML.java#388\n\nXmlObject Constructor...\nhttp://lxr.mozilla.org/mozilla/source/js/rhino/xmlimplsrc/org/mozilla/javascript/xmlimpl/XML.java#233\n\nTo be consistent the XmlObject constructor should be changed to ...\n\nstatic XML createFromXmlObject(XMLLibImpl lib, XmlObject xo)\n    {\n        XScriptAnnotation anno;\n        XmlCursor curs = xo.newCursor();\n    if (curs.currentTokenType().isStartdoc())\n        {\n            curs.toFirstContentToken();\n        }\n        try {\n            anno = new XScriptAnnotation(curs);\n            curs.setBookmark(anno);\n        } finally {\n            curs.dispose();\n        }\n        return new XML(lib, anno);\n    }\n\n\nWith this change the test succeeds.\n\nHaving worked with a patched version for several weeks we have seen no side-effects of this change to the XmlObject constructor.\n\nReproducible: Always\n\nSteps to Reproduce:\nTest supplied in details.",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "314163",
+    "issuetypeClassified": "OTHER",
+    "issuetypeTracker": "BUG",
+    "priority": "-- normal",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "E4X XML object constructed from an XML Beans XmlObject is not consistent with a literal (inline) E4X XML object, proprosed fix is supplied",
+    "systemSpecification": false,
+    "version": "other"
+}

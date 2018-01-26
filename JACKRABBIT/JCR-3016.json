@@ -1,0 +1,59 @@
+{
+    "comments": [
+        {
+            "author": "Julian Reschke",
+            "body": "test case",
+            "date": "2011-07-07T12:42:35.688+0000",
+            "id": 0
+        },
+        {
+            "author": "Julian Reschke",
+            "body": "So it seems the failed save() operation leaves the transient space in a state where it *can* be saved, but the save will cause repository corruption.\n\nEither the second save() operation on Session 2 should fail just like the first one, or alternatively the persisted change from Session 1 would need to be merged in - but I don't believe adding a same-named child node is something that is supposed to be mergeable.",
+            "date": "2011-07-07T12:51:55.745+0000",
+            "id": 1
+        },
+        {
+            "author": "Julian Reschke",
+            "body": "Another variant of the problem:\n\n\tpublic void testWithFolderAndFile() throws Exception {\n\n\t\tString testpath = testfolder.getPath();\n\n\t\tNode f1 = s1.getNode(testpath).addNode(\"foo\", \"nt:folder\");\n\t\tNode c1 = f1.addNode(\"a\", \"nt:file\");\n\t\tNode r1 = c1.addNode(\"jcr:content\", \"nt:resource\");\n\t\tr1.setProperty(\"jcr:data\", \"foo\");\n\n\t\tNode f2 = s2.getNode(testpath).addNode(\"foo\", \"nt:file\");\n\t\tNode r2 = f2.addNode(\"jcr:content\", \"nt:resource\");\n\t\tr2.setProperty(\"jcr:data\", \"bar\");\n\n\t\ts1.save();\n\n\t\ttry {\n\t\t\ts2.save();\n\t\t} catch (InvalidItemStateException ex) {\n\t\t\t// expected\n\n\t\t\t// retry; adding refresh doesn't change anything here\n\t\t\ttry {\n\t\t\t\ts2.save();\n\n\t\t\t} catch (InvalidItemStateException ex2) {\n\t\t\t\t// we would be cool with this\n\t\t\t}\n\t\t}\n\n\t\ts1.refresh(false); // we don't have changes in s1, so the keepChanges\n\t\t\t\t\t\t\t// flag should be irrelevant\n\t\tf1 = s1.getNode(testpath + \"/foo\"); // be nice and get a new Node\n\t\t\t\t\t\t\t\t\t\t\t\t// instance\n\n\t\tassertEquals(\"nt:folder\", f1.getPrimaryNodeType().getName());\n\t}\n\nHere, session 1 creates a node of type nt:folder, session 2 tries to create an nt:file node. For session 2, the 2nd save() succeeds, and the node created by session 1 disappears,",
+            "date": "2011-07-07T13:34:43.949+0000",
+            "id": 2
+        },
+        {
+            "author": "Julian Reschke",
+            "body": "I should have mentioned that enabling the hierarchy checker prevents the problem from happening, and the testtestWithFolderAndFile then yields:\n\njavax.jcr.RepositoryException: Unable to update item: item.save()\n\tat org.apache.jackrabbit.core.ItemSaveOperation.perform(ItemSaveOperation.java:264)\n\tat org.apache.jackrabbit.core.session.SessionState.perform(SessionState.java:200)\n\tat org.apache.jackrabbit.core.ItemImpl.perform(ItemImpl.java:91)\n\tat org.apache.jackrabbit.core.ItemImpl.save(ItemImpl.java:329)\n\tat org.apache.jackrabbit.core.session.SessionSaveOperation.perform(SessionSaveOperation.java:42)\n\tat org.apache.jackrabbit.core.session.SessionState.perform(SessionState.java:200)\n\tat org.apache.jackrabbit.core.SessionImpl.perform(SessionImpl.java:355)\n\tat org.apache.jackrabbit.core.SessionImpl.save(SessionImpl.java:758)\n\tat org.apache.jackrabbit.core.OverlappingNodeAddTest.testWithFolderAndFile(OverlappingNodeAddTest.java:120)\n\tat sun.reflect.NativeMethodAccessorImpl.invoke0(Native Method)\n\tat sun.reflect.NativeMethodAccessorImpl.invoke(Unknown Source)\n\tat sun.reflect.DelegatingMethodAccessorImpl.invoke(Unknown Source)\n\tat java.lang.reflect.Method.invoke(Unknown Source)\n\tat junit.framework.TestCase.runTest(TestCase.java:154)\n\tat junit.framework.TestCase.runBare(TestCase.java:127)\n\tat junit.framework.TestResult$1.protect(TestResult.java:106)\n\tat junit.framework.TestResult.runProtected(TestResult.java:124)\n\tat junit.framework.TestResult.run(TestResult.java:109)\n\tat junit.framework.TestCase.run(TestCase.java:118)\n\tat org.apache.jackrabbit.test.AbstractJCRTest.run(AbstractJCRTest.java:456)\n\tat org.eclipse.jdt.internal.junit.runner.junit3.JUnit3TestReference.run(JUnit3TestReference.java:130)\n\tat org.eclipse.jdt.internal.junit.runner.TestExecution.run(TestExecution.java:38)\n\tat org.eclipse.jdt.internal.junit.runner.RemoteTestRunner.runTests(RemoteTestRunner.java:467)\n\tat org.eclipse.jdt.internal.junit.runner.RemoteTestRunner.runTests(RemoteTestRunner.java:683)\n\tat org.eclipse.jdt.internal.junit.runner.RemoteTestRunner.run(RemoteTestRunner.java:390)\n\tat org.eclipse.jdt.internal.junit.runner.RemoteTestRunner.main(RemoteTestRunner.java:197)\nCaused by: org.apache.jackrabbit.core.state.ItemStateException: Child node entry with id dd97ff41-ee38-4508-aa13-5909e65322dd has been removed, but is not present in the changelog\n\tat org.apache.jackrabbit.core.state.SharedItemStateManager.validateModified(SharedItemStateManager.java:1371)\n\tat org.apache.jackrabbit.core.state.SharedItemStateManager.validateHierarchy(SharedItemStateManager.java:1143)\n\tat org.apache.jackrabbit.core.state.SharedItemStateManager.access$9(SharedItemStateManager.java:1134)\n\tat org.apache.jackrabbit.core.state.SharedItemStateManager$Update.begin(SharedItemStateManager.java:727)\n\tat org.apache.jackrabbit.core.state.SharedItemStateManager.beginUpdate(SharedItemStateManager.java:1461)\n\tat org.apache.jackrabbit.core.state.SharedItemStateManager.update(SharedItemStateManager.java:1491)\n\tat org.apache.jackrabbit.core.state.LocalItemStateManager.update(LocalItemStateManager.java:351)\n\tat org.apache.jackrabbit.core.state.XAItemStateManager.update(XAItemStateManager.java:354)\n\tat org.apache.jackrabbit.core.state.LocalItemStateManager.update(LocalItemStateManager.java:326)\n\tat org.apache.jackrabbit.core.state.SessionItemStateManager.update(SessionItemStateManager.java:289)\n\tat org.apache.jackrabbit.core.ItemSaveOperation.perform(ItemSaveOperation.java:258)\n\t... 25 more\n\n(this is for 2.2.4 source btw)\n\n",
+            "date": "2011-07-07T14:05:22.174+0000",
+            "id": 3
+        },
+        {
+            "author": "Julian Reschke",
+            "body": "Enhanced the diagnostics from the test case; it now clearly shows that session 1's \"folder\" node is disconnected from it's parent, but stays in the repository (as demonstrated using getNodeByIdentifier())",
+            "date": "2011-07-08T13:03:31.021+0000",
+            "id": 4
+        },
+        {
+            "author": "Julian Reschke",
+            "body": "assigning to you as discussed earlier on",
+            "date": "2011-07-08T14:31:29.561+0000",
+            "id": 5
+        },
+        {
+            "author": "Stefan Guggisberg",
+            "body": "fixed in svn revision 1144695",
+            "date": "2011-07-09T16:32:51.364+0000",
+            "id": 6
+        }
+    ],
+    "component": "jackrabbit-core",
+    "description": "It seems I can reproduce a sequence of operations that cause the repository to be inconsistent.\n\nThe short version: 2 sessions add a same-named child node to the same parent folder (not allowing same-name-siblings). Session 1's save() succeeds. Session 2's save() fails, but succeeds on retry (!).\n\nAfter the operation, the child node created by session 1 is still present, but the parent doesn't list it as child node anymore.\n\n(will add test case)",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "JCR-3016",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "inconsistent repository after overlapping node add operations",
+    "systemSpecification": true,
+    "version": ""
+}

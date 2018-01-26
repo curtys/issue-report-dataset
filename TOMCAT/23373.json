@@ -1,0 +1,83 @@
+{
+    "comments": [
+        {
+            "author": null,
+            "body": "Created attachment 8322\nThere are several ways to fix this. IMO this is probably the tidiest!",
+            "date": "20030923T22:08:16",
+            "id": 0
+        },
+        {
+            "author": null,
+            "body": "This obviously works fine for me (I did test it again just to be sure). The\nstopServer method is run in a separate JVM, so there can't be any side effect ;-)\nPlease reopen if you can submit a ready to test WAR (with source for the\nservlet, so that it can be debugged if needed). Thanks.",
+            "date": "20030924T05:19:19",
+            "id": 1
+        },
+        {
+            "author": null,
+            "body": "Sorry Remy. It was late last night. This happens when run with procrun \n(tomcat.exe) as a service. It runs in the same JVM. I haven't tested the patch \nbut it should do the trick.",
+            "date": "20030924T09:53:37",
+            "id": 2
+        },
+        {
+            "author": null,
+            "body": "Bookkeeping, the previous comment looked loike an inadvertnet reopen",
+            "date": "20030924T11:25:46",
+            "id": 3
+        },
+        {
+            "author": null,
+            "body": "Ok. I'll try to be a bit more clear.\nThis is a bug. I did mean to re-open.\nWhen running TC5 as a service with procrun (tomcat.exe) it calls stopServer \nwithin the same JVM that is currently awaiting resulting in the server object \nin Catalina being replaced with one that isn't started and therefore when stop \nis called it is called on the wrong object.\n",
+            "date": "20030924T11:36:44",
+            "id": 4
+        },
+        {
+            "author": null,
+            "body": "Sorry, nothing of what you say is true. Please do not reopen the report, it is \nbogus. I wasted about 1 hour on this, but there fixes which are needed to the\nshutdown routines (which could cause what you see, because the VM could die\nbefore completing the shutdown procedure properly), so it's good in some ways :)",
+            "date": "20030924T17:46:09",
+            "id": 5
+        },
+        {
+            "author": null,
+            "body": "Remy,\nI won't reopen it because you said not to, but I've debugged this. How can I \nprove it to you? Look at procrun_destroy_jvm in procrun.c. It calls jni_attach \nwhich:\n    err = (*jvm)->AttachCurrentThread(jvm,\n                                      (void **)&env,\n                                      NULL);\nStepping over line 423 in Catalina.java results in a callback to setServer and \nthe Server object that stop gets called on is the same object.\nJust the fact that I can hit a break point at main in Bootstrap.java when I \ntry to stop the service proves it. Because I'm attached to the JVM that the \nservice started.\n\nI created the service with:\nC:\\Tomcat\\Home\\bin\\tomcatw.exe //IS//TomcatDebugServer --DisplayName \"Apache \nTomcat Debug Server\" --Description \"Apache Tomcat 5.0.12 Server - \nhttp://jakarta.apache.org/tomcat/ - Debug Server\"  --\nInstall \"C:\\Tomcat\\Home\\bin\\tomcat.exe\" --\nImagePath \"C:\\Tomcat\\Home\\bin\\bootstrap.jar\" --StartupClass \norg.apache.catalina.startup.Bootstrap;main;start --ShutdownClass \norg.apache.catalina.startup.Bootstrap;main;stop --Java \nC:\\Tomcat\\J2SDK\\jre\\bin\\server\\jvm.dll --JavaOptions -server#-Xdebug#-\nXrunjdwp:transport=dt_socket,suspend=n,server=y,address=53006#-Xms512m#-\nXmx512m#-Xrs#-Dsp.log.suffix=\"_server1\"#-\nDjava.endorsed.dirs=\"C:\\Tomcat\\Home\\bin;C:\\Tomcat\\Home\\common\\endorsed\"#-\nDcatalina.base=\"C:\\Tomcat\\BaseServer1\"#-Dcatalina.home=\"C:\\Tomcat\\Home\"#-\nDjava.io.tmpdir=\"C:\\Tomcat\\BaseServer1\\temp\" --Startup manual --StdOutputFile \nC:\\Tomcat\\BaseServer1\\logs\\stdout.log --StdErrorFile C:\\Tomcat\\BaseServer1\n\\logs\\stderr.log --Arguments \"-config C:\\Tomcat\\BaseServer1\\conf\\server.xml\"\n\nMy problem is not that the JVM stops too early, it's that our webapp has some \ndaemon threads that are running. They don't get interupted because destroy \nnever gets called, therefore the service never stops.",
+            "date": "20030924T19:51:20",
+            "id": 6
+        },
+        {
+            "author": null,
+            "body": "Reopening to change status.",
+            "date": "20030925T03:12:20",
+            "id": 7
+        },
+        {
+            "author": null,
+            "body": "Your analysis is correct.  That is exactly what is happening.  \n\nThis is fixed now in the CVS, and should appear in 5.0.13.",
+            "date": "20030925T03:13:54",
+            "id": 8
+        },
+        {
+            "author": null,
+            "body": "I couldn't reproduce the issue during testing with TC 5.0.12, and I couldn't\nfind any issues affecting the shutdown code either.\n\nThe only one is that apparently JDK 1.4 logging doesn't log reliably when called\nfrom a shutdown hook thread, for some reason. That made me think the proper\nshutdown didn't occur, but this isn't the case.",
+            "date": "20030925T11:05:54",
+            "id": 9
+        },
+        {
+            "author": null,
+            "body": "Tested as Fixed in nightly build. Cheers.",
+            "date": "20030926T18:16:40",
+            "id": 10
+        }
+    ],
+    "component": "Catalina",
+    "description": "No servlet destroy() methods are being called at shutdown.\nThe problem is that the stopServer method in Catalina.java constructs a new \nStandardServer and the digester.parse(is); on line 423 results in a call back \nto setServer which means that when the SHUTDOWN command is sent to the server, \nit actually goes to the new !started server.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "23373",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "P3 critical",
+    "product": "Tomcat 5",
+    "project": "TOMCAT",
+    "summary": "Servlet destroy() methods not being called at shutdown",
+    "systemSpecification": false,
+    "version": "5.0.12"
+}

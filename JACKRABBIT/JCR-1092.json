@@ -1,0 +1,47 @@
+{
+    "comments": [
+        {
+            "author": "Shaun Barriball",
+            "body": "The candidate fix is to move from binary(16) to varbinary(16) within jackrabbit-core\\src\\main\\java\\org\\apache\\jackrabbit\\core\\persistence\\bundle\\mysql.ddl.",
+            "date": "2007-08-27T18:02:25.230+0000",
+            "id": 0
+        },
+        {
+            "author": "Stefan Guggisberg",
+            "body": "changed summary since the issue is not specific to mysql 5.",
+            "date": "2007-08-29T16:04:46.254+0000",
+            "id": 1
+        },
+        {
+            "author": "Stefan Guggisberg",
+            "body": "i was able to reproduce the issue on mysql 4.1 (windows) and mysql 5.0 (redhat) using connector/j 5.0 and connector/j 3.0.\n\non mysql 4.1 i was able to reproduce the issue using just the mysql console:\n\ncreate table t1 (id int, data binary(4));\ninsert into t1 select 1, unhex(\"61626320\");\n\nselect bit_length(data) from t1;\n=> 24 (instead of 32)\n\nselect * from t1 where data = unhex(\"61626320\");\n=> 0 hits\n\nselect * from t1 where data = unhex(\"616263\");\n=> 1 hit\n\nmysql 4 uses 0x20 (space) for padding. the trailing 0x20 in the value stored is mistaken for a padding. \n\nmysql 5 uses 0x00 for padding. however, storing values with trailing 0x20 (space) bytes through jdbc cause the same problem. i guess that in this case the jdbc driver is to be blamed.\n\ni agree with shaun that changing from binary(16) to varbinary(16) is the best solution.",
+            "date": "2007-08-29T16:22:50.518+0000",
+            "id": 2
+        },
+        {
+            "author": "Stefan Guggisberg",
+            "body": "fixed as suggested by shaun in svn rev. 570856\n\nshaun, thanks for your doggedness ;) and your excellent bug report!",
+            "date": "2007-08-29T16:29:40.314+0000",
+            "id": 3
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Merged to the 1.3 branch in revision 577839.",
+            "date": "2007-09-20T17:56:34.363+0000",
+            "id": 4
+        }
+    ],
+    "component": "jackrabbit-core",
+    "description": "It looks like the binary values read back from MySql where the UUID contains 0's is not the same as that generated from the UUID getRawBytes() call. As result, you can store a node with the UUID that has 0's but its never found when read back. This therefore causes corruption in random places when certain UUIDs are generated.\n\nTest Case: \n\nI've attached 2 files. One causes node corruption when imported, the other does not.\nThe only difference is that I removed any 0 values from the problem UUID in the file that causes corruption.\n\nAs Stefan pointed out, I had manipulated the test case to use standard nt types when in fact I should have provided the following info (sorry Stefan) e.g. the test folder types are referencable hence the jcr:uuid allocation\n\n[acme:Folder] > nt:folder, mix:referenceable\n\nIf I import causes_corruption.xml and then attempt to \"ls\" AclObjectIdentities then loadBundle() returns null for the UUID \n\na55f3f6b-a909-4e8d-b65a-93002ced0920 which in bytes is [-91, 95, 63, 107, -87, 9, 78, -115, -74, 90, -109, 0, 44, -19, 9, 32]\n\nIf I import works.xml then \"ls\" works fine for the same node as I've manually changed the UUID to replace 0s with 1s in the last section.\n\na55f3f6b-a909-4e8d-b65a-93112ced1921 [-91, 95, 63, 107, -87, 9, 78, -115, -74, 90, -109, 17, 44, -19, 25, 33]\n\n\nTesting shows this issue highlights a problem with the Bundle persistence manager and MySqls method of handling BINARY columns.\nThe solution looks to be to replace BINARY(16) with VARBINARY(16). Quoting from http://dev.mysql.com/doc/refman/5.0/en/binary-varbinary.html...\n\"If the value retrieved must be the same as the value specified for storage with no padding, it might be preferable to use VARBINARY or one of the BLOB data types instead.\"\nA review of our logs shows that all of the corruption we've seen has related to nodes with UUIDs including 0's.\n\n* Shall I log a JIRA ticket for this?\n* Anyone see any issues with this fix?\n\n\nIn the following example you can see I'm showing all bundles in the \"test1\" workspace.\n\nmysql> select hex(node_id) from test1_bundle;\n+----------------------------------+\n| hex(node_id)                     |\n+----------------------------------+\n| 28126C3E36A0471D9CDC5AC423BAC9C5 |\n| A55F3F6BA9094E8DB65A93002CED0920 |\n| CAFEBABECAFEBABECAFEBABECAFEBABE |\n| D638EACCDEB641FD8868804C8ECEFFFD |\n| DEADBEEFCAFEBABECAFEBABECAFEBABE |\n+----------------------------------+\n5 rows in set (0.00 sec)\n\n...but a select using the same UUID hex value returns no rows.\n\nmysql>  select node_id from test1_bundle where \nmysql> unhex('A55F3F6BA9094E8DB65A93002CED0920') = node_id;\nEmpty set (0.00 sec)\n\nI've then created a new \"test3\" workspace which I modified to use varbinary instead of binary with:\n\nalter table test3_bundle modify NODE_ID varbinary(16); alter table test3_refs modify NODE_ID varbinary(16);\n\nMy import test case now no longer fails and the following query proves that query operations, after a store, return rows as expected.\n\nmysql>  select node_id from test3_bundle where \nmysql> unhex('A55F3F6BA9094E8DB65A93002CED0920') = node_id;\n+------------------+\n| node_id          |\n+--------\u00b6Z ,\u00ed--  |\n+------------------+\n1 row in set (0.00 sec)\n\nmysql> desc test3_bundle;\nERROR 2006 (HY000): MySQL server has gone away No connection. Trying to reconnect...\nConnection id:    7116\nCurrent database: mmptest\n\n+-------------+---------------+------+-----+---------+-------+\n| Field       | Type          | Null | Key | Default | Extra |\n+-------------+---------------+------+-----+---------+-------+\n| NODE_ID     | varbinary(16) | YES  | UNI | NULL    |       |\n| BUNDLE_DATA | longblob      | NO   |     |         |       |\n+-------------+---------------+------+-----+---------+-------+\n2 rows in set (0.00 sec)\n\n\nmysql>  alter table test3_bundle modify NODE_ID varbinary(16);\nQuery OK, 2 rows affected (0.00 sec)\nRecords: 2  Duplicates: 0  Warnings: 0\n\n",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "JCR-1092",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "Bundle persistence managers node id key store/load is not symertric on MySql causing NoSuchItemState Exceptions ",
+    "systemSpecification": true,
+    "version": "1.3, 1.3.1"
+}

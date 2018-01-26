@@ -1,0 +1,107 @@
+{
+    "comments": [
+        {
+            "author": "Julian Reschke",
+            "body": "Fixing this properly requires several changes.\n\n(1) Do not consider multiple residual prop defs when they differ in their OnParentVersionAction value,\n\n(2) Rewrite the transient layer so that in presence of multiple residuals it will pick the \"right\" one (such as for Property.getDefinition()).\n\nAs (1) is simple and allows my SPI stack to continue to work for now, I'll fix that right away.\n\nFor (2), I'd recommend to change getMatchingPropDef () as below:\n\n- only one method\n- each of the definition's aspects can be marked as \"don't care\" (by changing int->Integer, boolean->Boolean and allowing null values here).\n\nFeedback appreciated.\n",
+            "date": "2007-02-19T16:33:20.634+0000",
+            "id": 0
+        },
+        {
+            "author": "Julian Reschke",
+            "body": "(1) Done earlier.\n\n(2) I just spent more time on this, and the key problem seems to be that JCR2SPI does not use RepositoryService.getPropertyDefinition() at all. Changing WorkspaceItemStateFactory.createPropertyState(...) so that the property definition is always fetched from the repository service fixes the problem, because it avoids having to ask the EffectiveNodeType at all. Now this is probably a problem performance-wise -- wouldn't it make sense to add getDefinition to ItemInfo on SPI, so the additional roundtrip is not necessary?\n\n",
+            "date": "2007-02-24T19:54:40.750+0000",
+            "id": 1
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "Hmm, this would move the responsibility to pick an item definition to the SPI implementation but at the same time  also increase the complexity of the SPI implementation. ItemInfo can currently be implemented as a simple bean without the need for additional logic. Your suggestion would break this rule, but maybe it's worth it.\n\nI see two other options:\n\nA) JCR2SPI first tries to resolve the ItemDefinition based on the available node type information. E.g. the property jcr:primaryType is always well defined. If there is more than one matching residual definition present, JCR2SPI asks the repository service for a matching definition.\n\nB) Change methods RepositoryService.get[Node|Property]Definition() in a way that they can be implemented without a need for a server roundtrip and then always use those methods to lookup an ItemDefinition.\n\nOr even better implement both A & B?\n\nAngela, what do you think?",
+            "date": "2007-02-26T09:04:08.083+0000",
+            "id": 2
+        },
+        {
+            "author": "Julian Reschke",
+            "body": "- I do agree that we should avoid server round trips if the property definition is precisely known ahead of time.\n\n- Not sure how you would do B). Can you be a bit more specific?\n\n\n",
+            "date": "2007-02-26T09:59:05.471+0000",
+            "id": 3
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "I was thinking of a method that provides all the required information to resolve the ambiguous definitions. Something along the lines: 'hey, you gave me multiple matching property definitions when I wanted to create a property named 'foo', which one should I use?'\n\nRepositoryService.resolvePropertyDefinition(SessionInfo sessionInfo, NodeInfo nodeInfo, QName propertyName, QPropertyDefinition[] definitions)\n\nAnd similar for node definitions.",
+            "date": "2007-02-27T09:48:44.974+0000",
+            "id": 4
+        },
+        {
+            "author": "Julian Reschke",
+            "body": "That would work, but why would the SPI implementation would ever need the definitions parameter? For an existing property, an SPI implementation should always precisely know the QPropDef right?\n\nOr is this about requesting the definition of a property *before* it is being created? That would be useful, but again I don't see what the definitions parameters would do here?\n\n",
+            "date": "2007-02-27T10:17:55.877+0000",
+            "id": 5
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "The definitions are passed to avoid a potential server call-back. The SPI implementation may not have the property definitions at hand when just the node info and the property name is passed.",
+            "date": "2007-02-28T13:06:31.167+0000",
+            "id": 6
+        },
+        {
+            "author": "Julian Reschke",
+            "body": "Not convinced. If the node type allows multiple property definitions here, obtaining the right one from the store doesn't seem to be any harder than selecting one of the ones supplied by the caller. But maybe I'm missing something here.\n\nAnyway; if we do that (as proposed in <https://issues.apache.org/jira/browse/JCR-741#action_12476110>), do we still need RepositoryService.getPropertyDefinition? Right now it's not used by JCR2SPI which makes me a bit nervous :-).\n",
+            "date": "2007-03-01T13:23:42.863+0000",
+            "id": 7
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "> Not convinced. If the node type allows multiple property definitions here, obtaining the right one from the\n> store doesn't seem to be any harder than selecting one of the ones supplied by the caller.\n\nmy point is to possibly avoid a call (by an spi implementation) to the store and give an spi implementation the opportunity to implement the method as an entirely local call. Would this work in your case, or would you still have to ask the store to pick the right definition?\n\n> Anyway; if we do that, do we still need RepositoryService.getPropertyDefinition? Right now it's not used\n> by JCR2SPI which makes me a bit nervous :-).\n\nIMO we should remove the method RepositoryService.getPropertyDefinition() anyway. It does not scale well and in almost all cases it can be infered from the node type definition which property definition applies to a certain property. I think the same also applies to child node definitions (jcr2spi only uses the method to get the node definition for the root node).\n\nUsing the node type definition and its item definitions require much lesser calls to the SPI than using getPropertyDefinition() and getNodeDefinition(). So, I think jcr2spi does it the right way, even though it doesn't use getPropertyDefinition().",
+            "date": "2007-03-05T10:08:08.834+0000",
+            "id": 8
+        },
+        {
+            "author": "Julian Reschke",
+            "body": "> my point is to possibly avoid a call (by an spi implementation) to the store and give an spi implementation the opportunity to implement the method as an entirely local call. Would this work in your case, or would you still have to ask the store to pick the right definition?\n\nIn my case it wouldn't make a difference; only the store knows the right answer.\n\n> IMO we should remove the method RepositoryService.getPropertyDefinition() anyway. It does not scale well and in almost all cases it can be infered from the node type definition which property definition applies to a certain property. I think the same also applies to child node definitions (jcr2spi only uses the method to get the node definition for the root node).\n\n+1 on removing stuff from the API that isn't used by JCR2SPI.\n\n> Using the node type definition and its item definitions require much lesser calls to the SPI than using getPropertyDefinition() and getNodeDefinition(). So, I think jcr2spi does it the right way, even though it doesn't use getPropertyDefinition().\n\nAvoiding round-trips is good; we just need to make the special cases work. So what's the next step? Add resolvePropertyDefinition() as proposed?\n\n",
+            "date": "2007-03-05T13:31:57.712+0000",
+            "id": 9
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "Hmm, if you have to do the call to the store anyway then I propose the following:\n\n- Keep the methods RepositoryService.getPropertyDefinition() and RepositoryService.getNodeDefinition()\n- Resolve the item definitions using the node type information whenever possible.\n- If there is a conflicting situation with multiple residual definitions that match, ask the repository service for the correct one using RepositoryService.getPropertyDefinition() or RepositoryService.getNodeDefinition()\n\nDoes that work for you? Is there enough information in the parameters to decide which definition to use? Please also note that those calls will use ids that reference items that do not yet exist.",
+            "date": "2007-03-06T10:33:49.965+0000",
+            "id": 10
+        },
+        {
+            "author": "Julian Reschke",
+            "body": "I think this will work for me; I'll try to adapt EffectiveNodeTypeImpl accordingly.\n\nThe fact that getPropertyDefinition() and getNodeDefinition() need to work on not-yet existing items probably should be added to the Javadoc, it may not be obvious to everybody...\n",
+            "date": "2007-03-06T14:30:53.864+0000",
+            "id": 11
+        },
+        {
+            "author": "Julian Reschke",
+            "body": "OK, back to the drawing board.\n\nIt seems to me that EffectiveNodeTypeImpl is the wrong place, because it doesn't have access to the other ingredients, such as service, session, or propertyId.\n\nRevised proposal: add EffectiveNodeType.getApplicablePropertyDefinitions()[], and let the caller (in this case WorkspaceItemStateFactory) sort things out.\n\nFeedback appreciated.\n",
+            "date": "2007-03-06T20:57:39.101+0000",
+            "id": 12
+        },
+        {
+            "author": "Julian Reschke",
+            "body": "OK, I've added the most simple thing that will work for my case in Revision r515598. With this change, WorkspaceItemStateFactory will ask the SPI impl whenever there are multiple property definitions (this may cause an additional request in some edge cases compared to the previous approach).\n",
+            "date": "2007-03-07T15:31:44.288+0000",
+            "id": 13
+        },
+        {
+            "author": "Julian Reschke",
+            "body": "Closing issue for now; test cases pass for my JCR2SPI based custom implementation.\n",
+            "date": "2007-07-09T12:51:18.383+0000",
+            "id": 14
+        }
+    ],
+    "component": "jackrabbit-spi",
+    "description": "org.apache.jackrabbit.jcr2spi.nodetype.EffectiveNodeTypeImpl currently rejects multiple residual property definitions, if they do not differ in getMultiple(). In fact, it should accept all combinations, so differing values for getOnParentVersionAction and other aspects should be accepted as well.\n\nSee JSR 170, 6.7.8:\n\n\"For purposes of the above, the notion of two definitions having the same name does not apply to two residual definitions. Two (or more) residual property or child node definitions with differing subattributes must be permitted to co-exist in the same effective node type. They are interpreted as disjunctive (ORed) options.\"",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "JCR-741",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Minor",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "Handling of multiple residual prop defs in EffectiveNodeTypeImpl",
+    "systemSpecification": true,
+    "version": ""
+}

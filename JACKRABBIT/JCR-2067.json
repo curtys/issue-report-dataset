@@ -1,0 +1,59 @@
+{
+    "comments": [
+        {
+            "author": "Thomas Mueller",
+            "body": "Committed in revision 768982 (trunk)",
+            "date": "2009-04-27T13:51:41.374+0000",
+            "id": 0
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "I just found out, there is already a class LazyFileInputStream (that does basically the same) in the package org.apache.jackrabbit.util. However this one doesn't close the file after reading the last byte.",
+            "date": "2009-04-27T15:27:01.397+0000",
+            "id": 1
+        },
+        {
+            "author": "Attila Kir\u00e1ly",
+            "body": "We run into a \"too many open files\" problem with using FileDataStore and adding a massive ammount of data to the repository (around 80GB documents). We were not searching just adding elements to the repository.\n\nHowever using the modifications of this issue (namly /jackrabbit/trunk/jackrabbit-core/src/main/java/org/apache/jackrabbit/core/data/FileDataRecord.java and /jackrabbit/trunk/jackrabbit-core/src/main/java/org/apache/jackrabbit/core/data/LazyFileInputStream.java) solves our issue. Is it possible that this modification gets ported to the 1.5.x branch?\n\nWe tested with 1.5.5 and these two files.",
+            "date": "2009-05-12T07:30:30.755+0000",
+            "id": 2
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "For me, back-porting to 1.5.5 would be OK.\n\nTo move the LazyFileInputStream to the jackrabbit-jcr-commons package we would need to add a dependency to Apache Commons IO in this project as well:\n \n    <dependency>\n      <groupId>commons-io</groupId>\n      <artifactId>commons-io</artifactId>\n    </dependency>\n",
+            "date": "2009-05-13T09:27:51.224+0000",
+            "id": 3
+        },
+        {
+            "author": "Attila Kir\u00e1ly",
+            "body": "I suggest not invoking super.close() in LazyFileInputStream if the stream was never opened because it can result in a NPE (and we got one with Jackrabbit).\n\nSo maybe something like this would be better:\npublic void close() throws IOException {\n  if (!opened)  \n    opened = true;\n  else\n    super.close();\n}",
+            "date": "2009-05-19T17:11:15.156+0000",
+            "id": 4
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "You are right, I will fix this problem and add a proper test case.",
+            "date": "2009-05-27T10:16:39.755+0000",
+            "id": 5
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "Committed in revision 779081 (trunk)",
+            "date": "2009-05-27T10:19:21.748+0000",
+            "id": 6
+        }
+    ],
+    "component": "jackrabbit-core",
+    "description": "Currently, PropertyImpl.getValue() opens a FileInputStream if the FileDataStore is used.\nIf the application doesn't use the value, this stream is never closed.\n\nPropertyImpl.getValue():\n  return internalGetValue().toJCRValue(session);\nInternalValue.toJCRValue(..):\n  case PropertyType.BINARY:\n    return new BinaryValue(((BLOBFileValue) val).getStream());\nBLOBInDataStore.getStream():\n  return getDataRecord().getStream();\nFileDataRecord.getStream():\n  return new FileInputStream(file);\n\nOne solution is to return a 'lazy' file input stream that only opens the file when reading from the stream (and closing the file when the last byte was read). Maybe there is already a class (in Apache Commons maybe?) that can do that.\n",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "JCR-2067",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Major",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "FileDataStore: only open a stream when really necessary",
+    "systemSpecification": true,
+    "version": ""
+}

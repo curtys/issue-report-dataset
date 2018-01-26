@@ -1,0 +1,77 @@
+{
+    "comments": [
+        {
+            "author": "Hemanta Gupta",
+            "body": "In case it's useful, I'm attaching a modified version of DatabaseJournal which contains the connection reestablishment code (leveraged from DatabaseFileSystem). There's additional code for getting the connection from a data-source instead of DriverManager, but that's not relevant to this issue.",
+            "date": "2007-05-17T04:14:44.816+0000",
+            "id": 0
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Looks good, thanks!\n\nBefore committing this, I'm wondering if we could create a single helper class that would handle all the connection re-establishment so we wouldn't need to duplicate the code. Also, would it be possible to share code across JNDIDatabaseJournal and the normal DatabaseJournal classes?",
+            "date": "2007-05-24T03:28:50.211+0000",
+            "id": 1
+        },
+        {
+            "author": "Dominique Pfister",
+            "body": "Hi Jukka,\n\nI'm currently processing Hemanta's input and adapting the DatabaseJournal class. Unconditionally reestablishing the connection and retrying a statement if some error occurs does not make sense in every circumstance: e.g. if a journal record is appended, the sequence of method calls is as follows:\n\ndoLock(): will increment the global revision and lock the global revision table. \nappend(): will use that incremented global revision to actually insert a record.\n\nif a connection is dropped in between, retrying to insert a record WITHOUT the global revision table still being locked may lead to inconsistencies. I therefore tend to apply some more defensive strategy here.\n\nWith respect to the JNDI datasource feature, I'd like to include this feature directly inside the DatabaseJournal class, where the user may either specify url/driver or datasource as arguments. I prefer this to the separate class construct.\n\nKind regards\nDominique",
+            "date": "2007-05-24T06:45:21.099+0000",
+            "id": 2
+        },
+        {
+            "author": "Dominique Pfister",
+            "body": "Thank you Hemanta for reporting this bug and providing a patch to fix it. Since unconditionally reestablishing the connection and reexecuting a statement on an SQL failure may lead to errors/inconsistencies, I took a more defensive approach (see my comment above). \n\nI added two overridables, called init() and getConnection() that may be used in a derived class to return a connection obtained from a datasource.\n\nFixed in revision 541253.\n",
+            "date": "2007-05-24T10:04:14.025+0000",
+            "id": 3
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Thanks, Dominique!\n\n> With respect to the JNDI datasource feature, I'd like to include this feature directly inside the\n> DatabaseJournal class, where the user may either specify url/driver or datasource as arguments.\n> I prefer this to the separate class construct. \n\nFair enough. I'm mostly worried about duplicating code, not about how and where the configuration and control lies. Perhaps we can see some consolidation later on.\n",
+            "date": "2007-05-24T10:46:50.857+0000",
+            "id": 4
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "The re-connecting logic only seems to work after the journal has first failed once. I.e. the reconnection is not transparent to the client. Should we change this?",
+            "date": "2008-01-10T12:54:07.809+0000",
+            "id": 5
+        },
+        {
+            "author": "Dominique Pfister",
+            "body": "Sorry, can you elaborate on this \"first failed once\" or provide an example?",
+            "date": "2008-01-10T13:36:01.117+0000",
+            "id": 6
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "I mean that when a connection is lost, then for example a getRecords() call will first throw an exception and then work again when it is next called.\n\nOf course, now that I traced the logic back to ClusterNode, throwing an exception in getRecords() doesn't matter that much as ClusterNode will just log it as an error and try again in a short while. So I guess there's nothing we need to do.",
+            "date": "2008-01-10T13:47:27.142+0000",
+            "id": 7
+        },
+        {
+            "author": "Guido J\u00e4kel",
+            "body": "@Dominique:\n\nMay we please reopen this or re-new it with a new topic?\n\nUsing V1.4-RC1, the re-connect works for the journal (as a improvement agains V1.3.3), but the re-connect of the FileSystem and PersistanceManager connections still don't come up, again. Therefore, the whole repository becomes unusable.\n\nI've attached a long stacktrace. You may contact us via email, if you need some details of configuration.",
+            "date": "2008-01-16T08:18:45.680+0000",
+            "id": 8
+        },
+        {
+            "author": "Dominique Pfister",
+            "body": "Hi Guido,\n\nif you believe that there are problems with the reconnection logic in FileSystems and PersistanceManagers but not with the one in the DatabaseJournal, I suggest you open a new bug.\n\nKind regards\nDominique",
+            "date": "2008-01-16T08:54:48.101+0000",
+            "id": 9
+        }
+    ],
+    "component": "jackrabbit-core",
+    "description": "The DB based file system and persistence manager implementations have logic for connection reestablishment in case the DB server bounces while the repository is running, but the DB based journal implementation doesn't.",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "JCR-927",
+    "issuetypeClassified": "RFE",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Minor",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "DatabaseJournal needs connection reestablishment logic",
+    "systemSpecification": true,
+    "version": ""
+}

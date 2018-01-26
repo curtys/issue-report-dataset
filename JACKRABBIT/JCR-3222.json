@@ -1,0 +1,71 @@
+{
+    "comments": [
+        {
+            "author": "Jukka Zitting",
+            "body": "Proposed patch.",
+            "date": "2012-01-26T18:16:42.809+0000",
+            "id": 0
+        },
+        {
+            "author": "Felix Meschberger",
+            "body": "Unfortunately this is a compiled library and I cannot see, what's changed ....\n\nBut then, somehow this feels like official Reflection Programming ....\n\nHow about using OSGi services ?\n\n(0) The DavexServletService is already registered as a Servlet service for Whiteboard Http Service registration\n(1) We could add a contextId configuration which could be configured to refer to a HttpContext service used by the Whiteboard registration\n(2) Support a SessionProvider service providing pluggability\n\nSling (or other OSGi based use cases) could then just provide the missing pieces.\n\nWill provide a proposed patch.",
+            "date": "2012-01-26T18:53:39.756+0000",
+            "id": 1
+        },
+        {
+            "author": "Felix Meschberger",
+            "body": "Proposed patch enhancing DavexServletService",
+            "date": "2012-01-26T19:13:35.847+0000",
+            "id": 2
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "I considered the OSGi whiteboard pattern for this, but it doesn't work for the Sling davex bundle. The Sling authentication code needs to be able to take over the entire processing of a request instead of just servicing a getSession() call. Thus a Sling component that interacts with the default Jackrabbit davex servlet in any case needs to be set up as a servlet filter (or a subclass like it currently is). Therefore passing the appropriate SessionProvider as a request attribute is IMHO a much more straightforward solution. And it works nicely also in non-OSGi deployments.",
+            "date": "2012-01-26T21:10:01.598+0000",
+            "id": 3
+        },
+        {
+            "author": "Felix Meschberger",
+            "body": "> The Sling authentication code needs to be able to take over the entire processing of a request instead of just servicing a getSession() call. \n\nThis is wrong.\n\nThe DavexServletService is registered as a servlet service and gets processing the request from the service call. A service in OSGi registered along with an Osgi HttpContext object which has a handleSecurity method, which handles authentication before the servlet is even called. By having a contextId service property a whiteboard servlet service can refer to a whiteboard HttpContext service which implements that method accordingly.\n\nThus my patch allows to plug a HttpContext service which we in Sling can provide to call the Sling authentication processing. This then makes the ResourceResolver and hence the Session available to the servlet.\n\nInside the servlet, the patch implements the getSessionProvider method to return a proxy SessionProvider which either provides a registered SessionProvider service or returns the default from the parent class. Sling will den provide a SessionProvider service which knows about the Sling authentication and can extract the session from the ResourceResolver.\n\nExisting uses of the JcrRemotingServlet need not be changed as does the JcrRemotingServlet. Everything is done in the DavexServletService with proper OSGi oriented actions -- except for the ResourceResolver defined as a request attribute, which we already have.",
+            "date": "2012-01-27T06:09:31.206+0000",
+            "id": 4
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "> This is wrong. \n\nThat's what the HttpContext.handleSecurity() method does, right? It's needs to be able to take over the entire processing of a request.\n\n> By having a contextId service property a whiteboard servlet service can refer to a whiteboard\n> HttpContext service which implements that method accordingly.\n\nYou need some code to actually implement the HttpContext interface. That code could simply do request.setAttribute(SessionProvider.class.getName(), customSessionProvider) in the handleSecurity() method, right? I don't see why the SessionProvider instance would need to be an OSGi service in this case.\n\nOf course, if there is a case why some component would want to implement the SessionProvider interface without the ability to terminate request processing or to send a custom HTTP response, then I could see why accessing SessionProviders as OSGi services would be useful. In such a case though, we should support potentially more than just a single SessionProvider service and make sure that the releaseSession() calls get routed to the correct provider (which your current patch doesn't guarantee).\n",
+            "date": "2012-01-27T12:52:22.989+0000",
+            "id": 5
+        },
+        {
+            "author": "Felix Meschberger",
+            "body": "> That's what the HttpContext.handleSecurity() method does, right? It's needs to be able to take over the entire processing of a request. \n\nNo, this is called by the Http Service before calling the servlet. The handleSecurity method either returns true in which case the servlet is called or false in which case the request is terminated and the servlet is not called.\n\nThe handleSecurity method must set up to three request attributes which are used to implement HttpServletRequest methods (getRemoteUser, getAuthType, getUserPrincipal). In addition the Sling implementation could provide the ResourceResolver (what we do in the Sling DavEx bundle.\n\nThe handleSecurity method could of course set the SessionProvider, too. But I don't like this -- special case handling affecting all but used by one only.\n\nIn addtion: unless you will be implementing a special proxy SessionProvider looking for the actual provider on each request, the getSessionProvider() method is AFAICT only called once no matter how many different SessionProviders are found in the request attributes... The SessionProvider is not something request specific but something setup specific. Hence a service and not request attribute.",
+            "date": "2012-01-27T13:26:16.929+0000",
+            "id": 6
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "> But I don't like this -- special case handling affecting all but used by one only.\n\nYou don't have the same concern about injecting the ResourceResolver instance as a request attribute? Just like the OSGi service space, the attributes support in servlet requests (or servlet context, etc.) is a whiteboard shared by multiple providers and consumers. Why would adding a properly namespaced attribute affect anyone but the consumer of that attribute?\n\nAdditionally, the AuthHttpContext class in the Sling davex bundle is already designed specifically for the needs of the davex servlet (it needs to interpret the workspace part of the URL). So I don't see how this would affect anyone but the davex servlet.\n\nAnyway, I guess we should simply allow both approaches and let downstream users decide which mechanism they want to use.\n\nPS. Sorry about uploading the wrong file above... :-) I've uploaded the actual patch.",
+            "date": "2012-01-27T17:35:04.913+0000",
+            "id": 7
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "OK, I've now combined the two approaches. Revision 1236819 is my original patch and revision 1236821 a modified version of Felix' patch with support for potentially more than just a single external SessionProvider service. Note that the request attribute mechanism works for all webdav servlets, while the OSGi service mechanism only works for the davex servlet (since it's the only servlet configured as an OSGi service).\n\nAdditionally in revision 1236820 I moved some extra SessionProviderImpl code (added in JCR-2539 and JCR-2542) to the JCRWebdavServlet class where it belongs better. That clears up the SessionProvider API contract and avoids breaking functionality when using custom SessionProvider implementations.\n\nMerged to the 2.4 branch in revision 1236837.\n",
+            "date": "2012-01-27T19:11:38.068+0000",
+            "id": 8
+        }
+    ],
+    "component": "jackrabbit-jcr-server",
+    "description": "In order to integrate the Jackrabbit davex server functionality with their custom authentication logic, the Sling project currently needs to embed and subclass the davex servlet classes. It would be cleaner if such tight coupling wasn't needed.\n\nOne way to achieve something like that would be to allow external components to provide a custom SessionProvider instance as an extra request attribute. This way for example a servlet filter that implements such custom authentication logic could easily make its functionality available to the standard davex servlet in Jackrabbit.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "JCR-3222",
+    "issuetypeClassified": "RFE",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Minor",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "Allow servlet filters to specify custom session providers",
+    "systemSpecification": true,
+    "version": ""
+}

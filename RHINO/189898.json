@@ -1,0 +1,101 @@
+{
+    "comments": [
+        {
+            "author": "user@apochta.com",
+            "body": "CC to Roger, this is a regression since 1.5R3",
+            "date": "20030121T12:53:06",
+            "id": 0
+        },
+        {
+            "author": "user@apochta.com",
+            "body": "Shorter title",
+            "date": "20030121T12:53:51",
+            "id": 1
+        },
+        {
+            "author": "pschwartau@meer.net",
+            "body": "Confirming and reassigning to Roger.\n\nCURRENT SPIDERMONKEY (as is; without patch for bug 85721)\njs> \"XaXY\".replace(\"XY\", \"--\")\nXa--\n\nCURRENT RHINO\njs> \"XaXY\".replace(\"XY\", \"--\")\n--aXY\n\nand yet:\n\njs> \"XaXY\".search(\"XY\")\n2",
+            "date": "20030121T18:01:24",
+            "id": 2
+        },
+        {
+            "author": "pschwartau@meer.net",
+            "body": "FWIW:\n\nNote there is an important difference between the replace() method\nand the search() and match() methods of String.prototype, when the\nfirst parameter provided is a string and not a regexp. \n\nThis was a last-minute change made in the ECMA-262 Edition 3 spec.\nAs late as the Final Draft for Edition 3, the spec used to require\nthese to be equivalent:\n\n   str.replace(strA, strB) == str.replace(new RegExp(strA),strB)\n\n\nHowever, in bug 83293 Jim Ley pointed out that ECMA-262 Edition 3 Final \nchanged on this. String.prototype.replace (searchValue, replaceValue),\nif provided a searchValue that is not a RegExp, is NOT to replace it with\n\n                    new RegExp(searchValue)\nbut rather:\n                        String(searchValue)\n\n\nThis puts the replace() method at variance with search() and match(),\nwhich continue to follow the RegExp conversion of the Final Draft.\n\nSee ECMA-262 Edition 3 Final, 15.5.4.11 String.prototype.replace\n\nThis is of relevance if strings contain any regexp meta-characters\nlike '$', '^', etc.  If such a string is provided as a first parameter\nto the replace() method, these characters are to be interpreted as \nstring literals, unlike the case for search() and match().\n\nFinally, note the place to get the ECMA-262 Edition 3 Final is at\nhttp://www.mozilla.org/js/language (also note the list of errata).\nI am told that the version at the ECMA website itself is not current!",
+            "date": "20030121T19:58:48",
+            "id": 3
+        },
+        {
+            "author": "pschwartau@meer.net",
+            "body": "Testcase added to JS testsuite:\n\n      mozilla/js/tests/ecma_3/String/regress-189898.js\n\nCurrently passing in SpiderMonkey, failing in Rhino -",
+            "date": "20030121T21:26:27",
+            "id": 4
+        },
+        {
+            "author": "user@apochta.com",
+            "body": "Note for String.prototype.replace semantics in MSIE:\n\nwww.microsoft.com contains JavaScript with expressions like:\n\n<html-fragment1>.replace(<html-fragment2>, <html-fragment3>) \n\nwhere <html-fragment2> contains at least . and ? and often JavaScript fragments\nfrom even handlers with +, [] etc.. So it is essential there that\n<html-fragment2> is treated as a string, not RegExp.\n",
+            "date": "20030122T09:14:47",
+            "id": 5
+        },
+        {
+            "author": "rogerl@formerly-netscape.com.tld",
+            "body": "The REOP_FLAT node being generated for the 'flat' entry-point used by replace\nwas constructed wrong. I also added error checks for bad quantifiers from\nSpiderMonkey bug 188206",
+            "date": "20030122T18:55:49",
+            "id": 6
+        },
+        {
+            "author": "pschwartau@meer.net",
+            "body": "Verified FIXED.\n\nThe testcase for this bug is now passing in both the interpreted\nand compiled modes of Rhino:\n\n      mozilla/js/tests/ecma_3/String/regress-189898.js\n\n\nFurthermore, as Roger indicated, Rhino is also now passing the\ntestcase for bug 188206:\n\n      mozilla/js/tests/ecma_3/RegExp/regress-188206.js\n\nThis test deliberately misuses regexp quantifiers and checks\nfor SyntaxErrors to result. This is now working in Rhino -",
+            "date": "20030122T21:52:27",
+            "id": 7
+        },
+        {
+            "author": "user@apochta.com",
+            "body": "Yes, now www.microsoft.com works with the Rhino CVS version in our browser.",
+            "date": "20030123T11:47:06",
+            "id": 8
+        },
+        {
+            "author": "bugzilla@babylonsounds.com",
+            "body": "Status CLOSED is deprecated as per bug 169885",
+            "date": "20030827T22:59:17",
+            "id": 9
+        },
+        {
+            "author": "bugzilla@babylonsounds.com",
+            "body": "Re-Resolving",
+            "date": "20030827T23:00:11",
+            "id": 10
+        },
+        {
+            "author": "bugzilla@babylonsounds.com",
+            "body": "verifying former CLOSED bugs",
+            "date": "20030827T23:00:45",
+            "id": 11
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Trageting as resolved against 1.5R5",
+            "date": "20040213T11:33:28",
+            "id": 12
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Fixing wrong milestone assignment",
+            "date": "20040213T14:35:20",
+            "id": 13
+        }
+    ],
+    "component": "Core",
+    "description": "User-Agent:       Mozilla/5.0 (X11; U; Linux i686; en-US; rv:1.0.1) Gecko/20021003\nBuild Identifier: The third release candidadte of Rhino 1.5R4\n\nThe following scripts demonstartes the problem:\n\nvar result = \"XaXY\".replace(\"XY\", \"--\");\t\n\nvar expect = \"Xa--\"\n\nvar ok = result == expect;\n\nif (ok) {\n\tprint(\"OK\");\n} else {\n\tprint(\"FAILED: expected='\"+expect+\"', result='\"+result+\"'\");\n}\n\n\nIt looks like replace in general always match the first character if it starts\nthe match string\n\nReproducible: Always\n\nSteps to Reproduce:\nRun the above script in the rhino shell\nActual Results:  \nFAILED: expected='Xa--', result='--aXY'\n\n\nExpected Results:  \nOK",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "189898",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "-- normal",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "Broken String.replace:  \"XaXY\".replace(\"XY\", \"--\") gives --aXY",
+    "systemSpecification": true,
+    "version": "other"
+}

@@ -1,0 +1,65 @@
+{
+    "comments": [
+        {
+            "author": "Robert Muir",
+            "body": "by the way: as mentioned above, as far as numerics and collation goes, \nboth of these today avoid any of the parts of unicode that are sensitive to such a sort order change.\n\nSo these already \"backwards compatible\" in the sense that numeric fields or \ncollated fields will sort the same way in either UTF-8/UTF-32 byte[] order or UTF-16 char[] order.\n",
+            "date": "2010-05-02T14:33:42.150+0000",
+            "id": 0
+        },
+        {
+            "author": "Yonik Seeley",
+            "body": "big +1\nthe more we get to pure bytes, the better IMO.",
+            "date": "2010-05-02T15:11:43.237+0000",
+            "id": 1
+        },
+        {
+            "author": "Robert Muir",
+            "body": "I think most apps will be unaffected by this change (if the prefix-flex index convertor can sort the terms in binary, too).\n\nBut we need to lookout for some traps:\n* Things that use String.compareTo are dangerous, as it uses code unit order (e.g. i see a binary search w/ this in FieldCache)\n* In general assuming a term can be a String at all is problematic with using byte[] terms, if numeric wants to use full byte, etc. \nSo we should think about changing Term, too.\n\nthe best way to avoid problems is to stick with byte[] as much as possible and try to avoid using String for terms... ",
+            "date": "2010-05-02T16:22:52.390+0000",
+            "id": 2
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Big +1 too :)\n\nFor FieldCache, we need to do LUCENE-2380 (creates a BytesRef field cache) and switch Lucene to use it -- I'll add a dependency.",
+            "date": "2010-05-03T10:14:48.384+0000",
+            "id": 3
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Checkpointing my current state here... it should compile but tests are probably failing from the mods in preflex codec.",
+            "date": "2010-06-18T15:48:35.880+0000",
+            "id": 4
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Attached patch, changing term sort order to unicode codepoint!  All tests pass.  I fixed preflex codec to seek around surrogates, and then back again, so that preflex indices also sort properly; it's rather hairy... I added a new randomized test that writes a preflex segment (just the terms dict) with random terms and then asserts the order.",
+            "date": "2010-06-20T23:11:59.182+0000",
+            "id": 5
+        },
+        {
+            "author": "Robert Muir",
+            "body": "How to deal with Term? \n\nI really don't like that Term.compareTo uses String.compareTo, for example MultiTermQuery uses this in TopTermsBooleanQueryRewrite for comparing terms in its priority queue. \n\nI don't think it should block this patch either, but we should at least open a second issue to figure out what to do about this.\nTerm needs to either go away, or use BytesRef w/ the codec's comparator in cases like this, or some things like FuzzyQuery will be technically wrong (i should add a test for this too, I think)\n",
+            "date": "2010-06-22T00:33:17.130+0000",
+            "id": 6
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "bq. How to deal with Term?\n\nMaybe we should keep it, but do a hard cutover of its .text from String to BytesRef, and also change its .compareTo to compare text by unicode code point order?\n\nI agree we should do this as a followon issue; in fact I think another issue is already open.\n\nNote, though, that field names still sort by UTF16 (String.compareTo) order.",
+            "date": "2010-06-22T14:51:03.432+0000",
+            "id": 7
+        }
+    ],
+    "component": "core/index",
+    "description": "Since flexible indexing, terms are now represented as byte[], but for backwards compatibility reasons, they are not sorted as byte[], but instead as if they were char[].\n\nI think its time to look at sorting terms as byte[]... this would yield the following improvements:\n* terms are more opaque by default, they are byte[] and sort as byte[]. I think this would make lucene friendlier to customizations.\n* numerics and collation are then free to use their own encoding (full byte) rather than avoiding the use of certain bits to remain compatible with char[] sort order.\n* automaton gets simpler because as in LUCENE-2265, it uses byte[] too, and has special hacks because terms are sorted as char[]\n",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-2426",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Major",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "change sort order to binary order",
+    "systemSpecification": true,
+    "version": "3.1"
+}

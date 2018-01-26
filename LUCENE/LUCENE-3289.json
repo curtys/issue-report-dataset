@@ -1,0 +1,59 @@
+{
+    "comments": [
+        {
+            "author": "Michael McCandless",
+            "body": "Initial rough patch showing the idea.",
+            "date": "2011-07-07T10:48:24.500+0000",
+            "id": 0
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "NOTE: patch applies to 3.x.\n\nI ran the patch on the titles, varying the max prefix sharing length:\n\n||Len||FST Size||Seconds||\n|1|135446807|8.2|\n|2|137632702|8.5|\n|3|135177994|8.3|\n|4|132782016|8.3|\n|5|130415331|8.4|\n|6|128086200|8.0|\n|7|125797396|8.2|\n|8|123552157|8.5|\n|9|121358375|8.4|\n|10|119228942|8.1|\n|11|117181180|8.8|\n|12|115229788|8.7|\n|13|113388260|9.5|\n|14|111664442|9.0|\n|15|110059167|9.2|\n|16|108572519|9.7|\n|17|107201905|9.8|\n|18|105942576|10.3|\n|19|104791497|10.1|\n|20|103745678|11.1|\n|21|102801693|10.8|\n|22|101957797|11.4|\n|23|101206564|11.1|\n|24|100541849|11.0|\n|25|99956443|11.1|\n|26|99443232|12.9|\n|27|98995194|13.2|\n|28|98604680|13.9|\n|29|98264184|13.5|\n|30|97969241|13.6|\n|31|97714049|13.8|\n|32|97494104|14.3|\n|33|97304045|14.0|\n|34|97140033|14.3|\n|35|96998942|14.6|\n|36|96877590|16.5|\n|37|96773039|16.9|\n|38|96682961|16.6|\n|39|96605160|17.8|\n|40|96537687|18.3|\n|41|96479286|17.8|\n|42|96428710|17.5|\n|43|96384659|18.9|\n|44|96346174|17.0|\n|45|96312826|19.3|\n|46|96283545|17.8|\n|47|96257708|19.4|\n|48|96235159|19.0|\n|49|96215220|18.7|\n|50|96197450|19.6|\n|51|96181539|17.3|\n|52|96167235|16.9|\n|53|96154490|17.7|\n|54|96143081|18.8|\n|55|96132905|17.4|\n|56|96123776|17.5|\n|57|96115462|20.7|\n|58|96108051|19.2|\n|59|96101249|19.1|\n|60|96095107|18.7|\n|ALL|96020343|22.5|\n\nVery very odd that FST size first goes up at N=2... not yet sure why.  But from this curve it looks like there is a sweet spot around maybe N=24.  I didn't measure required heap here, but it also will go down as N goes down.\n",
+            "date": "2011-07-07T10:51:04.178+0000",
+            "id": 1
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Patch, I think it's ready to commit!\n\nSeparately we should think about how suggest module should set these... I left it at \"costly but perfect minimization\".",
+            "date": "2011-07-07T17:10:59.740+0000",
+            "id": 2
+        },
+        {
+            "author": "Robert Muir",
+            "body": "I think thats probably good for most cases?\n\nIn the example you gave, it seems that FST might not be the best algorithm? The strings are extremely long (more like short documents) and probably need to be \"compressed\" in some different datastructure, e.g. a word-based one?",
+            "date": "2011-07-07T17:32:02.576+0000",
+            "id": 3
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Yeah I think \"costly but perfect minimization\" is the right default.",
+            "date": "2011-07-07T17:40:47.126+0000",
+            "id": 4
+        },
+        {
+            "author": "Dawid Weiss",
+            "body": "Exactly. This is a very specific use case (long suggestions).",
+            "date": "2011-07-07T19:21:33.241+0000",
+            "id": 5
+        },
+        {
+            "author": "Eks Dev",
+            "body": "bq. The strings are extremely long (more like short documents) and probably need to be \"compressed\" in some different datastructure, e.g. a word-based one?\n\nThat would be indeed cool, e.g. FST with words (ngrams?) as symbols. Ages ago we used one trie, for all unique terms to get prefix/edit distance on words and one word-trie (symbols were words via symbol table) for \"documents\". I am sure this would cut memory requirements significantly for multiword cases when compared to char level FST.\ne.g. TermDictionary that supports ord() could be used as a symbol table.\n\n\n\n\n",
+            "date": "2011-07-08T07:02:35.762+0000",
+            "id": 6
+        }
+    ],
+    "component": "",
+    "description": "Today we have a boolean option to the FST builder telling it whether\nit should share suffixes.\n\nIf you turn this off, building is much faster, uses much less RAM, and\nthe resulting FST is a prefix trie.  But, the FST is larger than it\nneeds to be.  When it's on, the builder maintains a node hash holding\nevery node seen so far in the FST -- this uses up RAM and slows things\ndown.\n\nOn a dataset that Elmer (see java-user thread \"Autocompletion on large\nindex\" on Jul 6 2011) provided (thank you!), which is 1.32 M titles\navg 67.3 chars per title, building with suffix sharing on took 22.5\nseconds, required 1.25 GB heap, and produced 91.6 MB FST.  With suffix\nsharing off, it was 8.2 seconds, 450 MB heap and 129 MB FST.\n\nI think we should allow this boolean to be shade-of-gray instead:\nusually, how well suffixes can share is a function of how far they are\nfrom the end of the string, so, by adding a tunable N to only share\nwhen suffix length < N, we can let caller make reasonable tradeoffs. \n",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-3289",
+    "issuetypeClassified": "RFE",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Major",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "FST should allow controlling how hard builder tries to share suffixes",
+    "systemSpecification": true,
+    "version": ""
+}

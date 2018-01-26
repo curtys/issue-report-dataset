@@ -1,0 +1,95 @@
+{
+    "comments": [
+        {
+            "author": "Berry van Halderen",
+            "body": "I think the only thing that needed to be implemented is to extend both client and server side decorator stubs to implement the XAResource interface.  The client, when asked for the getXAResource() can just return itself.  In the implementation of the XAResource interface the client stub can just call the server side stub over RMI.  The server side stub just\nforwards the call to the actual session.  This works because the transaction IDs (Xid) are serializable, and can be passed over RMI.  The transactions themselves are managed at the client side.\nI will be providing a proposal patch for this shortly.\n",
+            "date": "2007-05-30T12:06:04.701+0000",
+            "id": 0
+        },
+        {
+            "author": "Berry van Halderen",
+            "body": "Patch which was made from SVN revision 570736 of the jackrabbit source.\n\nThis implements transactional based RMI support.",
+            "date": "2007-08-29T10:15:20.102+0000",
+            "id": 1
+        },
+        {
+            "author": "Berry van Halderen",
+            "body": "I used the following project to test the transaction support in RMI.  The test can be run seperately or as unit test, though these client-server test do not lend themselves for unit test in general.  A mock up test is useless in this case anyway.\n",
+            "date": "2007-08-29T11:44:33.498+0000",
+            "id": 2
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Looks nice, thanks a lot!\n\nThe only concern I have is about the additional jackrabbit-core dependency. Perhaps we should move org.apache.jackrabbit.core.XASession to jackrabbit-api. I'll file a separate issue for that.",
+            "date": "2007-08-29T12:01:34.926+0000",
+            "id": 3
+        },
+        {
+            "author": "Berry van Halderen",
+            "body": "Indeed, the jackrabbit-core dependency is pretty ugly.  There is no proper way other than to pull the XASession out of the core into the api.  This would be a simple move operation and would cleanly fix it.  It is a pitty that the XASession interface did not make it into the specification.  I saw that in earlier draft there was a reference to this:\n  http://www.day.com/maven/jsr170/javadocs/jcr-0.15/javax/jcr/xa/XASession.html\nBut it did not make it into the spec.  It strikes me as an omission that the spec defines a level for transaction, but not an interface to obtain a XAResource (as is given by XASession).\n",
+            "date": "2007-08-29T12:15:47.585+0000",
+            "id": 4
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "I filed a separate issue, JCR-1097, for the XASession move and will propose a patch for that later today.\n\nI don't know the rationale for not including XASession in JCR 1.0. I'll raise the issue within the JSR 283 expert group.",
+            "date": "2007-08-29T12:36:43.786+0000",
+            "id": 5
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Now that JCR-1097 was resolved I took another look at the patch and committed a slightly modified version in revision 573739.\n\nInstead of putting all the XAResource methods in the RemoteXASession interface I added a separate RemoteXAResource interface and all the related machinery to keep things modular.\n\nIt would be great if you could test this in practice, as I didn't yet have time to set up the test code you sent.\n",
+            "date": "2007-09-07T22:43:26.688+0000",
+            "id": 6
+        },
+        {
+            "author": "Berry van Halderen",
+            "body": "Doesn't quite work yet, because SessionXAResource is not available remotely.\nWill provide easy and small fix in next attached patch.",
+            "date": "2007-09-10T11:54:54.758+0000",
+            "id": 7
+        },
+        {
+            "author": "Berry van Halderen",
+            "body": "Minor patch to earlier changes, as the ServerXAResource needs to be a remote object.\n",
+            "date": "2007-09-10T11:57:15.299+0000",
+            "id": 8
+        },
+        {
+            "author": "Berry van Halderen",
+            "body": "Changes to test application to take into account that the XASession has been moved to JackRabbit API iso. core jar.\n",
+            "date": "2007-09-10T11:59:43.667+0000",
+            "id": 9
+        },
+        {
+            "author": "Berry van Halderen",
+            "body": "I think that my minor patch from earlier today can be applied without modifications.  I've tested with the test application and then it seems to work fine.\n",
+            "date": "2007-09-10T12:00:47.395+0000",
+            "id": 10
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Ah, obviously! Thanks for the tip, fixed in revision 574273.\n\nI made ServerXAResource extend UnicastRemoteObject directly instead of through ServerObject since it doesn't need to instantiated new adapters or throw RepositoryExceptions.",
+            "date": "2007-09-10T15:01:58.409+0000",
+            "id": 11
+        },
+        {
+            "author": "Berry van Halderen",
+            "body": "Verified, works.\nThanks a bunch.\n",
+            "date": "2007-09-10T15:51:00.118+0000",
+            "id": 12
+        }
+    ],
+    "component": "jackrabbit-jcr-rmi",
+    "description": "At this time, the sessions obtained from o.a.j.rmi.client.LocalAdapterFactory do not implement the methods for the XASession.  Therefor the RMI access layer does not support a transactional session.",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "JCR-953",
+    "issuetypeClassified": "RFE",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Minor",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "Support for transactions when using JCR over RMI.",
+    "systemSpecification": true,
+    "version": ""
+}

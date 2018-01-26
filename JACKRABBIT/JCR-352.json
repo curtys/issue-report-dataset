@@ -1,0 +1,191 @@
+{
+    "comments": [
+        {
+            "author": "Jukka Zitting",
+            "body": "Isn't Lucene 1.9.1 backwards compatible with 1.4.3 used by Jackrabbit? If it is, then you should be able to simply use the more recent Lucene jar during deployment.\n\nWe may also want to consider upgrading directly to Lucene 2.0 that should be out in a few months. I'm not an expert on Lucene but it seems like they claim improved performance and greater flexibility in Lucene 2.0. Any Lucene experts hanging out here for a quick comment on whether we should upgrade?",
+            "date": "2006-03-15T01:45:08.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Michael Young",
+            "body": "It is backward compatible, but we're seeing some serialUID problems when jackrabbit tries to index using newer version. Would it be possible for someone to upgrade the trunk to 1.9.1 since it actually is backward compatible?",
+            "date": "2006-03-15T02:49:01.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Michael Young",
+            "body": "And yes, even lucene 1.9.1 claims performance improvements, and we're seeing some better performance on our indexing / searches in the internal Liferay indexes.",
+            "date": "2006-03-15T02:50:40.000+0000",
+            "id": 2
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "> It is backward compatible, but we're seeing some serialUID problems when jackrabbit\n> tries to index using newer version.\n\nCould you'r problem be caused by having an existing index generated with Lucene 1.4.3 being accessed by Lucene 1.9.1? If this is the case, then you should be safe by manually removing the index when you upgrade the Lucene jar. Jackrabbit will recreate the index when it is next started.\n\n> Would it be possible for someone to upgrade the trunk to 1.9.1 since it actually is backward compatible?\n\nI can do that unless anyone objects. (Assigned to me.) I'm a bit worried though about the compatibility problem you are mentioning. Is it possible for you to isolate the problem a bit more specifically?\n",
+            "date": "2006-03-15T03:15:31.000+0000",
+            "id": 3
+        },
+        {
+            "author": "Michael Young",
+            "body": "I was just thinking the same thing. I will verify and let you know.",
+            "date": "2006-03-15T03:36:11.000+0000",
+            "id": 4
+        },
+        {
+            "author": "Michael Young",
+            "body": "Jukka,\n\nYou were right. I deleted the indexes and everything is fine. I do think that an upgrade to lucene 1.9.1 or 2.x would be beneficial, if not now, then in the future. BTW, we are integrating Jackrabbit into the Liferay Portal core, replacing many components of our backend store with this JCR for our upcoming 4.0 release this month. If you would like you could add us as an example deployment on the wiki JcrLinks page. Congratulations on the awesome work!",
+            "date": "2006-03-15T05:18:40.000+0000",
+            "id": 5
+        },
+        {
+            "author": "Alexandru Popescu",
+            "body": "I have followed the recommendation from Lucene ML and I have compiled Jackrabbit branch 1.0 code (384322) against the Lucene 1.9.1 distribution. \nThere is an incompatibility but a really small one than can be patched right away:\n\norg.apache.jackrabbit.core.query.lucene.WildcardTermEnum.difference(): the method is current protected, but in Lucene 1.9.1 FilteredTermEnum it is declared as public abstract.\n\nSo, if Jackrabbit 1.0 wants to be compatible with both Lucene versions it just needs to make this small change.\n\nDo you think this would be possible for the 1.0rc2? (I guess there is no issue having such a small change).\n\n./alex\n--\n.w( the_mindstorm )p.\n",
+            "date": "2006-03-18T05:14:41.000+0000",
+            "id": 6
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "I tried changing the visibility of the difference() method, which did solve the compile problem, but now I get a ClassCastException from org.apache.lucene.store.Directory.createFile() when the repository is being initialized. This problem can be reconstructed like this after placing lucene/jars/lucene-1.9.1.jar in the local maven repository:\n\n    $ svn export http://svn.apache.org/repos/asf/incubator/jackrabbit/branches/1.0/jackrabbit\n    $ cd jackrabbit\n    $ perl -i -pe 's/1.4.3/1.9.1/' project.xml\n    $ perl -i -pe 's/protected float difference/public float difference/' \\\n      src/main/java/org/apache/jackrabbit/core/query/lucene/WildcardTermEnum.java\n    $ maven test\n\nThis seems to have something to do with the \"this method should be abstract\" notice in the Lucene Directory.createOutput() method. The FSDirectory class in Jackrabbit doesn't seem to play well with the modified Directory implementation in Lucene 1.9.1.\n\nIf there is a similar simple and non-intrusive fix for this problem, then I can have the change included in 1.0, otherwise not. In any case I am going to keep Lucene 1.4.3 as the official dependency in Jackrabbit 1.0. A possible fix would be there just to help people deploy Jackrabbit 1.0 with Lucene 1.9.1.\n",
+            "date": "2006-03-18T06:43:30.000+0000",
+            "id": 7
+        },
+        {
+            "author": "Alexandru Popescu",
+            "body": "Good catch Jukka. I guess this is impossible to have a quick fix (but I am not a Lucene expert, so I may be loosin some details).\n\njack.FSDirectory.createFile -> lucene.FSDirectory.createFile (= lucene.Directory.createFile) -> lucene.FSDirectory.createOutput => new FSIndexOutput(file)\n\nand FSIndexOutput extends BufferedIndexOutput extends IndexOutput, while jack.FSDirectory (respectively) lucene.Director createFile must return an OutputStream.\n\nNow, I am wondering if this is not a Lucene bug: calling a lucene.FSDirectory.createFile() results in returning a FSIndexOutput and so a ClassCastException.\n\nI will try to post this question on Lucene ML,\n\n./alex\n--\n.w( the_mindstorm )p.\n",
+            "date": "2006-03-18T08:13:32.000+0000",
+            "id": 8
+        },
+        {
+            "author": "Michael Young",
+            "body": "I think this the FSIndexOutput is a Lucene bug. I see it too after replacing the jar.",
+            "date": "2006-03-18T08:28:22.000+0000",
+            "id": 9
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "OK, thanks for carrying this on.\n\nThis is actually a good example of things to keep in mind when evolving the Jackrabbit internals. Although the API itself remains virtually the same, the workaround support for deprecated methods seems to be erroneous. I suppose this is a case that hasn't received too much testing.",
+            "date": "2006-03-18T17:00:50.000+0000",
+            "id": 10
+        },
+        {
+            "author": "Sascha Sadat-Guscheh",
+            "body": "any news on this issue? is it a lucene bug or just incompatibility?",
+            "date": "2006-03-20T05:29:57.000+0000",
+            "id": 11
+        },
+        {
+            "author": "Sascha Sadat-Guscheh",
+            "body": "quote: \"When you call FSDirectory.openFile(String) you get a ClassCastException since FSIndexInput is not an org.apache.lucene.store.InputStream\nThe workaround is to reimplement using openInput(String).\"\n\nhttp://issues.apache.org/jira/browse/LUCENE-523?watch=true\n\ncan this be done in jcr?",
+            "date": "2006-03-20T05:58:43.000+0000",
+            "id": 12
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "> quote: \"When you call FSDirectory.openFile(String) you get a ClassCastException since FSIndexInput is not an\n> org.apache.lucene.store.InputStream The workaround is to reimplement using openInput(String).\" \n\nI think the openInput() method is only available since Lucene 1.9, so we can't use this workaround as long as we want to keep compatibility with Lucene 1.4.\n\nPS. Here's the Lucene issue link without the embedded \"watch this issue\" action: http://issues.apache.org/jira/browse/LUCENE-523 :-) ",
+            "date": "2006-03-20T06:09:21.000+0000",
+            "id": 13
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "I would definitively like to keep the lucene dependency to version 1.4.3 for the jackrabbit 1.0 release. If the lucene promise for their 1.9 release is true then replacing an 1.4.x lucene with the new one should work just fine. There should only be deprecated warnings when compiling existing code against 1.9. Anything else seems like a bug with the lucene 1.9 release.\n\nAs a development roadmap I would like to migrate to lucene 1.9 for the next jackrabbit release 1.1 and rewrite all jackrabbit code that uses deprecated lucene 1.9 features. While doing this we also have the opportunity to make use of new features and improved performance.",
+            "date": "2006-03-23T17:33:02.000+0000",
+            "id": 14
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Updated to target the recently released Lucene 2.0, as we should probably use that rather than 1.9.\n\nTentatively targetting the upgrade for Jackrabbit 1.1. Need to determine whether this will require index rebuilds and whether we can automate a rebuild during the upgrade.\n",
+            "date": "2006-06-27T19:41:36.000+0000",
+            "id": 15
+        },
+        {
+            "author": "Chen Shaopeng",
+            "body": "When will Jackrabbit upgrade to Lucene 2.0? I just looked at the JCR 1.1 source code in Subversion, and it is still dependent on Lucene 1.4.3, invoking deprecated methods that have been removed from Lucene 2.0.\n\nThanks a lot.\n\n",
+            "date": "2006-10-12T03:48:49.000+0000",
+            "id": 16
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "> When will Jackrabbit upgrade to Lucene 2.0? I just looked at the JCR 1.1 source code in Subversion,\n> and it is still dependent on Lucene 1.4.3, invoking deprecated methods that have been removed\n> from Lucene 2.0. \n\nYeah, I decided to postpone the upgrade (see http://article.gmane.org/gmane.comp.apache.jackrabbit.devel/8650) since there was no patch available early enough before the release.\n\nIt looks as if the upgrade will require just minor code modifications, so it shouldn't be too hard to create a patch for this. See the related LUCENE issue for hints on how to work around the problem mentioned above.\n\nI'll do the upgrade eventually in any case, but since I have no immediate personal itch to do that, the fastest way to make the upgrade happen is to contribute a patch. :-)",
+            "date": "2006-10-13T23:35:34.000+0000",
+            "id": 17
+        },
+        {
+            "author": "Przemo Pakulski",
+            "body": "Added patch containing all code changes required to migrate to Lucene 2.0.0 . All jackrabbit test passes.\nWe are going to make more tests (crash, load, textfilters) also to check if everything is ok.",
+            "date": "2006-10-20T15:29:16.000+0000",
+            "id": 18
+        },
+        {
+            "author": "Przemo Pakulski",
+            "body": "Patches for maven1 (project.xml), maven2(pom.xml) added.\n\nCaution: \nThere is no lucene-core-2.0 library in maven1 repository, so you have to download it manually when using maven1.",
+            "date": "2006-10-20T15:34:24.000+0000",
+            "id": 19
+        },
+        {
+            "author": "Chen Shaopeng",
+            "body": "Przemo,\n\nThanks for the patch. I just applied it to the v1.1 code base and it works fine on the the problem we were having. I didn't do any real extensive testing though, just verified the problem that has been bugging us.\n\nThanks\n\n",
+            "date": "2006-10-26T02:59:54.000+0000",
+            "id": 20
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Thanks for the patch! It seems to work fine for me as well.\n\nHave you checked with Lucene on whether they're planning to upload the 2.0 dependency in the Maven 1 repository? If not, I can follow up on that. I'd rather not commit the changes until the dependency is there or we've upgraded to Maven 2.\n\nIt seems that with this change, the ongoing Maven 2 upgrade, the recent PersistenceManager restructuring, and the proposed reintroduction of the great split we would actually be looking at a Jackrabbit 1.2 release sooner than expected. This would mean that we skip the 1.1.1 release.\n",
+            "date": "2006-10-26T10:18:35.000+0000",
+            "id": 21
+        },
+        {
+            "author": "Oleg Gusakov",
+            "body": "Przemo, Jukka,\n\nWould it be possible to grab this patch? Where? The trunk still mentions Lucene 1.4.3 in the POM.\n\nI have problems with Liferay's Lucene 2.0 and  would like to install the patched trunk into it.\n\nKind Regards,\nOleg",
+            "date": "2006-11-05T09:10:57.000+0000",
+            "id": 22
+        },
+        {
+            "author": "Oleg Gusakov",
+            "body": "I am ashamed :( - just found it\n\nSorry for meaningless posting.",
+            "date": "2006-11-05T17:04:43.000+0000",
+            "id": 23
+        },
+        {
+            "author": "Topi Westerholm",
+            "body": "Is there an error in the patch file? It seems that following the correction logic the next segment (NodeIndexer.java) should have a \"Field.Store.NO\" at the first parameter.\n\ntrue=Field.Store.YES ?\nfalse=Field.Store.NO ?\n\n\n     /**\n@@ -416,9 +416,9 @@\n         }\n         doc.add(new Field(FieldNames.PROPERTIES,\n                 FieldNames.createNamedValue(fieldName, pathString),\n-                false,\n-                true,\n-                false));\n+                Field.Store.YES,\n+                Field.Index.UN_TOKENIZED,\n+                Field.TermVector.NO));\n     }\n",
+            "date": "2006-11-17T08:16:11.000+0000",
+            "id": 24
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "Yes, I think you are right. It should be Field.Store.NO.\n\nAdditionally there is a FIXME in the patch regarding the minMergeDocs field in AbstractIndex.\n\nThe new method in the 2.0 version which has the same effect is called set/getMaxBufferedDocs().",
+            "date": "2006-11-20T09:44:04.000+0000",
+            "id": 25
+        },
+        {
+            "author": "Szymon Kuzniak",
+            "body": "Yes he is right, it is my mistake with the Store.YES/NO issue. There suppose to be Store.NO used. Also it is good to know about the new method. :-)",
+            "date": "2006-11-20T10:54:47.000+0000",
+            "id": 26
+        },
+        {
+            "author": "Przemo Pakulski",
+            "body": "Attached updated lucene2 patch.\n\nPatch had to be updated because of recent changes in indexing.\nPatch contains also fix for issues raised by Topi and Marcel .\n\nSince maven2 is used as build system it could be applied I think.",
+            "date": "2006-12-12T14:54:34.000+0000",
+            "id": 27
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Committed the latest patch in revision 486281. Like with the Derby upgrade (JCR-610), Lucene 2.0 is backwards compatible with indexes created with version 1.4.x.  Thus there should be no need for manual upgrade procedures.\n\nThanks Przemo and everyone else who participated in this!",
+            "date": "2006-12-12T19:20:30.000+0000",
+            "id": 28
+        }
+    ],
+    "component": "indexing",
+    "description": "We would like to upgrade to Lucene 1.9.1. There are jar conflicts when integrating with other projects such as Liferay Portal --  which uses v 1.9.1.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "JCR-352",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Minor",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "Upgrade to Lucene 2.0",
+    "systemSpecification": false,
+    "version": ""
+}

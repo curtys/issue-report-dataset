@@ -1,0 +1,59 @@
+{
+    "comments": [
+        {
+            "author": "pschwartau@meer.net",
+            "body": "cc'ing Igor to consider this patch -",
+            "date": "20021126T18:51:38",
+            "id": 0
+        },
+        {
+            "author": "user@apochta.com",
+            "body": "The patch is right. In think it also makes sence to update the get method to\ncache last accessed slot even it has getter/setter, but that is something to\nconsider later.\n\nI can commit the patch later next week as I will be away for few days, but if\nNorris would like to freeze for 1.5R4 sooner, then it is a good idea to include\nthe patch before that.",
+            "date": "20021126T20:12:38",
+            "id": 1
+        },
+        {
+            "author": "user@apochta.com",
+            "body": "I commited a fix similar to the one outlined in the patch together with a bigger\nset of changes to remove a potential race condition in ScriptableObject.setBySetter.\n\n",
+            "date": "20021203T13:00:58",
+            "id": 2
+        },
+        {
+            "author": "user@apochta.com",
+            "body": "It is possible to see the regression via simple a test case which uses the fact\nthat currently java object for LiveConnect is initialized via getter/setter:\n\nfunction f() {\n\t// put java into cache via ScriptableObject.has\n\tthis.hasOwnProperty(\"java\");\n\t// use java from cache via ScriptableObject.get\n\treturn this.java;\n}\n\nvar ok = (f() === java);\nprint(ok);\n\nThe test case printed false before the commit and true now. As the test is very\nimplementation-specific I doubt it would have any sence to add it to the test suite.",
+            "date": "20021203T13:09:11",
+            "id": 3
+        },
+        {
+            "author": "pschwartau@meer.net",
+            "body": "Marking FIXED. I tested this on WinNT 4.0 using JRE 1.4.1-b21.\n\nAs Igor stated, the testcase above returned 'false' before \nthe patch was committed, and now returns 'true'\n\nI tried the testcase in the interpreted and compiled modes of Rhino,\nusing both the -f option to the Rhino shell, and the load() function.",
+            "date": "20021203T19:52:13",
+            "id": 4
+        },
+        {
+            "author": "pschwartau@meer.net",
+            "body": "Marking Verified -",
+            "date": "20021203T19:52:47",
+            "id": 5
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Targeting as resolved against 1.5R4",
+            "date": "20040213T12:18:13",
+            "id": 6
+        }
+    ],
+    "component": "Core",
+    "description": "If has() is called within get() of a ScriptableObject, lastAccess is set to the\nslot found by has. When my get() then calls super.get() into the\nScriptableObject, the lastAccess.value is returned to me and the getter method\nis not called. The cahched slot object (lastAccess) does not check for a getter\nmethod.\n\nThe following patch fixes the problem:\n\n[root@mmoeller rhino]# cvs diff -u src/org/mozilla/javascript/ScriptableObject.java\nIndex: src/org/mozilla/javascript/ScriptableObject.java\n===================================================================\nRCS file:\n/cvsroot/mozilla/js/rhino/src/org/mozilla/javascript/ScriptableObject.java,v\nretrieving revision 1.55\ndiff -u -r1.55 ScriptableObject.java\n--- src/org/mozilla/javascript/ScriptableObject.java    24 Sep 2002 14:10:53\n-0000      1.55\n+++ src/org/mozilla/javascript/ScriptableObject.java    26 Nov 2002 17:20:03 -0000\n@@ -160,7 +160,12 @@\n         Slot slot = lastAccess; // Get local copy\n         if (name == slot.stringKey) {\n             // Cache match, check if it was not deleted\n-            if (slot.wasDeleted == 0) { return slot.value; }\n+            if (slot.wasDeleted == 0) {\n+                if ((slot.flags & Slot.HAS_GETTER) != 0) {\n+                    return getByGetter((GetterSlot) slot, name, start);\n+                }\n+                return slot.value;\n+            }\n         }\n\n         int hashCode = name.hashCode();",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "182028",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "-- major",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "Calling has() in get() of a ScriptableObject causes getter function to not be called",
+    "systemSpecification": true,
+    "version": "other"
+}

@@ -1,0 +1,47 @@
+{
+    "comments": [
+        {
+            "author": null,
+            "body": "I'm not sure our goal is to provide identical behavior to Sun's log manager. \nRelying on whitespace is fragile anyways.  I won't close this item, in case\nother people have different opinions, but it doesn't seem worthwhile to me.",
+            "date": "20060413T19:45:04",
+            "id": 0
+        },
+        {
+            "author": null,
+            "body": "(In reply to comment #1) ...Relying on whitespace is fragile anyways...\n\nEven if whitespace are \"fragile\", tomcat shall handle properties values\naccording to properties file specification or not use a properties file.\n\nThe goal is to addapt LogManager to the container environnement and to offer\nsome new facilities. But, in my opinion, logging utilities (Handler, Formatter)\ndevlopped for J2SE shall usable in a webapp environment without re-writting\ntheir properties handling code.\n",
+            "date": "20060413T23:27:02",
+            "id": 1
+        },
+        {
+            "author": null,
+            "body": "Ok, you have your fix and you can use it, rejoice :) Tomcat will not integrate\nyour fix, however.",
+            "date": "20060413T23:31:22",
+            "id": 2
+        },
+        {
+            "author": null,
+            "body": "The current behavior does not follow the file properties specification see\nhttp://java.sun.com/j2se/1.5.0/docs/api/java/util/Properties.html#load(java.io.InputStream)\n\nbut claims it does.\n\nin org.apache.juli.ClassLoaderLogManager \n...\n    /**\n     * Get the value of the specified property in the classloader local\n     * configuration.\n     * \n     * @param name The property name\n     */    \n    public String getProperty(String name) {\n...\n\nThis requires a correction either in the documentation, to explain the specific\nbehavior, or in the code to follow file properties specification.\n\nI fully agree that this is neither critical nor urgent. Priority or resource\nmight impose to postpone the fix. Or compatibility with the buggy behavior might\nbe preferred to a code fix. That's no trouble, but transition to \"Resolved won't\nfix\" when the specification contract is broken cannot be a good practice.\n",
+            "date": "20060414T21:05:52",
+            "id": 3
+        },
+        {
+            "author": null,
+            "body": "Fixed in SVN (not with the above patch) and will be included in 5.5.21 onwards.",
+            "date": "20061108T19:05:58",
+            "id": 4
+        }
+    ],
+    "component": "Unknown",
+    "description": "The method ClassLoaderLogManager.replace(String) that is in charge of replacing\nsystem properties at the begining of the property also modify the end of the\nproperty due to a call to trim.\n\nThis implies that Logger/Handler/Formatter that relies on properties endding\nwith some spases (including '\\n') will have a different behaviour with JDK\nLogManger and tomcat ClassLoaderLogManager\n\na modified verstion of this method could be:\n\n    protected String replace(String str) {\n// start modification    \t\n//        String result = str.trim();  // commented out\n    \t\n    \tint len = str.length();\n    \tint st = 0;\n    \twhile ((st < len) && (str.charAt(st) <= ' ')) {\n    \t    st++;\n    \t}\n    \tString result = (st > 0) ? str.substring(st) : str;\n// end modification        \n        \n        if (result.startsWith(\"${\")) {\n            int pos = result.indexOf('}');\n            if (pos != -1) {\n                String propName = result.substring(2, pos);\n                String replacement = System.getProperty(propName);\n                if (replacement != null) {\n                    result = replacement + result.substring(pos + 1);\n                }\n            }\n        }\n        return result;\n    }",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "37509",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "BUG",
+    "priority": "P2 normal",
+    "product": "Tomcat 5",
+    "project": "TOMCAT",
+    "summary": "ClassLoaderLogManager remove '\\n' at the end of logging.properties values",
+    "systemSpecification": true,
+    "version": "5.5.12"
+}

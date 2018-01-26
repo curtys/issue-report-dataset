@@ -1,0 +1,71 @@
+{
+    "comments": [
+        {
+            "author": "njouve@yahoo.fr",
+            "body": "Created attachment 130808\nThis is the TestCase showing the bug",
+            "date": "20030903T08:32:04",
+            "id": 0
+        },
+        {
+            "author": "njouve@yahoo.fr",
+            "body": "Created attachment 130809\nThis is the modified version of the JavaMembers class that fixes the bug",
+            "date": "20030903T08:34:48",
+            "id": 1
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Nicolas, could you provide a patch against CVS tip as JavaMembers there changed\ncompared with Rhino 1.5R4.* ?",
+            "date": "20030903T20:17:41",
+            "id": 2
+        },
+        {
+            "author": "njouve@yahoo.fr",
+            "body": "Created attachment 130896\nPatch for JavaMembers \n\ncvs diff against latest version of JavaMembers (1.40 at time of writing)",
+            "date": "20030904T09:06:28",
+            "id": 3
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Few notes for the above patch:\n\ndiff -r1.40 JavaMembers.java\n\nThis diff generates a patch in the default format but patches in unified format\nare more readable and resilient to source changes. Please use cvs diff -u\nor even \ncvs diff -U 5 \nto generate them.\n\n>            if ((method.argTypes != null) && (method.argTypes.length == 0)) {\nThe check (method.argTypes != null) is redundant here since it always holds even\nfor 0-arity methods.\n\n>                    if (method.argTypes.length == 0) {\nThis check is also redundant since it is already covered by the previous if.",
+            "date": "20030904T13:46:48",
+            "id": 4
+        },
+        {
+            "author": "njouve@yahoo.fr",
+            "body": "Created attachment 130948\nRe-written patch (with redundant checks removed) in unified format\n\nRedundant checks removed.\nUnified format",
+            "date": "20030905T06:49:30",
+            "id": 5
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "I committed Nicolas patch with some formating changes to make code to fit 80 colons.",
+            "date": "20030905T09:06:19",
+            "id": 6
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "*** Bug 142100 has been marked as a duplicate of this bug. ***",
+            "date": "20030906T13:35:36",
+            "id": 7
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Trageting as resolved against 1.5R5",
+            "date": "20040213T11:34:33",
+            "id": 8
+        }
+    ],
+    "component": "Core",
+    "description": "User-Agent:       Mozilla/4.0 (compatible; MSIE 6.0; Windows NT 5.1) Opera 7.11  [en]\nBuild Identifier: \n\nWhen you script a java bean, you cannot acces the bean properties for whom there \nare multiple methods having the name of the getter.\nFor instance if a bean has the property \"name\" and an additional getName(Locale \nlocale) method, the \"name\" property won't be available when scripting the bean \nusing Rhino.\n\nReproducible: Always\n\nSteps to Reproduce:\nHere is a TestCase exhibiting the problem:\n\npackage org.mozilla.javascript;\n\nimport java.io.StringReader;\nimport java.util.Locale;\n\nimport junit.framework.Assert;\nimport junit.framework.TestCase;\n\n/**\n *\n * Tests Case\n * \n * @author njouve\n * @since 3 sept. 03\n * \n * $Log$\n */\npublic class TestPropertyWithMultipleGetters extends TestCase {\n\n    /**\n     * Constructor for TestPropertyWithMultipleGetters.\n     * @param arg0\n     */\n    public TestPropertyWithMultipleGetters(String testName) {\n        super(testName);\n    }\n\n    /**\n     * Tests that a bean with a getter having an overloaded version \n     *\n     */\n    public void testPropertyHandlingWithMultipleGetters() {\n        try {\n            String propertyValueToSet = \"John Doe\";\n            Context ctx = new Context();\n            ctx = Context.enter(ctx);\n\n            Script script = ctx.compileReader(null, new StringReader(\"this.\nname=\\\"\" + propertyValueToSet + \"\\\"\"), \"\", 0, \"\");\n\n            TestBean testBean = new TestBean();\n\n            Scriptable thisObject = new WrapFactory().wrapNewObject(ctx, null, \ntestBean);\n\n            script.exec(ctx, thisObject);\n\n            Assert.assertEquals(propertyValueToSet, testBean.getName());\n        } catch (EvaluatorException e) {\n            e.printStackTrace();\n            fail(\"Expression should have been correctly evaluated\" + e.\ngetMessage());\n        } catch (Exception e) {\n            e.printStackTrace();\n            fail(e.getMessage());\n        }\n    }\n\n    /**\n     * This class is a bean that has a \"name\" property and an\n     * additional method having the same name as the getter but with an \nadditional\n     * parameter\n     * \n     *\n     * \n     * @author njouve\n     * @since 3 sept. 03\n     * \n     * $Log$\n     */\n    public static class TestBean {\n\n        public TestBean() {\n        }\n\n        private String name = null;\n        /**\n         * @return\n         */\n        public String getName() {\n            return name;\n        }\n\n        /**\n         * @param string\n         */\n        public void setName(String string) {\n            name = string;\n        }\n\n        /**\n         * @return\n         */\n        public String getName(Locale locale) {\n            return null;\n        }\n\n    }\n\n}\n\nActual Results:  \nThis test will fail with the current version, because an EvaluatorException is \nthrown when accessing the \"name\" property from javascript.\n\nExpected Results:  \nThe test should succeed, that is no exception should be thrown\n\nI 've found the offending lines in the core and I'd like to sublit the \ncorrection.\nthe offending class is org.mozilla.javascript.JavaMembers\n\n -- Line 398 -- \n\n // Grab and inspect the getter method; does it have an empty parameter list,\n// with a return value (eg. a getSomething() or isSomething())?\nClass[] params;\nMethod[] getMethods = getJavaMethod.getMethods();\nClass type;\nif (getMethods != null &&\n    getMethods.length == 1 &&\n    (type = getMethods[0].getReturnType()) != null &&\n    (params = getMethods[0].getParameterTypes()) != null &&\n    params.length == 0)\n{\n\nIt should be replaced by :\n\n// Grab and inspect the getter method; does it have an empty parameter list,\n// with a return value (eg. a getSomething() or isSomething())?\nClass[] params;\nMethod[] getMethods = getJavaMethod.getMethods();\nClass type = null;\n// test each method in the set to found the only one having no parameter\nfor (int methodIdx = 0; methodIdx < getMethods.length; methodIdx++) {\n    Method testedMethod = getMethods[methodIdx];\n    if ((testedMethod.getReturnType() != null) &&\n\t(testedMethod.getParameterTypes() != null) &&\n\t(testedMethod.getParameterTypes().length == 0)) {\n\t    type = testedMethod.getReturnType();  \n\t    params = testedMethod.getParameterTypes();                          \n\t}\n\t\n}\nif (type != null)\n{",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "218163",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "-- normal",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "Simple properties not handled correctly",
+    "systemSpecification": true,
+    "version": "other"
+}

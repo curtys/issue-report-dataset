@@ -1,0 +1,77 @@
+{
+    "comments": [
+        {
+            "author": "Robert Muir",
+            "body": "patch: nuking the bulk api and implementing buffering for standardcodec so we have the same performance.",
+            "date": "2011-11-20T16:24:08.721+0000",
+            "id": 0
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "+1\n\nMaybe we should also add buffering to 3.x codec, but thats not soo important.",
+            "date": "2011-11-20T16:32:13.235+0000",
+            "id": 1
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "+1 ",
+            "date": "2011-11-20T16:53:40.879+0000",
+            "id": 2
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "+1",
+            "date": "2011-11-20T18:02:57.583+0000",
+            "id": 3
+        },
+        {
+            "author": "Yonik Seeley",
+            "body": "I tested Solr's faceting code (the enum method that steps over terms and uses the filterCache), with minDf set high enough so that the filterCache wouldn't be used (i.e.it directly uses DocsEnum to calculate the count for the term).  %increase when we were using the bulk API = r208282/trunk time (i.e. performance is measured as change in throughput... so going from 400ms to 200ms is expressed as 100% increase in throughput).\n \n|number of terms|documents per term|bulk API performance increase|\n|10000000|1|2.1|\n|1000000|10|3.0|\n|1000|10000|8.9|\n|10|1000000|51.6|\n\nSo when terms match many documents, we've had quite a drop-off due to the removal of the bulk API.",
+            "date": "2011-12-04T00:32:55.210+0000",
+            "id": 4
+        },
+        {
+            "author": "Robert Muir",
+            "body": "Yonik, where is the code to your benchmark? I don't trust it.\nhotspot likes to change how it compiles readvint so be sure to use lots of jvm iterations.\n\nI tested this change with luceneutil (lots of iterations, takes an hour to run) and everything\nwas the same, with disjunction queries looking better every time I ran it.\n\nI think everything is just fine.\n\n||Task||QPS||trunkStdDev||trunk QPS||patchStdDev||patch Pct diff||\n|IntNRQ|10.44|0.69|9.80|0.88|-19% - 9%|\n|Wildcard|24.93|0.41|24.23|0.44|-6% - 0%|\n|Prefix3|48.83|1.14|47.45|1.09|-7% - 1%|\n|TermBGroup1M1P|43.29|1.08|42.28|1.31|-7% - 3%|\n|PKLookup|187.88|4.49|186.43|5.07|-5% - 4%|\n|AndHighHigh|15.10|0.25|14.99|0.54|-5% - 4%|\n|SpanNear|15.96|0.43|15.87|0.43|-5% - 4%|\n|TermBGroup1M|32.30|0.87|32.14|0.64|-4% - 4%|\n|SloppyPhrase|14.53|0.50|14.47|0.55|-7% - 7%|\n|TermGroup1M|24.07|0.54|24.01|0.48|-4% - 4%|\n|Respell|87.11|3.74|86.91|4.05|-8% - 9%|\n|Fuzzy1|94.79|3.18|94.58|4.05|-7% - 7%|\n|Fuzzy2|48.13|1.92|48.10|2.45|-8% - 9%|\n|Phrase|9.10|0.41|9.11|0.41|-8% - 9%|\n|Term|135.52|4.74|137.26|2.91|-4% - 7%|\n|AndHighMed|51.64|0.92|53.20|1.90|-2% - 8%|\n|OrHighHigh|10.75|0.62|11.79|0.60|-1% - 22%|\n|OrHighMed|12.20|0.75|13.40|0.71|-1% - 23%|\n",
+            "date": "2011-12-04T12:58:46.367+0000",
+            "id": 5
+        },
+        {
+            "author": "Yonik Seeley",
+            "body": "bq. where is the code to your benchmark?  I don't trust it.\n\nI'm always skeptical of benchmarks too :-)\n\nNo benchmark code this time, I just hit Solr directly from the browser, waiting for the times to stabilize and picking the lowest (and assuring that I can hit very near that low again and it wasn't a fluke.  Results are very repeatable though (and I killed the JVM and retried to make sure hotspot would do the same thing again)\n\nThe index is from a 10M row CSV file I generated years ago.  For example, the field with 10 terms is simply a single valued field with a random number between 0 and 9, padded out to 10 chars.\n\nOh, this is Linux on a Phenom II, JKD 1.6.0_29 ",
+            "date": "2011-12-04T14:12:16.046+0000",
+            "id": 6
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "my first question would be did you flush the FS caches and warm up your JVM? if you didn't flush caches it would be interesting what you ran first? Are those two indexes the same? ",
+            "date": "2011-12-04T19:23:38.775+0000",
+            "id": 7
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "Yonik, can you check if you see the same thing with your benchmark if you apply LUCENE-3648",
+            "date": "2011-12-14T14:35:53.432+0000",
+            "id": 8
+        },
+        {
+            "author": "Yonik Seeley",
+            "body": "I'm traveling this week and don't have access to that box, but I should be able to get to it next week sometime.",
+            "date": "2011-12-14T20:14:51.451+0000",
+            "id": 9
+        }
+    ],
+    "component": "",
+    "description": "In LUCENE-2723, a lot of work was done to speed up Lucene's bulk postings read API.\n\nThere were some upsides:\n* you could specify things like 'i dont care about frequency data up front'.\n  This made things like multitermquery->filter and other consumers that don't\n  care about freqs faster. But this is unrelated to 'bulkness' and we have a\n  separate patch now for this on LUCENE-2929.\n* the buffersize for standardcodec was increased to 128, increasing performance\n  for TermQueries, but this was unrelated too.\n\nBut there were serious downsides/nocommits:\n* the API was hairy because it tried to be 'one-size-fits-all'. This made consumer code crazy.\n* the API could not really be specialized to your codec: e.g. could never take advantage that e.g. docs and freqs are aligned.\n* the API forced codecs to implement delta encoding for things like documents and positions. \n  But this is totally up to the codec how it wants to encode! Some codecs might not use delta encoding.\n* using such an API for positions was only theoretical, it would have been super complicated and I doubt ever\n  performant or maintainable.\n* there was a regression with advance(), probably because the api forced you to do both a linear scan thru\n  the remaining buffer, then refill...\n\nI think a cleaner approach is to let codecs do whatever they want to implement the DISI\ncontract. This lets codecs have the freedom to implement whatever compression/buffering they want\nfor the best performance, and keeps consumers simple. If a codec uses delta encoding, or if it wants\nto defer this to the last possible minute or do it at decode time, thats its own business. Maybe a codec\ndoesn't want to do any buffering at all.\n",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-3584",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "OTHER",
+    "priority": "Major",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "bulk postings should be codec private",
+    "systemSpecification": true,
+    "version": ""
+}

@@ -1,0 +1,65 @@
+{
+    "comments": [
+        {
+            "author": "pschwartau@meer.net",
+            "body": "My reading of ECMA is that disparate parameter values should be preserved\nin the arguments object, even if the parameter names are the same in each case,\nand even though it is only the last parameter value that will have effect.\n\ncc'ing Waldemar to be sure -",
+            "date": "20020211T21:29:07",
+            "id": 0
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "So this behavior is correct, right?\n\njs> function f(x,x) { x = 7; return arguments[0]; }\njs> f(3,4)\n7\njs> function f(x,x) { x = 7; return arguments[1]; }\njs> f(3,4)\n7",
+            "date": "20020211T21:45:59",
+            "id": 1
+        },
+        {
+            "author": "waldemar@acm.org",
+            "body": "Comment 2: I agree.\n\nComment 3: I'd expect, in a faithful ECMA implementation, the first function\ndefinition to return 3 and the second one to return 7.  If they both return 7,\nyou get a nonsensical situation of x being an alias of arguments[0], x being an\nalias of arguments[1], but arguments[0] and arguments[1] initially holding\ndifferent values.\n\nAs an aside, I personally feel that the standard is unnecessarily detailed about\nthis case and should have left it unspecified.  Having two parameters with the\nsame name is not something ECMAScript programs should do.",
+            "date": "20020211T21:58:49",
+            "id": 2
+        },
+        {
+            "author": "pschwartau@meer.net",
+            "body": "Here's what SpiderMonkey does on Norris' example:\n\njs> function f(x,x) {x=7; return arguments[0]}\njs> f(3,4);\n3\n\njs> function f(x,x) {x=7; return arguments[1]}\njs> f(3,4);\n7\n",
+            "date": "20020211T22:04:15",
+            "id": 3
+        },
+        {
+            "author": "brendan@mozilla.org",
+            "body": "I wish I knew why MS's lead was so intent on making this case work, and making\nthe spec for it so detailed.  It seems to be gilding the lily, at best.  I tried\npushing for SpiderMonkey's behavior (an error, now a strict warning), but lost\nno good reason.\n\n/be",
+            "date": "20020212T05:25:20",
+            "id": 4
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "Fixed:\n\nChecking in Arguments.java;\n/cvsroot/mozilla/js/rhino/src/org/mozilla/javascript/Arguments.java,v  <-- \nArguments.java\nnew revision: 1.13; previous revision: 1.12\ndone",
+            "date": "20020212T14:36:44",
+            "id": 5
+        },
+        {
+            "author": "pschwartau@meer.net",
+            "body": "Verified Fixed. Both new testcases on duplicate parameters are now\npassing in the rhino and rhinoi shells on WinNT: \n\n           js/tests/ecma_3/ExecutionContexts/10.1.3-1.js\n           js/tests/ecma_3/ExecutionContexts/10.1.3-2.js",
+            "date": "20020212T17:59:51",
+            "id": 6
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Targeting as resolved against 1.5R4",
+            "date": "20040213T12:19:28",
+            "id": 7
+        }
+    ],
+    "component": "Core",
+    "description": "The testcase\n\n           js/tests/ecma_3/ExecutionContexts/10.1.3-1.js\n\nhas recently been added to the JS testsuite, to test functions having\nduplicate formal parameter names. The following section of the test\nis passing in SpiderMonkey, but failing in Rhino:\n\n\nfunction f(x,x,x,x)\n{\n  var ret = [];\n\n  for (var i=0; i<arguments.length; i++)\n    ret.push(arguments[i]);\n\n  return ret.toString();\n}\n\nactual = f(1,2,3,4);\nexpect = '1,2,3,4';\n\n\nSPIDERMONKEY\ntest passes\n\nRHINO\ntest FAILED!: Expected value '1,2,3,4', Actual value '4,4,4,4'\n\n\n\nECMA-262, 3rd Edition Final, contains this language:\n\n\n10.1.3 Variable Instantiation \nEvery execution context has associated with it a variable object.\nVariables and functions declared in the source text are added as properties\nof the variable object. For function code, parameters are added as properties\nof the variable object. \n\nWhich object is used as the variable object and what attributes are used\nfor the properties depends on the type of code, but the remainder of the\nbehaviour is generic. On entering an execution context, the \nproperties are bound to the variable object in the following order: \n\n\u2022 For function code: for each formal parameter, as defined in the\nFormalParameterList, create a property of the variable object whose name\nis the Identifier and whose attributes are determined by the type of code.\nThe values of the parameters are supplied by the caller as arguments to\n[[Call]]. If the caller supplies fewer parameter values than there are formal\nparameters, the extra formal parameters have value undefined. If two or more\nformal parameters share the same name, hence the same property, the\ncorresponding property is given the value that was supplied for the last\nparameter with\nthis name. If the value of this last parameter was not supplied by the caller,\nthe value of the corresponding property is undefined. \n  \n  \n\n10.1.8 Arguments Object \nWhen control enters an execution context for function code, an arguments object\nis created and initialised as follows: \n\n\u2022 The value of the internal [[Prototype]] property of the arguments object\nis the original Object prototype object, the one that is the initial value of\nObject.prototype (see 15.2.3.1). \n\n\u2022 A property is created with name callee and property attributes { DontEnum }.\nThe initial value of this property is the Function object being executed.\nThis allows anonymous functions to be recursive. \n\n\u2022 A property is created with name length and property attributes { DontEnum }.\nThe initial value of this property is the number of actual parameter values\nsupplied by the caller. \n\n\u2022 For each non-negative integer, arg, less than the value of the length\nproperty, a property is created with name ToString(arg) and property\nattributes { DontEnum }. The initial value of this property is the value\nof the corresponding actual parameter supplied by the caller. The first\nactual parameter value corresponds to arg = 0, the second to arg = 1, and so on.\nIn the case when arg is less than the number of formal parameters for the\nFunction object, this property shares its value with the corresponding property\nof the activation object. This means that changing this property changes the \ncorresponding property of the activation object and vice versa.",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "124900",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "-- normal",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "arguments object storing duplicate parameter values",
+    "systemSpecification": true,
+    "version": "other"
+}

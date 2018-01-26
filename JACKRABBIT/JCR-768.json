@@ -1,0 +1,47 @@
+{
+    "comments": [
+        {
+            "author": "Frank Karlstr\u00f8m",
+            "body": "This test will fail on all versions of jackrabbit except for 1.0 and 1.0.1",
+            "date": "2007-02-26T21:45:01.765+0000",
+            "id": 0
+        },
+        {
+            "author": "Frank Karlstr\u00f8m",
+            "body": "This test in fact fails with a root node deletion exception, wrong description in initial bug report:\n\njavax.jcr.RepositoryException: /: cannot remove root node\n\tat org.apache.jackrabbit.core.ItemImpl.internalRemove(ItemImpl.java:821)\n\tat org.apache.jackrabbit.core.ItemImpl.remove(ItemImpl.java:1049)\n\tat com.bug.app.JackrabbitBugTest.testDelete(JackrabbitBugTest.java:30)",
+            "date": "2007-02-27T09:11:17.317+0000",
+            "id": 1
+        },
+        {
+            "author": "Dominique Pfister",
+            "body": "Looks like the CachingHierarchyManager gets a discard on the parent item (named aNode in the unit test) after having saved the removal of the child node. Inside its stateDiscarded(ItemState) implementation, it sees no overlayed state on this item, and therefore assumes that this parent node no longer exists:\n\n-->   if (discarded.isTransient() && !discarded.hasOverlayedState()) {\n            // a new node has been discarded -> remove from cache\n            remove(discarded.getId());\n        } else if (provider.hasItemState(discarded.getId())) {\n            evict(discarded.getId());\n        } else {\n            remove(discarded.getId());\n        }\n\nThe overlayed state, however, has been disconnected in the node's makePersistent. The check above should additionally test, whether the item's state is new:\n\n        if (discarded.isTransient() && !discarded.hasOverlayedState() &&\n-->             discarded.getStatus() == ItemState.STATUS_NEW) {\n            ...\n        }\n\nWith this patch, the test runs without errors.",
+            "date": "2007-02-27T15:35:43.043+0000",
+            "id": 2
+        },
+        {
+            "author": "Stefan Guggisberg",
+            "body": "not critical since there's no real data corruption. it's the session's view that gets corrupted. still a major issue though.",
+            "date": "2007-02-27T16:01:52.824+0000",
+            "id": 3
+        },
+        {
+            "author": "Stefan Guggisberg",
+            "body": "fixed as dominique suggested (svn r512296)",
+            "date": "2007-02-27T16:07:36.152+0000",
+            "id": 4
+        }
+    ],
+    "component": "jackrabbit-core",
+    "description": "When calling Node.getPath() anytime, no mather if its before or after save, and when deleting nodes, the internal reference points to the wrong nodes. \nThe attached test will always fail with a javax.jcr.RepositoryException: /: cannot remove root node. \nWe have seen other configurations where a node suddenly behaves as the another node that has references and throw a reference exception, and yet other configurations where the node we though we deleted still exists, and another node has now disappeared.\n\nI do not know what causes the bug,a good bet is perhaps the CachingHierarchyManager?. It was not present in Jackrabbit 1.0.1, but was introduced in 1.1.\n\nHave also tested the latest release: 1.2.2, and the bug is still present there.\n",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "JCR-768",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "Node.getPath() will corrupt the session",
+    "systemSpecification": true,
+    "version": "1.1, 1.1.1, 1.2.1, 1.2.2"
+}

@@ -1,0 +1,29 @@
+{
+    "comments": [
+        {
+            "author": "Xiaozheng Ma",
+            "body": "for unit test:\n\nIn testQuestionmark of TestWildcardQuery.java, The original unit test assetions\n(for query 2 and query3) should change to pass the test. Since previously \nthe 'metal' matches 'metal?', but it should not.\n\nchanges for quert2's assertion:\n\tassertMatches(searcher, query2, 1); \n\t// note that the number changes to\n        // 1 since 'metal' is not a match any more.\nThe same modification to query3's assertion is :\n\t\tassertMatches(searcher, query3, 0); \n\t\t//change to 0 since there is no match\n\nErik has suggest a new unit test:\n\n         Query query6 = new WildcardQuery(new Term(\"body\", \"metal??\"));\n         assertMatches(searcher, query6, 0);\n\nAfter I review this bug carefully, I realize that the bug is not only for \nmultiply '?', it is for trail \"?\"-- After all \"?\" is not a \"*\"\n\n",
+            "date": "2004-11-14T01:17:25.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Bernhard Messer",
+            "body": "WildcardQuery doesn't match 'cat' for queries like 'ca??' anylonger.",
+            "date": "2005-11-01T02:10:02.000+0000",
+            "id": 1
+        }
+    ],
+    "component": "core/search",
+    "description": "The problem is if you search on \"ca??\", the hit includes 'cat', 'CA', \netc, while the user only wants 4 letter words start with CA, such as \n'card', 'cash', to be returned. This happens only when multiple '?' at \nthe end of search pattern. The solution is to check if the word that is \nmatching against search pattern ends while there is still '?' left. If \nthis is the case, match should return false.\n\nAttached is the patch code I generated use 'diff'\n********************************************************************\n\n--- WildcardTermEnum.org\t2004-05-11 11:42:10.000000000 -0400\n+++ WildcardTermEnum.java\t2004-11-08 14:35:14.823610500 -0500\n@@ -132,6 +132,10 @@\n             }\n             else\n             {\n+\t      //to prevent \"cat\" matches \"ca??\"\n+\t      if(wildchar == WILDCARD_CHAR){\n+\t\treturn false;\n+\t      }\t      \n               // Look at the next character\n               wildcardSearchPos++;\n             }\n**********************************************************************",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "LUCENE-306",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "[PATCH]multiple wildcards ? at the end of search pattern return incorrect hits",
+    "systemSpecification": true,
+    "version": "1.4"
+}

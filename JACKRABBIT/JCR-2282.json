@@ -1,0 +1,71 @@
+{
+    "comments": [
+        {
+            "author": "Thomas Mueller",
+            "body": "The specification I have (jcr-spec.pdf from content_repository-2_0-pfd-spec.zip) says:\nUnquotedLiteral ::= /* String form of a JCR Value, as defined in \u00a73.5.4 Conversion of Values */\nHowever there is no section 3.5.4. I guess it should be \"3.6.4 Property Type Conversion\" instead.\n",
+            "date": "2009-08-27T10:31:09.355+0000",
+            "id": 0
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "Right, and right after that is the section I was referring to.",
+            "date": "2009-08-27T12:34:34.597+0000",
+            "id": 1
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "Index: src/main/java/org/apache/jackrabbit/test/api/query/qom/NodeNameTest.java\n===================================================================\n--- src/main/java/org/apache/jackrabbit/test/api/query/qom/NodeNameTest.java\t(revision 808318)\n+++ src/main/java/org/apache/jackrabbit/test/api/query/qom/NodeNameTest.java\t(working copy)\n@@ -144,7 +144,7 @@\n         }\n         try {\n             String stmt = \"SELECT * FROM [\" + testNodeType + \"] AS s \" +\n-                    \"WHERE NAME(s) = \" + literal.getString();\n+                    \"WHERE NAME(s) = CAST(\" + literal.getString() + \" AS LONG)\";\n             qm.createQuery(stmt, Query.JCR_SQL2).execute();\n             fail(\"NAME() comparison with LONG must fail with InvalidQueryException\");\n         } catch (InvalidQueryException e) {\n@@ -162,10 +162,11 @@\n         }\n         try {\n             String stmt = \"SELECT * FROM [\" + testNodeType + \"] AS s \" +\n-                    \"WHERE NAME(s) = \" + literal.getString();\n+                    \"WHERE NAME(s) = CAST(\" + literal.getString() + \" AS BOOLEAN)\";\n             qm.createQuery(stmt, Query.JCR_SQL2).execute();\n             fail(\"NAME() comparison with BOOLEAN must fail with InvalidQueryException\");\n         } catch (InvalidQueryException e) {\n+            e.printStackTrace();\n             // expected\n         }\n     }\n\n\nIndex: src/main/java/org/apache/jackrabbit/spi/commons/query/sql2/Parser.java\n===================================================================\n--- src/main/java/org/apache/jackrabbit/spi/commons/query/sql2/Parser.java\t(revision 808318)\n+++ src/main/java/org/apache/jackrabbit/spi/commons/query/sql2/Parser.java\t(working copy)\n@@ -19,7 +19,6 @@\n import java.math.BigDecimal;\n import java.util.ArrayList;\n import java.util.HashMap;\n-\n import javax.jcr.PropertyType;\n import javax.jcr.RepositoryException;\n import javax.jcr.Value;\n@@ -39,7 +38,6 @@\n import javax.jcr.query.qom.Selector;\n import javax.jcr.query.qom.Source;\n import javax.jcr.query.qom.StaticOperand;\n-\n import org.apache.jackrabbit.spi.commons.query.qom.JoinType;\n import org.apache.jackrabbit.spi.commons.query.qom.Operator;\n \n@@ -455,7 +453,7 @@\n             }\n         }\n         if (currentTokenType == VALUE) {\n-            Literal literal = factory.literal(currentValue);\n+            Literal literal = getUncastLiteral(currentValue);\n             read();\n             return literal;\n         } else if (currentTokenType == PARAMETER) {\n@@ -471,10 +469,10 @@\n             }\n             return var;\n         } else if (readIf(\"TRUE\")) {\n-            Literal literal = factory.literal(valueFactory.createValue(true));\n+            Literal literal = getUncastLiteral(valueFactory.createValue(true));\n             return literal;\n         } else if (readIf(\"FALSE\")) {\n-            Literal literal = factory.literal(valueFactory.createValue(false));\n+            Literal literal = getUncastLiteral(valueFactory.createValue(false));\n             return literal;\n         } else if (readIf(\"CAST\")) {\n             read(\"(\");\n@@ -487,6 +485,7 @@\n             read(\"AS\");\n             value = parseCastAs(value);\n             read(\")\");\n+            // CastLiteral\n             literal = factory.literal(value);\n             return literal;\n         } else {\n@@ -494,6 +493,19 @@\n         }\n     }\n \n+    /**\n+     * Create uncast literal from a value. According to the JCR specification,\n+     * \"an UncastLiteral is always interpreted as a Value of property type STRING\"\n+     * (JCR 2.0 Core Specification, 6.7.34 Literal, page 124).\n+     * That means the value is converted to a String first.\n+     *\n+     * @param value the original value\n+     * @return the literal\n+     */\n+    private Literal getUncastLiteral(Value value) throws RepositoryException {\n+        return factory.literal(valueFactory.createValue(value.getString()));\n+    }\n+\n     private Value parseCastAs(Value value) throws RepositoryException {\n         if (readIf(\"STRING\")) {\n             return valueFactory.createValue(value.getString());\n",
+            "date": "2009-08-27T14:07:52.059+0000",
+            "id": 2
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "- e.printStackTrace(); ",
+            "date": "2009-08-27T14:11:03.627+0000",
+            "id": 3
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "+1, looks good.",
+            "date": "2009-08-27T14:23:41.137+0000",
+            "id": 4
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "Because of this change the build now fails with\n\njavax.jcr.query.InvalidQueryException: Static value 3.0 cannot be converted to a Long\nfor the query:\nSELECT * FROM [nt:unstructured] AS s WHERE ISCHILDNODE(s, [/testroot]) AND LENGTH(s.prop1) = 3.0\n\n3.0 used to be parsed as a BigDecimal, and could be converted to a Long.\nNow 3.0 is parsed as a String (actually first parsed as a BigDecimal and then converted to a String by the parser).\nLong.parseLong(\"3.0\") fails.\n\nIf you want the query to work, you could write:\n... AND LENGTH(s.prop1) = CAST(3.0 AS DOUBLE).\n\nI think we should rather change the spec than trying to build a workaround.\nIt's weird that the parser should read 3.0 to a String, and only as a double if you write CAST(3.0 AS DOUBLE).\n\nI filed a bug yesterday: https://jsr-283.dev.java.net/issues/show_bug.cgi?id=806\n\nSo I suggest to undo my commit, and change the spec instead.",
+            "date": "2009-08-28T07:34:59.420+0000",
+            "id": 5
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "The JSR 283 EG decided to relax the relevant spec section. That is, an implementation is not forced to interpret the literal as a string in this context.\n\nRemoved unused method Parser.getUncastLiteralSpecCompliant() in spi-commons in revision: 809524",
+            "date": "2009-08-31T09:40:19.152+0000",
+            "id": 6
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "Changed summary to better match the issue.",
+            "date": "2009-08-31T09:40:52.123+0000",
+            "id": 7
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "Merged revision 808430 (change of test case) into jsr283 branch.",
+            "date": "2009-08-31T10:06:38.349+0000",
+            "id": 8
+        }
+    ],
+    "component": "jackrabbit-jcr-tests, jackrabbit-spi-commons",
+    "description": "The spec says:\n\n\"An UncastLiteral is always interpreted as a Value of property type STRING. A CastLiteral, on the other hand, is interpreted as the string form of a Value of the PropertyType indicated.\"\n\nThere are also two test cases in NodeNameTest that need to be fixed accordingly: testLongLiteral and testBooleanLiteral\n",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "JCR-2282",
+    "issuetypeClassified": "OTHER",
+    "issuetypeTracker": "BUG",
+    "priority": "Minor",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "SQL2 parser may infer type for UncastLiteral from static analysis",
+    "systemSpecification": true,
+    "version": ""
+}

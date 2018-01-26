@@ -1,0 +1,95 @@
+{
+    "comments": [
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Guys,\nCould you please install test webapp and run standard HttpClient test cases on\nyour system?\n\nPlease refer to the document below for instructions\n\nhttp://jakarta.apache.org/commons/httpclient/testwebapp.html\n\nI need to know if the problem can be reliably reproduced or it occurs only\nsporadically.\n\nOleg",
+            "date": "2003-02-26T23:21:34.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Simon Roberts",
+            "body": "Created an attachment (id=5057)\nOutput from test-local of testwebapp, installed into Jetty server\n",
+            "date": "2003-02-27T05:18:01.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Simon Roberts",
+            "body": "Previous attachment is the system described as \"Platform 1\".\n\nNOTE: the issue actually happens using HTTPS, and I'm unable to test with HTTP \n(the certificate is critical for my application).",
+            "date": "2003-02-27T05:20:11.000+0000",
+            "id": 2
+        },
+        {
+            "author": "Eric Friedman",
+            "body": "I have also encountered this same bug using httpclient to access an https server\nusing client side certificates.",
+            "date": "2003-02-28T03:42:46.000+0000",
+            "id": 3
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Created an attachment (id=5119)\nRFC 2616 (chapter 10.1) compliance fix\n",
+            "date": "2003-03-03T22:36:09.000+0000",
+            "id": 4
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "The patch does not really fix address the cause of the problem. I merely fixes \nRFC2616 non-compliant handling of 100 responses, which should prevent \nHttpClient from failing when an unexpected 100 (continue) response is received\n\nRFC2616:\n\n\"10.1 Informational 1xx\n\n   ...\n\n   A client MUST be prepared to accept one or more 1xx status responses\n   prior to a regular response, even if the client does not expect a 100\n   (Continue) status message. Unexpected 1xx status responses MAY be\n   ignored by a user agent.\n\n   ...\"\n\nVagueness of this particular paragraph begs a question. Shouldn't HttpClient \nignore the complete 1xx range in order to be 100% compliant? As far as I know \nprotocol change response (status code 101) is not currently supported\n\nOleg\n",
+            "date": "2003-03-03T22:45:06.000+0000",
+            "id": 5
+        },
+        {
+            "author": "Michael Becke",
+            "body": "I agree, it seems like all 1XX responses should be ignored.  Other than support\nfor ignoring other 1XX responses I would say this patch is good to go.\n\nMike",
+            "date": "2003-03-03T23:20:04.000+0000",
+            "id": 6
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Created an attachment (id=5124)\nRFC 2616 (chapter 10.1) compliance fix (take 2)\n",
+            "date": "2003-03-03T23:57:48.000+0000",
+            "id": 7
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Looks good to me.  Nice work Oleg.  This makes the code for handling\n100-continue much cleaner.",
+            "date": "2003-03-04T00:28:53.000+0000",
+            "id": 8
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Created an attachment (id=5148)\nRFC 2616 (chapter 10.1) compliance fix (take 3)\n",
+            "date": "2003-03-04T22:04:31.000+0000",
+            "id": 9
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "New patch removes CPU-bound busy wait used when expecting a 100 response. \nSocket SO_TIMEOUT is used instread.\n\nSuggested by Simon Roberts",
+            "date": "2003-03-04T22:12:56.000+0000",
+            "id": 10
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Patch has been committed. Please retest and inform me if the problem still persists\n\nOleg",
+            "date": "2003-03-06T16:45:13.000+0000",
+            "id": 11
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "*** HTTPCLIENT-179 has been marked as a duplicate of this bug. ***",
+            "date": "2003-04-06T16:17:15.000+0000",
+            "id": 12
+        }
+    ],
+    "component": "HttpClient (classic)",
+    "description": "Entity encosing methods time out (3 seconds) rather than getting the\n100-continue response. Then, after it has send the body, the 100-continue\nresponse is received and returned.\n\nAdding\n\n  method.setUseExpectHeader(false);\n\nseems to fix it.\n\nPlatform 1: Jetty server on Windows XP, Sun JDK 1.4.1_01, \nPlatform 2: Tomcat-4.1.18 + Turbine on Windows 2000 Pro, Sun JDK 1.3.1\nPlatform 3: Tomcat-4.1.18 on Linux if the connection is running over stunnel-4.00\n\nReported by: \n Simon Roberts <simon.roberts@fifthweb.net>\n Aurelien Pernoud <apernoud@sopragroup.com>\n Ingo Brunberg <ib@fiz-chemie.de>",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "HTTPCLIENT-165",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "HTTPCLIENT",
+    "project": "HTTPCLIENT",
+    "summary": "'100-continue' response times out unexpectedly",
+    "systemSpecification": true,
+    "version": "2.0 Alpha 3"
+}

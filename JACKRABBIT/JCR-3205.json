@@ -1,0 +1,59 @@
+{
+    "comments": [
+        {
+            "author": "David Buchmann",
+            "body": "full dump of the tcp communication between client and server for the sample code, done with wireshark and formatted a little bit for readability.",
+            "date": "2012-01-12T08:24:05.201+0000",
+            "id": 0
+        },
+        {
+            "author": "Julian Reschke",
+            "body": "The LOCK response indicates that the timeout value wasn't used; will investigate...",
+            "date": "2012-01-12T09:38:20.188+0000",
+            "id": 1
+        },
+        {
+            "author": "angela",
+            "body": "adjusted the component to jackrabbit-jcr-server. as far as i know the jsr 283 lock features\nare implemented in jcr2spi and the various spi-implementations. however, they are missing\nin the jcr-server (JcrActiveLock and DefaultItemCollection).\n\nwill take a look at it.",
+            "date": "2012-01-12T17:20:22.649+0000",
+            "id": 2
+        },
+        {
+            "author": "angela",
+            "body": "modified the DefaultItemCollection to use LockManager#lock instead of \nNode#lock and adjusted the webdav active-lock object accordingly.\n\nsince both features are defined to be optional by the jcr specification automated\ntesting would require quite some changes in the tck and the jcr2spi tests.\ni did some quick verifications stepping into the OpenScopedLockTest and the\nserver was responding as expected with the fixes in place.\n\ndavid, thanks for reporting this issue.",
+            "date": "2012-01-12T18:37:58.101+0000",
+            "id": 3
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Merged to the 2.4 branch in revision 1232530.",
+            "date": "2012-01-17T18:39:23.527+0000",
+            "id": 4
+        },
+        {
+            "author": "David Buchmann",
+            "body": "thanks, the timeout is now taken into account by the server and works fine!\n\n\nwhat still confuses me is the reply by the server for infinite timeout (before and after this fix):\n\n<D:timeout>Second-2147483</D:timeout>\n\nthis number is\n2^21+50331\n\nwhich seems pretty random to me. coincidally, this number is exactly 2^31 - 1  (2147483647) without the last 3 digits. can it be that there are some weird string operations happening on server side?",
+            "date": "2012-01-20T13:53:39.817+0000",
+            "id": 5
+        },
+        {
+            "author": "Julian Reschke",
+            "body": "Looks like a problem mapping Long.MAX_LONG to Infinite. Could you please open a separate ticket?",
+            "date": "2012-01-20T14:22:37.581+0000",
+            "id": 6
+        }
+    ],
+    "component": "jackrabbit-jcr-server, locks",
+    "description": "trying to set the lock timeout when creating a lock seems not to work over the davex transport. the timeout is always 2147483.\n\nthis was my test code:\n\nimport javax.jcr.*;\nimport javax.jcr.lock.*;\n\nimport org.apache.jackrabbit.jcr2spi.RepositoryImpl;\nimport org.apache.jackrabbit.jcr2spi.config.RepositoryConfig;\n\n\nString url = \"http://localhost:8080/server/\";\nString workspace = \"tests\";\n\nRepositoryConfig config = new RepositoryConfigImplTest(repoUrl);\nRepository repo = RepositoryImpl.create(config);\n\nCredentials sc = new SimpleCredentials(\"admin\",\"admin\".toCharArray());\nSession s = repo.login(sc,workspace);\n\nNode t;\nif (s.getRootNode().hasNode(\"test\")) {\n    t = s.getRootNode().getNode(\"test\");\n} else {\n    t = s.getRootNode().addNode(\"test\", \"nt:unstructured\");\n}\nt.addMixin(\"mix:lockable\");\ns.save();\nLockManager m = s.getWorkspace().getLockManager();\nLock l = m.lock(t.getPath(), false, true, 10, \"me\");\nSystem.out.println(l.getSecondsRemaining());\n\nand the output is 2147483\n\n\nthe relevant communication fragment is below, i attach the full trace in case i miss something.\n\nLOCK /server/tests/jcr%3aroot/test HTTP/1.1\nTimeout: Second-10\nDepth: 0\nLink: <urn:uuid0c740bb9-042a-4ef2-b019-1a6c52784c29>; rel=\"http://www.day.com/jcr/webdav/1.0/session-id\"\nAuthorization: Basic YWRtaW46YWRtaW4=\nUser-Agent: Jakarta Commons-HttpClient/3.0\nHost: localhost:8080\nContent-Length: 254\nContent-Type: text/xml; charset=UTF-8\n\n<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"no\"?><D:lockinfo xmlns:D=\"DAV:\"><D:lockscope><dcr:exclusive-session-scoped xmlns:dcr=\"http://www.day.com/jcr/webdav/1.0\"/></D:lockscope><D:locktype><D:write/></D:locktype><D:owner>me</D:owner></D:lockinfo>\n\nHTTP/1.1 200 OK\nContent-Type: text/xml; charset=utf-8\nContent-Length: 450\nLock-Token: <aa724c28-3c24-41e8-a3b4-9fc129adf732>\nServer: Jetty(6.1.x)\n\n<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"no\"?><D:prop xmlns:D=\"DAV:\"><D:lockdiscovery><D:activelock><D:lockscope><dcr:exclusive-session-scoped xmlns:dcr=\"http://www.day.com/jcr/webdav/1.0\"/></D:lockscope><D:locktype><D:write/></D:locktype><D:depth>0</D:depth><D:timeout>Second-2147483</D:timeout><D:owner>admin</D:owner><D:locktoken><D:href>aa724c28-3c24-41e8-a3b4-9fc129adf732</D:href></D:locktoken></D:activelock></D:lockdiscovery></D:prop>\n\n\n\nby the way: if i do not explicitly logout before the program exits, the lock is also not released even though it is session based. should the session not trigger a logout on destruction?",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "JCR-3205",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "Missing support for lock timeout and ownerHint in jcr-server",
+    "systemSpecification": true,
+    "version": "2.3.6"
+}

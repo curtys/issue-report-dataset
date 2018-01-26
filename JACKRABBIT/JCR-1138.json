@@ -1,0 +1,113 @@
+{
+    "comments": [
+        {
+            "author": "Thomas Mueller",
+            "body": "Revision 576314: added a test case and fixed a bug: The garbage collecter deleted too many files when not closing the repository first",
+            "date": "2007-09-17T09:01:42.490+0000",
+            "id": 0
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "To better support garbage collection for the data store, I suggest to add a new method to AbstractBundlePersistenceManager:\n\n    /**\n     * Get all node ids. \n     * A typical application will call this method multiple times, where 'after'\n     * is the last row read. The maxCount parameter defines the maximum number of \n     * node ids returned, 0 meaning no limit. The order of the node ids is specific for the \n     * given persistent manager. Items that are added concurrently may not be included.\n     * \n     * @param after the lower limit, or null for no limit.\n     * @param maxCount the maximum number of node ids to return, or 0 for no limit.\n     * @return an iterator of all bundles.\n     * @throws ItemStateException if an error while loading occurs.\n     */\n    public abstract NodeIdIterator getAllNodeIds(NodeId after, int maxCount)\n            throws ItemStateException;\n\nOnly for the Bundle PersistenceManagers, because those persistence managers are the most important ones (in my view).\n\nThis method is then called from the garbage collection process (or from a background thread from time to time, with a low maxCount and with enough sleep time in between). After all nodes are processed, the objects in the data store that were never scanned are deleted. This mechanism is better than the current mechanism as it can be restarted: only the last visited node needs to be persisted. It is also more efficient as the persistence manager can return the data in the order it is stored (which is easy for BundleFsPersistenceManager).\n\nWhat do you think, is this approach OK? \nThomas",
+            "date": "2007-09-18T13:05:50.302+0000",
+            "id": 1
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "> The order of the node ids is specific for the given persistent manager.\n\nDoesn't this mean that an implementation has to retain the order of the bundles it stores? E.g. for a very simple in memory PM you would have to use a LinkedHashMap, because a HashMap doesn't work.",
+            "date": "2007-09-18T13:22:46.175+0000",
+            "id": 2
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "It does not need to be the insertion order, it can be any order. For BundleFsPersistenceManager the easiest approach would be sort by UUID. For BundleDbPersistenceManager it could be UUID as well, or anything where an index exists. For an in-memory persistence manager HashMap would not always work because the table could be resized. LinkedHashMap would work but not efficiently (you can't get an iterator starting from a certain point). SortedMap would be better (using the tailMap method). \n",
+            "date": "2007-09-18T13:49:26.677+0000",
+            "id": 3
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "Revision 577297: Add AbstractBundlePersistenceManager.getAllNodeIds",
+            "date": "2007-09-19T13:09:08.835+0000",
+            "id": 4
+        },
+        {
+            "author": "Martijn Hendriks",
+            "body": "I used the MSSQL bundle PM for the unit tests, and found that the test added last wednesday fails for this PM. For the default derby PM it does not fail. \n\ntestGetAllNodeIds(org.apache.jackrabbit.core.data.PersistenceManagerIteratorTest)  Time elapsed: 0.25 sec  <<< FAILURE!\njunit.framework.AssertionFailedError: expected:<-1> but was:<1>\n\tat junit.framework.Assert.fail(Assert.java:47)\n\tat junit.framework.Assert.failNotEquals(Assert.java:282)\n\tat junit.framework.Assert.assertEquals(Assert.java:64)\n\tat junit.framework.Assert.assertEquals(Assert.java:201)\n\tat junit.framework.Assert.assertEquals(Assert.java:207)\n\tat org.apache.jackrabbit.core.data.PersistenceManagerIteratorTest.testGetAllNodeIds(PersistenceManagerIteratorTest.java:81)\n\tat org.apache.jackrabbit.core.data.PersistenceManagerIteratorTest.testGetAllNodeIds(PersistenceManagerIteratorTest.java:81)\n",
+            "date": "2007-09-21T07:02:54.409+0000",
+            "id": 5
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "Thanks for reporting this! Silly me, I did not follow my own definition of next():\n\"The order of the node ids is specific for the given persistent manager.\"\nSo I can't just assert ascending order of UUIDs...\nStill strange that it seems to work with other databases. I will test that.",
+            "date": "2007-09-21T07:13:25.794+0000",
+            "id": 6
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "Hi Martijn,\nIf you still have the jcr.log file (usually this is append-only), could you open it and find the place where the test faild with MS SQL Server? The test writes debug info, and I like to check if it really orders the other way. With Derby, I get:\n\n...\n f8425869-0c8f-4e1a-a3e3-d0631d895e34\n f8c06d0c-2233-4e65-bbe3-d5352df9eb93\n 072a60c1-0f11-4b96-9dbc-bbe393611869\n 16dba3fe-5521-449f-8f35-a4011e5bf3a6\n 2093e0c0-d0e8-4282-a0d1-955739278bb8\n...\n\nI guess MS SQL Server orders like this:\n 072a60c1-0f11-4b96-9dbc-bbe393611869\n 16dba3fe-5521-449f-8f35-a4011e5bf3a6\n 2093e0c0-d0e8-4282-a0d1-955739278bb8\n...\n f8425869-0c8f-4e1a-a3e3-d0631d895e34\n f8c06d0c-2233-4e65-bbe3-d5352df9eb93\n\nThanks!\nThomas",
+            "date": "2007-09-21T07:58:57.124+0000",
+            "id": 7
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "Revision 583413: The garbage collection deleted transient objects if the call sequence was:\n\nSession 1: add a blob (still in transient space)\nSession 2: start garbage collection\nSession 2: garbage collection completed, delete unused objects\nSession 1: store the changes\n\nThis change adds a WeakReference map to make sure transient objects are not deleted.\nA test case is included.\n",
+            "date": "2007-10-10T09:54:08.611+0000",
+            "id": 8
+        },
+        {
+            "author": "Pablo Rios",
+            "body": "Shouldn't transient objects be removed from the WeakReference map when they are persisted ?\nCould this responsibility be added to the AbstractBundlePersistenceManager and called from the store(ChangeLog) method ?\n",
+            "date": "2007-10-17T17:45:13.656+0000",
+            "id": 9
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "Transient objects are actually removed: when garbage collected.\nThat's why a WeakReference map is used and not a regular map.\nThere is no need to write code to remove them.\nOr is there a problem with this approach?",
+            "date": "2007-10-17T17:54:37.030+0000",
+            "id": 10
+        },
+        {
+            "author": "Pablo Rios",
+            "body": ">Or is there a problem with this approach?\nNo, everything works fine !",
+            "date": "2007-10-17T18:40:59.474+0000",
+            "id": 11
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "What's the status of this issue, i.e. any chance of resolving this soon?",
+            "date": "2007-12-17T13:01:54.364+0000",
+            "id": 12
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "I will check in my changes today. In my view this item is then resolved.",
+            "date": "2007-12-17T13:06:35.514+0000",
+            "id": 13
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "With revision 604872, the code to run the data store garbage collection is:\n\nGarbageCollector gc = ((SessionImpl)session).createDataStoreGarbageCollector();\ngc.scan();\ngc.stopScan();\ngc.deleteUnused();\n\nThe garbage collector will iterate over all nodes in the repository and update the last modified date. If all persistence managers implement the IterablePersistenceManager interface, this mechanism will be used; if not, the garbage collector will scan the repository using the JCR API starting from the root node.\n",
+            "date": "2007-12-17T14:32:27.589+0000",
+            "id": 14
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "Implemented in revision 604881",
+            "date": "2007-12-17T14:34:16.362+0000",
+            "id": 15
+        }
+    ],
+    "component": "jackrabbit-core",
+    "description": "Currently the data store garbage collection needs to be run manually. It should be simpler to use (maybe tool based), or automatic.",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "JCR-1138",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Blocker",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "Data store garbage collection",
+    "systemSpecification": true,
+    "version": ""
+}

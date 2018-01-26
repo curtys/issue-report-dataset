@@ -1,0 +1,131 @@
+{
+    "comments": [
+        {
+            "author": "Roland Weber",
+            "body": "The colon is a reserved character, which means it may or may not have\nto be escaped, depending on where it occurs. RFC 2396 includes the\nfollowing statements:\n\n[section 2.2, page 7]\n   ... If the data for a URI component would conflict with the\n   reserved purpose, then the conflicting data must be escaped before\n   forming the URI.\n\n[bottom of page 16, top of page 17]\n   Authors should be aware that a path segment which contains a colon\n   character cannot be used as the first segment of a relative URI path\n   (e.g., \"this:that\"), because it would be mistaken for a scheme name.\n\n   It is therefore necessary to precede such segments with other\n   segments (e.g., \"./this:that\") in order for them to be referenced as\n   a relative path.\n\nAn application with a user interface, such as a browser, has to deal with\nnon-standard input and may interpret data in the way that is most likely\nto make sense. For HttpClient however, it is desirable - and essential -\nthat data gets interpreted as stated in the relevant specifications.\n\nThough the WWW seems to be guided by what a particular browser does rather\nthan by specifications, we strive to set an example, within our domain :-)\n \ncheers,\n  Roland",
+            "date": "2005-06-01T15:28:59.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Gordon Mohr",
+            "body": "Since zero-length schemes are illegal, the current behavior results in a\nnonsensical construction: an ostensibly absolute URI with a zero-length\n'scheme'. That's not a legal URI. \n\nI don't see any inherent conflicts with the referenced specification sections.\nIn particular, there is no conflict with the colon's reserved purpose when a\ncolon is in the first position, because zero-length schemes are illegal, thus\nthe colon cannot be a scheme-delimiter. \n\nSimilarly, the \"should be aware\" paragraph posits a \"mistaken\" impression that\nis actually impossible, if you are enforcing non-zero-length scheme names. So\nits prescription is more reasonably understood as applying to path-segments\nwhere the colon appears after the first position, as in the example given in the\ntext. \n\nHarmonizing HTTPClient URI behavior with browser behavior is just as consistent\nwith the specifications, and would avoid creating instances with nonsensical\nscheme-parts, which are not legal absolute URIs. I believe the browsers, in this\ncase, have implemented the most reasonable interpretation of the spec. ",
+            "date": "2005-06-01T16:25:56.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Ortwin Gl\u00fcck",
+            "body": "Gordon,\n\nyou are asking for robustness against a specific spec violation that occurs in\nreal-world applications. I am in favour for making HttpClient more robust\nagainst such things. We should think carefully if we want to include this fix\ninto the URI class (thus intelligently breaking the spec) or leave it to the\ncaller to comply to the spec.\n\nOrtwin Gl\u00fcck",
+            "date": "2005-06-01T16:34:43.000+0000",
+            "id": 2
+        },
+        {
+            "author": "Roland Weber",
+            "body": "> Authors should be aware that a path segment which contains a colon\n> character cannot be used as the first segment of a relative URI path\n\nFrom my point of view, a path segment *contains* a colon if any one of\nit's characters is a colon. Including the first one.\n\nBut section 3.1 of RFC 2396 states:\n\n>  Relative URI references are distinguished from absolute URI in that\n>  they do not begin with a scheme name.\n\nwhich supports your interpretation, and that of the browsers.\n\ncheers,\n  Roland",
+            "date": "2005-06-01T16:58:45.000+0000",
+            "id": 3
+        },
+        {
+            "author": "Ortwin Gl\u00fcck",
+            "body": "Gordon,\n\njust out of curiosity: where is this URL coming from? Are you extracting it from\na HTML page? Does the user enter it?",
+            "date": "2005-06-01T17:06:24.000+0000",
+            "id": 4
+        },
+        {
+            "author": "Gordon Mohr",
+            "body": "A typo on some page somewhere -- a stray extra ':' in front of a true absolute\nhttp URI -- triggered a bug reported against our crawler. See:\n\n  http://groups.yahoo.com/group/archive-crawler/message/1894\n\n(We have a httpclient.URI subclass, UURI, which enforces additional cleanup on\nURIs, and our deserialization of such instances was being thrown off by\nreceiving URI strings that should have already been derelativized beginning with\ncolons.)\n\nFurther investigation revealed that any HREF starting with a colon was\ninterpreted as absolute by httpclient.URI, but relative by the browsers.\n\nThanks for your consideration!",
+            "date": "2005-06-01T17:43:45.000+0000",
+            "id": 5
+        },
+        {
+            "author": "Ortwin Gl\u00fcck",
+            "body": "When I rethink it, I'd rather see this fixed on your side, Gordon. I don't think\nHttpClient is the right place to fix the problem. It seems that a URL like this\nhas an ambiguous interpretation: \n 1. colon is part of the path name (perfectly legal in Unix) and should be URL\nescaped\n 2. no scheme and thus invalid\n\nI'd rather not have heuristics inside a class that implements a spec. Better\nfeed well-defined input to the URI class and get well-defined output back than\nhave URI to guess what your input could possibly mean.\n\nI recommend marking this bug as invalid.",
+            "date": "2005-06-01T18:02:03.000+0000",
+            "id": 6
+        },
+        {
+            "author": "Roland Weber",
+            "body": "Hello Odi,\n\ngenerally, the colon does not require URL-escaping when used in a path\ncomponent. It only needs to be escaped if there is an ambiguity whether\nit is part of a path in a relative URL, or the scheme separator in an\nabsolute URL.\nI can understand Gordon's argument that there is no such ambiguity when\nthe colon is the first character.\n\ncheers,\n  Roland",
+            "date": "2005-06-01T19:48:13.000+0000",
+            "id": 7
+        },
+        {
+            "author": "Ortwin Gl\u00fcck",
+            "body": "I read RFC-2396 again. Roland, you are right. Point taken. So we need to include\nsome test cases into the suite and see if Gordon's patch does what it should.",
+            "date": "2005-06-01T20:01:34.000+0000",
+            "id": 8
+        },
+        {
+            "author": "Gordon Mohr",
+            "body": "Definitely, it's an ambiguous case. But given that the class has to do something\nwhen presented with such input, I think two relevant questions would be:\n\n(1) Is the current behavior desirable?\n\nI don't think so. Interpreting a potential URI \":foo\" as an absolute URI results\nin an illegal, uninterpretable URI. I think this is highlighted by the example\nin my initial report:\n\n(new URI(new URI(\"http://www.example.com/path/page\"), new URI(\":foo\"))).toString(); \n\nHaving this return \":foo\" causes the nonsensical interpretation to spread to\nanother instance (losing the original context). In contrast, having this return\n\"http://www.example.com/path/:foo\" means the only possible legal URI has been\nmade from an ambiguous situation. \n\nIt would in my opinion be better to raise an exception than have the current\nbehavior. Then wrapping code could note the problem and attempt a workaround\nlike encoding or prepending a \"./\" to force path-interpretation. But then that\nwould force the question: is \":foo\" definitively prohibited by rfc2396 section 5\n(or rfc3986 section 4.2), or is it simply a case not contemplated by its language?\n\n(2) Is there any situation where the current behavior (or alternatively, raising\nan exception) would be preferable to the suggested behavior of treating\nURI-strings that begin with a ':' as relative references?\n\nI can't think of any such situation, save for a hypothetical pedantic URI-format\nchecker, which would not want the current behavior, but rather a warning of some\nsort that an ambiguous case has been encountered. \n\nShort of that, while I'd agree harmonization with browser behavior is not\nall-important, it is very valuable unless there's a clear justification to do\notherwise. Any ambiguous URI-writing practice that nonetheless works in browsers\nis likely to persist. ",
+            "date": "2005-06-02T04:43:37.000+0000",
+            "id": 9
+        },
+        {
+            "author": "Ortwin Gl\u00fcck",
+            "body": "Sidenote: Don't compare HttpClient with web browsers as HttpClient is not a\nbrowser. We are trying to implement a standard. While we must be relaxed in some\nareas of this standard to be compatible with real-world servers, we are very\nstrict when it comes to API level.\n\nThis means, that the only criteria to make a fix for this problem is, whether\n:foo can be interpreted unambiguously or not.",
+            "date": "2005-06-02T16:57:57.000+0000",
+            "id": 10
+        },
+        {
+            "author": "Gordon Mohr",
+            "body": "I would suggest that web browser behavior is a valid and important source of\ninput, along with formal specifications.\n\n(1) While HTTPClient is not a \"web browser\", one of its key uses is in creating\nweb browsers and stand-ins for web browsers (like crawlers). Indeed, the\nHTTPClient project home page, when listing examples of \"HTTP-aware client\napplications\" that may find HTTPClient \"of interest\", lists \"web browsers\" first. \n\n(2) While HTTPClient is not a \"web browser\", all \"web browsers\" are themselves\nHTTP client applications. Their behavior in aggregate establishes what users and\nserver/app developers expect. The major browsers individually, and all browsers\ntogether as a class, have much more developer and user attention (and QA and\nusability testing) than HTTPClient, and so often encode within their established\npractices a lot of hard-won wisdom about the most beneficial and\nbroadly-compatible interpretation of specs. In a case like this, where the specs\ncould plausibly be read more than one way, browsers are likely to have\nencountered the ambiguity and forced the issue one way or the other first. \n\n(3) There are both \"standards\" from formal specs, and de facto \"standards\" that\nemerge from consensus practice, even if never formally specified. Both are\nimportant, and in the HTTP domain, web browsers are the major force in\nestablishing the de facto standards. A library that only implements the formal\nstandards is interesting for some purposes but not others. \n\n(4) HTTPClient's \"compatibility\" mode for cookies already emulates browser\ntolerance of nonstandard server/app cookie formats, so that servers see what\nthey would expect to get on followup hits from widely-deployed browsers. That\nsame pragmatic approach of accomodating the browser lead would make sense here.\nFor example, if a web page specifies a background image as relative URI\n\":bg.jpg\", and popular web browser http client software like IE and Firefox both\nresolve this relatively and display it properly (and they do!), that should\nfactor in for how HTTPClient decides to interpret such URIs, even if some\nwordage in the specs suggest another way. \n\nI'm not saying browser behavior trumps all other considerations, but it should\nnot be ruled out as one valid and pragmatic criterion.  ",
+            "date": "2005-06-03T03:59:14.000+0000",
+            "id": 11
+        },
+        {
+            "author": "Ortwin Gl\u00fcck",
+            "body": "Gordon, \n\nI don't want to extend this discussion of the goals of the HttpClient project.\nWe should focus around this specific issue here (this is an issue tracking\nsystem and not an evangelist forum). In short: (1) and (2) are obviously right,\n(3) is somehow true and out of question. The first paragraph of (4) i have\nalready explained (we support non-standard servers to some extent).\nThe second paragraph is a problem: Yes I know that major browsers interprete\nthis in a certain way. They all deal with poorly written HTML which is mostly\noff standards in vast areas on the internet. HttpClient is really *not a\nbrowser*. People use it to do Webservices or XML-RPC. HttpClient does not have\nto fix broken HTML links. We don't care about HTML *at all*. All we do is\n*HTTP*. Parsing HTML is up to *you*. Fixing broken HTML code and broken URLs in\nthat code is up to *you*. Feed correct URIs to HttpClient and it will work fine.\nMoaning does not help. I explained the criteria for this issue to be fixed in\nHttpClient. More I can not do for you unfortunately. Even if this does not make\nyou happy. Sorry, mate.",
+            "date": "2005-06-03T04:16:21.000+0000",
+            "id": 12
+        },
+        {
+            "author": "Gordon Mohr",
+            "body": "I certainly agree that HTML fixup is out of HTTPClient's purview; the issue is\nURIs, an area where HTTPClient has provided a very capable implementation class\n(which works well for URIs far afield of HTTP, too). \n\nNow, a particularly important kind of http client, the web browser, gets most of\nits URIs through HTML, but that's just an illustrative example. The questionable\nURI \":foo\", which is at least plausibly legal, could be interpreted with an\nabsolute base context from XML, or CSS, or HTTP headers, or something else\nentirely. \n\nI've already worked around the issue. (BTW, thanks for making the HTTPClient URI\nclass so much easier to derive from than the imho fatally flawed java.net.URI.)\nSo I'm happy no matter how this issue is dispatched. \n\nI'm just making an appeal for giving some nonzero weight to the wisdom encoded\nin widespread web browser practice, when deciding what to do in these kind of\nsituations. In this particular case, I think web browser practice clearly points\nthe way to most useful/practical spec interpretation. That might not always be\nthe case, but I would think either congruence or contrast with IE/Firefox\npractice would always be an interesting data point when deciding desired behavior. \n\nEnough said, thanks for your consideration. ",
+            "date": "2005-06-03T06:56:32.000+0000",
+            "id": 13
+        },
+        {
+            "author": "Christian Kohlsch\u00c3\u00bctter",
+            "body": "I am a little bit surprised that this discussion has moved away from the      \noriginal problem.      \n      \nBasically, in this case, the browsers are in fact conforming to the              \nRFC, whereas HttpClient is not.  \n  \nEmpty schemes are simply not allowed (see BNF            \nin Appendix A of RFC 2396), so treating \":foo\" as an URI with empty scheme and        \nopaque part \"foo\" is incorrect per se. According to the BNF, it MUST NOT be        \ntreated as an absoluteURI.        \n         \nOn the other hand, a ':' is a perfectly valid path segment (see the BNF and        \nsection 3.3 of the RFC). I do not see any ambiguity here.    \n  \nLet's apply Gordon's patch.  \n  \nChristian \n ",
+            "date": "2005-06-03T20:51:19.000+0000",
+            "id": 14
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Most of those so called common browsers, for instance, accept virtually any\ngarbage for a cookie in order to be compatible with thousands of broken CGI\nscripts out there. \n\nSo, in general I _personally_ do not think the behavior of browsers should be\nused as the most common denominator. In this particular case, however,\nHttpClient clearly doesn't handle the URI in question correctly. I am +1 to\ncommit the patch. \n\nOleg",
+            "date": "2005-06-03T21:02:15.000+0000",
+            "id": 15
+        },
+        {
+            "author": "Ortwin Gl\u00fcck",
+            "body": "Created an attachment (id=15282)\nPatch\n\nChristian, it is all getting very redundant here. I have already pointed out in\ncomment 5 that I am +1. I was just making my point clear what the criteria is\nto include this patch. The criteria is fulfilled apparently. Patch and test\ncase attached.",
+            "date": "2005-06-03T21:32:22.000+0000",
+            "id": 16
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Looks good to me.\n\nOleg",
+            "date": "2005-06-03T21:44:25.000+0000",
+            "id": 17
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Patch away.\n\nMike",
+            "date": "2005-06-03T21:58:36.000+0000",
+            "id": 18
+        }
+    ],
+    "component": "HttpClient (classic)",
+    "description": "URI.parseUriReference treats strings with leading ':' as absolute URIs with a\nzero-length scheme. If you then try to derelativize such a URI against a base\nURI, you just get the same URI with leading ':'. \n\nIE and Firefox treat URI strings with a leading ':' as relative URIs. For\nexample, an HREF of \":foo\" in the context of base URI\n\"http://www.example.com/path/page\" would derelativize as\n\"http://www.example.com/path/:foo\". (Only if another character comes before the\ncolon is it interpreted as a URI scheme.)\n\nIt'd be desirable for HTTPClient URI to do the same thing.\n\nExample code to demonstrate:\n\nimport org.apache.commons.httpclient.URI;\nURI base = new URI(\"http://www.example.com/path/page\");\nURI rel1 = new URI(\":foo/boo\");\nSystem.out.println((new URI(base,rel1)).toString()); // displays just \":foo\"\n\nA potential fix would be for URI.parseUriReference() to avoid interpreting a ':'\nin the zero position as indicating a zero-length scheme:\n\n-       if (atColon < 0 || (atSlash >= 0 && atSlash < atColon)) {\n+       if (atColon <= 0 || (atSlash >= 0 && atSlash < atColon)) {\n\nand\n\n-        if (at < length && tmp.charAt(at) == ':') {\n+        if (at > 0 && at < length && tmp.charAt(at) == ':') {",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "HTTPCLIENT-466",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "BUG",
+    "priority": "Minor",
+    "product": "HTTPCLIENT",
+    "project": "HTTPCLIENT",
+    "summary": "URI.parseUriReference treats strings with leading ':' as absolute URIs with zero-length scheme",
+    "systemSpecification": true,
+    "version": "3.0 Final"
+}

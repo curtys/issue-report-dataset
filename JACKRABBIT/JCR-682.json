@@ -1,0 +1,41 @@
+{
+    "comments": [
+        {
+            "author": "Dominique Pfister",
+            "body": "Thanks to your test case, I could easily reproduce the issue: it happens when transient items are reordered.\nThe CachingHierarchyManager uses the method NodeState.getReorderedChildNodeEntries() to retrieve the set of reordered items, but this returns only changes between some state and its overlayed (i.e. persistent) state. Your test case performs the following operations in pseudo code:\n\n- addNode -> N1\n- addNode -> N2\n- addNode -> N3\n- orderBefore(N3, N2)\n\nwhich leaves the CachingHierarchyManager with an empty reordered list since the nodes have not yet been persisted. \n\nThe CachingHierarchyManager should better evict its associated cache entry, if it detects a purely transient reorder.",
+            "date": "2006-12-18T15:48:45.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Dominique Pfister",
+            "body": "Fixed as described: CachingHierarchyManager evicts its cache entry if it cannot detect the reordering of the child node entries that took place. Reran the test case and verified that it works. \n\nFixed in r488325.",
+            "date": "2006-12-18T16:38:39.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Reopening issue to edit metadata.\n\nPS. When resolving issues, please just mark it as resolved but don't close it as there may still be a need to edit the issue metadata  (a closed issue can't be edited) before a release. Also, in general an issue shouldn't be considered closed until it has gone out in an official release. See the initial Jira guidelines I recently sent to dev@.",
+            "date": "2006-12-18T19:08:10.000+0000",
+            "id": 2
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Re-resolving. I merged the change also to the 1.2 branch, so this fix will be going out in the upcoming 1.2 release.",
+            "date": "2006-12-18T19:21:10.000+0000",
+            "id": 3
+        }
+    ],
+    "component": "jackrabbit-core",
+    "description": "The problem we have is the implementation of the CachingHierarchyManager,\nto which the SimpleAccessManager holds a reference.\n\nLet's consider following example:\ni add 3 subnodes (a,b,c) to a node and after that i reorder b and c ..\nso i have a,c,b. in the process of reordering (using the function\norderBefore of javax.jcr.Node) our AccessManager is called several times to check the permissions of the nodes. In this AccessManager we use some\nfunctions of the CachingHierarchyManager, f.ex.\n\nPath itemPath = hierMgr.getPath(id);\nreturn itemPath.denotesRoot();\n\nor\n\nPath itemPath = hierMgr.getPath(itemId);\nPath parentPath = itemPath.getAncestor(1);\nreturn hierMgr.resolvePath(parentPath);\n\nthe problem is, that when calling the methods of the\nCachingHierarchyManager the nodes i ask for will be cached in the idCache in a wrong state (i. e.: before actually reordering the elements).\nso if i want f.ex. delete the node b after reordering, the node will\nbe looked up in the idCache. in the cache the index of node b is still 2\n(actually it should be 3) and so the wrong node will be deleted! ",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "JCR-682",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "AccessManager + CachingHierarchyManager problem",
+    "systemSpecification": true,
+    "version": "0.9, 1.0, 1.0.1, 1.1, 1.1.1"
+}

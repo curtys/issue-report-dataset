@@ -1,0 +1,101 @@
+{
+    "comments": [
+        {
+            "author": "Matej Knopp",
+            "body": "Simple patch implementing the feature",
+            "date": "2008-07-14T23:43:27.196+0000",
+            "id": 0
+        },
+        {
+            "author": "Alexander Klimetschek",
+            "body": "The patch looks good to me. Shall we include this for 1.5?",
+            "date": "2008-07-15T12:26:46.426+0000",
+            "id": 1
+        },
+        {
+            "author": "Matej Knopp",
+            "body": "The patch includes changes to checkstyle.xml, sorry about it, will commit new patch shortly.",
+            "date": "2008-07-15T13:21:49.892+0000",
+            "id": 2
+        },
+        {
+            "author": "Matej Knopp",
+            "body": "Removed checkstyle.xml from patch",
+            "date": "2008-07-15T13:24:14.467+0000",
+            "id": 3
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "The patch assumes that the <Workspace/> configuration templates in the repository.xml configuration files on the different cluster nodes are essentially identical. It might be better to explicitly use the workspace.xml file that was used to create the workspace in the originating node.\n\nMore generally, I think it would be better to handle this as an explicit createWorkspace() event in the cluster journal instead of implicitly creating new workspaces whenever cluster events referring to those workspaces are seen.",
+            "date": "2008-10-08T10:44:20.561+0000",
+            "id": 4
+        },
+        {
+            "author": "Igor Vaynberg",
+            "body": "why not apply the patch as it is for 1.5 and fix it better in a later version?\n\ni think it is reasonable to assume that all nodes are using the same workspace.xml. usually all nodes in a cluster are configured the same way...\n\nthis is also a blocker for us as far as taking our application into production.\n\n",
+            "date": "2008-10-08T17:16:35.783+0000",
+            "id": 5
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "> why not apply the patch as it is for 1.5 and fix it better in a later version?\n\nI don't think that the current patch is a technically sound solution to this issue. Sure, it works in specific circumstances but it also fails miserably in others. There is also no reasonably backwards-compatible way of upgrading this feature to something better in future releases, so it would essentially be a one-off hack.\n\nImplementing this feature properly shouldn't be too hard. See JCR-699 for an example on how this was done for node type registration.",
+            "date": "2008-10-08T21:16:32.879+0000",
+            "id": 6
+        },
+        {
+            "author": "Igor Vaynberg",
+            "body": "not sure what is not technically sound about this. it makes an assumption that all workspace.xml files are the same which is a subset of the case when you make no such assumption....curious under which circumstances you would run a cluster of jackrabbit servers that have different workspace.xml definitions...\n\nanyways, i am curious why you removed 1.5 fix version, does it mean you no longer plan to support this functionality in 1.5 release?",
+            "date": "2008-10-08T21:30:25.691+0000",
+            "id": 7
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "> not sure what is not technically sound about this.\n\nFor example it conflicts with the JackrabbitWorkspace.createWorkspace(String, InputSource) method (see [1]).\n\nThe reason why the <Workspace/> element in repository.xml is just the default template is to allow different workspace to be configured differently. Such non-uniform setups are actually fairly common (at least in deployments that I see).\n\nOf course the patch makes such clustered workspace creation optional, so one could argue that people with such non-uniform setups should just not enable this feature. But since implementing this feature properly for all sorts of setups is not really that much harder (the patch for JCR-699 was only twice as big as the current patch here), I would rather not opt for a partial fix that we'd then need to keep supporting for backwards compatibility reasons.\n\n> i am curious why you removed 1.5 fix version\n\nSee the 1.5 release plan updates on dev@. I plan to move forward with 1.5 already within the next few weeks and would rather postpone unfinished issues to 1.6.\n\nI'd like have this feature included already in 1.5, but only if we do it along the lines of JCR-699.\n\n[1] http://jackrabbit.apache.org/api/1.4/org/apache/jackrabbit/api/JackrabbitWorkspace.html#createWorkspace(java.lang.String, org.xml.sax.InputSource)\n\n",
+            "date": "2008-10-08T22:10:38.837+0000",
+            "id": 8
+        },
+        {
+            "author": "Alexander Klimetschek",
+            "body": "> For example it conflicts with the JackrabbitWorkspace.createWorkspace(String, InputSource) method (see [1]).\n\n> The reason why the <Workspace/> element in repository.xml is just the default template is to allow different workspace\n> to be configured differently. Such non-uniform setups are actually fairly common (at least in deployments that I see). \n\nI agree with Jukka. My first patch analysis was faulty, supporting different workspace configurations is important.",
+            "date": "2008-10-09T11:16:21.199+0000",
+            "id": 9
+        },
+        {
+            "author": "Matej Knopp",
+            "body": "\"Proper\" patch that uses  workspace configuration from original node when creating workspaces across cluster",
+            "date": "2008-10-15T00:57:22.105+0000",
+            "id": 10
+        },
+        {
+            "author": "Matej Knopp",
+            "body": "Patch with corrected formatting and license headers",
+            "date": "2008-10-16T15:30:54.005+0000",
+            "id": 11
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Looks great, thanks! I'll review the patch in more detail and try it out in practice later tonight.",
+            "date": "2008-10-16T18:27:15.065+0000",
+            "id": 12
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Patch applied in  revision 711238.\n\nI also created a test case for this functionality in sandbox/jackrabbit-test-harness/cluster.",
+            "date": "2008-11-04T13:02:50.487+0000",
+            "id": 13
+        }
+    ],
+    "component": "clustering, jackrabbit-core",
+    "description": "When workspace is created on cluster node A and then node added to that workspace, the proper event is sent to the journal, but other cluster nodes are not able to process it because they don't have the workspace.\n\nIt would be nice to have a configuration option for the cluster to create such workspace automatically (instead of just logging an error)",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "JCR-1677",
+    "issuetypeClassified": "RFE",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Major",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "Allow workspace creation over cluster",
+    "systemSpecification": true,
+    "version": ""
+}

@@ -1,0 +1,119 @@
+{
+    "comments": [
+        {
+            "author": null,
+            "body": "Is it working with\nSSLVerifyClient=\"require\"\n\n",
+            "date": "20051212T12:20:52",
+            "id": 0
+        },
+        {
+            "author": null,
+            "body": "(In reply to comment #1)\n> Is it working with\n> SSLVerifyClient=\"require\"\n\nNo, same behaviour described before.\nNon-APR: client-certificate authentication works, certificate obtained in request.\nAPR: client-certificate authentication works, but no certificate in request.\n\n\n",
+            "date": "20051212T12:44:08",
+            "id": 1
+        },
+        {
+            "author": null,
+            "body": "I have the same problem on Apache 2.054, Fedora 4, Tomcat 5.0.30-5jpp_6fc and\nmod_jk.i386 1.2.6-3jpp_4fc\n\nAll these packages are installed via yum\nWhen I try to get the client cert from the request\n(javax.servlet.request.X509Certificate) it fails and I get this message in\ncatalina.out :\norg.apache.jk.server.JkCoyoteHandler action(org.apache.coyote.ActionCode,\njava.lang.Object)\nSEVERE: Certificate convertion failed\n\nI have found no work arround\n\n",
+            "date": "20060117T12:08:24",
+            "id": 2
+        },
+        {
+            "author": null,
+            "body": "yes, i got this behaviour too.\ni tryed with \nall SSLVerifyClient options and SSLVerifyDepth but still certifcate dont get\nforwared to request.\n\ni guess problem is in: org.apache.coyote.http11.Http11AprProcessor \nelse if (actionCode == ActionCode.ACTION_REQ_SSL_ATTRIBUTE)\nelse if (actionCode == ActionCode.ACTION_REQ_SSL_CERTIFICATE)",
+            "date": "20060714T18:25:05",
+            "id": 3
+        },
+        {
+            "author": null,
+            "body": "\nI have the same problem (Tomcat 6.0.2, Tomcat-Native 1.1.7-win32, Windows XPSP2,\nOpenSSL 0.9.8d, APR from Apache-2.2.3).\n\n1) when I HTTP-GET some sample servlet from browser (IE, FireFox),\nHttp11APRProcessor doesn't insert user certificate into request object\n\n2) when I use \"openssl s_client\", everything's fine\n\nSimple debug reveals one problem - in request from browser, there is no data in:\nint certLength = SSLSocket.getInfoI(socket, SSL.SSL_INFO_CLIENT_CERT_CHAIN)\n\nand so there is no cert chain in:\nbyte[] data = SSLSocket.getInfoB(socket, SSL.SSL_INFO_CLIENT_CERT_CHAIN + i);\n\nbut there IS client's certificate in (my added sample line):\nSSLSocket.getInfoB(socket, org.apache.tomcat.jni.SSL.SSL_INFO_CLIENT_CERT)\n\nand it is the client's certificate.\n\nI think the problem is with not looking for data under key\n\"org.apache.tomcat.jni.SSL.SSL_INFO_CLIENT_CERT\" but only under\n\"org.apache.tomcat.jni.SSL.SSL_INFO_CLIENT_CERT_CHAIN\"...\n\nwith regards\nGrzegorz Grzybek\n\n",
+            "date": "20061128T07:35:25",
+            "id": 4
+        },
+        {
+            "author": null,
+            "body": "If you have tested a patch to also consider SSL_INFO_CLIENT_CERT if the chain is\nempty, you can submit it.",
+            "date": "20061128T09:04:23",
+            "id": 5
+        },
+        {
+            "author": null,
+            "body": "Created attachment 19196\nPatch to look for client's certificate in Http11AprProcessor\n\nThis patch searches for client's certificate when there is no client's\ncertificate chain under SSL.SSL_INFO_CLIENT_CERT_CHAIN key.\nWhen SSLSocket.getInfoI(socket, SSL.SSL_INFO_CLIENT_CERT_CHAIN) returns 0 (not\n-1), client's cert is retrieved using SSLSocket.getInfoB(socket,\nSSL.SSL_INFO_CLIENT_CERT).",
+            "date": "20061129T04:11:12",
+            "id": 6
+        },
+        {
+            "author": null,
+            "body": "I forgot - this patch is for tomcat 6.0.2, it could also be applied to e.g.\n5.5.20 (with changed line numbers).\n\nGrzegorz Grzybek\n",
+            "date": "20061129T04:17:00",
+            "id": 7
+        },
+        {
+            "author": null,
+            "body": "Re-opening since the patch has yet to be applied.",
+            "date": "20061218T03:55:23",
+            "id": 8
+        },
+        {
+            "author": null,
+            "body": "Seems like this one\nhttp://issues.apache.org/bugzilla/show_bug.cgi?id=41382\nis the same issue.\n\nThe patch given with #41382 was designed for 5.5.20 and fixes also the\nbug-replication (bug copy/paste?) found a few lines down in the code. It has\nbeen tested at Sparus Software with various scenarios (e.g.: SSL client does not\ngive a cert chain, gives a cert chain, etc)\n\nIf I am not mistaken, the patch given with #37869 seems incorrect as it replaces\nan incorrect behaviour (only giving certification chain excluding client\ncertificate) with another incorrect behaviour (only giving client cert but not\nthe certificate chain, see servlet spec for details of what the correct behavior is)\n\n",
+            "date": "20070117T15:09:01",
+            "id": 9
+        },
+        {
+            "author": null,
+            "body": "*** Bug 41382 has been marked as a duplicate of this bug. ***",
+            "date": "20070117T15:12:45",
+            "id": 10
+        },
+        {
+            "author": null,
+            "body": "Created attachment 19425\nA patch making the behavior consistent with Servlet spec 2.3 (for v5.5.20)\n\nSame as patch in #41382\nFixes issues in patch \"19196: Patch to look for client's certificate in\nHttp11AprProcessor\"",
+            "date": "20070117T15:15:19",
+            "id": 11
+        },
+        {
+            "author": null,
+            "body": "Comment on attachment 19196\nPatch to look for client's certificate in Http11AprProcessor\n\nNigdy nie my&#347;l&#281; o przysz&#322;o&#347;ci. Nadchodzi ona\nwystarczaj&#261;co szybko.",
+            "date": "20070120T18:46:48",
+            "id": 12
+        },
+        {
+            "author": null,
+            "body": "Comment on attachment 19425\nA patch making the behavior consistent with Servlet spec 2.3 (for v5.5.20)\n\n>Index: connectors/http11/src/java/org/apache/coyote/http11/Http11AprProcessor.java\n>===================================================================\n>--- Http11AprProcessor.java\t(revision 496746)\n>+++ Http11AprProcessor.java\t(working copy)\n>@@ -1095,16 +1095,29 @@\n>                             (AprEndpoint.CIPHER_SUITE_KEY, sslO);\n>                     }\n>                     // Client certificate chain if present\n>+                    //////////////////////////////////////////////////\n>+                    // CP: does not include client certificate, only CA certificates\n>+                    // see documentation of SSL_get_peer_cert_chain() in openssl and sslinfo.c in native APR code\n>+                    // SSL_get_peer_cert_chain() returns a pointer to STACKOF(X509) certificates forming the certificate chain of the peer.\n>+                    // If called on the client side, the stack also contains the peer's certificate;\n>+                    // if called on the server side, the peer's certificate must be obtained separately using SSL_get_peer_certificate(3).\n>+                    // If the peer did not present a certificate, NULL is returned.\n>+                    //\n>                     int certLength = SSLSocket.getInfoI(socket, SSL.SSL_INFO_CLIENT_CERT_CHAIN);\n>+                    // retrieve client certificate\n>+                    byte[] clientCert = SSLSocket.getInfoB(socket, SSL.SSL_INFO_CLIENT_CERT);\n>                     X509Certificate[] certs = null;\n>-                    if (certLength > 0) {\n>-                        certs = new X509Certificate[certLength];\n>+                    if (clientCert != null) {\n>+                        certs = new X509Certificate[certLength+1]; // add one for the client certificate\n>+\n>+                        CertificateFactory cf =\n>+                        CertificateFactory.getInstance(\"X.509\");\n>+\n>+                        certs[0] = (X509Certificate) cf.generateCertificate(new ByteArrayInputStream(clientCert));\n>+\n>                         for (int i = 0; i < certLength; i++) {\n>                             byte[] data = SSLSocket.getInfoB(socket, SSL.SSL_INFO_CLIENT_CERT_CHAIN + i);\n>-                            CertificateFactory cf =\n>-                                CertificateFactory.getInstance(\"X.509\");\n>-                            ByteArrayInputStream stream = new ByteArrayInputStream(data);\n>-                            certs[i] = (X509Certificate) cf.generateCertificate(stream);\n>+                            certs[i+1] = (X509Certificate) cf.generateCertificate(new ByteArrayInputStream(data));\n>                         }\n>                     }\n>                     if (certs != null) {\n>@@ -1142,16 +1155,29 @@\n>                     // Renegociate certificates\n>                     SSLSocket.renegotiate(socket);\n>                     // Client certificate chain if present\n>+                    //////////////////////////////////////////////////\n>+                    // CP: does not include client certificate, only CA certificates\n>+                    // see documentation of SSL_get_peer_cert_chain() in openssl and sslinfo.c in native APR code\n>+                    // SSL_get_peer_cert_chain() returns a pointer to STACKOF(X509) certificates forming the certificate chain of the peer.\n>+                    // If called on the client side, the stack also contains the peer's certificate;\n>+                    // if called on the server side, the peer's certificate must be obtained separately using SSL_get_peer_certificate(3).\n>+                    // If the peer did not present a certificate, NULL is returned.\n>+                    //\n>                     int certLength = SSLSocket.getInfoI(socket, SSL.SSL_INFO_CLIENT_CERT_CHAIN);\n>+                    // retrieve client certificate\n>+                    byte[] clientCert = SSLSocket.getInfoB(socket, SSL.SSL_INFO_CLIENT_CERT);\n>                     X509Certificate[] certs = null;\n>-                    if (certLength > 0) {\n>-                        certs = new X509Certificate[certLength];\n>+                    if (clientCert != null) {\n>+                        certs = new X509Certificate[certLength+1]; // add one for the client certificate\n>+\n>+                        CertificateFactory cf =\n>+                        CertificateFactory.getInstance(\"X.509\");\n>+\n>+                        certs[0] = (X509Certificate) cf.generateCertificate(new ByteArrayInputStream(clientCert));\n>+\n>                         for (int i = 0; i < certLength; i++) {\n>                             byte[] data = SSLSocket.getInfoB(socket, SSL.SSL_INFO_CLIENT_CERT_CHAIN + i);\n>-                            CertificateFactory cf =\n>-                                CertificateFactory.getInstance(\"X.509\");\n>-                            ByteArrayInputStream stream = new ByteArrayInputStream(data);\n>-                            certs[i] = (X509Certificate) cf.generateCertificate(stream);\n>+\t\t\t\t\t\t\tcerts[i+1] = (X509Certificate) cf.generateCertificate(new ByteArrayInputStream(data));\n>                         }\n>                     }\n>                     if (certs != null) {",
+            "date": "20070121T15:49:00",
+            "id": 13
+        },
+        {
+            "author": null,
+            "body": "I see that 6.0 was patched. Will this be applied to 5.5 as well?",
+            "date": "20080423T03:41:12",
+            "id": 14
+        },
+        {
+            "author": null,
+            "body": "*** Bug 39637 has been marked as a duplicate of this bug. ***",
+            "date": "20090705T07:35:41",
+            "id": 15
+        },
+        {
+            "author": null,
+            "body": "This has been fixed in 5.5.x and will be included in 5.5.28 onwards",
+            "date": "20090709T01:23:07",
+            "id": 16
+        }
+    ],
+    "component": "Connector:HTTP",
+    "description": "I configured tomcat to use SSL client-certificate authentication and i need to\naccess the client certificate contained in the request. To do this, i use:\n\nObject cert = request.getAttribute(\"javax.servlet.request.X509Certificate\");\n\nIf i do not use the APR components, this works correctly.\nIf i use the APR components, instead, the object returned by the previous\nstatement is always null.\nThe authentication itself works correctly (for instance if CA not valid,\ncertificate expired, etc..) in both cases.\n\nFor use the APR components, i just put the binary files downloaded at:\n\nhttp://tomcat.heanet.ie/native/1.1.1/binaries/win32/\n\nin the bin directory of my tomcat installation, according the guide found on\ntomcat site:\n\nhttp://tomcat.apache.org/tomcat-5.5-doc/apr.html\n\nThis is the SSL HTTP connector extract from my server.xml (non APR version):\n\n<Connector port=\"443\" maxHttpHeaderSize=\"8192\"\nmaxThreads=\"150\" minSpareThreads=\"25\" maxSpareThreads=\"75\"\nenableLookups=\"false\" disableUploadTimeout=\"true\"\nacceptCount=\"100\" scheme=\"https\" secure=\"true\"\nclientAuth=\"want\" \nsslProtocol=\"TLS\"\ntruststoreFile=\"./tomcat5keystore.jks\" truststorePass=\"xxx\"\nkeystoreFile=\"./tomcat5keystore.jks\" keystorePass=\"xxx\"                 \n/>\n\n\nThis is the SSL HTTP connector extract from my server.xml (non APR version):\n\n<Connector port=\"443\" maxHttpHeaderSize=\"8192\"\nmaxThreads=\"150\" minSpareThreads=\"25\" maxSpareThreads=\"75\"\nenableLookups=\"false\" disableUploadTimeout=\"true\"\nacceptCount=\"100\" scheme=\"https\" secure=\"true\"\nclientAuth=\"want\" \nSSLEngine=\"on\" \nSSLVerifyClient=\"optional\"\nSSLCertificateFile=\"${catalina.base}/cert.crt\"\nSSLCertificateKeyFile=\"${catalina.base}/key.pem\"\nSSLCACertificateFile=\"${catalina.base}/ca_postecom.crt\"\nSSLPassword=\"xxx\"\n/>",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "37869",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "P2 normal",
+    "product": "Tomcat 5",
+    "project": "TOMCAT",
+    "summary": "Cannot obtain client certificate with SSL / client certificate authentication using APR components",
+    "systemSpecification": true,
+    "version": "5.5.12"
+}

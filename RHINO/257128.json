@@ -1,0 +1,41 @@
+{
+    "comments": [
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 157149\nImplementation\n\nThe code generation of the patch is straightforward. It adds context flags to\nvisitExpression which defaults to 0 indicating generic context if node does not\nknow what to do about it. Then during generation of Token.RETURN the patch\ncalls visitExpression with ECF_TAIL flag to indicate the context. Then\nToken.COMMA, Token.HOOK, Token.AND and Token.OR preserve the flag for tail call\noperands and when Token.CALL gets the flag it uses Icode_TAIL_CALL instead of\nToken.CALL to indicate tail call.\n\nThe runtime part was more tricky since initially I tries to implement state and\nits stack arrays reuse. But this is too complex due to possible exceptions\nduring state reinitialization (see comments in the patch) )so at the end the\ndifference between tail and ordinary call in the patch is that the tail call\nrelease its parent and would transfer control on return to its grandparent\ninstead.",
+            "date": "20040827T13:21:00",
+            "id": 0
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 157150\nJS test cae\n\nWithout tail call recursion eleimination the test case would create 20_000_000\nJS stack frames and even stackless interpreter would give up with OutOfMemory.\n\nWith the patch applied the test case finishes after about 45s on my Athlon\n1.2MHz Fedora box.",
+            "date": "20040827T13:27:16",
+            "id": 1
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 157159\nImplementation2\n\nThe previous patch contains a bug: Interpreter.interpret would use initial\nstate to extract interpretation result but after tail call that state was never\nupdated with the result. The solution is to return the final state for the\nresult extraction.",
+            "date": "20040827T16:15:50",
+            "id": 2
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "I committed the patch",
+            "date": "20040828T08:14:57",
+            "id": 3
+        }
+    ],
+    "component": "Core",
+    "description": "Given that interpreter do not use Java stack frames for JS (see bug 256339) it\nis only natural to support at least minimal form of tail call elimination so\ntail call recursion in JS would require only constant amount of memory.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "257128",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "RFE",
+    "priority": "-- enhancement",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "Interpreter and tail call elimination",
+    "systemSpecification": true,
+    "version": "head"
+}

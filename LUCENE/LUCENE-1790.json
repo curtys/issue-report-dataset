@@ -1,0 +1,119 @@
+{
+    "comments": [
+        {
+            "author": "Mark Miller",
+            "body": "What about a common class with chooseable aggregation method?",
+            "date": "2009-08-07T03:06:08.068+0000",
+            "id": 0
+        },
+        {
+            "author": "Grant Ingersoll",
+            "body": "Will commit tomorrow or Saturday, as it is a pretty minor variant of the BoostingTermQuery",
+            "date": "2009-08-07T03:08:04.204+0000",
+            "id": 1
+        },
+        {
+            "author": "Grant Ingersoll",
+            "body": "Was actually just thinking we could have a simple Function Interface:\n{code}\npublic interface PayloadFunction{\n   float currentScore(currentScore, currentPayloadScore);\n\n   float finalScore(numPayloadsSeen, payloadScore);\n}\n{code}\n\nand it could be passed into the constructor.  Then, in processPayload, you could just have\n{code}\n          payloadScore = function.score(payloadScore, similarity.scorePayload(term.field(), payload, 0, positions.getPayloadLength()));\n{code}\ninstead of\n{code}\n          payloadScore = Math.max(payloadScore, similarity.scorePayload(term.field(), payload, 0, positions.getPayloadLength()));\n{code} or whatever is there.\n\nThen, the getPayloadScore() method (see my patch) would be:\n{code}\nreturn (payloadsSeen > 0 ? (function.finalScore(payloadsSeen, payloadScore)) : 1);\n{code}\n\n\nWhat did you have in mind?  I'm pretty tired, so the above may be a bit whacked.",
+            "date": "2009-08-07T03:15:01.306+0000",
+            "id": 2
+        },
+        {
+            "author": "Mark Miller",
+            "body": "Yeah, thats basically what I was thinking - then you could do min score or whatever as well - .\n\nDoes it really needs all of those args though? I guess you could possibly do more that way, but it almost seems you just need:\n\n{code}\npublic interface PayloadAggregationFunction{\n   void aggregate(score);\n   float score();\n}\n\n{code}",
+            "date": "2009-08-07T13:33:30.454+0000",
+            "id": 3
+        },
+        {
+            "author": "Grant Ingersoll",
+            "body": "Refactors BoostingTermQuery to be a BoostingFunctionQuery.  Adds in several PayloadFunction implementations.  All tests pass\n\nWill commit today or tomorrow.",
+            "date": "2009-08-07T15:19:46.964+0000",
+            "id": 4
+        },
+        {
+            "author": "Grant Ingersoll",
+            "body": "Next take on this:\n\n1. Added includeSpanScore flag, which allows you to ignore the score from the TermQuery part of the score and only count the payload.\n\n2. Deprecated Similarity.scorePayload(String fieldName, ...) to a similar method that also takes in the Doc id.  Now, in theory, you could have different scoring for payloads based on different documents, fields, etc.  The old method just calls the new one and passes in a NO_DOC_ID_PROVIDED value (-1).\n\n3. Added a Marker Interface named PayloadQuery and marked the various PayloadQueries.  This could be useful for Queries that work with other PayloadQueries (more exclusive than the fact that they are SpanQueries.\n\nI really do intend to commit this :-)",
+            "date": "2009-08-07T20:14:52.481+0000",
+            "id": 5
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Is this done?",
+            "date": "2009-08-11T10:20:45.590+0000",
+            "id": 6
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Should we deprecate BoostingTermQuery, with this?",
+            "date": "2009-08-11T10:21:59.757+0000",
+            "id": 7
+        },
+        {
+            "author": "Grant Ingersoll",
+            "body": "Deprecated BoostingTermQuery and committed",
+            "date": "2009-08-11T11:34:31.955+0000",
+            "id": 8
+        },
+        {
+            "author": "Grant Ingersoll",
+            "body": "Going to reopen and see about passing along the position information into both the new scorePayload() method and into the PayloadFunction, as it may be useful to know this information when scoring payloads.",
+            "date": "2009-08-13T20:56:24.335+0000",
+            "id": 9
+        },
+        {
+            "author": "Grant Ingersoll",
+            "body": "Pass in position information as well for scoring.  Will commit tomorrow.",
+            "date": "2009-08-13T21:20:39.726+0000",
+            "id": 10
+        },
+        {
+            "author": "Grant Ingersoll",
+            "body": "Committed revision 804178.\n\nCommitted the position patch",
+            "date": "2009-08-14T12:15:27.263+0000",
+            "id": 11
+        },
+        {
+            "author": "Mark Miller",
+            "body": "BoostingFunctionTermQuery implements equals but not hashcode - important for a query class I think.",
+            "date": "2009-08-15T18:38:37.860+0000",
+            "id": 12
+        },
+        {
+            "author": "Mark Miller",
+            "body": "remove some unused imports\nadded missing license header\n\nAdded hashCode to BoostingFunctionTermQuery\n\nAdded hashCode/equals to PayloadFunction classes\n\nadded hashcode/equals to query - really it should be handling the equals/hashcode for boost, not subclasses (which will be likely to forget it - you should check super classes for these things anyway as well).\n\nBoostingFunctionTermQuery is a subclass of SpanTermQuery, but both of them use a weak equals method (using instanceof)\nso while BoostingFunctionTermQuery.equals(SpanTermQuery) should equal SpanTermQuery.equals(BoostFunctionTermQuery), it doesn't.\n\nAdded new hashCode/equals for both classes that work properly.\n\nAdded a couple tests for these fixes",
+            "date": "2009-08-15T19:04:13.309+0000",
+            "id": 13
+        },
+        {
+            "author": "Mark Miller",
+            "body": "reopen to fix hashCode/equals",
+            "date": "2009-08-16T21:24:36.457+0000",
+            "id": 14
+        },
+        {
+            "author": "Grant Ingersoll",
+            "body": "Looks good, Mark.  +1 for you to commit.  Good catch.",
+            "date": "2009-08-17T13:28:34.590+0000",
+            "id": 15
+        },
+        {
+            "author": "Mark Miller",
+            "body": "thanks for the review,\n\nr804994",
+            "date": "2009-08-17T14:28:04.858+0000",
+            "id": 16
+        }
+    ],
+    "component": "",
+    "description": "Similar to the BoostingTermQuery, the BoostingFunctionTermQuery is a SpanTermQuery, but the difference is the payload score for a doc is not the average of all the payloads, but applies a function to them instead.  BoostingTermQuery becomes a BoostingFunctionTermQuery with an AveragePayloadFunction applied to it.\n\nAlso add marker interface to indicate PayloadQuery types.  Refactor Similarity.scorePayload to also take in the doc id.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-1790",
+    "issuetypeClassified": "RFE",
+    "issuetypeTracker": "RFE",
+    "priority": "Minor",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "Add Boosting Function Term Query and Some Payload Query refactorings",
+    "systemSpecification": true,
+    "version": ""
+}

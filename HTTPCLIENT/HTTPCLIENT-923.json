@@ -1,0 +1,65 @@
+{
+    "comments": [
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Fixed in SVN trunk. Added test cases.\n\nOleg",
+            "date": "2010-03-05T12:47:27.860+0000",
+            "id": 0
+        },
+        {
+            "author": "J\u00f6rgen Rydenius",
+            "body": "Thank you for a prompt solution! But I think you missed my intention here. I was not requesting that the NetscapeDraftSpec should only accept 2 digit years. That breaks a whole bunch of other web servers that use 4 digit years (for example tomcat!). I wanted it to accept 2 OR 4 digit years, since both ways are present in the standard document. Try 2 digit patter first and if it comes back malformed, use the 4 digit pattern by using the DateUtil.parseDate() utility.",
+            "date": "2010-03-05T13:15:01.015+0000",
+            "id": 1
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Both two digit and four digit year attributes are now supported, see the test cases:\n\nhttp://svn.apache.org/viewvc/httpcomponents/httpclient/trunk/httpclient/src/test/java/org/apache/http/impl/cookie/TestCookieNetscapeDraft.java?p2=%2Fhttpcomponents%2Fhttpclient%2Ftrunk%2Fhttpclient%2Fsrc%2Ftest%2Fjava%2Forg%2Fapache%2Fhttp%2Fimpl%2Fcookie%2FTestCookieNetscapeDraft.java&p1=%2Fhttpcomponents%2Fhttpclient%2Ftrunk%2Fhttpclient%2Fsrc%2Ftest%2Fjava%2Forg%2Fapache%2Fhttp%2Fimpl%2Fcookie%2FTestCookieNetscapeDraft.java&r1=919394&r2=919393&view=diff&pathrev=919394\n\nOleg",
+            "date": "2010-03-05T13:23:04.451+0000",
+            "id": 2
+        },
+        {
+            "author": "J\u00f6rgen Rydenius",
+            "body": "I'm sorry, My mistake. Thank you very much.",
+            "date": "2010-03-05T13:30:31.489+0000",
+            "id": 3
+        },
+        {
+            "author": "Radu Coravu",
+            "body": "Using Apache HTTP Client 4.5.1 and any connection to a wiki page like:\nhttps://ro.wikipedia.org/wiki/Pagina_principal%C4%83\n\nreports this warning in the console:\n{code}org.apache.http.client.protocol.ResponseProcessCookies - Invalid cookie header: \"Set-Cookie: WMF-Last-Access=27-May-2016;Path=/;HttpOnly;secure;Expires=Tue, 28 Jun 2016 12:00:00 GMT\". Invalid 'expires' attribute: Tue, 28 Jun 2016 12:00:00 GMT {code}\n\nDoes the code manage to recover and find the expiry date, should I just ignore the warning?",
+            "date": "2016-05-27T13:16:14.541+0000",
+            "id": 4
+        },
+        {
+            "author": "Sebb",
+            "body": "JIRA is not a support forum.\n\nPlease subscribe to the HttpClient user mailing list [1] and ask there.\n\n[1] http://hc.apache.org/mail.html",
+            "date": "2016-05-27T13:39:35.878+0000",
+            "id": 5
+        },
+        {
+            "author": "Radu Coravu",
+            "body": "This issue claims that this pattern is valid for cookies:\n\n{code}\nDD-Mon-YYYY HH:MM:SS GMT\n{code}\nbut wikipedia seems to return this pattern:\n{code}\nTue, 28 Jun 2016 12:00:00 GMT\n{code}\n\nwhich does not seem to be accepted.\nLooking at the pattern for the expiry value:\n\nhttps://en.wikipedia.org/wiki/HTTP_cookie#Expires_and_Max-Age\n\nit seems to be something like:\n\nWdy, DD Mon YYYY HH:MM:SS GMT\n\nSo I think I was right adding a comment on this particular issue.",
+            "date": "2016-05-30T05:25:52.866+0000",
+            "id": 6
+        },
+        {
+            "author": "Andy Seaborne",
+            "body": "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Set-Cookie\n(and examples)\n==>\nhttps://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Date\n\ngiving {{<day-name>, <day> <month> <year> <hour>:<minute>:<second>}}\n\nThe algorithm in https://tools.ietf.org/html/rfc6265#section-5.1.1 seems to skip unrecognized tokens such as a day name, not reject them.\n",
+            "date": "2017-04-25T13:08:39.601+0000",
+            "id": 7
+        }
+    ],
+    "component": "HttpClient (classic)",
+    "description": "The Netscape Draft specification (http://curl.haxx.se/rfc/cookie_spec.html) specifies clearly that the date format for Set-Cookie expires is \"Wdy, DD-Mon-YYYY HH:MM:SS GMT\". But on the other hand, in the examples section of the same document, the only example header that contains \"Expires\" is the following:\n\nSet-Cookie: CUSTOMER=WILE_E_COYOTE; path=/; expires=Wednesday, 09-Nov-99 23:12:40 GMT\n\nNote that the weekday is fully spelled out and that the year is written as two digits only. I would say that the specification therefore makes the 2 or 4 digit year optional. I think NetscapeDraftSpec should reflect this. An example of a product that uses the 2 digit version is jetty 6 and 7. When using httpclient 4 talking to a jetty server, any Set-Cookie headers for persistent cookies will be interpreted as a 4 digit year in the date and the cookie will immediately be disregarded as expired by some 2,000 years or so. Httpclient 3 on the other hand had no problem understanding the persistent cookies from jetty. I filed a bug report https://bugs.eclipse.org/bugs/show_bug.cgi?id=304698 on jetty to change their date format, but on the other hand I also think httpclient 4 is too strict about the date format when even the original specification uses two alternatives.\n\nWorkaround is easy by setting CookieSpecPNames.DATE_PATTERNS, but I really think that projects like jetty and httpclient should be compatible by default. Also, since the date format used by jetty is parsable but misinterpreted and disregarded by httpclient makes it especially hard to detect the first time on encounters the problem.",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "HTTPCLIENT-923",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "BUG",
+    "priority": "Minor",
+    "product": "HTTPCLIENT",
+    "project": "HTTPCLIENT",
+    "summary": "NetscapeDraftSpec is too strict about cookie expires date format",
+    "systemSpecification": true,
+    "version": "4.0.1"
+}

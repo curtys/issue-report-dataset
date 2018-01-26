@@ -1,0 +1,149 @@
+{
+    "comments": [
+        {
+            "author": "pschwartau@meer.net",
+            "body": "If there is a RegExp testcase I could addd to the testsuite, let me know.\nI just ran the full testsuite under Rhino and got 0 errors - ",
+            "date": "20010419T20:19:43",
+            "id": 0
+        },
+        {
+            "author": "pschwartau@meer.net",
+            "body": "To amplify on that: the testsuite already contains many RegExp tests,\nbut is there a new one I could add that shows this NullPointerException?",
+            "date": "20010419T20:21:17",
+            "id": 1
+        },
+        {
+            "author": "archna@formerly-netscape.com.tld",
+            "body": "Patrick:\n\nGood news, I found the culprit regular expression throwing the \nNullPointerException:\n\n/(<!--([^-]|-[^-]|--[^>])*-->)|(<(tagPattern)((([ ][^\\/>]*)?\\/>)|(([ \n][^>]*)?>)))|(<\\/tagPattern[^>]*>)/\n\nHere is the block of code that has the expression:\n\n regexp_cache: {\n                // used to search for any start-end tag:\n                anySE: /(<!--([^-]|-[^-]|--[^>])*-->)|(<([\\$\\w:\\.\\-]+)((([ \n][^\\/>]*)?\\/>)|(([ ][^>]*)?>)))/,\n                // used to search for a generic start-end tag:\n                genSE: /(<!--([^-]|-[^-]|--[^>])*-->)|(<(tagPattern)((([ \n][^\\/>]*)?\\/>)|(([ ][^>]*)?>)))/,\n                // used to search for a generic end tag:\n                genE : /(<!--([^-]|-[^-]|--[^>])*-->)|(<(tagPattern)((([ \n][^\\/>]*)?\\/>)|(([ ][^>]*)?>)))|(<\\/tagPattern[^>]*>)/,\n                // tag start-end regexps:\n                tagSE: {},\n                // tag end regexps:\n                tagE : {},\n                // attribute regexps:\n                attr : {}\n        },\n\nIt's in a file called parseXML.js that is a part of fast_track.\n\nLet me know if you need more information.",
+            "date": "20010423T23:55:39",
+            "id": 2
+        },
+        {
+            "author": "matthias@sorted.org",
+            "body": "Here's a stack trace for matching an empty string against the regexp:\n\njs> var re = /(<!--([^-]|-[^-]|--[^>])*-->)|(<(tagPattern)((([ \n][^\\/>]*)?\\/>)|(([ ][^>]*)?>)))|(<\\/tagPattern[^>]*>)/;\njs> try {\"\".match(re);} catch(e) {e.printStackTrace();}\njava.lang.NullPointerException\n\tat \norg.mozilla.javascript.regexp.NativeRegExp.matchRENodes(NativeRegExp.java:1505)\n\tat \norg.mozilla.javascript.regexp.NativeRegExp.matchRegExp(NativeRegExp.java:1866)\n\tat \norg.mozilla.javascript.regexp.NativeRegExp.executeRegExp(NativeRegExp.java:1912)\n\tat \norg.mozilla.javascript.regexp.RegExpImpl.matchOrReplace(RegExpImpl.java:201)\n\tat org.mozilla.javascript.regexp.RegExpImpl.match(RegExpImpl.java:77)\n\tat \norg.mozilla.javascript.NativeString.jsFunction_match(NativeString.java:710)\n\tat inv2.invoke()\n\tat \norg.mozilla.javascript.FunctionObject.doInvoke(FunctionObject.java:579)\n\tat \norg.mozilla.javascript.FunctionObject.callVarargs(FunctionObject.java:594)\n\tat org.mozilla.javascript.FunctionObject.call(FunctionObject.java:448)\n\tat org.mozilla.javascript.ScriptRuntime.call(ScriptRuntime.java:1218)\n\tat org.mozilla.javascript.Interpreter.interpret(Interpreter.java:1722)\n\tat \norg.mozilla.javascript.InterpretedScript.call(InterpretedScript.java:67)\n\tat \norg.mozilla.javascript.InterpretedScript.exec(InterpretedScript.java:58)\n\tat org.mozilla.javascript.Context.evaluateReader(Context.java:778)\n\tat org.mozilla.javascript.tools.shell.Main.evaluateReader(Main.java:286)\n\tat org.mozilla.javascript.tools.shell.Main.processSource(Main.java:210)\n\tat org.mozilla.javascript.tools.shell.Main.exec(Main.java:96)\n\tat org.mozilla.javascript.tools.shell.Main.main(Main.java:66)\njs> \n\nThe problem is in line:\n  state.parens[i].length = 0;\nWe know that \"state\" isn't null as it gets used a few lines earlier. So it's got \nto be parens[i] that is causing the problem.\n\nThe bug could have been introduced by me in revision 1.32 on 2001/03/06 when I \nreplicated the Spidermonkey fix for bug 67773. The conversion wasn't \nstraightforward, so I may have broken things. Could someone please run the above \nthrough Spidermonkey to see whether that breaks too ?\n",
+            "date": "20010424T06:39:37",
+            "id": 3
+        },
+        {
+            "author": "beard@formerly-netscape.com.tld",
+            "body": "Here's a transcript from Spidermonkey:\n\njs> var re = /(<!--([^-]|-[^-]|--[^>])*-->)|(<(tagPattern)((([][^\\/>]*)?\\/>)|(([ \n][^>]*)?>)))|(<\\/tagPattern[^>]*>)/;\njs> \"\".match(re)\nnull\n\nThis is running on the Mac. So, any internal bad pointerness won't be caught. \nI'll also try on Linux and on Mac OS X.\n",
+            "date": "20010424T18:17:21",
+            "id": 4
+        },
+        {
+            "author": "beard@formerly-netscape.com.tld",
+            "body": "I get the same results running on Linux and Mac OS X. I suspect your changes in \ntranslating to Java are probably the culprit. I'll take a look at your diffs.\n",
+            "date": "20010424T18:25:41",
+            "id": 5
+        },
+        {
+            "author": "matthias@sorted.org",
+            "body": "I seem to recall that I had to slightly alter the code when converting from C++ \nsince Java was throwing an ArrayIndexOutOfBounds or NullPointerException \nsomewhere (which, of course, wouldn't trouble C++ ;).\n\nThen again, this may just have been a dream.\n",
+            "date": "20010424T20:46:34",
+            "id": 6
+        },
+        {
+            "author": "matthias@sorted.org",
+            "body": "I checked out several old trees, going back as far as revision 1.22 of \nNativeRegExp (25 Sep 2000). They *all* exhibit the same problem. Revision 1.29 \nis the first time I touched NativeRegExp, so the problem is not my fault after \nall. Unfortunately it's not that easy to go back further since build.xml was \nintroduced around that time and I don't fancy building rhino by hand.\n",
+            "date": "20010425T09:12:59",
+            "id": 7
+        },
+        {
+            "author": "beard@formerly-netscape.com.tld",
+            "body": "I can go back further, as I have CodeWarrior projects that go back much further. \nI'll have to continue to search for the regression. Bjorn, can you confirm what \nversion of js.jar this DOESN'T happen with?\n",
+            "date": "20010425T18:31:29",
+            "id": 8
+        },
+        {
+            "author": "bjorn@formerly-netscape.com.tld",
+            "body": "Unfortunately, I don't know how old the version of js.jar is that we were\nusing before. But it's definitely older than Sep 25 2000. I'd say it's at least\nas old as Jun 2000.\n\nbjorn",
+            "date": "20010425T18:36:29",
+            "id": 9
+        },
+        {
+            "author": "rogerl@formerly-netscape.com.tld",
+            "body": "Created attachment 32386\nProposed fix - don't assume parens[i] exists, just blow it off.",
+            "date": "20010427T01:47:44",
+            "id": 10
+        },
+        {
+            "author": "beard@formerly-netscape.com.tld",
+            "body": "I will send a build with this patch to Bjorn's team, so they can test it.\n",
+            "date": "20010501T17:33:32",
+            "id": 11
+        },
+        {
+            "author": "archna@formerly-netscape.com.tld",
+            "body": "Does this mean that we should be able to have it this week? That would be good. \nRegarding the version of js.jar we are using as I see it some of the comments \nit's from Nov 17 2000. ",
+            "date": "20010501T18:26:44",
+            "id": 12
+        },
+        {
+            "author": "pschwartau@meer.net",
+            "body": "Testcase added to JS/Rhino testsuite: \n\n                js/tests/ecma_3/RegExp/regress-76683.js\n\n\nTo run this directly from the Rhino shell, do the following:\n(The 'shell.js' files contain utility functions the testcase needs)\n\n\n[/d/JS_TRUNK/mozilla/js/rhino] java org.mozilla.javascript.tools.shell.Main\njs> load('../tests/ecma_3/shell.js')\njs> load('../tests/ecma_3/RegExp/shell.js')\njs> load('../tests/ecma_3/RegExp/regress-76683.js')\n",
+            "date": "20010501T22:24:40",
+            "id": 13
+        },
+        {
+            "author": "pschwartau@meer.net",
+            "body": "Without the patch to this bug applied, we see the NullPointerException\nin the output of the testcase: \n\njs: \"D:\\JS_trunk\\mozilla\\js\\tests\\ecma_3\\RegExp\\regress-76683.js\", line 58:                  \n     uncaught JavaScript exception: java.lang.NullPointerException\n\n\nThe testcase contains the regular expressions \"anySE\", \"genSE\", \"genE\" above.\nThe NullPointerException seems only to be caused by \"genE\" -\n",
+            "date": "20010501T22:28:54",
+            "id": 14
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "I committed Roger's patch:\n\nChecking in src/org/mozilla/javascript/regexp/NativeRegExp.java;\n/cvsroot/mozilla/js/rhino/src/org/mozilla/javascript/regexp/NativeRegExp.java,v\n <--  NativeRegExp.java\nnew revision: 1.2; previous revision: 1.1\ndone\n\nI will post a .jar to the ftp site.",
+            "date": "20010502T20:07:06",
+            "id": 15
+        },
+        {
+            "author": "beard@formerly-netscape.com.tld",
+            "body": "The Rhino tree is closed right now. Your checkin will get obliterated as soon as \nleaf copies over the revision history.\n",
+            "date": "20010502T22:32:54",
+            "id": 16
+        },
+        {
+            "author": "archna@formerly-netscape.com.tld",
+            "body": "Patrick:\n\nI didn't see this but today after getting the js.jar from rhinoTip.zip I tested \none of the pages that heavily uses Javascript. The whole page was messed up and \nfills that page with $1, $2... characters. If you like to see it and have access \nthe internal machines please take a look at \nhttp://cleopatra.netscape.com/fast_track/ftstatus.psp. I couldn't notice it \nbefore but it happens with the version of js.jar you gave me too.",
+            "date": "20010503T16:37:26",
+            "id": 17
+        },
+        {
+            "author": "beard@formerly-netscape.com.tld",
+            "body": "Please isolate and file a new bug. This bug will be marked fixed as soon as the \nRhino tree opens again.\n",
+            "date": "20010503T16:58:41",
+            "id": 18
+        },
+        {
+            "author": "rogerl@formerly-netscape.com.tld",
+            "body": "...which it did a while ago.",
+            "date": "20010827T18:12:45",
+            "id": 19
+        },
+        {
+            "author": "pschwartau@meer.net",
+            "body": "Verified fixed on WinNT. \nTestcase passes in both the rhino, rhinoi shells.",
+            "date": "20010827T18:25:35",
+            "id": 20
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Targeting as resolved against 1.5R3",
+            "date": "20040213T12:24:43",
+            "id": 21
+        }
+    ],
+    "component": "Core",
+    "description": "Bjorn showed me a problem where the regular expression code is generating a \nNullPointerException, when running in their web server product. They have been \nusing an older version of Rhino that doesn't have this problem. Bjorn, please \ninclude the date of the older Rhino you were using, so we can narrow our search \nfor the cause of the regression. Please also include the stack crawls we \ngenerated yesterday.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "76683",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "-- normal",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "RegExp regression (NullPointerException)",
+    "systemSpecification": false,
+    "version": "other"
+}

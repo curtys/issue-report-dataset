@@ -1,0 +1,83 @@
+{
+    "comments": [
+        {
+            "author": "hannesw@gmail.com",
+            "body": "Created attachment 132193\ntestcase\n\nreproduces the bug when compiled with dynamic scopes and opt-level >= 0.",
+            "date": "20030926T14:08:21",
+            "id": 0
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "The reason for the bug is that the optimizer did not check when appliing dynamic\nscope if a function is a nested one or is under the with block as the\ninterpreter does. I will fix that.",
+            "date": "20030926T16:13:40",
+            "id": 1
+        },
+        {
+            "author": "pschwartau@meer.net",
+            "body": "Testcase added to JS test suite:\n\n      mozilla/js/tests/js1_5/Scope/regress-220362.js",
+            "date": "20030926T18:57:35",
+            "id": 2
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 132315\nFix: ignore dynamic scope for nested functions and functions declared within the with statement.\n\nThe patch makes optimizer to behave in the same way as the interpreter does\nwith regard to dynamic scope: it ignores it for nested functions and functions\ndeclared under with statements. Now parser checks for such functions and set\nnew flag itsIgnoreDynamicScope in FunctionNode. The flag then checked both by\ninterpreter and optimizer during byte code generation.\n\nThe patch also changes slightly interaction between changing dynamic scope flag\nand interpreted Script instances. Currently the dynamic flag is read during\nscript execution but patch changes interpreter to behave exactly as the\noptimizer does: the dynamic flag only affect script compilation, changes in its\nvalue does not affect already compiled scripts.",
+            "date": "20030928T18:35:48",
+            "id": 3
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "I committed the fix.",
+            "date": "20030928T20:07:48",
+            "id": 4
+        },
+        {
+            "author": "pschwartau@meer.net",
+            "body": "Hannes, could you verify this bug for me? If it's fixed now, please\nmark this bug as \"Verified\". If not, you can reopen it; thanks -",
+            "date": "20030929T18:08:51",
+            "id": 5
+        },
+        {
+            "author": "hannesw@gmail.com",
+            "body": "Thanks for the quick fix, and sorry for not testing it earlier (I'm in the\nprocess of moving house).\n\nMy test-script is working correctly now in all settings, so the bug is fixed and\nI'm marking it as verified. \n\nI noticed another problem, though. Local functions are now always compiled with\nstatic local scope, which is right. However, the dynamic scope is completely\nleft out. I have variables set in the dynamic scope which script  writers expect\nthem to be there - and rightly so, since they shouldn't have to care about scope\nimlementation internals. So I think the right layering of scopes in local\nfunctions would be:\n\n   local scope\n   dynamic scope\n   shared scope\n\nBasically, the dynamic scope would have to be squeezed in between the local and\nthe shared scope. I don't know enough about dynamic scope implementation to be\nable to tell how hard this would be to implement, but I'd be willing to dig into\nit once I'm back in the office. ",
+            "date": "20030930T09:38:26",
+            "id": 6
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Regarding nested function scoping: are you sure that nested functions can not\naccess variables from denamic (or caller scope)? If so, do you have the same\nbehavior with interpreter and optimizer? A nested functions has the activation\nobject of its parent function as its scope and that activation object should\nhave the caller scope as its parent when dynamic scoping is on.\n\nNote that compilation phase does not create any function instances, it just\ntranslates JS source into either internal or JVM bytecode and makes it ready for\nexecution. Function instances are created during script execution and only at\nthis point scope comes into play.\n\nI also curious why do you need to use dynamic scope at all? \n\n\nNested function",
+            "date": "20030930T14:11:38",
+            "id": 7
+        },
+        {
+            "author": "hannesw@gmail.com",
+            "body": "Igor, sorry for my previous comment, and for not getting back to this earlier.\nIn fact, things are working correctly now. I must have mixed something up back\nthen. Thanks for the good work!",
+            "date": "20031104T16:39:56",
+            "id": 8
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "*** Bug 229244 has been marked as a duplicate of this bug. ***",
+            "date": "20031225T17:03:53",
+            "id": 9
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Trageting as resolved against 1.5R5",
+            "date": "20040213T11:33:45",
+            "id": 10
+        }
+    ],
+    "component": "Core",
+    "description": "User-Agent:       Mozilla/5.0 (X11; U; Linux i686; en-US; rv:1.4) Gecko/20030624\nBuild Identifier: \n\nWhen a local function is compiled with both dynamic scope and opt-level >= 0, it\nonly keeps its local scope as long as execution stays within that local scope.\nOnce execution leaves the local scope, the function loses it.\n\nAs soon as either compileFunctionsWithDynamicScope is set to false or the\noptimization level is set to -1 on the Context, the function keeps the scope in\nwhich it was defined.\n\nThe following script reproduces the problem (I'm also adding it as attachment)\n\n// creates a local function and calls it immediately\nfunction a() {\n  var x = \"A\";\n  var f = function() {\n    java.lang.System.err.println(x);\n  }\n  f();\n}\n\n// creates and returns a local function\nfunction b() {\n  var x = \"B\";\n  var f = function() {\n    java.lang.System.err.println(x);\n  }\n  return f;\n}\n\n\na(); // works\nvar f = b();\nf(); // doesn't work\n\nReproducible: Always\n\nSteps to Reproduce:\n1.Run the attached script with optLevel >= 0 and\ncompileFunctionsWithDynamicScope = true.\n\nActual Results:  \nA\njs: \"/home/hannes/cvs/adele/apps/antville/global/Aspects.js\", line 14: uncaught\nJavaScript exception: ReferenceError: \"x\" is not defined.\n(/home/hannes/cvs/adele/apps/antville/global/Aspects.js; line 14)\n\nExpected Results:  \nA\nB",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "220362",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "-- normal",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "Local functions lose scope when called from outside (compiled with dynamic scopes, optlevel >= 0)",
+    "systemSpecification": true,
+    "version": "other"
+}

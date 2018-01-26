@@ -1,0 +1,29 @@
+{
+    "comments": [
+        {
+            "author": "kris.kowal@gmail.com",
+            "body": "I can confirm that this bug occurs.  I'm trying to add a jar class loader at run-time for \"Narwhal\", and this blocks that effort.\n\nRhino 1.7 release 2 2009 03 22\nMac OS 10.5.6",
+            "date": "20090405T09:00:27",
+            "id": 0
+        },
+        {
+            "author": "hannesw@gmail.com",
+            "body": "I committed a patch similar to the proposed one to CVS HEAD.\n\nChecking in src/org/mozilla/javascript/NativeJavaTopPackage.java;\n/cvsroot/mozilla/js/rhino/src/org/mozilla/javascript/NativeJavaTopPackage.java,v  <--  NativeJavaTopPackage.java\nnew revision: 1.22; previous revision: 1.21\ndone",
+            "date": "20090405T09:11:39",
+            "id": 1
+        }
+    ],
+    "component": "Core",
+    "description": "User-Agent:       Mozilla/5.0 (X11; U; Linux i686 (x86_64); en-US; rv:1.9.0.2) Gecko/2008092418 BU Linux/3.0.2-3.el5.centos.bu50.1 Firefox/3.0.2\nBuild Identifier: rhino1_7R1\n\nIn 1.5R4, functionality was added to use Packages as a constructor that takes a Java ClassLoader as its argument.  The resulting object could be used as a base Java package, to access packages loaded by the provided ClassLoader (rather than by Rhino's default application class loader).\n\nThis functionality no longer works.  (I'm not certain which version broke it, but it seems to have been broken for awhile.)  \n\nNote:  the constructor itself doesn't break.  That is to say:\n\n     var base = new Packages(loader);\n\nreturns a base package, but any attempt to access classes using it fails with a NullPointerException.\n\nThe problem is that the base package (an instance of NativeJavaPackage) has no parent scope.\n\n\nI have a patch, but I don't know enough about Rhino's internals to be certain of its correctness:\n\n\nNativeJavaTopPackage.java\n104c104,109\n<         return new NativeJavaPackage(true, \"\", loader);\n---\n> \n>         NativeJavaPackage result = new NativeJavaPackage(true, \"\", loader);\n>         result.setPrototype(getObjectPrototype(scope));\n>         result.setParentScope(scope);\n> \n>         return result;\n\n\nReproducible: Always\n\nSteps to Reproduce:\n1. Create a jar file at /path/to/foo.jar, containing a class one.two.Foo\n2. Start up the Rhino shell\n3. Enter the following:\n\nshade:~/Desktop/rhino1_5R4$ java -jar js.jar \nRhino 1.5 release 4 2003 02 10\njs> var url = new java.net.URL(\"file:///path/to/foo.jar\");\njs> var loader = new java.net.URLClassLoader([ url ]);\njs> var pks = new Packages(loader);\njs> var foo = new pks.one.two.Foo();\n\nActual Results:  \nIn 1.7R1, I get the following NullPointerException:\n\nException in thread \"main\" java.lang.NullPointerException\n        at org.mozilla.javascript.ScriptableObject.getTopLevelScope(ScriptableObject.java:1514)\n        at org.mozilla.javascript.ScriptRuntime.setObjectProtoAndParent(ScriptRuntime.java:3291)\n        at org.mozilla.javascript.NativeJavaPackage.getPkgProperty(NativeJavaPackage.java:166)\n        at org.mozilla.javascript.NativeJavaPackage.get(NativeJavaPackage.java:105)\n        at org.mozilla.javascript.ScriptableObject.getProperty(ScriptableObject.java:1575)\n        at org.mozilla.javascript.ScriptRuntime.getObjectProp(ScriptRuntime.java:1397)\n        at org.mozilla.javascript.ScriptRuntime.getObjectProp(ScriptRuntime.java:1383)\n        at org.mozilla.javascript.Interpreter.interpretLoop(Interpreter.java:3054)\n        at org.mozilla.javascript.Interpreter.interpret(Interpreter.java:2484)\n        at org.mozilla.javascript.InterpretedFunction.call(InterpretedFunction.java:162)\n        at org.mozilla.javascript.ContextFactory.doTopCall(ContextFactory.java:401)\n        at org.mozilla.javascript.ScriptRuntime.doTopCall(ScriptRuntime.java:3003)\n        at org.mozilla.javascript.InterpretedFunction.exec(InterpretedFunction.java:173)\n        at org.mozilla.javascript.tools.shell.Main.evaluateScript(Main.java:526)\n        at org.mozilla.javascript.tools.shell.Main.processSource(Main.java:386)\n        at org.mozilla.javascript.tools.shell.Main.processFiles(Main.java:179)\n        at org.mozilla.javascript.tools.shell.Main$IProxy.run(Main.java:100)\n        at org.mozilla.javascript.Context.call(Context.java:499)\n        at org.mozilla.javascript.ContextFactory.call(ContextFactory.java:511)\n        at org.mozilla.javascript.tools.shell.Main.exec(Main.java:162)\n        at org.mozilla.javascript.tools.shell.Main.main(Main.java:140)\n\n\nExpected Results:  \nIn the shell, the last statement should be accepted silently.",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "461168",
+    "issuetypeClassified": "OTHER",
+    "issuetypeTracker": "BUG",
+    "priority": "-- normal",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "Regression: constructor form of Packages is broken (w/ possible fix)",
+    "systemSpecification": true,
+    "version": "other"
+}

@@ -1,0 +1,95 @@
+{
+    "comments": [
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Another major problem is that AbstractClientConnAdapter attempts to release the connection upon invocation of the abort method, which essentially requires the connection manager (or at least its releaseConnection method) to be threading safe. We should not make such assumption. \n\nRoland\n\nI am going to go ahead and commit fixes for the above problems, given the fact you may be off-line in the coming days / weeks. Please review the changes when you happen to have a chance. If you find anything disagreeable, please let me know.\n\nOleg",
+            "date": "2008-02-02T15:45:01.872+0000",
+            "id": 0
+        },
+        {
+            "author": "Sam Berlin",
+            "body": "We have a whole slew of stack traces that might be caused by the concurrency issues.  Would it be helpful to post them, or wait till some of them are fixed and try again?",
+            "date": "2008-02-02T16:58:33.153+0000",
+            "id": 1
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "AbstractClientConnAdapter#abortConnection() no longer releases the wrapped connection back to the connection manager. The wrapped connection gets shut down, but remains attached to the adapter. The connection is expected to be released back to the connection manager by the request execution thread. \n\nRoland,\n\nPlease review and approve the changes when you happen to have a chance.\n\nSam,\n\nI believe the issue has been resolved. Could you please re-test your code against the latest SVN snapshot and confirm the problem is gone? If the problem still persists, please do post stack traces, the more the better.\n\nOleg",
+            "date": "2008-02-02T17:42:57.995+0000",
+            "id": 2
+        },
+        {
+            "author": "Roland Weber",
+            "body": "My mistake. When I created the adapter, I considered it a single-threading class because it is handed only to the thread that allocates the connection. Should have thought about multithreading when writing the abort stuff. I'll look at the code when I find the time. On the conceptual level, the changes are good.\n\ncheers,\n  Roland\n",
+            "date": "2008-02-03T08:32:52.251+0000",
+            "id": 3
+        },
+        {
+            "author": "Roland Weber",
+            "body": "I'm fine with the changes.\n\nSam, if you get around to retesting with trunk and your problems are gone, please mark this issue as resolved or close it.\n\nthanks,\n  Roland\n",
+            "date": "2008-02-07T18:51:12.460+0000",
+            "id": 4
+        },
+        {
+            "author": "Sam Berlin",
+            "body": "Sure thing -- we've updated our code to be using trunk internally & will likely release another beta sometime next week.  I'll be sure to update this issue with the results.  Thanks!",
+            "date": "2008-02-07T23:22:33.153+0000",
+            "id": 5
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Closing as fixed for now. Sam, please re-open it if you manage to reproduce the problem in LimeWire.\n\nOleg\n ",
+            "date": "2008-02-08T16:45:31.608+0000",
+            "id": 6
+        },
+        {
+            "author": "Sam Berlin",
+            "body": "I don't seem to have the ability to re-open, so am just commenting with the updates.  We released a new beta today, and 99% of the concurrency problems seem to be fixed.  Here's three stack traces that are left:\n\n--\njava.lang.IllegalStateException: Connection is not open\n    at org.apache.http.impl.SocketHttpClientConnection.assertOpen(SocketHttpClientConnection.java:75)\n    at org.apache.http.impl.AbstractHttpClientConnection.isStale(AbstractHttpClientConnection.java:197)\n    at org.apache.http.impl.conn.AbstractClientConnAdapter.isStale(AbstractClientConnAdapter.java:172)\n    at org.apache.http.impl.client.DefaultClientRequestDirector.execute(DefaultClientRequestDirector.java:318)\n    at org.apache.http.impl.client.AbstractHttpClient.execute(AbstractHttpClient.java:500)\n    at org.apache.http.impl.client.AbstractHttpClient.execute(AbstractHttpClient.java:455)\n    at org.apache.http.impl.client.AbstractHttpClient.execute(AbstractHttpClient.java:421)\n    at com.limegroup.gnutella.http.DefaultHttpExecutor.performRequest(DefaultHttpExecutor.java:97)\n    at com.limegroup.gnutella.http.DefaultHttpExecutor.access$000(DefaultHttpExecutor.java:26)\n    at com.limegroup.gnutella.http.DefaultHttpExecutor$MultiRequestor.run(DefaultHttpExecutor.java:139)\n    at org.limewire.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1006)\n    at org.limewire.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:549)\n    at java.lang.Thread.run(Unknown Source)\n---\n\njava.lang.NullPointerException\n    at org.apache.http.impl.client.DefaultClientRequestDirector.updateAuthState(DefaultClientRequestDirector.java:996)\n    at org.apache.http.impl.client.DefaultClientRequestDirector.handleResponse(DefaultClientRequestDirector.java:885)\n    at org.apache.http.impl.client.DefaultClientRequestDirector.execute(DefaultClientRequestDirector.java:386)\n    at org.apache.http.impl.client.AbstractHttpClient.execute(AbstractHttpClient.java:500)\n    at org.apache.http.impl.client.AbstractHttpClient.execute(AbstractHttpClient.java:455)\n    at org.apache.http.impl.client.AbstractHttpClient.execute(AbstractHttpClient.java:421)\n    at com.limegroup.gnutella.http.DefaultHttpExecutor.performRequest(DefaultHttpExecutor.java:97)\n    at com.limegroup.gnutella.http.DefaultHttpExecutor.access$000(DefaultHttpExecutor.java:26)\n    at com.limegroup.gnutella.http.DefaultHttpExecutor$MultiRequestor.run(DefaultHttpExecutor.java:139)\n    at org.limewire.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1006)\n    at org.limewire.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:549)\n    at java.lang.Thread.run(Unknown Source)\n---\n\njava.lang.IllegalStateException: No entry created for this pool. HttpRoute[{}->http://74.160.66.42:14561]\n    at org.apache.http.impl.conn.tsccm.RouteSpecificPool.freeEntry(RouteSpecificPool.java:137)\n    at org.apache.http.impl.conn.tsccm.ConnPoolByRoute.freeEntry(ConnPoolByRoute.java:337)\n    at org.apache.http.impl.conn.tsccm.ThreadSafeClientConnManager.releaseConnection(ThreadSafeClientConnManager.java:230)\n    at org.apache.http.impl.client.DefaultClientRequestDirector.execute(DefaultClientRequestDirector.java:427)\n    at org.apache.http.impl.client.AbstractHttpClient.execute(AbstractHttpClient.java:500)\n    at org.apache.http.impl.client.AbstractHttpClient.execute(AbstractHttpClient.java:455)\n    at org.apache.http.impl.client.AbstractHttpClient.execute(AbstractHttpClient.java:421)\n    at com.limegroup.gnutella.http.DefaultHttpExecutor.performRequest(DefaultHttpExecutor.java:97)\n    at com.limegroup.gnutella.http.DefaultHttpExecutor.access$000(DefaultHttpExecutor.java:26)\n    at com.limegroup.gnutella.http.DefaultHttpExecutor$MultiRequestor.run(DefaultHttpExecutor.java:139)\n    at org.limewire.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1006)\n    at org.limewire.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:549)\n    at java.lang.Thread.run(Thread.java:613)\n---\n\nDefaultHttpExecutor$MultiRequestor basically is just a Runnable / Cancellable [exposes a cancel() method] that can be cancelled from any thread.  cancel just calls abort() on the current AbortableHttpRequest, but is called on a thread other than the one that's doing the client.execute(request).\n\nThe last one is the most common exception, and seems to happen with some regularity.  The other two we've only seen once, so may just be a memory quirk (we've seen some crazy bugs, including recursive NPEs while constructing an NPE.)",
+            "date": "2008-02-13T03:22:05.577+0000",
+            "id": 7
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "I think I have fixed the first and the second cases in the SVN trunk.\n\nOleg",
+            "date": "2008-02-13T15:41:28.399+0000",
+            "id": 8
+        },
+        {
+            "author": "Tim Julien",
+            "body": "(working with Sam)\nYes, we no longer see the first two, I think. Still seeing the third, as well as one I've inserted below. I've done some digging and I have a patch I'll attach. Basically, in the recent concurrency fixes a change was made to AbstractClientConnAdapter - its state is now marked as volatile. I think the volatile marking needs to also be done in its subclasses, and classes used in the subclasses:\n\n1) AbstractPooledConnAdapter\n2) AbstractPoolEntry\n\njava.lang.IllegalStateException: Connection already open.\n    at org.apache.http.impl.conn.AbstractPoolEntry.open(AbstractPoolEntry.java:131)\n    at org.apache.http.impl.conn.AbstractPooledConnAdapter.open(AbstractPooledConnAdapter.java:119)\n    at org.apache.http.impl.client.DefaultClientRequestDirector.execute(DefaultClientRequestDirector.java:314)\n    at org.apache.http.impl.client.AbstractHttpClient.execute(AbstractHttpClient.java:500)\n    at org.apache.http.impl.client.AbstractHttpClient.execute(AbstractHttpClient.java:455)\n    at org.apache.http.impl.client.AbstractHttpClient.execute(AbstractHttpClient.java:421)\n    at com.limegroup.gnutella.http.DefaultHttpExecutor.performRequest(DefaultHttpExecutor.java:97)\n    at com.limegroup.gnutella.http.DefaultHttpExecutor.access$000(DefaultHttpExecutor.java:26)\n    at com.limegroup.gnutella.http.DefaultHttpExecutor$MultiRequestor.run(DefaultHttpExecutor.java:135)\n    at org.limewire.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1006)\n    at org.limewire.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:549)\n    at java.lang.Thread.run(Unknown Source)",
+            "date": "2008-04-01T18:37:23.068+0000",
+            "id": 9
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Patch checked in. Many thanks, Tim. How reproducible is  HTTPCLIENT-747? Any change it could be reproduced with a test case?\n\nOleg",
+            "date": "2008-04-01T19:39:07.332+0000",
+            "id": 10
+        },
+        {
+            "author": "Tim Julien",
+            "body": "Do you mean HTTPCLIENT-747 or this issue, HTTPCLIET-741?  You're interested in tests for the patch I just submitted?",
+            "date": "2008-04-01T19:59:56.993+0000",
+            "id": 11
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "I actually mean HTTPCLIENT-747, which is basically a separate JIRA for the 'java.lang.IllegalStateException: No entry created for this pool' issue.\n\nOleg",
+            "date": "2008-04-01T20:18:06.398+0000",
+            "id": 12
+        }
+    ],
+    "component": "HttpClient (classic)",
+    "description": "AbstractClientConnAdapter is currently prone to all sorts of concurrency issues. (1) Access to internal state is not properry synchronized making the class prone  to race conditions. Presently none of the instance variables is even declared volatile. (2) AbstractClientConnAdapter treats aborted connection as one in an illegal state, which is not quite right.\n\nOleg",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "HTTPCLIENT-741",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Critical",
+    "product": "HTTPCLIENT",
+    "project": "HTTPCLIENT",
+    "summary": "AbstractClientConnAdapter prone to concurrency issues",
+    "systemSpecification": true,
+    "version": "4.0 Alpha 2"
+}

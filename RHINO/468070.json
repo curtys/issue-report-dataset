@@ -1,0 +1,119 @@
+{
+    "comments": [
+        {
+            "author": "mguillemot@yahoo.fr",
+            "body": "Created attachment 351544\nPatch demonstrating and fixing the problem",
+            "date": "20081205T13:38:56",
+            "id": 0
+        },
+        {
+            "author": "hannesw@gmail.com",
+            "body": "I committed your patch, but without deprecating the old ScriptRuntime.getObjectElem() signature as it is still used in Codegen.",
+            "date": "20081211T15:36:06",
+            "id": 1
+        },
+        {
+            "author": "mguillemot@yahoo.fr",
+            "body": "Thanks a lot",
+            "date": "20081211T15:43:25",
+            "id": 2
+        },
+        {
+            "author": "szegedia@freemail.hu",
+            "body": "Folks, in the patch to Codegen, shouldn't variableObjectLocal be used instead of thisObjectLocal?",
+            "date": "20081211T15:53:50",
+            "id": 3
+        },
+        {
+            "author": "mguillemot@yahoo.fr",
+            "body": "From what I can guess from the variable names, thisObjectLocal makes more sense to me. This being said, the unit test pass as well when variableObjectLocal is used.\n\nDo you have an example where you think that one of both would fail?",
+            "date": "20081211T16:08:18",
+            "id": 4
+        },
+        {
+            "author": "mguillemot@yahoo.fr",
+            "body": "@Hannes:\n\ndo you plan to apply my patch in Rhino1_7R2_BRANCH too?",
+            "date": "20081211T16:09:38",
+            "id": 5
+        },
+        {
+            "author": "hannesw@gmail.com",
+            "body": "(In reply to comment #4)\n> Folks, in the patch to Codegen, shouldn't variableObjectLocal be used instead\n> of thisObjectLocal?\n\nI was unsure about thisObjectLocal too. What convinced me was that the fix to bug #374918 uses the same approach (not really a good reason, I know :-). But yes, variableObjectLocal should make more sense here. I'll give it a short try here. \n\n(In reply to comment #6)\n> @Hannes:\n> \n> do you plan to apply my patch in Rhino1_7R2_BRANCH too?\n\nYes, if it's really important to you (as it seems to be).",
+            "date": "20081211T16:24:16",
+            "id": 6
+        },
+        {
+            "author": "szegedia@freemail.hu",
+            "body": "(In reply to comment #7)\n> (In reply to comment #4)\n> > Folks, in the patch to Codegen, shouldn't variableObjectLocal be used instead\n> > of thisObjectLocal?\n> \n> I was unsure about thisObjectLocal too. What convinced me was that the fix to\n> bug #374918 uses the same approach (not really a good reason, I know :-). \n\nHm... Maybe revisit that too, then?",
+            "date": "20081211T16:26:12",
+            "id": 7
+        },
+        {
+            "author": "hannesw@gmail.com",
+            "body": "Created attachment 352548\nuse variable object as scope argument\n\nPatch to use variable object instead of this-object when we need to pass a scope argument. This affects the patches for this bug and bug 374918.",
+            "date": "20081211T16:41:16",
+            "id": 8
+        },
+        {
+            "author": "mguillemot@yahoo.fr",
+            "body": "@both: can you imagine a unit test?",
+            "date": "20081211T16:43:09",
+            "id": 9
+        },
+        {
+            "author": "szegedia@freemail.hu",
+            "body": "(In reply to comment #10)\n> @both: can you imagine a unit test?\n\nI have a wild imagination, Marc.",
+            "date": "20081211T16:45:05",
+            "id": 10
+        },
+        {
+            "author": "mguillemot@yahoo.fr",
+            "body": "(In reply to comment #11)\n> I have a wild imagination, Marc.\n\nI trust you Attila and therefore I'd like to see this test to improve my Rhino knowledge.",
+            "date": "20081211T16:46:57",
+            "id": 11
+        },
+        {
+            "author": "hannesw@gmail.com",
+            "body": "Marc: the variable object is by definition the top-most object in the current scope chain, so it makes more sense to use in this context than the this-object. I don't see a need to create an artificial test to make the original patch break. Committing the second patch. \n\nChecking in src/org/mozilla/javascript/optimizer/Codegen.java;\n/cvsroot/mozilla/js/rhino/src/org/mozilla/javascript/optimizer/Codegen.java,v  <--  Codegen.java\nnew revision: 1.269; previous revision: 1.268\ndone",
+            "date": "20081211T17:02:18",
+            "id": 12
+        },
+        {
+            "author": "szegedia@freemail.hu",
+            "body": "(In reply to comment #12)\n> (In reply to comment #11)\n> > I have a wild imagination, Marc.\n> \n> I trust you Attila and therefore I'd like to see this test to improve my Rhino\n> knowledge.\n\nWell, this ain't about Rhino, it's about two basic and distinct JS runtime concepts at the current point of execution: the identity of the \"this\" object, and the identity of the scope used for identifier resolution. In example:\n\nvar x = 1;\nfunction f()\n{\n    var y = 2;\n    print(x);\n    print(y);\n    print(this.x);\n    print(this.y);\n}\n\nfunction obj() {\n    this.y = 4;\n    return this;\n}\nobj.prototype =  {\n    x: 3,\n    my_f: f\n};\n\nnew obj().my_f();\n\n===\nprints:\n1\n2\n3\n4\n\nAlso, in the interpreter patch, you used \"frame.scope\" for the same parameter (correctly), and not \"frame.thisObj\" (which would've been incorrect), so by applying the same reasoning, you use localVariableObject (should really be called localScopeObject...) and not localThisObject in the generated compiled code.",
+            "date": "20081211T17:42:11",
+            "id": 13
+        },
+        {
+            "author": "mguillemot@yahoo.fr",
+            "body": "Thanks both for the explanations. What about adding some comment on the variable in CodeGen?\n\n@Hannes:\na test is never artificial when it allows to detect that something is incorrect. I understand your explanations (for my part I was just happy to hack successfully CodeGen) and don't contest this at all. But here we have something that was wrong until Attila's eyes detected it. I have no doubt that his view will stay sharp, but I believe that a unit test is better and more reliable than 1000 eyes. I'll try to propose a patch illustrating why thisObjectLocal was wrong.",
+            "date": "20081212T10:15:44",
+            "id": 14
+        },
+        {
+            "author": "hannesw@gmail.com",
+            "body": "I committed the last two patches to Rhino1_7R2_BRANCH.",
+            "date": "20081212T10:38:50",
+            "id": 15
+        },
+        {
+            "author": "szegedia@freemail.hu",
+            "body": "(In reply to comment #15)\n> I'll try to propose a patch illustrating why thisObjectLocal was wrong.\n\nHeh. I tried to make a test that breaks before the patches using this:\n\n        Context cx = Context.enter();\n        cx.setOptimizationLevel(0);\n        ScriptableObject s1 = cx.initStandardObjects();\n        ScriptableObject s2 = cx.initStandardObjects();\n        cx.compileString(\"String.prototype.foo=1; function f1() { return String.prototype.foo; }\", \"\", 1, null).exec(cx, s1);\n        ScriptableObject.putProperty(s2, \"f1\", ScriptableObject.getProperty(s1, \"f1\"));\n        System.out.println(cx.compileString(\"this.f1();\", \"\", 1, null).exec(cx, s2));\n\nReasoning being that without the fix, this.f1() invocation would try to resolve String prototype against s2 (\"this\" in that invocation), and not the activation scope of f1 (which is a child of s1)). \n\nTurns out though that Codegen didn't even hit the point of the fix where it'd emit \"getPropFunctionAndThis\", as it emitted a call to OptRuntime.callProp0() instead :-(\n\nSo, my inability to come up with a test stems from the fact that I can't get Codegen to actually hit that code path... (and the fact that I can't spend more time on it right now).",
+            "date": "20081212T13:14:54",
+            "id": 16
+        }
+    ],
+    "component": "Core",
+    "description": "User-Agent:       Mozilla/5.0 (X11; U; Linux i686; en-US; rv:1.9.0.4) Gecko/2008111317 Ubuntu/8.04 (hardy) Firefox/3.0.4\nBuild Identifier: \n\nAttached is a patch demonstrating an other variation of the bug in primitive prototype resolution when many top scopes are involved.\n\nReproducible: Always\n\nSteps to Reproduce:\n1.\n2.\n3.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "468070",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "BUG",
+    "priority": "-- normal",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "New variation of primitive prototype resolution bug: foo['someProp']",
+    "systemSpecification": true,
+    "version": "other"
+}

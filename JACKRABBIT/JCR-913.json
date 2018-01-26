@@ -1,0 +1,35 @@
+{
+    "comments": [
+        {
+            "author": "Ian Boston",
+            "body": "\nI had the same problem....  but changed \n\ncon.setAutoCommit(true); \n\nto\n\ncon.setAutoCommit(false);\n\nSo that transactions still work.\n\n I have other problems..... with MySQL, so I could be wrong ?",
+            "date": "2007-05-13T15:56:41.354+0000",
+            "id": 0
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Fixed as suggested in revisionn 541145. Thanks for reporting this!\n\nFor the record, the problem was the same as we saw earlier with bundle persistence in issue JCR-841.",
+            "date": "2007-05-24T03:39:47.519+0000",
+            "id": 1
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Merged to the 1.3 branch in revision 544292.",
+            "date": "2007-06-04T21:54:33.025+0000",
+            "id": 2
+        }
+    ],
+    "component": "jackrabbit-core",
+    "description": "When I tried to activate clustering with adding the following XML to repository.xml, \n\n    <Cluster id=\"node_1\" syncDelay=\"5\">\n\t\t<Journal class=\"org.apache.jackrabbit.core.journal.DatabaseJournal\">\n\t\t\t<param name=\"revision\" value=\"${rep.home}/revision\"/>\n\t\t\t<param name=\"driver\" value=\"com.mysql.jdbc.Driver\"/>\n\t\t\t<param name=\"url\" value=\"jdbc:mysql://localhost/jcr\"/>\n\t\t\t<param name=\"user\" value=\"userX\"/>\n\t\t\t<param name=\"password\" value=\"passWordC\"/>\n\t\t\t<param name=\"schema\" value=\"mysql\"/>\n\t\t\t<param name=\"schemaObjectPrefix\" value=\"J_C_\"/>\n\t\t</Journal>\n    </Cluster>\n\nDatabse Journal threw the following exception:\n\n....\nCaused by: javax.jcr.RepositoryException: Unable to initialize connection.: Unable to initialize connection.\n        at org.apache.jackrabbit.core.RepositoryImpl.createClusterNode(RepositoryImpl.java:677)\n        at org.apache.jackrabbit.core.RepositoryImpl.<init>(RepositoryImpl.java:276)\n        at org.apache.jackrabbit.core.RepositoryImpl.create(RepositoryImpl.java:584)\n        at org.apache.jackrabbit.core.TransientRepository$2.getRepository(TransientRepository.java:245)\n        at org.apache.jackrabbit.core.TransientRepository.startRepository(TransientRepository.java:265)\n        at org.apache.jackrabbit.core.TransientRepository.login(TransientRepository.java:333)\n        at com.liferay.portal.jcr.jackrabbit.JCRFactoryImpl.createSession(JCRFactoryImpl.java:71)\n        at com.liferay.portal.jcr.JCRFactoryUtil.createSession(JCRFactoryUtil.java:53)\n        at com.liferay.portal.jcr.JCRFactoryUtil.createSession(JCRFactoryUtil.java:57)\n        at com.liferay.documentlibrary.util.IndexerImpl.reIndex(IndexerImpl.java:258)\n        ... 17 more\nCaused by: org.apache.jackrabbit.core.cluster.ClusterException: Unable to initialize connection.\n        at org.apache.jackrabbit.core.cluster.ClusterNode.init(ClusterNode.java:218)\n        at org.apache.jackrabbit.core.cluster.ClusterNode.init(ClusterNode.java:189)\n        at org.apache.jackrabbit.core.RepositoryImpl.createClusterNode(RepositoryImpl.java:674)\n        ... 26 more\nCaused by: java.sql.SQLException: Can't call commit when autocommit=true\n        at com.mysql.jdbc.Connection.commit(Connection.java:2161)\n        at org.apache.jackrabbit.core.journal.DatabaseJournal.checkSchema(DatabaseJournal.java:437)\n        at org.apache.jackrabbit.core.journal.DatabaseJournal.init(DatabaseJournal.java:168)\n        at org.apache.jackrabbit.core.cluster.ClusterNode.init(ClusterNode.java:213)\n        ... 28 more\n\nWhen I examined the source code of the release jackrabbit 1.3, I saw that the init() method for DatabaseJournal class is:\n\n\t\t\t...\n\t\t\tClass.forName(driver);\n\t\t\tcon = DriverManager.getConnection(url, user, password);\n\t\t\tcon.setAutoCommit(true);\n\n\t\t\tcheckSchema();\n\t\t\tprepareStatements();\n\t\t\t...\n\nand just before checkSchema() method's finally block:\n\n\t\t\t...\n\t\t\t// commit the changes\n\t\t\tcon.commit();\n\t\t\t...\n\nSo, it seemed normal to see the mentioned exception. I just commented out the commit expression and continued my development. Am I missing something?",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "JCR-913",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Minor",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "DatabaseJournal.checkSchema generates \"Cannot call commit when autocommit=true\" Exception",
+    "systemSpecification": true,
+    "version": "1.3"
+}

@@ -1,0 +1,59 @@
+{
+    "comments": [
+        {
+            "author": "Thomas Mueller",
+            "body": "Reverted the changes made by revision 995411 and revision 995412, and added a test case.",
+            "date": "2010-09-21T10:13:48.196+0000",
+            "id": 0
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "Can you please move the test to AbstractISMLockingTest in package o.a.j.core.state? the package o.a.j.core.lock is rather related to the JCR locking fuctionality and not internal jackrabbit locking.",
+            "date": "2010-09-21T13:58:11.297+0000",
+            "id": 1
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Where's the case where a holder of a read lock reacquires the readlock? If we can't refactor that situation away, it should be easy enough to maintain a set of thread ids of all current readers so they can reenter the lock even when there's a writer waiting.",
+            "date": "2010-09-22T10:14:52.346+0000",
+            "id": 2
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "We discussed this with Thomas, and it turns out that synchronous observation listeners do need to reacquire ISM read locks after the SISM.Update.end() has downgraded the write lock it was holding. One way to solve this problem without having to maintain a set of current holders of the read lock is to simply remove the writer preference in the locking strategy, i.e. allow readers to acquire the lock even when there are pending writers waiting for the lock. Another solution, implemented in the attached patch (against the \"new\" DefaultISMLocking implementation of revision 99541), is to retain the writer thread identifier in a downgraded lock, so a downgraded write lock would still allow related threads to reacquire the lock even when there are other writers waiting.",
+            "date": "2010-09-22T14:39:09.629+0000",
+            "id": 3
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "I restored the earlier revisions 995411 and 995412, applied the proposed patch, documented the reentrancy requirements in the ISMLocking javadocs, and modified the DefaultISMLockingDeadlockTest class accordingly in revision 1000947.",
+            "date": "2010-09-24T16:40:55.279+0000",
+            "id": 4
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Merged to the 2.1 branch in revision 1038594.",
+            "date": "2010-11-24T13:11:50.309+0000",
+            "id": 5
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "... and merged to the 2.0 branch in revision 1038604.",
+            "date": "2010-11-24T14:01:13.046+0000",
+            "id": 6
+        }
+    ],
+    "component": "jackrabbit-core",
+    "description": "There seems to be a bug in DefaultISMLocking which was detected as part of JCR-2746.\n\n1) The main thread gets a read lock.\n\n2) The ObservationManager thread tries to lock for writing, which is blocked because there is still a read lock.\n\n3) Then the main thread tries to get a second read lock, which is blocked because there is a waiting write lock.\n\nThe bug was introduced as part of JCR-2089 (Use java.util.concurrent), revisions 995411 and 995412. I think the safe solution is to revert those to commits, and add a test case. If the DefaultISMLocking is changed later on, more test cases are required. An efficient solution is relatively complicated.\n",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "JCR-2753",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "Deadlock in DefaultISMLocking",
+    "systemSpecification": true,
+    "version": ""
+}

@@ -1,0 +1,107 @@
+{
+    "comments": [
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Created an attachment (id=11204)\nPatch (take 1)\n",
+            "date": "2004-04-10T06:08:15.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Hi Oleg,\n\nI like the changes. This is definitely the way to go.  I have a couple of suggestions.\n\n - I think we should change ControllerThreadSocketFactory.createSocket() to accept a SocketFactory and \nall the other params necessary to create the socket.  This way we can hide the SocketTask from external \nclasses.  Though we would end up passing in more params I think it would make for a cleaner interface.\n\n - We should consider changing ProtocolSocketFactory.createSocket(host, port ... timeout) to accept a \nHttpConnectionParams instead of a timeout.  This will allow for other config params in the future \nwithout requiring API changes.\n\n - I think ReflectionSocketFactory.createSocket() should be changed to take a SocketFactory instance \ninstead of a socketFactoryName.  This is not a major change, but it seems a little cleaner to me.\n\n - I suggest we move the bulk of the reflection work from ReflectionSocketFactory.createSocket() to a \nstatic initializer.  This way we can determine statically whether or not the JVM supports Socket.connect() \nwithout testing each time.  This may be premature optimization, but my feeling is that it may be worth \nit.\n\nMike\n",
+            "date": "2004-04-12T05:35:18.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "> I think we should change ControllerThreadSocketFactory.createSocket() \n> to accept a SocketFactory and all the other params necessary to create \n> the socket.  This way we can hide the SocketTask from external \n> classes.  Though we would end up passing in more params I think it would\n> make for a cleaner interface.\n\nCompletely agree. The trouble is that javax.net.SocketFactory is available as of\nJava 1.4 only. I was thinking about using ProtocolSocketFactory instead but\ninitially decided against it, as it results in a sort of logical recursion: a\nhelper class takes a class as a parameter for which it acts as a helper class.\nThinking about it causes stack overflow in my brain requiring a hard reboot with\na glass of malt whisky. But I'll give it another shot, as it can potentially a\nlot of ugly code in the protocol socket factories\n\n> We should consider changing ProtocolSocketFactory.createSocket(host, \n> port ... timeout) to accept a HttpConnectionParams instead of a timeout.  \n> This will allow for other config params in the future without requiring\n> API changes.\n\nGreat idea\n\n> I think ReflectionSocketFactory.createSocket() should be changed to take a\n> SocketFactory instance instead of a socketFactoryName.  This is not a major\n> change, but it seems a little cleaner to me.\n\nSame problem as in point 1\n\n> I suggest we move the bulk of the reflection work from \n> ReflectionSocketFactory.createSocket() to a static initializer.  \n> This way we can determine statically whether or not the JVM supports\n> Socket.connect() without testing each time.  This may be premature\n> optimization, but my feeling is that it may be worth it.\n\nI seriously do not know what code may be moved to a static initializer unless we\ncreate a dummy socket and try calling connect on it. But to which port? Am I\nmissing something? What if we just set a static flag: refection failed, do not\ntry it again? \n\nOleg",
+            "date": "2004-04-12T19:27:25.000+0000",
+            "id": 2
+        },
+        {
+            "author": "Michael Becke",
+            "body": "> Completely agree. The trouble is that javax.net.SocketFactory is available as of\n> Java 1.4 only. I was thinking about using ProtocolSocketFactory instead but\n> initially decided against it, as it results in a sort of logical recursion: a\n> helper class takes a class as a parameter for which it acts as a helper class.\n> Thinking about it causes stack overflow in my brain requiring a hard reboot with\n> a glass of malt whisky. But I'll give it another shot, as it can potentially a\n> lot of ugly code in the protocol socket factories\n\nGood point. SocketFactory is a part of JSSE, but it may be annoying for users to include JSSE if they're \nnot using it.  This may be a lost cause.\n\n> I seriously do not know what code may be moved to a static initializer unless we\n> create a dummy socket and try calling connect on it. But to which port? Am I\n> missing something? What if we just set a static flag: refection failed, do not\n> try it again? \n\nThis is what I was thinking:\n\n    private static boolean connectSupported;\n    private static Constructor insetSocketAddressConstructor;\n    private static Method connectMethod;\n    \n    static {\n        try {\n            Class addressClass = Class.forName(\"java.net.InetSocketAddress\");\n            insetSocketAddressConstructor = addressClass.getConstructor(\n                new Class[] { String.class, Integer.TYPE });\n            connectMethod = Socket.class.getMethod(\"connect\", \n                new Class[] {Class.forName(\"java.net.SocketAddress\"), Integer.TYPE});\n            connectSupported = true;\n        } catch (Exception e) {\n            // 1.4 socket connect method not supported\n            connectSupported = false;\n        }\n    }\n\nInside createSocket() we could just test 'connectSupported' instead of trying the reflection.  We can also \nreuse the Constructor and Method to avoid looking them up again.\n\nMike",
+            "date": "2004-04-12T19:46:46.000+0000",
+            "id": 3
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Created an attachment (id=11217)\nPatch (take 2)\n",
+            "date": "2004-04-12T20:47:03.000+0000",
+            "id": 4
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "How about this? Let me know what you think.\n\nOleg",
+            "date": "2004-04-12T20:47:40.000+0000",
+            "id": 5
+        },
+        {
+            "author": "Mohammad Rezaei",
+            "body": "I would suggest caching the references to the method and constructor objects. In\n1.3 VM's, that's a 3:1 performance difference. In 1.4 it's still a 2:1\nperformance improvement. \nhttp://jguru.com/faq/view.jsp?EID=246569\n\n\\jdk1.3.1_06\\bin\\java -cp . PerformanceTest\n100000 regular method calls:219 milliseconds.\n100000 reflective method calls without lookup:281 milliseconds.\n100000 reflective method calls with lookup:954 milliseconds.\n\n\\jdk1.4.2\\bin\\java -cp . PerformanceTest\n100000 regular method calls:282 milliseconds.\n100000 reflective method calls without lookup:328 milliseconds.\n100000 reflective method calls with lookup:625 milliseconds.\n\nMoh",
+            "date": "2004-04-12T21:28:12.000+0000",
+            "id": 6
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Created an attachment (id=11218)\nPatch (take 3)\n",
+            "date": "2004-04-13T00:48:00.000+0000",
+            "id": 7
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Fair enough. So, how about this?\n\nOleg",
+            "date": "2004-04-13T00:49:43.000+0000",
+            "id": 8
+        },
+        {
+            "author": "Sam Berlin",
+            "body": "A tiny detail, but a possibly confusing one for people reading the code -- the\ncomments in ReflectionSocketFactory that explain what the reflection code is\ndoing don't include the step that uses \"SocketFactory.getDefault()\".  This\nconfused me mostly because getDefault was static, and I didn't realize that it\nwas expected that each subclassed SocketFactory would implement it's own\ngetDefault behaviour.\n\nIt also seems a bit odd to use the String equality to test for an exception of\nSocketTimeoutException.  Perhaps now that the classes are being statically\ncached, a SocketTimeoutException.class could be created and the catch clause\ncould use SOCKETTIMEOUTEXCEPTION_CLASS.isInstance(cause).",
+            "date": "2004-04-13T01:03:11.000+0000",
+            "id": 9
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Hi Sam,\nFirst of all, thanks for inspiring me to fix this problem (and donating initial\nreflection code)\n\n> doing don't include the step that uses \"SocketFactory.getDefault()\".  This\n> confused me mostly because getDefault was static, and I didn't realize that it\n> was expected that each subclassed SocketFactory would implement it's own\n> getDefault behaviour.\n\nAFAIK SocketFactory#getDefaut is the only (standard) way to instantiate a socket\nfactory. Therefore I thought this step required no explanation. Fixed now\n\n> It also seems a bit odd to use the String equality to test for an exception \nof SocketTimeoutException. \n\nFair enough. Fixed. Patch coming.\n\nOleg\n\n",
+            "date": "2004-04-13T04:33:59.000+0000",
+            "id": 10
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Created an attachment (id=11219)\nPatch (take 4)\n",
+            "date": "2004-04-13T04:41:42.000+0000",
+            "id": 11
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Looks good to me, except for some JavaDocs problems.  The docs for \nReflectionSocketFactory.createSocket() and the ProtocolSocketFactory.createSocket() are out of date.\n\nMike",
+            "date": "2004-04-13T09:48:31.000+0000",
+            "id": 12
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Folks,\nAny further remarks? If nobody objects loudly, I'll fix javadocs and commit the\npatch within next 4-5 hours. If any problem pops up later, it can always be\naddressed with a corrective patch\n\nOleg",
+            "date": "2004-04-14T00:10:45.000+0000",
+            "id": 13
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Patch committed.\n\nOleg",
+            "date": "2004-04-14T04:49:17.000+0000",
+            "id": 14
+        }
+    ],
+    "component": "HttpClient (classic)",
+    "description": "Changelog:\n\n* CreateSocket method with timeout parameter added to the ProtocolSocketFactory\ninterface\n\n* TimeoutController related code factored out of HttpConnection class and moved\ninto ControllerThreadSocketFactory helper class\n\n* ReflectionSocketFactory helper class added. This factory encapsulates\nreflection code to call JDK 1.4 Socket#connect method if supported\n\n* All protocol socket factories now attempt to initially use\nReflectionSocketFactory if required to create a socket within a given limit of\ntime. If reflection fails protocol socket factories fall back onto the good ol'\nControllerThreadSocketFactory\n\nBenefits:\n\n* HttpConnection code got a lot cleaner\n* When running in modern JREs expensive timeout controller thread per connection\nattempt is no longer needed\n* Ugly code intended to work around limitations of the older JREs is now\nconfined to a few helper classes that can be easily thrown away once we move\nonto Java 1.4\n\nLet me know what you think\n\nOleg",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "HTTPCLIENT-332",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Minor",
+    "product": "HTTPCLIENT",
+    "project": "HTTPCLIENT",
+    "summary": "Connection timeout logic redesign",
+    "systemSpecification": true,
+    "version": "2.0 Final"
+}

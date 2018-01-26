@@ -1,0 +1,53 @@
+{
+    "comments": [
+        {
+            "author": "Keith Sprochi",
+            "body": "The code got mangled when converted to HTML, so I tried adding <pre> tags to prevent formatting. Their is no preview option, so I won't know if it worked until I hit the update button.\n",
+            "date": "2009-06-19T18:56:09.312+0000",
+            "id": 0
+        },
+        {
+            "author": "Keith Sprochi",
+            "body": "Ok, pre tags did not work, so I took them out.  I have no remedy that will make the code format properly.",
+            "date": "2009-06-19T18:58:40.272+0000",
+            "id": 1
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "There is a preview button (that small blue computer-like icon to the left of the yellow question mark help icon), and, you can use \\{code} to wrap code so Jira doesn't format it.",
+            "date": "2009-07-06T19:35:03.350+0000",
+            "id": 2
+        },
+        {
+            "author": "Keith Sprochi",
+            "body": "Much better, thanks.  I guess I should have RTFM.\n",
+            "date": "2009-07-06T19:42:32.746+0000",
+            "id": 3
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "OK the patch looks good -- I'll commit shortly.  Thanks Keith!",
+            "date": "2009-07-06T19:53:23.921+0000",
+            "id": 4
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Thanks Keith!",
+            "date": "2009-07-06T19:55:12.540+0000",
+            "id": 5
+        }
+    ],
+    "component": "modules/other",
+    "description": "Parsing HTML documents using the org.apache.lucene.ant.HtmlDocument.Document method resulted in many error messages such as this:\n\n    line 152 column 725 - Error: <as-html> is not recognized!\n    This document has errors that must be fixed before\n    using HTML Tidy to generate a tidied up version.\n\nThe solution is to configure Tidy to accept these abnormal tags by adding the tag name to the \"new-inline-tags\" option in the Tidy config file (or the command line which does not make sense in this context), like so:\n\n    new-inline-tags: as-html\n\nTidy needs to know where the configuration file is, so a new constructor and Document method can be added.  Here is the code:\n\n{code}\n    /**                                                                                                                                                                                            \n     *  Constructs an <code>HtmlDocument</code> from a {@link                                                                                                                                      \n     *  java.io.File}.                                                                                                                                                                             \n     *                                                                                                                                                                                             \n     *@param  file             the <code>File</code> containing the                                                                                                                                \n     *      HTML to parse                                                                                                                                                                          \n     *@param  tidyConfigFile   the <code>String</code> containing                                                                                                                                  \n     *      the full path to the Tidy config file                                                                                                                                                  \n     *@exception  IOException  if an I/O exception occurs                                                                                                                                          \n     */\n    public HtmlDocument(File file, String tidyConfigFile) throws IOException {\n        Tidy tidy = new Tidy();\n        tidy.setConfigurationFromFile(tidyConfigFile);\n        tidy.setQuiet(true);\n        tidy.setShowWarnings(false);\n        org.w3c.dom.Document root =\n                tidy.parseDOM(new FileInputStream(file), null);\n        rawDoc = root.getDocumentElement();\n    }\n\n    /**                                                                                                                                                                                            \n     *  Creates a Lucene <code>Document</code> from a {@link                                                                                                                                       \n     *  java.io.File}.                                                                                                                                                                             \n     *                                                                                                                                                                                             \n     *@param  file                                                                                                                                                                                 \n     *@param  tidyConfigFile the full path to the Tidy config file                                                                                                                                 \n     *@exception  IOException                                                                                                                                                                      \n     */\n    public static org.apache.lucene.document.Document\n        Document(File file, String tidyConfigFile) throws IOException {\n\n        HtmlDocument htmlDoc = new HtmlDocument(file, tidyConfigFile);\n\n        org.apache.lucene.document.Document luceneDoc = new org.apache.lucene.document.Document();\n\n        luceneDoc.add(new Field(\"title\", htmlDoc.getTitle(), Field.Store.YES, Field.Index.ANALYZED));\n        luceneDoc.add(new Field(\"contents\", htmlDoc.getBody(), Field.Store.YES, Field.Index.ANALYZED));\n\n        String contents = null;\n        BufferedReader br =\n            new BufferedReader(new FileReader(file));\n        StringWriter sw = new StringWriter();\n        String line = br.readLine();\n        while (line != null) {\n            sw.write(line);\n            line = br.readLine();\n        }\n        br.close();\n        contents = sw.toString();\n        sw.close();\n\n        luceneDoc.add(new Field(\"rawcontents\", contents, Field.Store.YES, Field.Index.NO));\n\n        return luceneDoc;\n    }\n{code}\n\nI am using this now and it is working fine.  The configuration file is being passed to Tidy and now I am able to index thousands of HTML pages with no more Tidy tag errors.\n\n",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "LUCENE-1704",
+    "issuetypeClassified": "RFE",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Trivial",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "org.apache.lucene.ant.HtmlDocument added Tidy config file passthrough availability",
+    "systemSpecification": true,
+    "version": "2.4.1"
+}

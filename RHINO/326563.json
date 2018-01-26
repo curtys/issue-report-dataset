@@ -1,0 +1,35 @@
+{
+    "comments": [
+        {
+            "author": "igor@mir2.org",
+            "body": "Reassigning to the reporter as I have neither interest nor time for Rhino.\n\nSee also bug 288433.\n\n",
+            "date": "20060331T16:19:01",
+            "id": 0
+        },
+        {
+            "author": "szegedia@freemail.hu",
+            "body": "ScriptableObject.putProperty() is meant to implement the [[Put]] operation as defined in ECMAScript specification 8.6.2.2. That is, it'll never set a property in the prototype, *assuming* the class of the prototype correctly implements the three-arg put().\n\nThere's a part of the ECMA specification that in Rhino can't be determined solely through the Scriptable interface -- namely, the [[ReadOnly]] attribute required for the [[CanPut]] suboperation of the [[Put]] operation as defined in ECMA-262 8.6.2.3. That's why it's delegated to the prototype's put(), which in all Scriptable implementations that support the notion of readonly-ness should set the property on its argument *provided* it itself doesn't define the property as [[ReadOnly]].\n\nIn plain English, proto.put(name, obj, value) should set obj.name=value *except* if proto.name is [[ReadOnly]], in which case it must be a no-op. \n\nScriptableObject and subclasses correctly implement this.\n\nThe only error is in the documentation - I'll rephrase it.",
+            "date": "20060513T11:10:04",
+            "id": 1
+        },
+        {
+            "author": "szegedia@freemail.hu",
+            "body": "Corrected documentation in CVS HEAD",
+            "date": "20060513T11:23:17",
+            "id": 2
+        }
+    ],
+    "component": "Core",
+    "description": "User-Agent:       Mozilla/4.0 (compatible; MSIE 6.0; Windows NT 5.1; SV1)\nBuild Identifier: rhino1_6R2\n\n/**\n     * Puts a named property in an object or in an object in its prototype chain.\n     * <p>\n     * Seaches for the named property in the prototype chain. If it is found,\n     * the value of the property is changed. If it is not found, a new\n     * property is added in <code>obj</code>.\n     * @param obj a JavaScript object\n     * @param name a property name\n     * @param value any JavaScript value accepted by Scriptable.put\n     * @since 1.5R2\n     */\n    public static void putProperty(Scriptable obj, String name, Object value)\n    {\n        Scriptable base = getBase(obj, name);\n        if (base == null)\n            base = obj;\n// for behavior described in javadoc, this should be \n// base.put(name,base,value);\n\n        base.put(name, obj, value);\n    }\n\n    /**\n     * Puts an indexed property in an object or in an object in its prototype chain.\n     * <p>\n     * Seaches for the indexed property in the prototype chain. If it is found,\n     * the value of the property is changed. If it is not found, a new\n     * property is added in <code>obj</code>.\n     * @param obj a JavaScript object\n     * @param index a property index\n     * @param value any JavaScript value accepted by Scriptable.put\n     * @since 1.5R2\n     */\n    public static void putProperty(Scriptable obj, int index, Object value)\n    {\n        Scriptable base = getBase(obj, index);\n        if (base == null)\n            base = obj;\n// for behavior described in javadoc, this should be \n// base.put(index,base,value);\n        base.put(index, obj, value);\n    }\n\n\nReproducible: Always\n\nSteps to Reproduce:\n1. Define top-level object named 'parent'\n2. Define property 'x' in 'parent'.\n3. Assign value of 123 to 'x' using ScriptableObject.put(\"x\",parent,123);\n4. Create object 'child' with parent specified as 'parent' (both prototype and scope).\n5. Invoke ScriptableObject.putProperty(\"x\",child,247);\n6. Upon execution, parent::x = 123 and child::x=247.\n7. Per javadoc, expected results should be:\n parent::x = 247 and child::x should NOT exist.\n\nActual Results:  \nProperty existing in parent scope is not changed.  Instead, local property is set.  This is inconsistent with javadoc.\n\n\nIf I am using this incorrectly, please advise as to the appropriate use.  However, adhering to examples, it would appear that we've uncovered a major bug here.",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "326563",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "-- major",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "ScriptableObject putProperty errorneously sets preexisting property in current scope",
+    "systemSpecification": true,
+    "version": "other"
+}

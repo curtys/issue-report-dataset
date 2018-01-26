@@ -1,0 +1,53 @@
+{
+    "comments": [
+        {
+            "author": null,
+            "body": "I think this proves nobody cares about this manager anymore: don't use it.",
+            "date": "20050622T22:28:20",
+            "id": 0
+        },
+        {
+            "author": null,
+            "body": "(In reply to comment #1)\n> I think this proves nobody cares about this manager anymore: don't use it.\n\nI'm not sure what else to use to get the behavior we need. I tried the\nDeltaManager but the application we're working on replicating the session does\nnot call setAttribute when it modifies the attribute data, it is modified by\nreference. I realize this is not a good way to do it but we can't change the\napplication. SimpleTcpReplicationManager replicates after every request which is\nthe behavior we need. Suggestions on a different approach would always be\nappreciated.\n\nIf the SimpleTcpReplicationManager should not be used it should be deprecated\nand documented as such.\n\nI have fixed the bug locally and will upload a patch diff to this bug.",
+            "date": "20050622T22:59:07",
+            "id": 1
+        },
+        {
+            "author": null,
+            "body": "Created attachment 15521\nSimpleTcpReplicationManager patch to resolve session replication problem",
+            "date": "20050622T23:00:37",
+            "id": 2
+        },
+        {
+            "author": null,
+            "body": "OK,\n\nI see the problem and test your fix.\n\nThanx\nPeter",
+            "date": "20050624T00:03:11",
+            "id": 3
+        },
+        {
+            "author": null,
+            "body": "Peter, any progress on this?  I'd like to get this fix into 5.5.10 if applicable.",
+            "date": "20050722T16:53:28",
+            "id": 4
+        },
+        {
+            "author": null,
+            "body": "Hups, is fixed..",
+            "date": "20050722T18:55:40",
+            "id": 5
+        }
+    ],
+    "component": "Catalina:Modules",
+    "description": "There was a change in the StandardManager class for Tomcat 5.5.9 that deprecated\nthe createSession method and created the createSession(sessionId) method to\nallow emptySessionPath=\"true\" to work. The SimpleTcpReplicationManager which\nsubclasses StandardManager was not updated to reflect this change. Now if you\ntry to use the SimpleTcpReplicationManager with the emptySessionPath=\"true\"\nconfiguration set the follow exception is thrown:\n\nERROR org.apache.catalina.cluster.session.SimpleTcpReplicationManager - [Unable\nto replicate session] 2005-06-22 13:13:42,657\njava.lang.ClassCastException: org.apache.catalina.session.StandardSession\n        at\norg.apache.catalina.cluster.session.SimpleTcpReplicationManager.requestCompleted(SimpleTcpReplicationManager.java:258)\n        at\norg.apache.catalina.cluster.tcp.ReplicationValve.invoke(ReplicationValve.java:206)\n        at\norg.apache.catalina.valves.ErrorReportValve.invoke(ErrorReportValve.java:105)\n        at\norg.apache.catalina.core.StandardEngineValve.invoke(StandardEngineValve.java:107)\n        at\norg.apache.catalina.connector.CoyoteAdapter.service(CoyoteAdapter.java:148)\n        at org.apache.jk.server.JkCoyoteHandler.invoke(JkCoyoteHandler.java:307)\n        at org.apache.jk.common.HandlerRequest.invoke(HandlerRequest.java:385)\n        at org.apache.jk.common.ChannelSocket.invoke(ChannelSocket.java:748)\n        at\norg.apache.jk.common.ChannelSocket.processConnection(ChannelSocket.java:678)\n        at org.apache.jk.common.SocketConnection.runIt(ChannelSocket.java:871)\n        at\norg.apache.tomcat.util.threads.ThreadPool$ControlRunnable.run(ThreadPool.java:684)\n        at java.lang.Thread.run(Thread.java:595)\n\nDoing some debugging it looks like \"Request.doGetSession(boolean) line: 2204\"\ncalls \"public Session createSession(String sessionId);\" from the manager\ninterface. Since SimpleTcpReplicationManager does not override this method but\noverrides the \"public Session createSession();\" method the call goes directly\ninto the StandardManager which returns a StandardSession. When the\nSimpleTcpReplicationManager attempts to replicate this session later it fails\nwhen trying to cast it to ReplicatedSession.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "35473",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "P2 critical",
+    "product": "Tomcat 5",
+    "project": "TOMCAT",
+    "summary": "Change in StandardManager breaks SimpleTcpReplicationManager",
+    "systemSpecification": true,
+    "version": "5.5.9"
+}

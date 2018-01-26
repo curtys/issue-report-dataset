@@ -1,0 +1,167 @@
+{
+    "comments": [
+        {
+            "author": "C\u00e9dric Damioli",
+            "body": "It could also be possible to store the lock tocken somewhere (on the locked node ?, on the node state ?), so that it may be retrieved on demand and set on the current session.\n\nFrom my POV, it may be too \"dangerous\" to allow any session from the same user to unlock the node.\nWhat if the session which initially locked the node is still alive ?",
+            "date": "2011-01-05T09:57:23.369+0000",
+            "id": 0
+        },
+        {
+            "author": "Carsten Ziegeler",
+            "body": "There is no API in JCR to get the lock token and I think storing it somewhere accessible makes the token available to everyone not just the user who created the lock.\n\nNow I don't consider this a great danger - having a locked node which can never be unlocked again, sounds more problematic too me.\n\nBut I guess this should be made configurable - default being the old behaviour",
+            "date": "2011-01-05T10:30:05.231+0000",
+            "id": 1
+        },
+        {
+            "author": "Stefan Guggisberg",
+            "body": "> There is a theoretical way of adding the lock token to another session, but in most cases the lock token is not available. \n\nwhy? if a client does create an open-scoped lock (he has to do so explicitly) he's responsible for persisting the lock token\nfor future use. if the client doesn't want to do that he should use session-scoped locks instead.\n\n> There is no API in JCR to get the lock token \n\nLockManager.lock(...) returns a Lock instance => Lock.getLockToken()\n\n>  I think it would make sense to allow all sessions from the same user to unlock the node\n\n-1, i'd consider this rather a hack; the current behavior is IMO correct. ",
+            "date": "2011-01-05T15:52:17.498+0000",
+            "id": 2
+        },
+        {
+            "author": "Carsten Ziegeler",
+            "body": "Session scoped locks do not work in a clustered env - so either this has to be fixed or that; otherwise locks in a clustered env are a pain to use",
+            "date": "2011-01-05T16:00:51.887+0000",
+            "id": 3
+        },
+        {
+            "author": "Carsten Ziegeler",
+            "body": "> LockManager.lock(...) returns a Lock instance => Lock.getLockToken() \nYes I know, what I meant above is: there is no way to get a lock token if you did not lock the node yourself",
+            "date": "2011-01-05T16:01:38.783+0000",
+            "id": 4
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "I would treat this as an administration operation that normal client sessions should not be able to do. We could for example allow admin sessions (or sessions with some special privilege) to unlock any locks in the repository.",
+            "date": "2011-01-05T16:23:26.392+0000",
+            "id": 5
+        },
+        {
+            "author": "C\u00e9dric Damioli",
+            "body": "I tend to agree with Stefan that it's the client responsibility to store lock tockens.\nIt's the way I'm managing locks in my applications.\n\nBut it may happen some failures (either in the client code or in JR code) that make the tocken unrecoverable.\n\nGiving the possibility to have some admin feature to cover such cases in IMHO a very good thing.\nRight now, I have to stop the application (which may be very annoying in production) and modify the locks file by hand.\n\nSo a big +1 to Jukka's proposal, if client code is able to have access to such special sessions.\n",
+            "date": "2011-01-05T16:53:21.422+0000",
+            "id": 6
+        },
+        {
+            "author": "Carsten Ziegeler",
+            "body": "I'm fine with Jukka's proposal as well - my idea was based on another repository implementation I've seen - in the end I don't care what the exact way is, as long as it is possible",
+            "date": "2011-01-05T17:24:54.038+0000",
+            "id": 7
+        },
+        {
+            "author": "Janandith Uditha Jayawardena",
+            "body": "Attached a test case for the scenario described in this JIRA,\n\nI'm working on  a patch. \n\nThe solution I'm working on is as follows,\n\n1. Store lock tokens when a node is locked using LockManager.\n2. Add the locked tokens from the stored location to the session when session is created if principal is AdminPrincipal.\n3. Remove the lock token from the store when the node is unlocked using admin session.\n\nI would like to know the following,\n\n1. Will there be any consequences in above solution ?.\n2. What is the best place to store the lock tokens ? . Is it in a node like ex: /locktokens or a file)\n3. Any improvements, suggestions ?.",
+            "date": "2011-01-23T12:18:44.996+0000",
+            "id": 8
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "I would rather not add extra lock tokens to an admin session, since that would muddy the waters on who is actually owning or holding a lock at a time. Instead I'd simply give an admin session the right to unlock any open-scoped lock, regardless of whether it holds the lock token or not.\n\nNote also that the tokens of all open scoped locks are already stored by the repository in a \"locks\" file so that they will survive over repository restarts. But as mentioned above, you probably don't need to worry about the tokens when implementing this.",
+            "date": "2011-01-24T13:37:15.794+0000",
+            "id": 9
+        },
+        {
+            "author": "Janandith Uditha Jayawardena",
+            "body": "Attached a patch. If the session is an admin session and lock is open scoped the session will be\nthe lock holder so it can be unlocked.\n\nModified AbstractLockTest and OpenScopedLockTest to work with\nnew feature.\n\n",
+            "date": "2011-02-19T20:39:42.939+0000",
+            "id": 10
+        },
+        {
+            "author": "Julian Reschke",
+            "body": "> Attached a patch. If the session is an admin session and lock is open scoped the session will be\nthe lock holder so it can be unlocked. \n\nI think this is problematic. Consider processes running in admin sessions trying to synchronize/reserve using locks. If all admin locks are essentially shared by all admin sessions, this will break big time.\n",
+            "date": "2011-12-14T17:29:56.648+0000",
+            "id": 11
+        },
+        {
+            "author": "Julian Reschke",
+            "body": "I believe there's a better way to do this; which happens to be what's used in WebDAV as well (yeah for consistency):\n\na) define a class of users that are \"lock breakers\", for now, the admin\nb) to these users, provide the lock token (instead of returning null); this is allowed per JSR-283, http://www.day.com/specs/jcr/2.0/17_Locking.html#17.12.4%20Getting%20a%20Lock%20Token\nc) then, the lock breaker can add the lock token to the Session and perform the unlock()",
+            "date": "2011-12-22T16:22:20.660+0000",
+            "id": 12
+        },
+        {
+            "author": "Julian Reschke",
+            "body": "Proposed patch, adding a test case.\n\nNote this also changes quite a few existing tests that assume that getLockToken has to return null, when it doesn't need to according to the spec. I just made those pass for now, but they need an additional look.",
+            "date": "2011-12-27T16:04:31.677+0000",
+            "id": 13
+        },
+        {
+            "author": "Felix Meschberger",
+            "body": "I like the lock breaker idea.\n\nShouldn't we push this a step forward and rename the isAdmin method to isLockbreaker and introduce a \"lockbreaker\" group and require the session to be a member of that group ? Kind of like a well known group name like administrators and everyone ?",
+            "date": "2011-12-28T12:48:27.575+0000",
+            "id": 14
+        },
+        {
+            "author": "Julian Reschke",
+            "body": "\n> Shouldn't we push this a step forward and rename the isAdmin method to isLockbreaker and introduce a \"lockbreaker\" group and require the session to be a member of that group ? Kind of like a well known group name like administrators and everyone ? \n\nYes, something like that. And make admin automatically a lockbreaker, I assume.\n\nDo we have other code that works in a similar way where I could steal code?\n\n(in the meantime I'll fix JCR-3195 which will make this change smaller)",
+            "date": "2011-12-28T12:54:33.878+0000",
+            "id": 15
+        },
+        {
+            "author": "Julian Reschke",
+            "body": "Updated proposed patch, incl. a test case.\n\nNote this also changes quite a few existing tests that assume that getLockToken has to return null, when it doesn't need to according to the spec.\n\nWhat's left to do is to incorporate Felix' proposal to allow this based on the membership in a \"lock breaker\" group.",
+            "date": "2011-12-28T13:54:21.962+0000",
+            "id": 16
+        },
+        {
+            "author": "angela",
+            "body": "imo loosing a lock token should be considered a mistake with the API consumer rather than something that\noccurs on a regular basis. while i am fine with providing a fallback in case the token is indeed lost, i am\ntherefore not convinced that having a group that is allowed to see all lock tokens in the repository would be\na wise move. apart from the fact that i consider this an edge case that should not be used on a regular\nbasis, being member of a given group will not guarantee that a given user is allowed to lock/unlock a\ngiven node but only expose the lock token (in contrast to the admin).\n\nthus, i'm in favor of the latest patch by julian. however, -1 for allow breaking locks based on group membership.\n",
+            "date": "2012-01-03T15:14:01.217+0000",
+            "id": 17
+        },
+        {
+            "author": "Julian Reschke",
+            "body": "+1 for starting with a small change (thus leaving it to admins).\n\nThat being said, maybe we should also try to mitigate the effects of lost lock tokens? For instance, by changing the default timeout from \"Infinity\" to something reasonable? ",
+            "date": "2012-01-03T15:46:40.274+0000",
+            "id": 18
+        },
+        {
+            "author": "angela",
+            "body": "> by changing the default timeout from \"Infinity\" to something reasonable\n\nyes. that definitely makes sense... maybe we could even make the default timeout part of the workspace \nconfiguration as the preferred timeout may vary between different types of applications.\nin any case we should clarify that as a general rule it is preferable to specify a reasonable timeout\nsuited for the situation when creating a new lock... LockManager#lock always takes a timeout hint, while \nNode.lock (which doesn't support it) has been deprecated as of JSR 283.",
+            "date": "2012-01-03T16:12:08.737+0000",
+            "id": 19
+        },
+        {
+            "author": "Julian Reschke",
+            "body": "So I have left the patch as proposed, allowing admin users to get the lock token, enabling them to unlock the node.\n\nAdded JCR-3199 as a change request (make the default lock time out configurable).",
+            "date": "2012-01-04T14:46:10.796+0000",
+            "id": 20
+        },
+        {
+            "author": "Julian Reschke",
+            "body": "causes breakage in jcr2dav tests",
+            "date": "2012-01-06T10:08:11.585+0000",
+            "id": 21
+        },
+        {
+            "author": "Julian Reschke",
+            "body": "The problem is caused by LockInfoImpl in SPI assuming that seeing the lock token implies owning the Lock.",
+            "date": "2012-01-12T14:45:00.665+0000",
+            "id": 22
+        },
+        {
+            "author": "Julian Reschke",
+            "body": "proposed patch",
+            "date": "2012-01-12T17:45:30.106+0000",
+            "id": 23
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Merged to the 2.4 branch in revision 1232513.",
+            "date": "2012-01-17T18:04:37.267+0000",
+            "id": 24
+        }
+    ],
+    "component": "locks",
+    "description": "The lock tokens for open scoped locks are currently tied to the session which created the lock. If the session dies (for whatever reason) there is no way to recover the lock and unlock the node.\nThere is a theoretical way of adding the lock token to another session, but in most cases the lock token is not available.\n\nFortunately, the spec allows to relax this behaviour and I think it would make sense to allow all sessions from the same user to unlock the node - this is still in compliance with the spec but would make unlocked locked nodes possible in a programmatic way.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "JCR-2859",
+    "issuetypeClassified": "RFE",
+    "issuetypeTracker": "RFE",
+    "priority": "Major",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "Make open scoped locks recoverable",
+    "systemSpecification": true,
+    "version": ""
+}

@@ -1,0 +1,53 @@
+{
+    "comments": [
+        {
+            "author": "Joe Campbell",
+            "body": "The following test that I am adding to TestSizeLimitedResponseReader confirms that if the header is on the original response from the server it is moved onto the response:\n\n    @Test\n    public void testResponseCopiesAllOriginalHeaders() throws Exception {\n        byte[] buf = new byte[] { 1, 2, 3 };\n        HttpResponse response = new BasicHttpResponse(HttpVersion.HTTP_1_1, HttpStatus.SC_OK, \"OK\");\n        response.setEntity(new ByteArrayEntity(buf));\n        response.setHeader(\"Content-Encoding\", \"gzip\");\n\n        impl = new SizeLimitedResponseReader(new HeapResourceFactory(), MAX_SIZE, request, response);\n\n        impl.readResponse();\n        boolean tooLarge = impl.isLimitReached();\n        HttpResponse reconstructed = impl.getReconstructedResponse();\n        byte[] result = EntityUtils.toByteArray(reconstructed.getEntity());\n\n        Assert.assertFalse(tooLarge);\n        Assert.assertArrayEquals(buf, result);\n        Assert.assertEquals(\"gzip\", reconstructed.getFirstHeader(\"Content-Encoding\").getValue());\n    }\n\nIf the response does not contain the headers for Content-Encoding and Content-Type in the first place - it really should not be the responsibility of the client side cache to add them or attempt to determine what they should be and place them onto the response.  I don't believe that this is an issue of the cache.",
+            "date": "2010-10-09T16:07:15.229+0000",
+            "id": 0
+        },
+        {
+            "author": "Joe Campbell",
+            "body": "This patch adds an additional test to the file TestSizeLimitedResponseReader for verifying that headers on the original response are copied onto the reconstructed response.\n\nThis patch is submitted with the permission of my employer.",
+            "date": "2010-10-09T16:11:18.219+0000",
+            "id": 1
+        },
+        {
+            "author": "Felix Berger",
+            "body": "I was not referring to the response headers which are correctly copied over, but the entity attributes which are not copied over. I'm attaching a patch + test case that fixes the issue.\n\nI think I signed a waiver a few years ago that allows me to contribute to the apache commons.",
+            "date": "2010-10-09T21:24:41.411+0000",
+            "id": 2
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Both patches checked in.\n\nOleg",
+            "date": "2010-10-10T20:00:29.231+0000",
+            "id": 3
+        },
+        {
+            "author": "Joe Campbell",
+            "body": "Oleg,\n    The fix patch was missing one additional item (The value for isChunked) that was not being copied from the old entity onto the new one.  This patch adds just that one line.\n\nThis patch is submitted with the permission of my employer.",
+            "date": "2010-10-12T13:30:07.365+0000",
+            "id": 4
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Patch checked in. Many thanks, Joe\n\nOleg",
+            "date": "2010-10-15T14:37:10.350+0000",
+            "id": 5
+        }
+    ],
+    "component": "HttpCache",
+    "description": "the newly created InputStreamEntity should be populated with content-encoding and content-type.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "HTTPCLIENT-1009",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "HTTPCLIENT",
+    "project": "HTTPCLIENT",
+    "summary": "http client cache: SizeLimitedResponseReader is not setting content type for InputStreamEntity in constructResponse()",
+    "systemSpecification": true,
+    "version": "4.1 Alpha2"
+}

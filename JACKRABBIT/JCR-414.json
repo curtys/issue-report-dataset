@@ -1,0 +1,41 @@
+{
+    "comments": [
+        {
+            "author": "Nicolas Belisle",
+            "body": "Shows that \"jcr:successors\" in not properly updated in the context of a transaction.",
+            "date": "2006-04-26T22:49:51.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Nicolas Belisle",
+            "body": "If you execute this a couple of times, you should notice that reads are not consistent. Sometimes the version history is empty on the first print, sometimes not. \n\nNote also that successors are never updated correclty.",
+            "date": "2006-04-26T22:55:51.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Tobias Bocanegra",
+            "body": "i modified the versionmanager behaviour a little. the jcr:successor virtual property is not longer virtual but is also persisted in the version persistence manager.\n\nunfortunately, this does not fix this issue at all. it is a fundamental problem, that modifications to the version store within a transaction are not 'seen' from the session using that transaction. i also added a new testcase that finds this problem.\n\n(v1 is a version from session 1, v2 the same version from session 2)\n \n OK: V1, name=jcr:rootVersion, succ=0\n OK: V2, name=jcr:rootVersion, succ=0\n---------checkout/checkin n1 (uncommitted)----------\nERR: V1, name=jcr:rootVersion, succ=0 != 1\n OK: V2, name=jcr:rootVersion, succ=0\n OK: V1, name=1.0, succ=0\n--------checkout/checkin n1 (comitted)----------\n OK: V1, name=jcr:rootVersion, succ=1\n OK: V2, name=jcr:rootVersion, succ=1\n OK: V1, name=1.0, succ=0\n\nAs you can see, the number of successors is only correct after the commit. the same happens for 'RemoveVersion'.\n\nthis probably needs a more thorough change to the code.",
+            "date": "2006-05-01T20:01:14.000+0000",
+            "id": 2
+        },
+        {
+            "author": "Tobias Bocanegra",
+            "body": "fixed.\n\nCommitted revision 412995.",
+            "date": "2006-06-09T17:10:36.000+0000",
+            "id": 3
+        }
+    ],
+    "component": "versioning",
+    "description": "During a transaction, if you create a new version then read the version history the \"jcr:successors\" property is not updated. Note that \"jcr:predecessors\" is updated properly.\n\nAlso, the version history is sometimes not propertly read. During the transaction, it might appear empty. This behavior in not consistent from one execution to another.\n\nAfter a restart of the repository, the version history and the \"jcr:successors\" property is read properly.\n\n* Tests cases will follow shortly.\n\nThanks, \n\nNicolas",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "JCR-414",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "jcr:successors property not persisted correctly within a transaction",
+    "systemSpecification": true,
+    "version": "0.9, 1.0, 1.0.1"
+}

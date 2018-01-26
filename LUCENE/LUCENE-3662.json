@@ -1,0 +1,95 @@
+{
+    "comments": [
+        {
+            "author": "Robert Muir",
+            "body": "as a start, i thought we could try upgrading moman, passing 'False' for transpositions (as if you pass true, it uses the extended state notation including t-positions and this really makes our code-generator angry).\n\nBut already there is some silly problem (likely in our code generator). I'll attach some files showing how the difference in the moman output changed\n",
+            "date": "2011-12-21T01:15:07.498+0000",
+            "id": 0
+        },
+        {
+            "author": "Robert Muir",
+            "body": "here is the before and after... at a glance the changes only seem cosmetic, maybe mike has an idea :)\n\nI attached a lev1T just for fun to show the new notation as well.",
+            "date": "2011-12-21T01:24:04.828+0000",
+            "id": 1
+        },
+        {
+            "author": "Robert Muir",
+            "body": "ok i found the bug, it was a (no longer valid) optimization in the parser for this null state case... no longer a problem now.\n\nTests pass with this patch, which simply upgrades our moman to the latest revision.\n\nFrom here we have to modify the code generator to also generate \"T\" tables, and deal with the new t-position syntax.\n\n",
+            "date": "2011-12-21T02:02:25.756+0000",
+            "id": 2
+        },
+        {
+            "author": "Robert Muir",
+            "body": "updated patch with hacks to the parser and generated Lev1T and Lev2T parametric descriptions... i have no idea if any of this works yet.",
+            "date": "2011-12-21T02:37:57.233+0000",
+            "id": 3
+        },
+        {
+            "author": "Robert Muir",
+            "body": "updated patch, hooking this into LevenshteinAutomata.\n\nI wrote a trivial test for \"dog\" and it passes... this is promising. \n\nI'll try to come up with a good testing strategy.",
+            "date": "2011-12-21T03:10:33.703+0000",
+            "id": 4
+        },
+        {
+            "author": "Dawid Weiss",
+            "body": "Avanti Robert! :)",
+            "date": "2011-12-21T08:19:31.519+0000",
+            "id": 5
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "How many beers did you need for that?",
+            "date": "2011-12-21T09:19:13.939+0000",
+            "id": 6
+        },
+        {
+            "author": "Robert Muir",
+            "body": "updated patch with tests. this reveals a bug in moman for LevT(2)... ",
+            "date": "2011-12-22T16:20:13.877+0000",
+            "id": 7
+        },
+        {
+            "author": "Robert Muir",
+            "body": "patch updated to revision 120 of moman, fixing the bug. tests pass now.\n\n",
+            "date": "2011-12-25T00:36:22.533+0000",
+            "id": 8
+        },
+        {
+            "author": "Mark Miller",
+            "body": "Sweet. I'd estimate many beers.",
+            "date": "2011-12-26T01:13:14.937+0000",
+            "id": 9
+        },
+        {
+            "author": "Robert Muir",
+            "body": "patch, hooking this into directspellchecker by default. I think its ready to commit.\n\nI did some rough perf tests, the transpositions costs us nothing. But the suggestions are much more relevant in some situations:\n\nfor example, I typed \"Wahsington\" into the geonames database, asking for top-5 suggestions:\n\n{panel:title=maxEdits=1}\nbefore:\n(no suggestions)\n\nafter:\n||Suggestion||Score||DocFreq||\n|Washington|0.9|61|\n\n{panel:title=maxEdits=2}\nbefore:\n||Suggestion||Score||DocFreq||\n|Washington|0.8|61|\n|Warrington|0.8|13|\n|Waddington|0.8|10|\n|Wallington|0.8|7|\n|Watlington|0.8|5|\n\nafter:\n||Suggestion||Score||DocFreq||\n|Washington|0.9|61|\n|Warrington|0.8|13|\n|Waddington|0.8|10|\n|Wallington|0.8|7|\n|Watlington|0.8|5|\n\nAbout the beers: the story is that I made some small progress towards implementing this (https://bitbucket.org/rmuir/moman) with many many beers, but got stuck, Jean-Phillipe merged my commits, emailed me that he is confident he can implement it in 15 hours, and did just that. I found a bug in the test, he fixed it the next day as before... and go figure it looks like the bug might have been in the part I did.",
+            "date": "2011-12-26T01:51:31.805+0000",
+            "id": 10
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "A nice Xmas present! +1\n\nI think we should send Jean-Philippe some beers, too.",
+            "date": "2011-12-26T08:22:09.556+0000",
+            "id": 11
+        },
+        {
+            "author": "Dawid Weiss",
+            "body": "+1 for beers for Jean-Phillipe.",
+            "date": "2011-12-26T13:21:14.951+0000",
+            "id": 12
+        }
+    ],
+    "component": "",
+    "description": "This would be a nice improvement for spell correction: currently a transposition counts as 2 edits,\nwhich means users of DirectSpellChecker must use larger values of n (e.g. 2 instead of 1) and \nlarger priority queue sizes, plus some sort of re-ranking with another distance measure for good results.\n\nInstead if we can integrate \"chapter 7\" of http://citeseerx.ist.psu.edu/viewdoc/summary?doi=10.1.1.16.652 \nthen you can just build an alternative DFA where a transposition is only a single edit \n(http://en.wikipedia.org/wiki/Damerau%E2%80%93Levenshtein_distance)\n\nAccording to the benchmarks in the original paper, the performance for LevT looks to be very similar to Lev.\n\nSupport for this is now in moman (https://bitbucket.org/jpbarrette/moman/) thanks to Jean-Philippe \nBarrette-LaPierre.\n",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-3662",
+    "issuetypeClassified": "RFE",
+    "issuetypeTracker": "RFE",
+    "priority": "Major",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "extend LevenshteinAutomata to support transpositions as primitive edits",
+    "systemSpecification": true,
+    "version": "4.0-ALPHA"
+}

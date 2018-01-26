@@ -1,0 +1,71 @@
+{
+    "comments": [
+        {
+            "author": "Robert Muir",
+            "body": "Here's the most important benchmark: speeding up the MultiMMap's readByte(s) in general:\n\nMultiMMapIndexInput readByte(s) improvements [trunk, Standard codec]\n||Query||QPS trunk||QPS patch||Pct diff||||\n|spanFirst(unit, 5)|12.72|12.85|{color:green}1.0%{color}|\n|+nebraska +state|137.47|139.33|{color:green}1.3%{color}|\n|spanNear([unit, state], 10, true)|2.90|2.94|{color:green}1.4%{color}|\n|\"unit state\"|5.88|5.99|{color:green}1.8%{color}|\n|unit~2.0|7.06|7.20|{color:green}2.0%{color}|\n|+unit +state|8.68|8.87|{color:green}2.2%{color}|\n|unit state|8.00|8.23|{color:green}2.9%{color}|\n|unit~1.0|7.19|7.41|{color:green}3.0%{color}|\n|unit*|22.66|23.41|{color:green}3.3%{color}|\n|uni*|12.54|13.12|{color:green}4.6%{color}|\n|united~1.0|10.61|11.12|{color:green}4.8%{color}|\n|united~2.0|2.52|2.65|{color:green}5.1%{color}|\n|state|28.72|30.23|{color:green}5.3%{color}|\n|un*d|44.84|48.06|{color:green}7.2%{color}|\n|u*d|13.17|14.51|{color:green}10.2%{color}|\n\nIn the bulk postings branch, I've been experimenting with various techniques for FOR/PFOR \nand one thing i tried was simply decoding with readInt() from the DataInput. So I adapted For/PFOR\nto just take DataInput and work on it directly, instead of reading into a byte[], wrapping it with a ByteBuffer,\nand working on an IntBuffer view.\n\nBut when I did this, i found that MMap was slow for readInt(), etc. So we implement these primitives\nwith ByteBuffer.readInt(). This isn't very important since lucene doesn't much use these, and mostly theoretical \nbut I still think things like readInt(), readShort(), readLong() should be fast... for example just earlier today \nsomeone posted an alternative PFOR implementation on LUCENE-1410 that uses DataInput.readInt().\n\nMMapIndexInput readInt() improvements [bulkpostings, FrameOfRefDataInput codec]\n||Query||QPS branch||QPS patch||Pct diff||||\n|spanFirst(unit, 5)|12.14|11.99|{color:red}-1.2%{color}|\n|united~1.0|11.32|11.33|{color:green}0.1%{color}|\n|united~2.0|2.51|2.56|{color:green}2.1%{color}|\n|unit~1.0|6.98|7.19|{color:green}3.0%{color}|\n|unit~2.0|6.88|7.11|{color:green}3.3%{color}|\n|spanNear([unit, state], 10, true)|2.81|2.96|{color:green}5.2%{color}|\n|unit state|8.04|8.59|{color:green}6.8%{color}|\n|+unit +state|10.97|12.12|{color:green}10.5%{color}|\n|unit*|26.67|29.80|{color:green}11.7%{color}|\n|\"unit state\"|5.59|6.27|{color:green}12.3%{color}|\n|uni*|15.10|17.51|{color:green}15.9%{color}|\n|state|33.20|38.72|{color:green}16.6%{color}|\n|+nebraska +state|59.17|71.45|{color:green}20.8%{color}|\n|un*d|35.98|47.14|{color:green}31.0%{color}|\n|u*d|9.48|12.46|{color:green}31.4%{color}|\n\nHere's the same benchmark of DataInput.readInt() but with the MultiMMapIndexInput\n\nMultiMMapIndexInput readInt() improvements [bulkpostings, FrameOfRefDataInput codec]\n||Query||QPS branch||QPS patch||Pct diff||||\n|united~2.0|2.43|2.54|{color:green}4.3%{color}|\n|united~1.0|10.78|11.39|{color:green}5.7%{color}|\n|unit~1.0|6.81|7.21|{color:green}5.8%{color}|\n|unit~2.0|6.62|7.05|{color:green}6.5%{color}|\n|spanNear([unit, state], 10, true)|2.77|2.96|{color:green}6.6%{color}|\n|unit state|7.85|8.53|{color:green}8.7%{color}|\n|spanFirst(unit, 5)|10.50|11.71|{color:green}11.5%{color}|\n|+unit +state|10.26|11.94|{color:green}16.3%{color}|\n|\"unit state\"|5.39|6.31|{color:green}17.0%{color}|\n|state|31.95|39.17|{color:green}22.6%{color}|\n|unit*|24.39|31.02|{color:green}27.2%{color}|\n|+nebraska +state|54.68|71.98|{color:green}31.6%{color}|\n|u*d|9.53|12.62|{color:green}32.5%{color}|\n|uni*|13.72|18.23|{color:green}32.9%{color}|\n|un*d|35.87|48.19|{color:green}34.3%{color}|\n\nJust to be sure, I ran this last one on sparc64 (bigendian) also.\n\nMultiMMapIndexInput readInt() improvements [bulkpostings, FrameOfRefDataInput codec]\n||Query||QPS branch||QPS patch||Pct diff||||\n|united~2.0|2.23|2.26|{color:green}1.5%{color}|\n|unit~2.0|6.37|6.47|{color:green}1.6%{color}|\n|united~1.0|11.33|11.59|{color:green}2.3%{color}|\n|unit~1.0|9.68|10.05|{color:green}3.7%{color}|\n|spanNear([unit, state], 10, true)|15.60|17.54|{color:green}12.5%{color}|\n|unit*|127.14|144.08|{color:green}13.3%{color}|\n|unit state|44.93|51.30|{color:green}14.2%{color}|\n|spanFirst(unit, 5)|58.42|68.37|{color:green}17.0%{color}|\n|uni*|56.66|67.53|{color:green}19.2%{color}|\n|+nebraska +state|215.62|262.99|{color:green}22.0%{color}|\n|+unit +state|63.18|77.86|{color:green}23.2%{color}|\n|\"unit state\"|32.24|40.05|{color:green}24.2%{color}|\n|u*d|29.13|36.69|{color:green}26.0%{color}|\n|state|145.99|188.33|{color:green}29.0%{color}|\n|un*d|65.27|87.20|{color:green}33.6%{color}|\n\nI think some of these benchmarks also show that MultiMMapIndexInput might now be\nessentially just as fast as MMapIndexInput... but lets not go there yet and keep them separate for now.\n",
+            "date": "2010-12-17T08:36:19.866+0000",
+            "id": 0
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "Awesome results robert!! :)",
+            "date": "2010-12-17T08:58:59.879+0000",
+            "id": 1
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Awesome, Ro bert is changing to the MMap Performance Policeman!\n\nI like the idea to simply delegate the methods and catch exception to fallback to manual read with boundary transition! I just wanted to be sure that the position pointer in the buffer does not partly go forward when you read request fails at a buffer boundary, but that seems to be the case.",
+            "date": "2010-12-17T09:38:20.989+0000",
+            "id": 2
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "-One thing to add: When using readFloat & co, we should make sure that we set the endianness explicitely in the ctor. I just want to explicitely make sure that the endianness is correct and document it that it is big endian for Lucene.-\n\nWe don't need that: \"The initial order of a byte buffer is always BIG_ENDIAN.\"",
+            "date": "2010-12-17T09:41:43.729+0000",
+            "id": 3
+        },
+        {
+            "author": "Robert Muir",
+            "body": "bq.  I just wanted to be sure that the position pointer in the buffer does not partly go forward when you read request fails at a buffer boundary, but that seems to be the case.\n\nYes, this is guaranteed in the APIs, and also tested well by TestMultiMMap, which uses random chunk sizes between 20 and 100 (including odd numbers etc)\nThough we should enhance this test, i think it just retrieves documents at the moment... probably better if it did some searches too.\n",
+            "date": "2010-12-17T09:47:51.356+0000",
+            "id": 4
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Good grief!  What amazing gains, especially w/ PFor codec which of course makes super heavy use of .readInt().  Awesome Robert!\n\nThis will mean w/ the cutover to FORPFOR codec for 4.0, MMapDir will likely have a huge edge over NIOFSDir?",
+            "date": "2010-12-17T09:48:36.906+0000",
+            "id": 5
+        },
+        {
+            "author": "Robert Muir",
+            "body": "{quote}\nGood grief! What amazing gains, especially w/ PFor codec which of course makes super heavy use of .readInt(). Awesome Robert!\nThis will mean w/ the cutover to FORPFOR codec for 4.0, MMapDir will likely have a huge edge over NIOFSDir?\n{quote}\n\nThis isn't really a 'gain' for the bulkpostings branch?\nThis is just making DataInput.readInt() faster.\nCurrently the bulkpostings branch uses readByte(byte[]), then wraps into a ByteBuffer and processes an IntBuffer view of that.\nI switched to just using readInt() from DataInputDirectly [FrameOfRefDataInput] and found it to be much slower than this IntBuffer method.\n\nthis whole benchmark is just benching DataInput.readInt()...\n\nSo, we shouldn't change anything in bulkpostings, this isn't faster than the intbuffer method in my tests, at best its equivalent... but we should fix this slowdown in our APIs.\n",
+            "date": "2010-12-17T09:53:41.510+0000",
+            "id": 6
+        },
+        {
+            "author": "Robert Muir",
+            "body": "committed revision 1050737. I'll wait a bit for branch_3x.",
+            "date": "2010-12-19T00:34:47.382+0000",
+            "id": 7
+        },
+        {
+            "author": "Robert Muir",
+            "body": "Committed revision 1052892 to branch_3x.",
+            "date": "2010-12-26T15:04:01.653+0000",
+            "id": 8
+        }
+    ],
+    "component": "core/store",
+    "description": "MMapDirectory has some performance problems:\n# When the file is larger than Integer.MAX_VALUE, we use MultiMMapIndexInput, \nwhich does a lot of unnecessary bounds-checks for its buffer-switching etc. \nInstead, like MMapIndexInput, it should rely upon the contract of these operations\nin ByteBuffer (which will do a bounds check always and throw BufferUnderflowException).\nOur 'buffer' is so large (Integer.MAX_VALUE) that its rare this happens and doing\nour own bounds checks just slows things down.\n# the readInt()/readLong()/readShort() are slow and should just defer to ByteBuffer.readInt(), etc\nThis isn't very important since we don't much use these, but I think there's no reason\nusers (e.g. codec writers) should have to readBytes() + wrap as bytebuffer + get an \nIntBuffer view when readInt() can be almost as fast...",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-2816",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Major",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "MMapDirectory speedups",
+    "systemSpecification": true,
+    "version": "3.1, 4.0-ALPHA"
+}

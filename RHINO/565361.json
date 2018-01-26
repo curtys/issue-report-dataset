@@ -1,0 +1,35 @@
+{
+    "comments": [
+        {
+            "author": "mikesamuel@gmail.com",
+            "body": "The patch above should also exclude (getParent() instanceof ForInLoop) so that\n    for (var k in o) {...}\ndoes not render as\n    for (var k; in o) { ... }",
+            "date": "20100512T17:55:50",
+            "id": 0
+        },
+        {
+            "author": "hannesw@gmail.com",
+            "body": "Thanks for the report, fixed in CVS.",
+            "date": "20110223T14:25:35",
+            "id": 1
+        },
+        {
+            "author": "hannesw@gmail.com",
+            "body": "The committed patch does not properly fix all occurrences of this bug. For example, the following source code:\n\n\"for(var i = 0; i < 10; i++) var x=i; x++;\"\n\nis rendered as follows by the AST:\n\nfor (var i = 0; i < 10; i++) \n  var x = ix++;\n\nReopening and marking as duplicate of bug #491621.\n\n*** This bug has been marked as a duplicate of bug 491621 ***",
+            "date": "20120320T17:10:01",
+            "id": 2
+        }
+    ],
+    "component": "Core",
+    "description": "User-Agent:       Mozilla/5.0 (Macintosh; U; Intel Mac OS X 10_5_8; en-US) AppleWebKit/533.2 (KHTML, like Gecko) Chrome/5.0.342.9 Safari/533.2\nBuild Identifier: \n\nThe VarDeclaration toSource method does not append a semicolon where necessary.\n\nReproducible: Always\n\nSteps to Reproduce:\nCompile and run the program below\n\nimport org.mozilla.javascript.Parser;\nimport org.mozilla.javascript.ast.AstNode;\n\npublic class RhinoBug {\n  public static void main(String... argv) throws Exception {\n    String js = \"function f() { var i = 2; for (var j = 0; j < i; ++j) print(j); }\";\n    AstNode root = new Parser().parse(js, \"test-input\", 1);\n    System.out.println(root.toSource());\n  }\n}\nActual Results:  \nfunction f() {\n  var i = 2  for (var j = 0; j < i; ++j) \n    print(j);\n}\n\nExpected Results:  \nfunction f() {\n  var i = 2;\n  for (var j = 0; j < i; ++j) \n    print(j);\n}\n\nNote that in the actual results above, since the var declaration is on its own line, the lack of a semicolon results in a syntax error.\n\nIf there was only a newline then the below would not have a syntax exception but would be incorrect.\nfunction f() {\n  var i = function(x) { return x; };\n  ({ x: y });\n}\n\nI believe changing VariableDeclaration.toSource to read\n    @Override\n    public String toSource(int depth) {\n        StringBuilder sb = new StringBuilder();\n        sb.append(makeIndent(depth));\n        sb.append(declTypeName());\n        sb.append(\" \");\n        printList(variables, sb);\n        if (!(getParent() instanceof ForLoop)) {\n            sb.append(\";\\n\");\n        }\n        return sb.toString();\n    }\nfixes the problem.",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "565361",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "-- normal",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "VarDeclaration toSource missing semicolon",
+    "systemSpecification": true,
+    "version": "other"
+}

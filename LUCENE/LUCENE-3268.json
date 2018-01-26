@@ -1,0 +1,53 @@
+{
+    "comments": [
+        {
+            "author": "Shai Erera",
+            "body": "The test fails consistently with this seed -Dtests.seed=2719714750176374101:2498146487036328796 on trunk.\n\nI added prints to the test for when it marks a document for deletion (it adds a term) and then traversing this term's DocsEnum. I see that the lists are off by 1 (i.e instead of 0, 3, 6, 9 ...  it is 0, 2, 5, 8). So I don't think the failure is related to the facets code at all.\n\nI've noticed the following:\n# If I disable RandomIW, it passes\n# If I disable RandomIW.addDocument call to maybeCommit, it passes too.\n# Disabling maybeCommit.switchDoDocValues has no effect.\n\nIt's the call to w.commit() which causes the IDs to offset by 1.\n\nSince RIW.flushAt is set to 51 (w/ the above seed), you can reduce the number of docs to index to 53 and the bug will be exposed (it didn't reproduce w/ N_DOCS=52). I'll try to isolate this bug to a standalone testcase and then run on 3x too.",
+            "date": "2011-07-03T06:14:26.478+0000",
+            "id": 0
+        },
+        {
+            "author": "Shai Erera",
+            "body": "Ok -- reproduced consistently with -Dtests.seed=2719714750176374101:2498146487036328796. Issue was that test must use LogMergePolicy and not any out-of-order merges.\n\nCommitted revision 1142385 (3x).\nCommitted revision 1142386 (trunk).",
+            "date": "2011-07-03T07:45:02.269+0000",
+            "id": 1
+        },
+        {
+            "author": "Robert Muir",
+            "body": "Hi Shai, I found another fail in this test:\nant test -Dtestcase=TestScoredDocIDsUtils -Dtestmethod=testWithDeletions -Dtests.seed=-203625378244176964:-5047330594665853233",
+            "date": "2011-07-04T12:10:01.249+0000",
+            "id": 2
+        },
+        {
+            "author": "Shai Erera",
+            "body": "Thanks Robert I'll dig. I accidentally ran w/ -Dtests.iter=100 and hit a failure w/ another seed: -Dtests.seed=7024819857743267621:1285346892471897454 too, so now there are two seeds to fix :).",
+            "date": "2011-07-04T12:21:08.847+0000",
+            "id": 3
+        },
+        {
+            "author": "Shai Erera",
+            "body": "Ok I found the problem. The test relies on Lucene doc IDs to assert the results. So at first I went for disabling merges (because they removed deleted docs and screwed up the IDs), but that didn't help entirely because for some seeds, a whole segment turned up to be deleted, and thus dropped, screwing up the IDs as well.\n\nSo I fixed the test to add a stored field to all the docs that are deleted, and then instead of asserting that the returned docID was not marked for deletion, I assert that the returned document does not contain that field.\n\nI ran the test w/ -Dtests.iter=10000 (10K) and it didn't find any bad seed. Previously it hunted them pretty quickly !\n\nI'll commit a fix shortly to 3x and trunk.",
+            "date": "2011-07-04T13:53:35.150+0000",
+            "id": 4
+        },
+        {
+            "author": "Shai Erera",
+            "body": "Committed revision 1142675 (3x).\nCommitted revision 1142676 (trunk).",
+            "date": "2011-07-04T14:07:30.211+0000",
+            "id": 5
+        }
+    ],
+    "component": "modules/facet",
+    "description": "ant test -Dtestcase=TestScoredDocIDsUtils -Dtestmethod=testWithDeletions -Dtests.seed=-2216133137948616963:2693740419732273624 -Dtests.multiplier=5\n\nIn general, on both 3.x and trunk, if you run this test with -Dtests.iter=100 it tends to fail 2% of the time.\n\n",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "LUCENE-3268",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "TestScoredDocIDsUtils.testWithDeletions test failure",
+    "systemSpecification": true,
+    "version": ""
+}

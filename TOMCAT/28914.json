@@ -1,0 +1,59 @@
+{
+    "comments": [
+        {
+            "author": null,
+            "body": "Quite frankly, thread priority is a big lie (at least from Java). Look at the\njavadocs.",
+            "date": "20040511T21:26:29",
+            "id": 0
+        },
+        {
+            "author": null,
+            "body": "Euh.. No. Sorry.\n(suns statements in javadoc about thread are known to be very forgiving for JVM\nimplementors. Most if not all serious jvm have correct priorities.)\n\nThere are plenty of JVMs out there that do correctly implements priority.\nAnd thrust me, it works. Here are some examples.\nPlease verify by yourself.\n\n-screen updater toggles back and forth between prio 4 and 6. It help propmptness\nof drawing.\n\n-finalizer has low prio, for obvious reason. It does run seldomly, as expected\nin idle times.\n\n-SEDA architecture like sandstorm works great!\nI myself created a seda thread manager based on priority and load detection. It\nruns very nicely on sun, ibm, jrockit JVM, on both win32 and linux platform.\n\nBesides, I raise the tomcat connector threads in a dirty way: enumerate thread,\nmatch name with regex, and raise prio to 7 (because I use prio 1 to 6 for\nsandstorm).\n\nTrust me, it really balances stage & queue load and work well. And with that\ntomcat prio raised, my web UI is responsive and I keep the control.\n\nIn other systems, with jmx timer and with container sheduling\nJSR 236 titled \"Timer for Application Servers\"\nhttp://jcp.org/en/jsr/detail?id=236\nthread priority will become a serious concern.\n\nPlease consider this RFE with \"normal priority\" (hehehe!)",
+            "date": "20040512T02:20:58",
+            "id": 1
+        },
+        {
+            "author": null,
+            "body": "Done.  Need minor help from Amy Roh or another admin webapp expert on the \nwriting of modified configuration, will post on tomcat-dev, but the code is \nthere and seems to be working.",
+            "date": "20040527T16:15:55",
+            "id": 2
+        },
+        {
+            "author": null,
+            "body": "for cross-ref purpose: see bug #27616\n",
+            "date": "20040619T16:58:55",
+            "id": 3
+        },
+        {
+            "author": null,
+            "body": "Priority not applied.\n\nRun tomcat in a debugger, like eclipse, pause processors/monitors threads,\nlook at first stackframe (thread run()), the variable 'this' (the thread).\nlook at the priority field: still = 5 (normal prio) instead of prescribed value.\n\nExpected to see the monitor thread and the processors threads at priority 8 in\nthe case below.\n\n\t<Connector\n\t\tport=\"1026\"\n\t\tmaxThreads=\"15\"\n\t\tminSpareThreads=\"2\"\n\t\tmaxSpareThreads=\"5\"\n\t\tenableLookups=\"false\" \n\t\tacceptCount=\"100\"\n\t\tdebug=\"1\"\n\t\tconnectionTimeout=\"20000\"\n\t\tdisableUploadTimeout=\"true\"\n\t\tthreadPriority=\"8\"\n\t\tredirectPort=\"18443\"\n\t/>\n\n\nThr: d P=05 ALIVE  \"http-1026-Processor1\" \n(org.apache.tomcat.util.threads.ThreadWithAttributes)\n\nThr: d P=05 ALIVE  \"http-1026-Processor2\" \n(org.apache.tomcat.util.threads.ThreadWithAttributes)\n\nThr:   P=05 ALIVE  \"http-1026-Monitor\"",
+            "date": "20040817T19:07:45",
+            "id": 4
+        },
+        {
+            "author": null,
+            "body": "against 5.0.27\n",
+            "date": "20040817T19:08:08",
+            "id": 5
+        },
+        {
+            "author": null,
+            "body": "Ooops, I forgot the actual Thread#setPriority call.  Sorry about that ;)  Fixed \nin both TOMCAT_5_0 and CVS HEAD branches.",
+            "date": "20040830T19:26:14",
+            "id": 6
+        }
+    ],
+    "component": "Catalina",
+    "description": "it is not possible to tune quality of http services (responsiveness)\nthrough thread priority.\nother threads in the web app are of various priority than the http connector and\nwe want the connector to be of a higher/lower priority.\n\n1-\nadd connector thread pool property to server.xml to set initial thread priority.\n\n2-\nadditionnally, we would like a tomcat public API (perfectly knowing that it is\nnot jsdk2.x), maybe jmx but that overkill, to vary connector's thread pool\nthreads priorities according to application specific knowledge.",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "28914",
+    "issuetypeClassified": "RFE",
+    "issuetypeTracker": "BUG",
+    "priority": "P3 normal",
+    "product": "Tomcat 5",
+    "project": "TOMCAT",
+    "summary": "add a thread pool property to set thread priority for tuning quality of service",
+    "systemSpecification": false,
+    "version": "5.0.27"
+}

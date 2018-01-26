@@ -1,0 +1,53 @@
+{
+    "comments": [
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "> 1. if error happens in BufferedReader constructor (OutOfMemoryError, StackOverflowError), reader.close() \n> is not called and connection is not released\n\nIf your application throws OutOfMemoryError or StackOverflowError, you have much more to worry about than a leaked connection, but strictly speaking you are correct\n\n> 2. if error happens in reader.readLine(), reader.close() is called, but httpget.abort() is not.\n\nThis is incorrect. HttpClient will automatically release the underlying connection upon an I/O error. Calling HttpGet#abort is not necessary.\n\nOleg",
+            "date": "2010-05-14T15:11:31.599+0000",
+            "id": 0
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Fixed in SVN trunk.\n\nOleg",
+            "date": "2010-06-12T10:42:12.834+0000",
+            "id": 1
+        },
+        {
+            "author": "Stepan Koltsov",
+            "body": "Thank you.\n\nDo I really have to call httpget.abort() in case of unknown RuntimeException? And why Error (like OutOfMemoryError) is not caught then?\n\nhttpclient-3 allowed standard simple try { ... } finally { release something } pattern.\n\nmethod = ...\ntry {\n  httpclient.execute(method);\n  // do whatever I want\n} finally {\n  method.releaseConnection();\n}\n\nIt is sad, if it is not possible in httpclient-4 (ResponseHandler is not an option in some cases).",
+            "date": "2010-06-12T22:15:23.848+0000",
+            "id": 2
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "> httpclient-3 allowed standard simple try { ... } finally { release something } pattern. \n\nHow is this less standard or more complex?\n\nHttpEntity entity = response.getEntity();\nif (entity != null) {\n  InputStream instream = entity.getContent();\n  try {\n  } finally {\n     instream.close();\n  }\n}\n\n> Do I really have to call httpget.abort() in case of unknown RuntimeException?\n\nNo, you do not.\n\n> And why Error (like OutOfMemoryError) is not caught then? \n\nOne should never try to mess with Errors. They represent fatal, non-recoverable conditions. The best thing is to let the application terminate.\n\nOleg",
+            "date": "2010-06-13T08:17:10.821+0000",
+            "id": 3
+        },
+        {
+            "author": "Stepan Koltsov",
+            "body": "> How is this less standard or more complex? \n\nI didn't know that httpget.abort() is not necessary.\n\nHowever, if httpget.abort() is not necessary, then why not remove it from example?",
+            "date": "2010-06-13T20:08:23.841+0000",
+            "id": 4
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "I just wanted to demonstrate all possible cases of connection release: (1) auto-release on exception (2) release without connection re-use on request abort (3) normal release with connection re-use.\n\nOleg",
+            "date": "2010-06-13T20:44:33.256+0000",
+            "id": 5
+        }
+    ],
+    "component": "",
+    "description": "http://svn.apache.org/repos/asf/httpcomponents/httpclient/tags/4.0.1/httpclient/src/examples/org/apache/http/examples/client/ClientConnectionRelease.java\n\nis incorrect: \n\n1. if error happens in BufferedReader constructor (OutOfMemoryError, StackOverflowError), reader.close() is not called and connection is not released\n\n2. if error happens in reader.readLine(), reader.close() is called, but httpget.abort() is not.",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "HTTPCLIENT-942",
+    "issuetypeClassified": "OTHER",
+    "issuetypeTracker": "BUG",
+    "priority": "Minor",
+    "product": "HTTPCLIENT",
+    "project": "HTTPCLIENT",
+    "summary": "ClientConnectionRelease example is incorrect",
+    "systemSpecification": true,
+    "version": ""
+}

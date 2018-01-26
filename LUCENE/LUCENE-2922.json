@@ -1,0 +1,29 @@
+{
+    "comments": [
+        {
+            "author": "Michael McCandless",
+            "body": "Patch.",
+            "date": "2011-02-15T16:15:37.282+0000",
+            "id": 0
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "The opto is a big win for FuzzyQuery (and, automaton respeller):\n\n\n||Query||QPS base||QPS opto||Pct diff||||\n|\"united states\"|13.92|13.81|{color:red}-0.8%{color}|\n|+united +states|20.59|20.55|{color:red}-0.2%{color}|\n|united states|20.06|20.03|{color:red}-0.1%{color}|\n|states|56.67|56.68|{color:green}0.0%{color}|\n|\"united states\"~3|9.55|9.55|{color:green}0.0%{color}|\n|uni*|17.67|17.71|{color:green}0.2%{color}|\n|spanNear([unit, state], 10, true)|65.84|66.03|{color:green}0.3%{color}|\n|unit*|31.50|31.62|{color:green}0.4%{color}|\n|timesecnum:[10000 TO 60000]|10.88|10.93|{color:green}0.4%{color}|\n|un*d|19.64|19.74|{color:green}0.5%{color}|\n|title:.*[Uu]nited.*|1.48|1.49|{color:green}0.9%{color}|\n|u*d|8.52|8.63|{color:green}1.3%{color}|\n|+nebraska +states|230.99|235.15|{color:green}1.8%{color}|\n|spanFirst(unit, 5)|289.74|300.65|{color:green}3.8%{color}|\n|united~0.75|18.01|19.26|{color:green}7.0%{color}|\n|unit~0.7|36.39|40.33|{color:green}10.8%{color}|\n|united~0.6|14.15|15.73|{color:green}11.1%{color}|\n|unit~0.5|24.99|29.82|{color:green}19.3%{color}|\n",
+            "date": "2011-02-15T16:31:11.087+0000",
+            "id": 1
+        }
+    ],
+    "component": "core/index",
+    "description": "When we seek, we first consult the terms index to find the right block\nof 32 (default) terms that may hold the target term.  Then, we scan\nthat block looking for an exact match.\n\nThe scanning just uses next() and then compares the full term, but\nthis is actually rather wasteful.  First off, since all terms in the\nblock share a common prefix, we should compare the target against that\ncommon prefix once, and then only compare the new suffix of each\nterm.  Second, since the term suffixes have already been read up front\ninto a byte[], we should do a no-copy comparison (vs today, where we\nfirst read a copy into the local BytesRef and then compare).\n\nWith this opto, I removed the ability for BlockTermsWriter/Reader to\nsupport arbitrary term sort order -- it's now hardwired to\nBytesRef.utf8SortedAsUnicode.\n",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-2922",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Minor",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "Optimize BlockTermsReader.seek",
+    "systemSpecification": true,
+    "version": ""
+}

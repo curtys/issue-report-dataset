@@ -1,0 +1,53 @@
+{
+    "comments": [
+        {
+            "author": "Jukka Zitting",
+            "body": "Attached a patch that starts the background text extraction thread as early as possible and counts the extraction timeout not only against the creation of a Reader but also against reading the extracted text from the Reader.\n\nNote that the patch buffers the *entire* extracted text into memory before passing it on to indexing. Currently we in any case buffer the text to a String, so this isn't that much of a regression (though now we have two copies of the string) but obviously it would be better if we could avoid that.\n\nSome of the test cases had implicit assumptions about indexing speed that were broken by these changes. Based on some previous code snippets I added a new SearchIndex.flush() method that makes sure that all pending index changes have been processed and flushed to disk. This method is now automatically called by the executeSQLQuery() and executeXPATHQuery() methods in AbstractQueryTest to avoid any issues with late index updates. Later on we might find some uses for the new flush() method also outside the test suite.\n\nThings to do:\n\n* The patch still mostly follows the existing code structure to make it easier to review the changes. We could probably simplify the code and avoid the extra String copy of the extracted text by merging the TextExtractorReader and TextExtractorJob classes.\n\n* Going further, we could probably drop the PooledTextExtractor class in favor of a simpler thread pool that the NodeIndexer would use to execute TextExtractorJobs.\n",
+            "date": "2009-07-16T15:10:46.673+0000",
+            "id": 0
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "Looks very good.\n\nApplied patch in revision: 799610",
+            "date": "2009-07-31T13:46:54.029+0000",
+            "id": 1
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "Fixed occasional test failures in revision: 801135",
+            "date": "2009-08-05T11:29:21.418+0000",
+            "id": 2
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "Fixed TextExtractorJob (was using transient keyword, when in fact wanted to use volatile!) in revision: 801169",
+            "date": "2009-08-05T12:23:07.171+0000",
+            "id": 3
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "> Fixed occasional test failures in revision: 801135 \n\nthis change introduced other failures. I reverted above change in revision: 801226",
+            "date": "2009-08-05T13:34:16.534+0000",
+            "id": 4
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "Re-applied some of the 801135 changes to make test execution more reliable.\n\nsvn revision: 801375",
+            "date": "2009-08-05T19:29:07.671+0000",
+            "id": 5
+        }
+    ],
+    "component": "indexing, jackrabbit-core",
+    "description": "As recently discussed on the mailing list (see http://markmail.org/message/syt7lc2guzapt7la), the current approach to text extraction in background threads doesn't work that well especially with the Tika-based extractors that support streamed parsing of many document types.\n\nAlso, we currently *all* of the extracted text streams are buffered into Strings before being passed into the Lucene index. It would be good if we could somehow get back to passing just Readers to Lucene.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "JCR-2219",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Minor",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "Improved background text extraction",
+    "systemSpecification": true,
+    "version": ""
+}

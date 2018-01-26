@@ -1,0 +1,59 @@
+{
+    "comments": [
+        {
+            "author": null,
+            "body": "Created attachment 16816\nStandardContext patch",
+            "date": "20051027T06:48:54",
+            "id": 0
+        },
+        {
+            "author": null,
+            "body": "A necessary clarification: This problem refers to ServletContextlistener.\ndestroy()",
+            "date": "20051027T06:52:28",
+            "id": 1
+        },
+        {
+            "author": null,
+            "body": "ServletContextlistener.destroy() ???  or ServletContextlistener.contextDestroyed()\n\n\nWhat about ServletContextlistener.contextInitialized() and listenerStart(),\nwould it be possible to review that too with your knowledge of whats going on.\n\nI suspect the calling sequences for all setup/teardown should be Last In, First Out.\n\nIf your solution is verified to be correct, I think you might have just\npossibily found the root cause of a great many outstanding ThreadDeath related\nissues that have been bounced around on bugzilla recently.  These are\nThreadDeath's caused from listenerStop() execution where the class loader has\nbeen invalidated.\n",
+            "date": "20051027T09:28:14",
+            "id": 2
+        },
+        {
+            "author": null,
+            "body": "(In reply to comment #3)\n> ServletContextlistener.destroy() ???  or ServletContextlistener.contextDestroyed()\n> \n> \n> What about ServletContextlistener.contextInitialized() and listenerStart(),\n> would it be possible to review that too with your knowledge of whats going on.\n> \n> I suspect the calling sequences for all setup/teardown should be Last In,\nFirst Out.\n> \n> If your solution is verified to be correct, I think you might have just\n> possibily found the root cause of a great many outstanding ThreadDeath related\n> issues that have been bounced around on bugzilla recently.  These are\n> ThreadDeath's caused from listenerStop() execution where the class loader has\n> been invalidated.\n\nUnderstanding things is good rather than simply writing BS. This is related to\nJNDI. The code as of right now is:\n\n            // Stop our application listeners\n            listenerStop();\n\n            // Clear all application-originated servlet context attributes\n            if (context != null)\n                context.clearAttributes();\n\n            // Stop resources\n            resourcesStop();\n\n            if ((realm != null) && (realm instanceof Lifecycle)) {\n                ((Lifecycle) realm).stop();\n            }\n            if ((cluster != null) && (cluster instanceof Lifecycle)) {\n                ((Lifecycle) cluster).stop();\n            }\n            if ((logger != null) && (logger instanceof Lifecycle)) {\n                ((Lifecycle) logger).stop();\n            }\n            if ((loader != null) && (loader instanceof Lifecycle)) {\n                ((Lifecycle) loader).stop();\n            }\n\n\n",
+            "date": "20051027T10:10:57",
+            "id": 3
+        },
+        {
+            "author": null,
+            "body": "I don't like your patch, but NamingContextListener could be adjusted to do its\nstuff in AFTER_STOP_EVENT, so that JNDI still works when stopping the listeners.\nIf you test that and if it works, I can make the change.",
+            "date": "20051027T10:15:57",
+            "id": 4
+        },
+        {
+            "author": null,
+            "body": "I don't like the patch either, it is indeed more appropiate to move some code\nfrom STOP_EVENT to AFTER_STOP_EVENT. I'll test the patch and post the results.\nWith my limited knowledge of the code base, I think the fix involves moving this\nwhole block from STOP to AFTER_STOP:\n\n            if (container instanceof Context) {\n                ContextBindings.unbindClassLoader\n                    (container, container, \n                     ((Container) container).getLoader().getClassLoader());\n            }\n\n            if (container instanceof Server) {\n                namingResources.removePropertyChangeListener(this);\n                ContextBindings.unbindClassLoader\n                    (container, container, \n                     this.getClass().getClassLoader());\n            }\n\n            ContextAccessController.unsetSecurityToken(getName(), container);\n\n            namingContext = null;\n            envCtx = null;\n            compCtx = null;\n            initialized = false;\n",
+            "date": "20051027T16:02:40",
+            "id": 5
+        },
+        {
+            "author": null,
+            "body": "I did apply something very close to the proposed patch, but did not test it well.",
+            "date": "20051027T16:04:08",
+            "id": 6
+        }
+    ],
+    "component": "Catalina",
+    "description": "If a ServletContextListener implmentation references a class that is not yet \nloaded, the loading would with some ZipException.\n\nThis is caused by the fact that when a context is stopped, the classloader is \nunbound before the ServletContextListeners are called. The sequence of calls is \nsomething like this:\n\nStandardContext.stop()\n  lifecycle.fireLifecycleEvent(STOP_EVENT, null);\n    NamingContextListener.lifecycleEvent();\n      ContextBindings.unbindClassLoader()\n  ...\n  listenerStop(); // trouble\n\nMy solutions was to move listenerStop() before the call to fireLifecycleEvents()\n\n\nI also filed bug 37262, about the datasources not being released when the \ncontext is stopped. These two are somehow related, I think the right sequence \nwhen stopping the context is:\n1. call the listeners\n2. release the datasources\n3. unbind the classloader",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "37264",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "P2 normal",
+    "product": "Tomcat 5",
+    "project": "TOMCAT",
+    "summary": "ServletContextListener cannot load classes",
+    "systemSpecification": true,
+    "version": "Nightly Build"
+}

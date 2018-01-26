@@ -1,0 +1,35 @@
+{
+    "comments": [
+        {
+            "author": "Julian Reschke",
+            "body": "proposed patch",
+            "date": "2011-10-11T07:52:53.583+0000",
+            "id": 0
+        },
+        {
+            "author": "Julian Reschke",
+            "body": "With r1181712.",
+            "date": "2011-10-11T11:11:35.538+0000",
+            "id": 1
+        },
+        {
+            "author": "Julian Reschke",
+            "body": "2.2: r1186217",
+            "date": "2011-10-19T13:52:19.944+0000",
+            "id": 2
+        }
+    ],
+    "component": "jackrabbit-core, versioning",
+    "description": "InternalVersionManagerBase.getParentNode occasionally throws an NPE:\n\n    protected static NodeStateEx getParentNode(NodeStateEx parent, String uuid, Name interNT)\n            throws RepositoryException {\n        NodeStateEx n = parent;\n        for (int i = 0; i < 3; i++) {\n            Name name = getName(uuid.substring(i * 2, i * 2 + 2));\n            if (n.hasNode(name)) {\n                n = n.getNode(name, 1);\n                assert n != null;\n            } else if (interNT != null) {\n                n.addNode(name, interNT, null, false);\n                n.store();\n                n = n.getNode(name, 1);\n                assert n != null;\n            } else {\n                return null;\n            }\n        }\n        return n;\n    }\n\nApparently getNode occasionally returns null due to race conditions.\n\nChanging the code to what's below appears to fix it:\n\n\n\n    protected static NodeStateEx getParentNode(NodeStateEx parent, String uuid, Name interNT)\n            throws RepositoryException {\n        NodeStateEx n = parent;\n        for (int i = 0; i < 3; i++) {\n            Name name = getName(uuid.substring(i * 2, i * 2 + 2));\n            NodeStateEx n2 = n.getNode(name, 1);\n            if (n2 != null) {\n                n = n2;\n            } else if (interNT != null) {\n                n2 = n.addNode(name, interNT, null, false);\n                n.store();\n                n = n2;\n            } else {\n                return null;\n            }\n        }\n        return n;\n    }\n\n(but likely moves the race condition somewhere else)",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "JCR-3105",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "NPE when versioning operations are concurrent",
+    "systemSpecification": true,
+    "version": ""
+}

@@ -1,0 +1,41 @@
+{
+    "comments": [
+        {
+            "author": "Jeff Dever",
+            "body": "Thanks to Andrew McCready for identifying this bug.",
+            "date": "2002-08-14T05:57:41.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Jeff Dever",
+            "body": "Created an attachment (id=2704)\nSimple fix to HttpMethodBase.java\n",
+            "date": "2002-08-14T08:36:07.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Jeff Dever",
+            "body": "Applied the patch and tested.  Request will only be sent once if it is\nsuccessful on the first write.\n\nIt would be helpful if Andrew McCready could retest with a new nightly tarball\nand close this bug if fixed.\n\n",
+            "date": "2002-08-14T08:47:09.000+0000",
+            "id": 2
+        },
+        {
+            "author": "andrew mccready",
+            "body": "Retested and it works correctly now.",
+            "date": "2002-08-15T04:10:09.000+0000",
+            "id": 3
+        }
+    ],
+    "component": "HttpClient (classic)",
+    "description": "Using the 20020811 tarball and jdk1.4.0, a get or post will retry as soon\nas it finishes sending the request. I turned on logging and verified that\nas soon as the last \\r\\n hits the wire, it starts on the next retry. For\nexample:\n\n08-10 09:53:12 [main] httpclient.wire: >> [\\r\\n]\n08-10 09:53:12 [main] httpclient.methods.PostMethod: enter\nPostMethod.writeRequestBody(HttpState, HttpConnection)\n08-10 09:53:12 [main] commons.httpclient.HttpConnection: enter\nHttpConnection.write(byte[], int, int)\n08-10 09:53:12 [main] commons.httpclient.HttpMethod: Attempt number 3 to write\nrequest\n08-10 09:53:12 [main] commons.httpclient.HttpMethod: enter\nHttpMethodBase.writeRequest(HttpState, HttpConnection)\n08-10 09:53:12 [main] commons.httpclient.HttpMethod: enter\nHttpMethodBase.writeRequestLine(HttpState, HttpConnection)\n08-10 09:53:12 [main] commons.httpclient.HttpMethod: enter\nHttpMethodBase.generateRequestLine(HttpConnection, String, String, String,\nString)\n08-10 09:53:12 [main] commons.httpclient.HttpConnection: enter\nHttpConnection.print(String)\n08-10 09:53:12 [main] commons.httpclient.HttpConnection: enter\nHttpConnection.write(byte[])\n08-10 09:53:12 [main] httpclient.wire: >> \"POST /lookup.jsp HTTP/1.1\" [\\r\\n]\n\nThe top line is the end of the second post and the last line is the start\nof the third post.\n\nTo make sure the server really wasn't sending something back, I wrote a\nquick server that would listen for a request and send a 404 as soon as it\nread a post or get line (but would keep reading and dumping info). In the\nhttpclient log, it still shoots off 3 requests before it receives the\nresponse and the server got all three requests. (client and server are\nrunning on the same machine)\n\nSo why is httpclient sending three requests without waiting for a\nresponse?",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "HTTPCLIENT-99",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Critical",
+    "product": "HTTPCLIENT",
+    "project": "HTTPCLIENT",
+    "summary": "Requests are retried 3 times unconditionaly",
+    "systemSpecification": false,
+    "version": ""
+}

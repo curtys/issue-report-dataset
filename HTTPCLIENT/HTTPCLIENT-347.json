@@ -1,0 +1,149 @@
+{
+    "comments": [
+        {
+            "author": "Michael Becke",
+            "body": "Created an attachment (id=11758)\nPatch 1\n",
+            "date": "2004-06-04T08:48:13.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Sorry for all the spam on this one.  I accidentally created the bug before I finished filling out the form.\n\nThe attached patch adds deleteClosedConnections() which in combination with closeIdleConnections() \nshould do what we're looking for.  I'm not entirely satisfied with this solution as it involves calling \nHttpConnection.isOpen(), but I think it's the only way to be sure that we get rid of connections that are \nnot longer needed.  The only other possibility would be to disable staleConnectionChecking on the \nconnections or to add a isClosed() method to HttpConnection that does not involve isStale().\n\nThis patch does not include any connection statistics.\n\nPlease let me know what you think.\n\nMike",
+            "date": "2004-06-04T08:57:15.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Mike,\nI never liked the fact that connection open check was coupled with the stale\nconnection check. Now I like it even less. It's kind of wasteful to perform a\nrather expensive stale connection check on a connection, which is about to be\ndropped. What do you think about decoupling these two tests in HttpClient 3.0?\n\nOtherwise the patch looks good\n\nOleg",
+            "date": "2004-06-04T19:58:06.000+0000",
+            "id": 2
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Yes, agreed.  The coupling of isOpen() and isStale() definitely causes some issues.  I will try to clean this \nup without breaking anything.\n\nMike",
+            "date": "2004-06-05T08:03:41.000+0000",
+            "id": 3
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Created an attachment (id=11769)\npatch 2\n",
+            "date": "2004-06-05T08:53:46.000+0000",
+            "id": 4
+        },
+        {
+            "author": "Michael Becke",
+            "body": "This one doesn't fix the problems with isOpen(), but it adds a couple of new options that get around it.  \nLet me know what you think.\n\nThanks,\n\nMike",
+            "date": "2004-06-05T08:55:09.000+0000",
+            "id": 5
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "I can't say I like it but I live with this solution. \n\nOleg",
+            "date": "2004-06-05T20:46:51.000+0000",
+            "id": 6
+        },
+        {
+            "author": "Eric Johnson",
+            "body": "Don't know whether it matters to much, but if I read it correctly, it is\npossible that this will result in two calls to isStale() if checking is enabled.\n I thought that some had experienced isStale() as slow, so adding a second call\nseems like a bad idea.",
+            "date": "2004-06-07T21:24:30.000+0000",
+            "id": 7
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Hi Eric,\n\nYes, the original version of the patch did indirectly call isStale().  You are correct that this is potentially \na slow operation.  The second patch should not have this problem though, as isClosed() is now being \nused which does not make use of isStale().\n\nMike",
+            "date": "2004-06-08T10:15:23.000+0000",
+            "id": 8
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Hi Oleg,\n\nAgreed, this is not the nicest solution.  I would openly welcome any creative alternatives.  Unless \nsomething nicer comes up, I will apply this patch tomorrow night.\n\nMike",
+            "date": "2004-06-08T10:18:22.000+0000",
+            "id": 9
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Mike,\n\nHaving HttpConnection#isOpen and HttpConnection#isClosed methods is awfully\nconfusing. What are reasons for having to call isStale from isOpen? I personally\nsee no sense in performing stale check in the isOpen method. As a consumer of\nthat method I do not give a damn whether the connection is stale or not. All I\nwant to know whether the connection is considered open and whether HttpClient\nshould attempt to automatically recover in case of connection failure. That's\nit. What comfort to me is the fact that the connection is open and valid at the\ntime I call isOpen when it can still go stale by the time HTTP method executes?\n\nOleg",
+            "date": "2004-06-08T15:16:26.000+0000",
+            "id": 10
+        },
+        {
+            "author": "Roland Weber",
+            "body": "Without digging into the source code, I wonder whether this is the time\nto define an enumeration class ConnectionStatus with possible values:\n  OPEN_FOR_SURE OPEN_OR_STALE STALE CLOSED IN_USE...\nand a single query method Connection.getStatus(boolean checkForStale)?\n\ncheers,\n  Roland",
+            "date": "2004-06-08T16:22:32.000+0000",
+            "id": 11
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Hi Oleg,\n\nThe original purpose was to ensure a connection is open before writing, since stale connections are \nessentially closed.  We ran into a number of problems with connection reliability, particularly in the case \nof post methods which cannot be retried (BUG #19063).\n\nMike",
+            "date": "2004-06-08T19:33:58.000+0000",
+            "id": 12
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Hi Roland,\n\nYes, I like that.  It would give us some more flexibility and it avoids direct confusion with isOpen().   I'll \ngive it a try tonight.\n\nMike",
+            "date": "2004-06-08T19:36:52.000+0000",
+            "id": 13
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Mike,\nI remember that. I am not questioning the rationale of stale check. The question\nis if there's any good reason for isOpen to call isStale?\n\nRoland,\nI see one problem with this approach. In HTTP there's no such thing as\nOPEN_FOR_SURE. A perfectly valid connection at the time of getStatus call may go\nstale by the time HttpClient is actually ready to do the writing on that connection\n\nOleg",
+            "date": "2004-06-08T19:43:17.000+0000",
+            "id": 14
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Created an attachment (id=11788)\nPatch 3\n",
+            "date": "2004-06-08T19:53:58.000+0000",
+            "id": 15
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Well, how about that?\n\nOleg",
+            "date": "2004-06-08T19:54:33.000+0000",
+            "id": 16
+        },
+        {
+            "author": "Roland Weber",
+            "body": "Hi Oleg,\n\nI originally had plain OPEN in the list, but wanted to emphasize\nthe difference between OPEN and OPEN_OR_STALE. You could rename\nit to STILL_CONSIDERED_OPEN_AFTER_PERFORMING_A_STALE_CHECK ;-)\n\ncheers,\n  Roland",
+            "date": "2004-06-08T19:55:29.000+0000",
+            "id": 17
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Yes, that certainly clears things up.  The only issue, which I guess is actually\nnot that important, is the changing meaning of isOpen().  I was initially trying\nto avoid changing how it operated, but I guess it may not be worth it given that\nHttpClient users really shouldn't be using HttpConnections directly anyway.\n\nMike",
+            "date": "2004-06-08T20:07:46.000+0000",
+            "id": 18
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Oleg,\n\nI think this one is ready to be applied.  Do you want to take care of it or should I?\n\nMike",
+            "date": "2004-06-25T04:48:25.000+0000",
+            "id": 19
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Mike, it's been all your work. Go ahead, commit it. \n\nOleg",
+            "date": "2004-06-25T04:57:26.000+0000",
+            "id": 20
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Patch applied to HEAD.\n\nMike",
+            "date": "2004-06-25T10:36:11.000+0000",
+            "id": 21
+        }
+    ],
+    "component": "HttpClient (classic)",
+    "description": "getConnectionsInPool() is certainly a more intutive name. \nAt the same, as you already mentioned, certainly there need to be a connection killer method: \nMultiThreadedHttpConnectionManager.destroyIdleConnections(long idleTime) \n\nAlso, I would recommend one method which could spit out connection statistics at any time for the \ngiven Connection Manager. This will be great method for testing purpose as well. \nMultiThreadedHttpConnectionManager.displayCurrentStatistics(); \n----------------------------------\nCurent Connection Statistics\n----------------------------------\nTotal connectinos in Pool = 10\nOpen connectinos          = 3\nClose connections         = 5\nStale connections         = 2 \nAnd, if are even more adventurous we could extend our report to: \nAverage wait time for connection = 1356 ms\nMaximum wait time for connectino = 1892 ms",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "HTTPCLIENT-347",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "HTTPCLIENT",
+    "project": "HTTPCLIENT",
+    "summary": "MultiThreadedConnectionManager Accounting Problems",
+    "systemSpecification": true,
+    "version": "3.0 Alpha 2"
+}

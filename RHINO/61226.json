@@ -1,0 +1,59 @@
+{
+    "comments": [
+        {
+            "author": "rade@lshift.net",
+            "body": "Created attachment 19734\nthis patch fixes the problem",
+            "date": "20001127T09:49:18",
+            "id": 0
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "accepted patch--thanks",
+            "date": "20001127T15:14:07",
+            "id": 1
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "Kurt Westerfeld discovered that this change causes a regression in some \nJavaAdapter behavior he was depending on:\n\nSubject: \n        Rhino's Interpreted Mode vs. Compiled Mode and Dynamic Scopes\n   Date: \n        Mon, 1 Jan 2001 17:10:58 -0500\n   From: \n        \"Kurt Westerfeld\" <kurt@managedobjects.com>\n     To: \n        \"Norris Boyd\" <nboyd@atg.com>\n\n\n\n\nI am having very reproducible problems with using dynamic scopes and rhino when \ndealing with code that is\ngenerated via the Java Adapter (for swing/awt event handlers).  Event handlers I \nam creating using JavaAdapter\nare failing to find globally scoped variables whenever run in compiled form and \ndynamic scopes are on. \nHowever, the same code works fine in interpreted mode.\n \nI was going to try to make a little example here, but first I'd like to give you \nan example that used to work with\nRhino but now doesn't:\n\n     this.foo = 'bar'\n\n     var d = new java.awt.Dialog( new java.awt.Frame(), 'Tester', true )\n     d.addWindowListener\n     (\n        new java.awt.event.WindowListener()\n        {\n           windowClosing: function( evt )\n           {\n              // Fails?\n              java.lang.System.out.println( 'Value of foo: ' + foo )\n              d.setVisible( false )\n           }\n        }\n     )\n     d.setVisible( true )\n\nThis was an attempt to show you the dynamic scope problem, but the JavaAdapter \nactually fails to implement\nthe java.awt.event.WindowListener interface properly (it doesn't produce all the \ninterface members any more).\n \nSo, here's a fixed version, to show you the dynamic scope problem:\n\n     this.foo = 'bar'\n\n     var d = new java.awt.Dialog( new java.awt.Frame(), 'Tester', true )\n     d.addWindowListener\n     (\n        new java.awt.event.WindowListener()\n        {\n           windowClosing: function( evt )\n           {\n              // Fails?\n              java.lang.System.out.println( 'Value of foo: ' +  foo )\n              d.setVisible( false )\n           },\n           windowOpened: function( evt ) {},        // Note: all interface \nmembers now required?\n           windowClosed: function( evt ) {},\n           windowActivated: function( evt ) {},\n           windowDeactivated: function( evt ) {},\n           windowIconified: function( evt ) {},\n           windowDeiconified: function( evt ) {},\n        }\n     )\n     d.setVisible( true )\n\nSo, \"foo\" can't be found if the scope of the environment is setup in conjunction \nwith dynamic scopes.  I'm not\nsure why, but there it is.\n \nI believe I turned on dynamic scopes because I am populating a shared global \nscope chain, with an importer\ntop-level, and then another scope whose parent is the importer top-level where \nour statically-defined\n\"embedding extensions\" are defined.  Finally, the read-write \"global\" scope  is \ncreated and it's parent is set to\nthe embedding scope.\n \nBut, I don't think I need dynamic scopes now because all the embedding does is \npopulate with Scriptable (all\nJava native) objects.  This subject is still a little confusing to me, and I \ndon't think things are working 100% in\nmy implementation.\n \nAny help you can provide would be great.\n \n________________________________________________________________________\n  Kurt Westerfeld\n  Senior Software Architect\n  Managed Objects\n  mailto:kwester@ManagedObjects.com\n  703.770.7225\n  http://www.ManagedObjects.com\n \n  Managed Objects: manage technology > rule business\n\n\n\n\n",
+            "date": "20010102T15:57:33",
+            "id": 2
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "Created attachment 21563\nproposed patch",
+            "date": "20010102T15:58:26",
+            "id": 3
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Marking as fixed as the patch was committed long time ago.",
+            "date": "20031024T21:26:07",
+            "id": 4
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Trageting as resolved against 1.5R5",
+            "date": "20040213T11:34:42",
+            "id": 5
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Fixing wrong milestone assignment",
+            "date": "20040213T14:27:23",
+            "id": 6
+        }
+    ],
+    "component": "Core",
+    "description": "Take the following class and interface\n\npublic class B {\n    public String m2() { return \"m2\"; }\n    public String m4() { return \"m4\"; }\n}\n\npublic interface C {\n    public String m2();\n    public String m3();\n}\n\nNow try to execute the following js code:\n\nfunction F() {}\nF.prototype.m3 = function() { return \"m3\"; }\n\nvar f = new JavaAdapter(Packages.B, new F());\nf.m2(); //succeeds\nvar f = new JavaAdapter(Packages.B,Packages.C, new F());\nf.m2(); //fails\n\n\nThe problem is that JavaAdapter will generate override-methods for all methods \ndefined on any interface *regardless* of whether they are actually defined by \nthe JS object. The override masks the implementation of m2 in B.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "61226",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "P3 normal",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "JavaAdapter masks inherited methods if they implement an interface",
+    "systemSpecification": false,
+    "version": "other"
+}

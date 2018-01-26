@@ -1,0 +1,89 @@
+{
+    "comments": [
+        {
+            "author": "Stefan Guggisberg",
+            "body": "fixed in svn r532720",
+            "date": "2007-04-26T12:13:47.200+0000",
+            "id": 0
+        },
+        {
+            "author": "Tobias Bocanegra",
+            "body": "there are still some potential unsynchronized accesses:\n\n- itemExists(Path) calls evictItem()\n- itemExists(ItemId) calls evictItem()\n- dispose() does a cache.clear()\n- dump() accesses the cache as well",
+            "date": "2007-04-26T16:52:41.298+0000",
+            "id": 1
+        },
+        {
+            "author": "Stefan Guggisberg",
+            "body": "fixed in svn r533091",
+            "date": "2007-04-27T13:34:47.743+0000",
+            "id": 2
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "The fix introduces a deadlock between a reader and a writer session. See attached stacktrace.",
+            "date": "2007-05-04T08:18:58.588+0000",
+            "id": 3
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "The deadlock can be reproduced by running ConcurrentReadWriteTest.\n\nThe reading session must not lock the ItemManager while it retrieves an ItemState.",
+            "date": "2007-05-04T08:21:38.997+0000",
+            "id": 4
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "I suggest we use the Map itself as a monitor to synchronize access to the cache. The ItemManager instance (this) is already used as a monitor to synchronize access from multiple threads using the same session. I would rather get rid of those, but that's a different story.",
+            "date": "2007-05-04T08:46:05.156+0000",
+            "id": 5
+        },
+        {
+            "author": "Stefan Guggisberg",
+            "body": "fixed by applying patch (svn r35830).\n\nthanks!",
+            "date": "2007-05-07T10:18:36.328+0000",
+            "id": 6
+        },
+        {
+            "author": "Tobias Bocanegra",
+            "body": "This fix can cause deadlocks:\n\nThread 1: getNode() -> lock itemmanager -> read lock on shared-ism\nThread 2: save() -> write lock on shared-ism -> update() -> notifies all localisms -> notifies all itemmanagers -> lock on itemmanager\n\n",
+            "date": "2007-05-08T09:10:02.214+0000",
+            "id": 7
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "Are you sure, this is exactly what shouldn't happen anymore because we moved the synchronization from the ItemManager instance to the cache map. E.g.:\n\n     /**\n@@ -622,11 +628,13 @@\n      *\n      * @param id id of the item to remove from the cache\n      */\n-    private synchronized void evictItem(ItemId id) {\n+    private void evictItem(ItemId id) {\n         if (log.isDebugEnabled()) {\n             log.debug(\"removing item \" + id + \" from cache\");\n         }\n-        itemCache.remove(id);\n+        synchronized (itemCache) {\n+            itemCache.remove(id);\n+        }\n     }\n\n\nDo you have a thread dump that shows the deadlock?",
+            "date": "2007-05-08T09:44:19.199+0000",
+            "id": 8
+        },
+        {
+            "author": "Tobias Bocanegra",
+            "body": "oops. you're right. i didn't see your fix.",
+            "date": "2007-05-08T22:45:29.612+0000",
+            "id": 9
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Merged to the 1.3 branch in revision 577711.",
+            "date": "2007-09-20T12:11:31.802+0000",
+            "id": 10
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Additional merges in revisions 577729 and 577831.",
+            "date": "2007-09-20T17:43:55.127+0000",
+            "id": 11
+        }
+    ],
+    "component": "jackrabbit-core",
+    "description": "the access 'itemCache' map in ItemManager is mostly synchronized by not via the ItemStateListener methods:\n[...]\n    public void stateCreated(ItemState created) {\n        ItemImpl item = retrieveItem(created.getId());\n        if (item != null) {\n            item.stateCreated(created);\n        }\n    }\n[...]\n    private ItemImpl retrieveItem(ItemId id) {\n        return (ItemImpl) itemCache.get(id);\n    }\n[...]\n\nthis can result in a corruption of a map (eg subsequent accesses may result in a endless loop).",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "JCR-862",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "unsynchronized access on 'itemCache' map in ItemManager ",
+    "systemSpecification": true,
+    "version": "1.2.1, 1.2.2, 1.2.3, 1.3, 1.3.1"
+}

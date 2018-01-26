@@ -1,0 +1,203 @@
+{
+    "comments": [
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Fix is not feasible without breaking existing API. ",
+            "date": "2003-04-04T21:00:07.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "*** HTTPCLIENT-219 has been marked as a duplicate of this bug. ***",
+            "date": "2003-06-03T22:45:22.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Mike,\nI think you were going to take this one over. So, I reassign the report back to\nthe commons-httpclient-dev@jakarta.apache.org\n\nOleg",
+            "date": "2003-07-21T20:31:56.000+0000",
+            "id": 2
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Thank you.\n\nMike",
+            "date": "2003-07-21T20:47:20.000+0000",
+            "id": 3
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Created an attachment (id=7445)\nPatch 1\n",
+            "date": "2003-07-22T19:48:33.000+0000",
+            "id": 4
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Here's a first attempt at this refactor.  This patch is not complete but I would\nlike some input before I do any major polishing.  Here is what's new:\n\n - Retry and redirect logic have been moved to a new class, HttpMethodSession.\n - Header[] getResponseHeaders(String) has been added to HttpMethod.\n - Support for \"locking\" has been added to HttpConnection.  This allows the\nHttpMethodSession to hold on to connections between redirects/retries.\n - HttpMethodBase.used is now being ignored.  Any thoughts on this method. \nShould this just be depreacted?\n - realm and proxyRealm have been deprecated in HttpMethodBase as they are now\nhandled in HttpMethodSession.  These probably need to be faked.\n - HttpMethodBase.getRecoverableExceptionCount() has been deprecated.  This\nprobably needs to be faked.\n - a test NoHostHttpConnectionManager has been added.\n - all of the various tests executing methods directly have been updated.  Note:\n only those that failed have been updated, this needs to be completed.\n - TestNoHostBase has been added.\n\nWhat has not been done:\n\n - ConnectMethod support has not been added.  This is my next task.\n - Robust comments and logging have not been added.\n\nMike",
+            "date": "2003-07-22T19:49:14.000+0000",
+            "id": 5
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "I REALLY like the way things are shaping up. These are those few comments that I\nhave at the moment\n\n* In particular I like the idea of HttpMethodSession (maybe just HttpSession?).\nI would make an interface out of it, however, as in the future we may give users\nan option to provide a pluggable custom implementation of the HTTP session. \n\n* I would not deprecate 'used' flag as yet. I helps prevent the user from\nexecuting the same method multiple times and getting ambiguous results. In the\nfuture (3.0) this flag should disappear along with the entire concept of method\nrecycling.\n\n* I would pass state & connection manager as HttpMethodSession's constructor\nparameters. We, then, later may completely do away with those setter methods\n(setSoTimeout, setConnectionTimeout, setHttpConnectionFactoryTimeout and so on),\nas I think we should be using a hash map to store HttpClient preferences instead\nof just keeping on extending APIs with all those numerous options. I'll expand\nlater on this point when we get to discuss the new preferences architecture.\n\n* I would also provide Header[] getRequestHeaders(String) at the very least for\nthe sake of API completeness.\n\n+        if (method instanceof HttpMethodBase) {\n+            return ((HttpMethodBase) method).getMethodRetryHandler();\n+        } else {\n+            return new DefaultMethodRetryHandler();\n+        }\n\n* IMHO things like that should strongly hint at some design improvements. Do you\nthink there is way doing without that ugly HttpMethodBase cast? I would suggest\nadding getMethodRetryHandler to HttpMethod interface, if there are no other\nalternatives\n\nOleg",
+            "date": "2003-07-23T01:52:32.000+0000",
+            "id": 6
+        },
+        {
+            "author": "Eric Johnson",
+            "body": "I added the \"recoverableExceptionCount\" for test case purposes.  I think\ndeprecating it (or removing it - are we working on 3.0?), would be OK, and the\ndeprecated implementation could return a constant.  The only question here would\nbe whether the corresponding test case actually tests the relevant code.\n\nAlas, I don't have time this week to look at the patch, so the above is just\nbased on your comments.",
+            "date": "2003-07-23T02:19:29.000+0000",
+            "id": 7
+        },
+        {
+            "author": "Michael Becke",
+            "body": "> * In particular I like the idea of HttpMethodSession (maybe just HttpSession?).\n> I would make an interface out of it, however, as in the future we may give users\n> an option to provide a pluggable custom implementation of the HTTP session. \n\nI agree the name is not good.  HttpSession is already is use in javax.servlet so I would suggest \nagainst that as well.  Any other ideas?\n\nWe could certainly move \"HttpMethodSession\" to an interface.  I would like to wait a little on that \nthough.  I imagine it will be changing quite a bit for a while and I do not want to expose something \nso volatile.  \n\n> * I would not deprecate 'used' flag as yet. I helps prevent the user from\n> executing the same method multiple times and getting ambiguous results. In the\n> future (3.0) this flag should disappear along with the entire concept of method\n> recycling.\n\nThe problem is that this also keeps HttpMethodSession from executing a method more than once.  \nWe could add a hack to HttpMethodBase to override used in HttpMethodSession but that would be \na little nasty.\n\n> * I would pass state & connection manager as HttpMethodSession's constructor\n> parameters. We, then, later may completely do away with those setter methods\n> (setSoTimeout, setConnectionTimeout, setHttpConnectionFactoryTimeout and so on),\n> as I think we should be using a hash map to store HttpClient preferences instead\n> of just keeping on extending APIs with all those numerous options. I'll expand\n> later on this point when we get to discuss the new preferences architecture.\n\nMy impression was that preferences would mostly be just for default values.  Do you envision the \nability to create a custom set of preferences for each method execute?  \n\nMy preference would be to leave these alone for now until we know what the preferences will look \nlike.  If we keep HttpMethodSession hidden for now we won't have to look at the ugliness.\n\n> * I would also provide Header[] getRequestHeaders(String) at the very least for\n> the sake of API completeness.\n\nI agree.\n\n> +        if (method instanceof HttpMethodBase) {\n> +            return ((HttpMethodBase) method).getMethodRetryHandler();\n> +        } else {\n> +            return new DefaultMethodRetryHandler();\n> +        }\n\n> * IMHO things like that should strongly hint at some design improvements. Do you\n> think there is way doing without that ugly HttpMethodBase cast? I would suggest\n> adding getMethodRetryHandler to HttpMethod interface, if there are no other\n> alternatives\n\nYes, this is not pretty.  There are a number of places where things are accessible from \nHttpMethodBase but not HttpMethod.  In general we have 3 options for these cases:\n\n1) do a nasty hack like above\n2) move the methods to HttpMethod\n3) deprecate/remove the code\n\nSo far I have been leaning towards 1 and 3 so that HttpMethod does not have to be changed too \nmuch.  Having said that I wonder if anyone is implementing HttpMethod directly.  Especially when \nconsidering how complicated HttpMethodBase is.  Though I understand the general appeal of \ninterfaces I wonder if the HttpMethod interface is really necessary.  I do not expect that we will \nremove HttpMethod any time soon but I wonder if we should worry about making additions to it.\n\nMike\n",
+            "date": "2003-07-23T11:06:58.000+0000",
+            "id": 8
+        },
+        {
+            "author": "Roland Weber",
+            "body": "If my understanding is correct without looking at the source code, the\npurpose of HttpMethodSession is to execute several methods, or one method\nmultiple times, in order to follow redirects. So how about HttpMethodChain\nor HttpMethodSequence? Or giving it a more personal name, like\nHttpMethodChainer or HttpRedirector?\n\nAs for the 'used' flag, does HttpMethodSession have to execute the same\nHttpMethod object without recycling? If so, you could add a reset() or\nredirect(URI) method that resets the 'used' flag and performs the other\nadjustments required to execute the redirect. Or would it be possible to\nsimply recycle the method, just as an application would have to do it?\n\nTo keep the getters and setters for options out of a class, I like to\nintroduce XxxOptions classes. HttpClientOptions and HttpMethodOptions\njump into my mind here. All that remains in the original class is one\ngetter and setter for the options. When overdesigning, one might define\nan interface with just the getter methods, and a default implementation\nwith getters and setters. Just to point out that the class will not\nmodify the options passed to it :-)\n\nRoland",
+            "date": "2003-07-23T18:16:23.000+0000",
+            "id": 9
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "I like HttpRedirector, but it is not quite representative of the class \nfunctionality, which besides redirects is supposed to be handing authentication \n& retries. How about HttpMethodDirector?\n\nOleg",
+            "date": "2003-07-23T22:20:20.000+0000",
+            "id": 10
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Oops...  I originally sent this to the mailing list but meant to post is here.\n\n> If my understanding is correct without looking at the source code, the\n> purpose of HttpMethodSession is to execute several methods, or one method\n> multiple times, in order to follow redirects. So how about HttpMethodChain\n> or HttpMethodSequence? Or giving it a more personal name, like\n> HttpMethodChainer or HttpRedirector?\n\nYes, one method multiple times.\n\nI think I like Oleg's HttpMethodDirector the best so far.  There is still room for \nimprovement though.  How about HttpMethodCoordinator or \nClassThatDoesStuffWithHttpMethods:)\n\n> As for the 'used' flag, does HttpMethodSession have to execute the same\n> HttpMethod object without recycling? If so, you could add a reset() or\n> redirect(URI) method that resets the 'used' flag and performs the other\n> adjustments required to execute the redirect. Or would it be possible to\n> simply recycle the method, just as an application would have to do it?\n\nThe same HttpMethod must be re-executed for each retry/redirect.  Previously this \nwas handled inside HttpMethod so we did not have to worry about resetting used \nexternally.   Recycling is not really an option as we would have to reconfigure the \nmethod each time.  This would require knowing or getting all of the values set on \nthe HttpMethod.  A reset() method or something of the sort could be added to \nHttpMethod for handling this.  This corresponds to option 2 from my previous \nemail.  This is probably the best option assuming that we want to keep used at all.\n\n> To keep the getters and setters for options out of a class, I like to\n> introduce XxxOptions classes. HttpClientOptions and HttpMethodOptions\n> jump into my mind here. All that remains in the original class is one\n> getter and setter for the options. When overdesigning, one might define\n> an interface with just the getter methods, and a default implementation\n> with getters and setters. Just to point out that the class will not\n> modify the options passed to it :-)\n\nSounds like a reasonable approach.  I agree that having a bunch of getters and \nsetters is not ideal, though I think this is a separate issue.  This should be fixed/\nredesigned when we get to implementing configuration.  For now I prefer keeping \nthis hidden or just unstable until we get there.\n\nMike\n\n",
+            "date": "2003-07-24T10:37:40.000+0000",
+            "id": 11
+        },
+        {
+            "author": "Roland Weber",
+            "body": "How about using a musical term? HttpMethodConductor :-)\nBut I also like the HttpMethodDirector.",
+            "date": "2003-07-24T12:34:36.000+0000",
+            "id": 12
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Well, then, do not we want to be seen as contemporary? How about \nHttpMethodJockey? HMJ in short?\n\n(Mini-Me on behalf of Me: Evil Comrade Oleg is just trying to be humorous)\n",
+            "date": "2003-07-24T19:12:24.000+0000",
+            "id": 13
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Created an attachment (id=7734)\npatch 2\n",
+            "date": "2003-08-11T09:16:21.000+0000",
+            "id": 14
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Hello All.  Sorry for the long delay on this one.  Attached now is a second attempt at this fix.  This \npatch is still not particularly polished but it should be fully functional now.  Here's what's new:\n\n - HttpMethodSession has been renamed to HttpMethodDirector a per Oleg's suggestion.\n - Tunneled SSL support has been added and ConnectMethod has been changed.  The \nConnectMethod(HttpMethod) constructor is now deprecated and the wrapped method is no longer \nused.\n - HttpMethodDirector has been refactored a little and some comments have been added.\n\nPlease take a look at this when you get a chance.  I would like to commit an early version of this \nbefore too long.  It has been fairly difficult to maintain this patch as other changes have been \nmade to HttpMethodBase.\n\nGood Night,\n\nMike",
+            "date": "2003-08-11T09:24:50.000+0000",
+            "id": 15
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Mike,\nI had a look at the patch and find it good to be committed. Most probably we \nwould still need to massage the HttpMethodDirector a bit, but overall it is a \nHUGE improvement.  Code has become much cleaner. Really great work\n\nAre you planning to deprecate the following method\n\nHttpMethodBase#getDoAuthentication()\nHttpMethodBase#getFollowRedirects()\nHttpMethodBase#setDoAuthentication()\nHttpMethodBase#setFollowRedirects()\n\nThey seem to have become completely superfluous \n\nOleg",
+            "date": "2003-08-11T23:06:06.000+0000",
+            "id": 16
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Oleg,\n\nI definitely agree that some major refactoring is needed.  We should be able to do that once \ncommitted.  If there are no objections from anyone else I will commit tonight.\n\nHow do you feel about the changes to ConnectMethod?\n\nI think we should keep doAuthentication and followRedirects as they are still in use and do not \nhave a replacement yet.  Once we have a configuration architecture we should be able to remove/\ndeprecate them if we want.\n\nMike",
+            "date": "2003-08-12T04:09:43.000+0000",
+            "id": 17
+        },
+        {
+            "author": "Laura Werner",
+            "body": "I agree with Oleg: this is really nice.  A few comments you can take or leave...\n\n* It's a bit ugly that HttpMethodDirectory has to be default-constructed and\nthen have all its properties set with \"set\" methods, because this means you can\nget it into an inconsistent state fairly easily.  But since it's not an API\nclass, it doesn't matter right now.\n\n* As Oleg said, getMethodRetryHandler is disgusting, but you knew that already.\n:-)  Since HttpMethod is a mess and will probably go away in 3.0 (I hope), it's\nprobably OK to leave it this way for now.  The retry handler could also go into\na configuration object, but that would make it global and I think clients need\nthe flexibility to change it for individual methods.\n\n* Should realms and proxyRealms be lazy-allocated?  It's probably a premature\noptimization, but I thought I'd throw it out there.\n\n* The CustomHttpConnection example is now using a deprecated ConnectMethod\nconstructor.\n\n* TestGetMethodLocal is calling a now-deprecated method on HttpMethodBase\n\n* What's the \"locked\" property on HttpConnection used for?  That sort of\nmodality in an object can be confusing.  I couldn't find anyone who sets it to\ntrue, though.\n\nLike I said, it looks good.  I don't have any objection to checking it in.\n* I like what you did with ConnectMethod",
+            "date": "2003-08-12T04:58:16.000+0000",
+            "id": 18
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Hi Laura,\n\nThank you for your comments.  Everything you have mentioned should be put on the HttpClient \nTODO list, most of them for the near future.\n\n> * It's a bit ugly that HttpMethodDirectory has to be default-constructed and\n> then have all its properties set with \"set\" methods, because this means you can\n> get it into an inconsistent state fairly easily.  But since it's not an API\n> class, it doesn't matter right now.\n\nI definitely agree.  We should look at a better option for this and other configuration needs before \nlong.\n\n> * As Oleg said, getMethodRetryHandler is disgusting, but you knew that already.\n> :-)  Since HttpMethod is a mess and will probably go away in 3.0 (I hope), it's\n> probably OK to leave it this way for now.  The retry handler could also go into\n> a configuration object, but that would make it global and I think clients need\n> the flexibility to change it for individual methods.\n\nYup, that's pretty much the situation.  It's ugly but I think we need to keep it for now.\n\n> * Should realms and proxyRealms be lazy-allocated?  It's probably a premature\n> optimization, but I thought I'd throw it out there.\n\nWe certainly could.  They are actually never read at the moment so we could be really lazy and \nnever allocate them :) This is something that should get worked out after some refactoring.  I just \nleft them in as a reminder.\n\n> * The CustomHttpConnection example is now using a deprecated ConnectMethod\n> constructor.\n\nYes, we probably want to rework or remove this example then.\n\n> * TestGetMethodLocal is calling a now-deprecated method on HttpMethodBase\n\nWe should remove that once we have a replacement. It might have to wait until we do the request/\nresponse split.\n\n> * What's the \"locked\" property on HttpConnection used for?  That sort of\n> modality in an object can be confusing.  I couldn't find anyone who sets it to\n> true, though.\n\nYes, it's a bit of hidden magic.  It's there to prevent a connection from getting released between \nmethod retries.  Previously this was handled by the inExecute flag of HttpMethodBase but that was \nno longer possible once retries were moved.  We should definitely look at a better solution for this.  \n\nI believe it is set to true in only one place(HttpMethodDirector.establishValidOpenConnection()).\n\n> Like I said, it looks good.  I don't have any objection to checking it in.\n> * I like what you did with ConnectMethod\n\nThank you.  I appreciate all of the constructive comments.\n\nMike",
+            "date": "2003-08-12T07:20:33.000+0000",
+            "id": 19
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Patch applied.  Let the cleanup begin...\n\nMike",
+            "date": "2003-08-12T09:38:34.000+0000",
+            "id": 20
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Created an attachment (id=9001)\nCleanup patch 1 (take 1)\n",
+            "date": "2003-11-09T05:43:32.000+0000",
+            "id": 21
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Folks,\nSomehow this crucial patch got neglected recently. As I was working on resolving\nanother bug I found a few things about HttpMethodDirector which I thought might\nbe potentially error-prone. For instance, I found the recursive invocation of\nMethodExecute particularly questionable. So, I took liberty of refactoring\nthings quite a bit. \n\nMike, I did go quite tough on your code, and changed a lot, so please do not\nhesitate to point out if you find anything disagreeable. \n\nOleg",
+            "date": "2003-11-09T05:44:40.000+0000",
+            "id": 22
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Hi Oleg,\n\nI think these changes are fine.  Functionally there does not seem to be much different, but if it \nincreases readability I'm fine with it.  \n\nThe TestHttpConnectionManager.testConnectMethodFailureRelease() test is now failing for me.  \nThis patch is not the cause I think.  It is possible that this test failed previously.  It seems the \nproblem is that Connect methods that fail don't result in closing the connection.  So even if the \nconnect results in a non 200 result the connection is still considered open and is reused.  Any \nthoughts?\n\nMike",
+            "date": "2003-11-10T09:44:14.000+0000",
+            "id": 23
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Mike,\nCuriously enough, TestHttpConnectionManager.testConnectMethodFailureRelease()\nworks just fine for me with and without the patch. I do not have a slightest\nidea as to why it fails on you. It must be some sort of local setting of yours.\nWhat kind of setup are you running?\n\nOleg",
+            "date": "2003-11-10T16:51:03.000+0000",
+            "id": 24
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Mike, I checked in the patch. I feel, however, that the code still needs a bit\nmore polish. Another patch is to follow. I will also retest all the combinations\nof proxy + target server authentication.\n\nOleg",
+            "date": "2003-11-11T07:24:09.000+0000",
+            "id": 25
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Created an attachment (id=9133)\nCleanup patch 2 (take 1)\n",
+            "date": "2003-11-17T00:40:56.000+0000",
+            "id": 26
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Folks,\nMy previous patch completely broke SSL via proxy logic by not performing\nauthentication on CONNECT methods. This patch fixes the problem along with some\nadditional code refactoring. Please let me know what you think. \n\nOleg",
+            "date": "2003-11-17T00:43:36.000+0000",
+            "id": 27
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "If there are no objections, I'll apply the patch tonight around 21:00GMT\n\nOleg",
+            "date": "2003-11-19T18:46:33.000+0000",
+            "id": 28
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Just committed the patch. As far as I am concerned that appears to be it. \n\nMike, could you please have a look at what I have done to your code, when you\nhappen to have a moment to spare? If all these changes are OK with you, I think\nthe bug can be closed. Otherwise, let me know what needs to be improved/reworked\n\nOleg",
+            "date": "2003-11-20T05:37:40.000+0000",
+            "id": 29
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Closed some time ago.",
+            "date": "2003-12-11T10:54:43.000+0000",
+            "id": 30
+        }
+    ],
+    "component": "HttpClient (classic)",
+    "description": "Redirects to different hosts, ports and protocols are currently prevented. \nHistoricly, HttpMethodBase.checkValidRedirects() is used to prevent these types\nof redirects due how state information was being managed in the connection.  \n\nMuch has changed since then.  We should relax the check and allow for redirects\n between hosts and ports. \n\nRedirects across protocols should not be considered at this time as there are\nother issues related to security that is best left up to the user of HttpClient.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "HTTPCLIENT-154",
+    "issuetypeClassified": "RFE",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Minor",
+    "product": "HTTPCLIENT",
+    "project": "HTTPCLIENT",
+    "summary": "Allow redirects between hosts and ports",
+    "systemSpecification": false,
+    "version": "2.0 Alpha 1"
+}

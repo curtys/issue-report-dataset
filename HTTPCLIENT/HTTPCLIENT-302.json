@@ -1,0 +1,119 @@
+{
+    "comments": [
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Hhm, I/O exceptions thrown in writeRequest method are supposed to be treated as\nrecoverable, causing the writeRequest method to be retried without releasing the\nconnection. What kind of exception are you getting exactly? Besides, any idea if\nCVS HEAD also exhibits this problem?\n\nOleg",
+            "date": "2003-12-10T05:59:32.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Mohammad Rezaei",
+            "body": "The unfortunate reality with IOExceptions is that they can occur when you least\nexpect them. I ran into this while doing rigorous exception testing (see the\ntest code below).\n\nThe statement \"writeRequest method are supposed to be treated as\nrecoverable\" appears to be false: the method signature has IOException in it. It\nis not possible to remove that either, because an IOException can truly occur\nduring the write. Of course, it is possible to change the method signature to\n\"throws HttpRecoverableException\" and catch other exceptions and wrap them as\nHttpRecoverableException. However, from the HTTP spec, a generic writeRequest is\n*not* simply retriable (it is not considered idempotent for POST, PUT, etc; see\nsection 9.1 of the RFC). I would strongly discourage wrapping the IOException\ninside writeRequest.\n",
+            "date": "2003-12-11T00:56:57.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "> The statement \"writeRequest method are supposed to be treated as\n> recoverable\" appears to be false: the method signature has IOException in it\n\nFeel free to examine the source code and double-check. There is one situation I\nknow of, when I/O exceptions would not be rethrown as HttpRecoverableException,\nthat is, the connection is not known to have successfully completed a write\noperation at least once. In all other cases, I/O exceptions are rethrown as\nHttpRecoverableException (derived from IOException).\n\n> However, from the HTTP spec, a generic writeRequest is *not* simply \n> retriable (it is not considered idempotent for POST, PUT, etc; see\n> section 9.1 of the RFC). I would strongly discourage wrapping the IOException\n> inside writeRequest\n\nIf understand the word of the spec correctly the section 9.1 postulates that\n\"... methods can also have the property of \"idempotence\" in that ... the\nside-effects of N > 0 identical requests is the same as for a single request...\"\n\nHttpClient never automatically re-executes requests on a read operation failure.\nAuto-recovery MAY takes place (if enabled) on a write operation (that is, the\nrequest body never makes it to the server in its entirety). That guarantees that\nthere's at least one, but not more that one, successful request for a given\nresource. Feel free to correct me if I am missing something. Besides,\nauto-recovery can be customized through the use of MethodRetryHandler interface\n\nAgain, any idea under what circumstances the reported problem occurs? Do you\nhappen to know if CVS HEAD also exhibits the problem?\n\nOleg",
+            "date": "2003-12-11T01:51:31.000+0000",
+            "id": 2
+        },
+        {
+            "author": "Mohammad Rezaei",
+            "body": "This is an interesting discussion and I really appreciate the attention, time\nand effort that goes into answering this.  \n\nLet me answer the questions first:\n> any idea under what circumstances the reported problem occurs? \nThe problem has not (yet?) occured in running code. It was detected during\n\"exception testing\". By \"exception testing\" I mean I put a line of code that says:\n\nif (CAUSE_RANDOM_ERROR) if (Math.random() > ERROR_RATE) throw new\nIOException(\"Random error, for testing only!\");\n\nanywhere an IO operation can occur. You'd be amazed the kinds of issue that come\nto light when you do this. Essentially, it is a decent way to test all the error\nhandling code that people write but only execute under rare circumstances.\n\n> Do you happen to know if CVS HEAD also exhibits the problem?\nThis is against RC2. The CVS codepath is quite different, but from reading the\nsource, I'm don't think the problem is fixed. Essentially, the connection is\nonly released if the response body is consumed. If the write failed, there is no\nbody to consume and therefore, the release won't occur.\n\n> Feel free to examine the source code and double-check. There is one situation I\n> know of, when I/O exceptions would not be rethrown as HttpRecoverableException,\n> that is, the connection is not known to have successfully completed a write\n> operation at least once. In all other cases, I/O exceptions are rethrown as\n> HttpRecoverableException (derived from IOException).\n\nFrom reading the code, it seems the outputstream is wrapped inside\nWrappedOutputStream which rethrows any exceptions *inside its methods* as\nrecoverable. There are two problems with this approach. \n1) IOExceptions can (and do) occur outside the methods wrapped by\nWrappedOutputStream. 2 examples: a) FilePart.java line 258 is reading a file.\nThat can throw an IOException. No amount of wrapping of the OutputStream will\ncatch this. b) A custom method that further wraps the stream (e.g. with an\nObjectOutputStream) may throw errors without ever touching the underlying stream\n(e.g. NotSerializableException).\n2) RuntimeExceptions have the same effect.\n\n\n> HttpClient never automatically re-executes requests on a read operation failure.\n> Auto-recovery MAY takes place (if enabled) on a write operation (that is, the\n> request body never makes it to the server in its entirety). That guarantees that\n> there's at least one, but not more that one, successful request for a given\n> resource. Feel free to correct me if I am missing something. Besides,\n> auto-recovery can be customized through the use of MethodRetryHandler interface\n\nThanks for the clarification. You still have to be extremely careful if you\nenable auto recovery on write. Just because the write failed somewhere, doesn't\nmean the server didn't do anything. Take the simple case of a multi-part mime\nmessage consisting of several files (to be saved on the server). If the last\nfile being sent dies with an IOException (e.g. the network drive it was on went\nto lala land), the server very likely already received and processed all the\nfiles prior to that. Resending those files can cause major issues (for example,\nthe server may refuse to overwrite an existing file,  a batch process waiting\nfor a file may rerun some transactions, etc).\n\nHow about this fix: add\n                catch (IOException e) {\n                    releaseConnection = true;\n                    throw e;\n                } catch (RuntimeException e) {\n                    releaseConnection = true;\n                    throw e;\n                }\nto the last try clause in HttpMethodDirector#executeWithRetry ?\n\nThanks\nMoh\n\n",
+            "date": "2003-12-11T03:18:30.000+0000",
+            "id": 3
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "> if (CAUSE_RANDOM_ERROR) if (Math.random() > ERROR_RATE) throw new\n> IOException(\"Random error, for testing only!\");\n\nOK. I see.\n\n> From reading the code, it seems the outputstream is wrapped \n> insideWrappedOutputStream which rethrows any exceptions *inside its methods* \n> asrecoverable. There are two problems with this approach. \n\nMohammad, actually that is that way it is supposed to be. IOException thrown\nwhen retrieving request content or runtime exceptions are not recoverable HTTP\ntransport exceptions and should not be treated as such \n\n> Thanks for the clarification. You still have to be extremely careful if you\n> enable auto recovery on write.\n\nAgreed. I personally am not in favour of having auth-recovery activated per\ndefault, but according to the feedback we were getting from our users the\nmajority did not appear to share that conviction.\n\n> How about this fix: add\n>                 catch (IOException e) {\n>                     releaseConnection = true;\n>                     throw e;\n>                 } catch (RuntimeException e) {\n>                     releaseConnection = true;\n>                     throw e;\n>                 }\n> to the last try clause in HttpMethodDirector#executeWithRetry ?\n\nThat can be done. I would not like to change 2.0 branch, though, for the\nfollowing reason: the invocation of HttpClient#execute(HttpMethod) MUST be\nfollowed by HttpMethod#releaseconnection regardless of the outcome (preferably\nby calling it in the finally clause). This is a part of HttpClient API contract.\nSo, personally do not see this bug serious enough to warrant modification of\nHttpClient 2.0 which is the release candidate phase.\n\nOleg",
+            "date": "2003-12-11T04:01:01.000+0000",
+            "id": 4
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Created an attachment (id=9607)\nTest case and 2.0 patch\n",
+            "date": "2003-12-17T11:03:40.000+0000",
+            "id": 5
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Here's a test case and a possible fix for 2.0.  I'm not sure this is exactly what we want, but it's a \nstart.\n\nMike",
+            "date": "2003-12-17T11:05:56.000+0000",
+            "id": 6
+        },
+        {
+            "author": "Sven",
+            "body": "i believe that this has something to do with the fact, that the connection would\nhave to be closed because HttpClient cannot finish the request due to the lack\nof data.\nthe anoying thing for me was, that HttpClient tries to finish a HTTP-request if\none calls releaseConnection(). finishing a HTTP-request ment downloading the\nrest of the requested data for me. in this case this behaviour is even more fatal.\n\nthis is a serious issue since it causes connections to idle around if this error\nhappens - if i understand everything correctly.",
+            "date": "2003-12-17T11:40:18.000+0000",
+            "id": 7
+        },
+        {
+            "author": "Mohammad Rezaei",
+            "body": "Same condition occurs on a RuntimeException. Mike's patch can easily be updated\nto take care of it.\n\nThanks\nMoh\n",
+            "date": "2003-12-17T22:42:31.000+0000",
+            "id": 8
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Created an attachment (id=9617)\nPossible patch 2\n",
+            "date": "2003-12-18T10:00:36.000+0000",
+            "id": 9
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Okay.  Here it is.  This one releases and closes the connection in the event of an unrecoverable \nexception in HttpMethodBase.processRequest().  Let's give it a try and see how it holds up.\n\nMike",
+            "date": "2003-12-18T10:04:13.000+0000",
+            "id": 10
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "+1 to be committed.\n\nOleg",
+            "date": "2003-12-19T02:31:49.000+0000",
+            "id": 11
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Patch applied to 2.0.\n\nMike",
+            "date": "2003-12-19T14:02:29.000+0000",
+            "id": 12
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Created an attachment (id=9904)\nPatch against HEAD (take 1)\n",
+            "date": "2004-01-12T04:32:15.000+0000",
+            "id": 13
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Mike's patch ported to CVS HEAD. Please review",
+            "date": "2004-01-12T04:34:54.000+0000",
+            "id": 14
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Looks good.\n\nMike",
+            "date": "2004-01-13T05:07:35.000+0000",
+            "id": 15
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Patch committed to CVS HEAD. \nOleg.",
+            "date": "2004-01-13T07:04:08.000+0000",
+            "id": 16
+        }
+    ],
+    "component": "HttpClient (classic)",
+    "description": "The execute method has the following (simplified) flow:\n1) get connection\n2) write request\n3) read result\n4) release connection.\nThe release in step 4 happens when the input is completely read, which works fine.\nIf an exception occurs between steps 1 and 2, the connection is also released\nproperly.\nHowever, if an exception occurs during step 2, the connection is never released\nback and the connection manager eventually runs out of connections.\n\nThe easiest way to test this is to make a simple subclass of PostMethod that\noverrides the writeRequest method:\n\npublic class TestConnectionReleaseMethod extends PostMethod\n{\n    protected void writeRequest(HttpState state, HttpConnection conn) throws\nIOException, HttpException\n    {\n         throw new IOException(\"for testing\");\n    }\n}",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "HTTPCLIENT-302",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "HTTPCLIENT",
+    "project": "HTTPCLIENT",
+    "summary": "exception during writeRequest leaves the connection un-released",
+    "systemSpecification": false,
+    "version": ""
+}

@@ -1,0 +1,83 @@
+{
+    "comments": [
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Created an attachment (id=9950)\nPatch (take 1)\n",
+            "date": "2004-01-15T01:52:06.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Please review.\n\nOleg",
+            "date": "2004-01-15T01:52:33.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Hi Oleg,\n\nA few comments:\n\n - Should HttpMethodDirector have it's own version of the auth defaults?  It seems like this should \nbe left to the params.\n - When new schemes are added, they will have to be added to the \nAuthPolicy.AUTH_SCHEME_PRIORITY param in order to work.  This should probably be documented \nin AuthPolicy.registerAuthScheme().\n\nMike",
+            "date": "2004-01-15T03:10:48.000+0000",
+            "id": 2
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": ">  - Should HttpMethodDirector have it's own version of the auth defaults?  \n> It seems like this should be left to the params.\n\nI did not feel like giving users the possibility to mess around with the default\nauthentication preferences to avoid their misuse. Therefore I wanted to keep the\nDEFAULT_AUTH_PREFS private. On the other hand I do agree that HttpClientParams\nor AuthPolicy would be a better home for auth defaults.\n\n>  - When new schemes are added, they will have to be added to the \n> AuthPolicy.AUTH_SCHEME_PRIORITY param in order to work.  \n> This should probably be documented in AuthPolicy.registerAuthScheme().\n\nGood point. I just realised that this is quite lousy. I think auth defaults\nshould be derived from the AuthPolicy. I'll try to come up with a better solution. \n\nA new patch to follow.\n\nThanks, Mike",
+            "date": "2004-01-15T05:05:19.000+0000",
+            "id": 3
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Created an attachment (id=9977)\nPatch (take 2)\n",
+            "date": "2004-01-16T22:35:36.000+0000",
+            "id": 4
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "What about this? Let me know.\n\nOleg",
+            "date": "2004-01-16T22:37:59.000+0000",
+            "id": 5
+        },
+        {
+            "author": "Ortwin Gl\u00fcck",
+            "body": "Please also update the Authentication Guide on the website and optionally\ninculde and example. I am saying this because this functionality is now somewhat\nhard to find for the users.",
+            "date": "2004-01-28T18:02:40.000+0000",
+            "id": 6
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Created an attachment (id=10112)\nPatch (take 3)\n",
+            "date": "2004-01-29T01:47:08.000+0000",
+            "id": 7
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "An example added. Documentation to be updated after the 3.0 API freeze. \n\nI'll submit the patch tonight around 23:00 CET if no one complains by then.\n\nOleg",
+            "date": "2004-01-29T01:50:46.000+0000",
+            "id": 8
+        },
+        {
+            "author": "Michael Becke",
+            "body": "No complaints here.\n\nMike",
+            "date": "2004-01-29T05:26:17.000+0000",
+            "id": 9
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Patch committed. \n\nOleg",
+            "date": "2004-01-29T05:40:06.000+0000",
+            "id": 10
+        }
+    ],
+    "component": "HttpClient (classic)",
+    "description": "My post to the user group.  The developer replied suggesting I enter an \nenhancement request.\n\n-----Original Message-----\nFrom: Gustafson, Vicki [mailto:vicki.gustafson@us.didata.com]\nSent: Thursday, 12 December 2002 5:03 AM\nTo: Jakarta Commons Users List\nSubject: [HttpClient] Authentication using Basic\n\nIs there a way to specify which authentication scheme you would like the client \nto use if several schemes are returned in the www-auth header?\n\nI'm performing a simple post using the httpClient.  The server returns a 401 at \nwhich point the httpClient tries to authenticate with the server.  The \nfollowing header is received:\n\nAttempting to parse authenticate header: 'WWW-Authenticate: Negotiate, NTLM, \nBasic realm=\"XXXwhateverXXX\"\n\nI need to authenticate using Basic, but the Authenticator class will only try \nthe most secure scheme:  NTLM.  Is there a setting or parameter I can set to \nforce the httpClient to use Basic?\n\nthanks,\nVicki\n\n// determine the most secure request header to add\nHeader requestHeader = null;\nif (challengeMap.containsKey(\"ntlm\")) {\n    String challenge = (String) challengeMap.get(\"ntlm\");\n    requestHeader = Authenticator.ntlm(challenge, method, state,\n    responseHeader);\n} else if (challengeMap.containsKey(\"digest\")) {\n    String challenge = (String) challengeMap.get(\"digest\");\n    String realm = parseRealmFromChallenge(challenge);\n    requestHeader = Authenticator.digest(realm, method, state,\n    responseHeader);\n} else if (challengeMap.containsKey(\"basic\")) {\n    String challenge = (String) challengeMap.get(\"basic\");\n    String realm = parseRealmFromChallenge(challenge);\n    requestHeader = Authenticator.basic(realm, state, responseHeader);\n} else if (challengeMap.size() == 0) {\n    throw new HttpException(\"No authentication scheme found in '\"\n    + authenticateHeader + \"'\");\n} else {\n    throw new UnsupportedOperationException(\n    \"Requested authentication scheme \" + challengeMap.keySet()\n    + \" is unsupported\");\n}\n\n--\nTo unsubscribe, e-mail:   <mailto:commons-user-unsubscribe@jakarta.apache.org>\nFor additional commands, e-mail: <mailto:commons-user-help@jakarta.apache.org>\n\n\n--\nTo unsubscribe, e-mail:   <mailto:commons-user-unsubscribe@jakarta.apache.org>\nFor additional commands, e-mail: <mailto:commons-user-help@jakarta.apache.org>\n\n**********developer response**********************************\n\n\n\nCurrently there isn't, however we probably should be more intelligent about \nfalling back to other authentication schemes based on the type of credentials \nprovided.  Having said this I'm not sure it conforms to the HTTP spec strictly \n(which states that the client must use the strongest authentication scheme it \nsupports, there's a grey area here because if your application doesn't provide \na dialog or similar for the user to enter NTLM credentials it can only support \nbasic or digest authentication, despite HTTPClient supporting NTLM).\n\nWhat I'd like to see happen is:\n\nWhen NTLM authentication is requested as top priority but only \nUsernamePasswordCredentials are available instead of NTLMCredentials we fall \nback to one of the other schemes.  In general this would mean that:\n\nif an authentication scheme is requested and a credentials object of the wrong \ntype is provided, HTTPClient should assume (probably optionally or only in non-\nstrict mode) that the requested authentication scheme is not supported and fall \nthrough to other options.\n\nAchieving this would require a reasonably amount of refactoring of the \nAuthenticator class but shouldn't be impossible.  Unfortunately I don't have \ntime to do it myself at the moment but I'd be happy to help out if you felt \nlike doing it, otherwise logging an enhancement bug in Bugzilla would be a good \nway to record this request until someone has time to actually implement it.\n\nAdrian Sutton, Software Engineer\nEphox Corporation\nwww.ephox.com",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "HTTPCLIENT-131",
+    "issuetypeClassified": "RFE",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Minor",
+    "product": "HTTPCLIENT",
+    "project": "HTTPCLIENT",
+    "summary": "[HttpClient] Authenticator() - ability to perform alternate authentication",
+    "systemSpecification": true,
+    "version": ""
+}

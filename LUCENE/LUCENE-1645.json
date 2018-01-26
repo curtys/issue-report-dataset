@@ -1,0 +1,71 @@
+{
+    "comments": [
+        {
+            "author": "Earwin Burrfoot",
+            "body": "If you reopen() MSR with unchanged segments, the resulting MSR will share SR instances for these segments.\nConsequently, when you delete a doc in one of said segments through new MSR, deletion will be visible in original MSR, as no checks for shared SRs are done in delete().\n\nThe patch illustrates the bug by altering existing test to reopen MSR->MSR instead of SR->MSR.\n",
+            "date": "2009-05-19T19:19:50.228+0000",
+            "id": 0
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Good catch!\n\nSo we are missing a clone() on the old subreaders, when referencing them from the new MultiSegmentReader?",
+            "date": "2009-05-19T20:39:10.633+0000",
+            "id": 1
+        },
+        {
+            "author": "Earwin Burrfoot",
+            "body": "Either that. Or having boolean readerShared[] as a property of MSR, and check it on each modification attempt -> lazy clone().\n\n*rant on*\nOr make readers immutable :) I already have a patch that removes norm updates, lazy loading and synchronization. Then we only need to do deletes in IndexWriter without resorting to its reader pool.\nBy the way, do we need public IR cloneability? Not for Lucene internals, but for actual users? That really looks like one more feature that can be safely removed.",
+            "date": "2009-05-19T21:46:04.140+0000",
+            "id": 2
+        },
+        {
+            "author": "Earwin Burrfoot",
+            "body": "Lazy clone() is a bad idea, since it has to be synced.",
+            "date": "2009-05-20T05:01:09.602+0000",
+            "id": 3
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "bq. Lazy clone() is a bad idea, since it has to be synced.\n\nRight; I think we should simply clone shared subreaders on reopen.\n\nbq. Or make readers immutable\n\nI think it's too soon to do this.  In theory, NRT should enable us to deprecate deletions from IW, but 1) we need NRT released and some real experience before doing so, and 2) we still need to get setNorm working from IW.\n\nbq. By the way, do we need public IR cloneability?\n\nI think we do?  Eg it enables you to clone a readOnly reader to a read/write one in order to do deletes/setNorm.",
+            "date": "2009-05-20T10:13:20.812+0000",
+            "id": 4
+        },
+        {
+            "author": "Earwin Burrfoot",
+            "body": "bq. Right; I think we should simply clone shared subreaders on reopen.\nIFF the subreader being cloned is not readonly!\n\nbq. I think it's too soon to do this.\nHey, let's reverse readonly/writeable reader inheritance? WriteableSegmentReader extends SegmentReader.\nSegmentReader is readonly by behaviour and in code - there are no syncs and mutator methods throw UOE. WriteableSegmentReader adds a writeability layer over SegmentReader and all the gory syncs.\n\nbq. I think we do? Eg it enables you to clone a readOnly reader to a read/write one in order to do deletes/setNorm.\nHey, open a new IR if you want to write. Cloning/reopening an IR while simultaneously switching readonly flag is a feature that gives user zero new functionality, absolutely nothing he can't accomplish using a new IR, but makes reopening/cloning code more complex. ",
+            "date": "2009-05-20T13:37:46.365+0000",
+            "id": 5
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "bq. IFF the subreader being cloned is not readonly!\n\nOK.\n\n{quote}\nHey, let's reverse readonly/writeable reader inheritance? WriteableSegmentReader extends SegmentReader.\nSegmentReader is readonly by behaviour and in code - there are no syncs and mutator methods throw UOE. WriteableSegmentReader adds a writeability layer over SegmentReader and all the gory syncs.\n{quote}\n\nThat sounds right, but let's do this as a separate issue?  And leave this issue on fixing this particular bug.\n\n{quote}\nHey, open a new IR if you want to write. Cloning/reopening an IR while simultaneously switching readonly flag is a feature that gives user zero new functionality, absolutely nothing he can't accomplish using a new IR, but makes reopening/cloning code more complex.\n{quote}\n\nOpening a new IR is quite a bit more costly than cloning/reopening.\n\nPlus the reopen/cloning code will still need the complexity because internal to Lucene we still need to do this.  We are only discussing whether the functionality should remain public, which I think it should.",
+            "date": "2009-05-20T15:15:30.524+0000",
+            "id": 6
+        },
+        {
+            "author": "Earwin Burrfoot",
+            "body": "Here's the fix. Plus slightly modified test that fails without the fix.",
+            "date": "2009-05-20T19:06:37.507+0000",
+            "id": 7
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Looks good... I'll commit shortly.  Thanks Earwin!",
+            "date": "2009-05-20T19:37:45.343+0000",
+            "id": 8
+        }
+    ],
+    "component": "",
+    "description": null,
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-1645",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "Deleted documents are visible across reopened MSRs",
+    "systemSpecification": true,
+    "version": "2.9"
+}

@@ -1,0 +1,41 @@
+{
+    "comments": [
+        {
+            "author": "igor@mir2.org",
+            "body": "Targeting 1.5R5",
+            "date": "20040301T18:22:18",
+            "id": 0
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 142684\nSealing implementation\n\nThe essential part of the patch is the following API:\n\n    /**\n     * Checks if this is a sealed Context. A sealed Context instance does not\n     * allow to modify any of its properties and will throw an exception\n     * on any such attempt.\n     * @see #seal(Object sealKey)\n     */\n    public final boolean isSealed()\n    {\n\treturn sealed;\n    }\n\n    /**\n     * Seal this Context object so any attempt to modify any of its properties\n     * including calling {@link #enter()} and {@link #exit()} methods will\n     * throw an exception.\n     * <p>\n     * If <tt>sealKey<tt> is not null, calling\n     * {@link #unseal(Object sealKey)} with the same key unseals\n     * the object. If <tt>sealKey<tt> is null, unsealing is no longer possible.\n\n     *\n     * @see #isSealed()\n     * @see #unseal(Object)\n     */\n    public final void seal(Object sealKey)\n    {\n\tif (sealed) onSealedMutation();\n\tsealed = true;\n\tthis.sealKey = sealKey;\n    }\n\n    /**\n     * Unseal previously sealed Context object.\n     * The <tt>sealKey<tt> argument should not be null and should match\n     * <tt>sealKey<tt> suplied with the last call to\n     * {@link #seal(Object)} or an exception will be thrown.\n     *\n     * @see #isSealed()\n     * @see #seal(Object sealKey)\n     */\n    public final void unseal(Object sealKey)\n    {\n\tif (sealKey == null) throw new IllegalArgumentException();\n\tif (this.sealKey != sealKey) throw new IllegalArgumentException();\n\tif (!sealed) throw new IllegalStateException();\n\tsealed = false;\n\tthis.sealKey = null;\n    }\n\nwith intendent usage like:\n\nprivate Object sealKey = new Object();\n\nContext cx = new Context();\ncustomize(cx);\ncx = Context.enter(cx);\ncx.seal(sealKey);\ntry {\n...\n} finally {\n    cx.unseal(sealKey);\n    Context.exit();\n}\n\nNow any attempt to call Context.enter/exit or modify Context parameters would\nfail unless sealKey is known so the trusted code still can call:\n\ncx.unseal(sealKey);\ntry {\n    cx.setOptimizationLevel(9);\n} finally {\n    cx.seal(sealKey);\n}\n\nAnother part of the patch is to make most of the read methods in Context final\nas additional protection against \"tailored\" Context objects.",
+            "date": "20040301T18:33:39",
+            "id": 1
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 142827\nPatch without unrelated code\n\nThe patch from attachment 142684 is not compilable and included unrelated code\nfor bug 236193. This is a proper version.\n\nI also forgot to document another patch feature: new method\nContext.disableStaticContextListening() :\n\n\n    /**\n     * Disable notifications of listeners registered with\n     * {@link #addContextListener(ContextListener)} about Context events.\n     * All currently registered listeners will be removed and any subsequent\n     * call to {@link #addContextListener(ContextListener)} will throw an\n     * exception.\n     * <p>\n     * Embedding may use this method to prevent Context exposure to potentially\n\n     * untrusted code.\n     */\n    public static void disableStaticContextListening()\n    {\n\tsynchronized (staticListenersLock) {\n\t    disabledContextListening = true;\n\t    staticListeners = null;\n\t}\n    }\n\nAlthough Context.addContextListener is a convinient method, as any method\noperating on static data it can be exploited if an application allows to run\nuntrusted jars and using Rhino for internal purposes. In such cases the\napplication may be willing to drop convinience of Context.addContextListener\nfor a better porotection againt hosile code.",
+            "date": "20040303T12:15:43",
+            "id": 2
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "I committed the last patch",
+            "date": "20040303T20:01:46",
+            "id": 3
+        }
+    ],
+    "component": "Core",
+    "description": "Since changing Context parameters can significantly alter script execution, I\nsuggest to add to Context a new API to seal Context instance so any future\nattempt to change its parameters would throw an exception.\n\nIt would not only prevent bugs in applications but also allow to prevent\nsecurity breaches as currently Rhino has no protection against combined attack\nof untrusted Java and JavaScript code. For example, low-privileges jar executed\nas a part of untrusted script can call Context.exit/Context.enter to create\nContext without security controller and use to produce interpreted scripts\nhaving the same privileges as Rhino code.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "236117",
+    "issuetypeClassified": "RFE",
+    "issuetypeTracker": "BUG",
+    "priority": "-- normal",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "Context sealing API for Rhino",
+    "systemSpecification": false,
+    "version": "other"
+}

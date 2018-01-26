@@ -1,0 +1,101 @@
+{
+    "comments": [
+        {
+            "author": "Robert Muir",
+            "body": "I am guessing the rationale for the current code is to try to reduce index size? (since these languages are double-byte encoded in Unicode).\n\nIf this is the concern, then I think a better solution would be to integrate some form of unicode compression (i.e. BOCU-1) into lucene, rather than try to deal with legacy character sets in this way.\n",
+            "date": "2009-08-09T15:21:07.223+0000",
+            "id": 0
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "I would also strongly suggest to remove these custom charsets. They are not unicode conform, because they use char codepoint mappings that simply define an US ASCII char for some of the input chars. The problems begin with mixed language texts.\nThis strange (and wrong) mapping can also be seen in the tests: Tests load a KOI-8 file with encoding ISO-8859-1 (to get the native bytes as chars) and then map it. This is very bad!\nThe analyzers should really only work on unicode codepoints and nothing more. For backwards compatibility with old indexes (that are encoded using this strange mapping), we have to preserve the charsets for a while, but deprecate all of them and only leave UTF-16 as input (java chars).\n\nYou are right, to reduce index size, it would be good, to also support other encodings in addition to UTF-8 for storage of term text.",
+            "date": "2009-08-09T15:41:22.569+0000",
+            "id": 1
+        },
+        {
+            "author": "Robert Muir",
+            "body": "patch that deprecates the custom charsets.\n\nafter a release, a lot of code can be completely removed and these will be much simpler.\n\nI can add more verbage to these if needed, but I am suspicious that this stuff is actually working correctly...\n",
+            "date": "2009-08-09T16:32:41.621+0000",
+            "id": 2
+        },
+        {
+            "author": "DM Smith",
+            "body": "bq.If this is the concern, then I think a better solution would be to integrate some form of unicode compression (i.e. BOCU-1) into lucene, rather than try to deal with legacy character sets in this way.\n\nSo it doesn't get lost, would it be good to open an issue for this? And for alternate encodings?",
+            "date": "2009-08-09T17:39:04.646+0000",
+            "id": 3
+        },
+        {
+            "author": "Robert Muir",
+            "body": "good idea, curious what other encodings you had in mind?. I only thought of BOCU because it maintains binary sort order, so it makes sense for an index...\n\nand it looks like there could be a possible performance benefit to something like these as well over UTF-8 (at least for certain languages): http://unicode.org/notes/tn6/#Performance\n",
+            "date": "2009-08-09T17:52:34.814+0000",
+            "id": 4
+        },
+        {
+            "author": "DM Smith",
+            "body": "I wasn't thinking about any encoding in particular. It was in reference to Uwe's comment: \nbq. You are right, to reduce index size, it would be good, to also support other encodings in addition to UTF-8 for storage of term text.\n\nI think that having other encodings can be problematic. Problems that Unicode solves. But if the idea is worthy of discussion then a new issue would be a better place to house it. \n\nRegarding BOCU it is a patented algorithm requiring a license from IBM for implementation. I gather that it is part of ICU. Not sure if either is a big deal or not. ",
+            "date": "2009-08-10T03:34:19.598+0000",
+            "id": 5
+        },
+        {
+            "author": "Robert Muir",
+            "body": "DM, you are right this is a better discussion for another issue/place\nI was concerned that we would be taking functionality away, but this is not the case, as Uwe says it is only \"strange\".\n\nI just looked at all these encodings: they are all storing characters in the extended ascii range (> 0x7F)\nTherefore, anyone using this strange encoding support is using 2 bytes per character already! \nFor example someone using CP1251 in the russian analyzer is simply storing \u0416 as 0xC6, its being represented as \u00c6. (2 bytes in UTF-8)\nSo, by deprecating these encodings for unicode, nobody's index size will double...\n",
+            "date": "2009-08-10T09:25:21.215+0000",
+            "id": 6
+        },
+        {
+            "author": "Earwin Burrfoot",
+            "body": "bq. I am guessing the rationale for the current code is to try to reduce index size? (since these languages are double-byte encoded in Unicode). \nRationale was most probably to support existing non-unicode systems/databases/files, whatever. My say is - anyone still holding onto koi8, cp1251 and friends should silently do harakiri.",
+            "date": "2009-08-10T15:35:22.505+0000",
+            "id": 7
+        },
+        {
+            "author": "Robert Muir",
+            "body": "it seems no one is against this, I will clean this up / add friendly deprecation warnings to the patch.\n",
+            "date": "2009-08-10T18:17:59.270+0000",
+            "id": 8
+        },
+        {
+            "author": "Robert Muir",
+            "body": "patch with more javadocs verbage.\n\nWhen do we want to deprecate these strange encodings? might be too late for 2.9 but I think sooner than later would be best.\n",
+            "date": "2009-08-20T14:13:39.328+0000",
+            "id": 9
+        },
+        {
+            "author": "Mark Miller",
+            "body": "We have not started code freeze yet - I'd deprecate if it makes sense.",
+            "date": "2009-08-20T15:15:02.335+0000",
+            "id": 10
+        },
+        {
+            "author": "Robert Muir",
+            "body": "updated patch with \"removed in next release\" changed to \"removed in Lucene 3.0\".\n\nChanges reads:\n\nDeprecate the custom encoding support in the Greek and Russian\nAnalyzers. If you need to index text in these encodings, please use Java's\ncharacter set conversion facilities (InputStreamReader, etc) during I/O,\nso that Lucene can analyze this text as Unicode instead.",
+            "date": "2009-08-20T15:46:24.472+0000",
+            "id": 11
+        },
+        {
+            "author": "Robert Muir",
+            "body": "Setting to 2.9\nI would like to commit in a day or two if there are no objections.",
+            "date": "2009-08-20T15:47:25.061+0000",
+            "id": 12
+        },
+        {
+            "author": "Robert Muir",
+            "body": "Committed revision 806886.",
+            "date": "2009-08-22T20:37:51.667+0000",
+            "id": 13
+        }
+    ],
+    "component": "modules/analysis",
+    "description": "The Greek and Russian analyzers support custom encodings such as KOI-8, they define things like Lowercase and tokenization for these.\n\nI think that analyzers should support unicode and that conversion/handling of other charsets belongs somewhere else. \n\nI would like to deprecate/remove the support for these other encodings.\n",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-1793",
+    "issuetypeClassified": "OTHER",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Minor",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "remove custom encoding support in Greek/Russian Analyzers",
+    "systemSpecification": true,
+    "version": ""
+}

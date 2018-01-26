@@ -1,0 +1,89 @@
+{
+    "comments": [
+        {
+            "author": "Dominique Pfister",
+            "body": "Local SharedItemStateManager.Update object released write lock too often when being rolled back by background thread.\n\nFixed in: r383935",
+            "date": "2006-03-08T01:16:19.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "This seems serious enough to warrant inclusion in the Jackrabbit 1.0 release. Do you think it would be safe to apply the change also to the 1.0 branch as a last-minute fix, or could this case unexpected regressions?",
+            "date": "2006-03-08T01:26:24.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Dominique Pfister",
+            "body": "Yes, I think this would be safe, since code related to transactions did not change for some time.",
+            "date": "2006-03-08T15:16:51.000+0000",
+            "id": 2
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Applied the fix to the 1.0 branch in revision 384322. Changing fix version to 1.0.",
+            "date": "2006-03-09T04:34:42.000+0000",
+            "id": 3
+        },
+        {
+            "author": "Przemo Pakulski",
+            "body": "Deadlock still occurs in r385412. ",
+            "date": "2006-03-10T00:35:47.000+0000",
+            "id": 4
+        },
+        {
+            "author": "Przemo Pakulski",
+            "body": "Deadlock still occurs in r385412",
+            "date": "2006-03-10T00:36:56.000+0000",
+            "id": 5
+        },
+        {
+            "author": "Tobias Bocanegra",
+            "body": "reopening in behalf of przemo",
+            "date": "2006-03-11T18:46:16.000+0000",
+            "id": 6
+        },
+        {
+            "author": "Tobias Bocanegra",
+            "body": "during commit, 3 internal xa-resources take part: the XAItemStateManager of \nthe workspace, the XALockManager and the XAVersionManager. they are executed in\nthis order:\n1. XAItemStateManager.prepare()\n2. XALockManager.prepare()\n3. XAVersionManager.prepare()\n4. XAItemStateManager.commit()\n5. XALockManager.commit()\n6. XAVersionManager.commit\n\nduring prepare, the respective manager is locked. when 2 threads issue a commit\nat the same time, the following could happen:\n\nThread1          Thread2\nism.prepare\nlm.prepare\nvm.prepare\nism.commmit\n                 ism.prepare\nlm.commit\nvm.commit\n                 lm.prepare\n                 vm.prepare\n\nthe problem is, that during t1-vm.commit, it needs to read the states from the\nitemstate manager. but this is locked by t2-vm.prepare. where as t2-vm.prepare \nwants to lock vm, which is was lock by t1-vm.prepare.\n\nthe only quick solution i see, is to lock the entire transaction.",
+            "date": "2006-03-22T23:58:35.000+0000",
+            "id": 7
+        },
+        {
+            "author": "Tobias Bocanegra",
+            "body": "added a new internal resources that spans the entire trransaction and locks it on a workspace scope. this prevents the managers of different transaction to deadlock.",
+            "date": "2006-03-23T22:23:28.000+0000",
+            "id": 8
+        },
+        {
+            "author": "Tobias Bocanegra",
+            "body": "the deadlock can still occurr...\n",
+            "date": "2006-04-10T23:38:44.000+0000",
+            "id": 9
+        },
+        {
+            "author": "Tobias Bocanegra",
+            "body": "fixed.\n\nCommitted revision 393004.\n",
+            "date": "2006-04-11T01:59:23.000+0000",
+            "id": 10
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Merged for 1.0.1 in revision 409525.",
+            "date": "2006-05-26T07:48:43.000+0000",
+            "id": 11
+        }
+    ],
+    "component": "versioning",
+    "description": "Deadlock occurs, while running a very simple test, which is just trying\nto checkout/checkin node within transaction concurrently from 2 threads.\n\nFind enclosed thread dump, log and simple Java program.\nI'm using UserTransaction implementation from jackrabbit test suite.\n\nRegards\nPrzemo Pakulski\nwww.cognifide.com\n\n\nFull thread dump Java HotSpot(TM) Client VM (1.4.2_08-b03 mixed mode):\n\n\"Thread-5\" prio=5 tid=0x03054c48 nid=0x180c in Object.wait() [355f000..355fd8c]\n       at java.lang.Object.wait(Native Method)\n       - waiting on <0x1148ef20> (a EDU.oswego.cs.dl.util.concurrent.WriterPreferenceReadWriteLock$WriterLock)\n       at java.lang.Object.wait(Object.java:429)\n       at EDU.oswego.cs.dl.util.concurrent.WriterPreferenceReadWriteLock$WriterLock.acquire(Unknown Source)\n       - locked <0x1148ef20> (a EDU.oswego.cs.dl.util.concurrent.WriterPreferenceReadWriteLock$WriterLock)\n       at org.apache.jackrabbit.core.state.SharedItemStateManager.acquireWriteLock(SharedItemStateManager.java:1137)\n       at org.apache.jackrabbit.core.state.SharedItemStateManager.access$200(SharedItemStateManager.java:110)\n       at org.apache.jackrabbit.core.state.SharedItemStateManager$Update.begin(SharedItemStateManager.java:456)\n       at org.apache.jackrabbit.core.state.SharedItemStateManager.beginUpdate(SharedItemStateManager.java:651)\n       at org.apache.jackrabbit.core.state.XAItemStateManager.prepare(XAItemStateManager.java:150)\n       at org.apache.jackrabbit.core.TransactionContext.prepare(TransactionContext.java:128)\n       - locked <0x11565ac8> (a org.apache.jackrabbit.core.TransactionContext)\n       at org.apache.jackrabbit.core.XASessionImpl.prepare(XASessionImpl.java:300)\n       at com.oyster.mom.contentserver.jcr.transaction.JackrabbitUserTransaction.commit(JackrabbitUserTransaction.java:102)\n       at com.oyster.mom.contentserver.jcr.transaction.JrTestDeadlock.run(JrTestDeadlock.java:97)\n\n\"Thread-4\" prio=5 tid=0x0303b348 nid=0x9d0 in Object.wait() [351f000..351fd8c]\n       at java.lang.Object.wait(Native Method)\n       - waiting on <0x1148ef20> (a EDU.oswego.cs.dl.util.concurrent.WriterPreferenceReadWriteLock$WriterLock)\n       at java.lang.Object.wait(Object.java:429)\n       at EDU.oswego.cs.dl.util.concurrent.WriterPreferenceReadWriteLock$WriterLock.acquire(Unknown Source)\n       - locked <0x1148ef20> (a EDU.oswego.cs.dl.util.concurrent.WriterPreferenceReadWriteLock$WriterLock)\n       at org.apache.jackrabbit.core.state.SharedItemStateManager.acquireWriteLock(SharedItemStateManager.java:1137)\n       at org.apache.jackrabbit.core.state.SharedItemStateManager.access$200(SharedItemStateManager.java:110)\n       at org.apache.jackrabbit.core.state.SharedItemStateManager$Update.begin(SharedItemStateManager.java:456)\n       at org.apache.jackrabbit.core.state.SharedItemStateManager.beginUpdate(SharedItemStateManager.java:651)\n       at org.apache.jackrabbit.core.state.XAItemStateManager.prepare(XAItemStateManager.java:150)\n       at org.apache.jackrabbit.core.TransactionContext.prepare(TransactionContext.java:128)\n       - locked <0x1156f558> (a org.apache.jackrabbit.core.TransactionContext)\n       at org.apache.jackrabbit.core.XASessionImpl.prepare(XASessionImpl.java:300)\n       at com.oyster.mom.contentserver.jcr.transaction.JackrabbitUserTransaction.commit(JackrabbitUserTransaction.java:102)\n       at com.oyster.mom.contentserver.jcr.transaction.JrTestDeadlock.run(JrTestDeadlock.java:97)\n\n\"IndexMerger\" daemon prio=5 tid=0x030388b8 nid=0x1858 in Object.wait() [34df000..34dfd8c]\n       at java.lang.Object.wait(Native Method)\n       - waiting on <0x114fd280> (a org.apache.commons.collections.buffer.BlockingBuffer)\n       at java.lang.Object.wait(Object.java:429)\n       at org.apache.commons.collections.buffer.BlockingBuffer.remove(BlockingBuffer.java:107)\n       - locked <0x114fd280> (a org.apache.commons.collections.buffer.BlockingBuffer)\n       at org.apache.jackrabbit.core.query.lucene.IndexMerger.run(IndexMerger.java:235)\n\n\"Thread-2\" daemon prio=5 tid=0x0303a230 nid=0xe4c in Object.wait() [349f000..349fd8c]\n       at java.lang.Object.wait(Native Method)\n       - waiting on <0x114fd2e0> (a java.util.TaskQueue)\n       at java.util.TimerThread.mainLoop(Timer.java:429)\n       - locked <0x114fd2e0> (a java.util.TaskQueue)\n       at java.util.TimerThread.run(Timer.java:382)\n\n\"Thread-1\" daemon prio=5 tid=0x0301b7a0 nid=0x1a00 in Object.wait() [345f000..345fd8c]\n       at java.lang.Object.wait(Native Method)\n       - waiting on <0x114f9058> (a java.util.TaskQueue)\n       at java.lang.Object.wait(Object.java:429)\n       at java.util.TimerThread.mainLoop(Timer.java:403)\n       - locked <0x114f9058> (a java.util.TaskQueue)\n       at java.util.TimerThread.run(Timer.java:382)\n\n\"ObservationManager\" daemon prio=5 tid=0x02ef6c50 nid=0x10d8 in Object.wait() [341f000..341fd8c]\n       at java.lang.Object.wait(Native Method)\n       - waiting on <0x114f38e0> (a org.apache.commons.collections.buffer.BlockingBuffer)\n       at java.lang.Object.wait(Object.java:429)\n       at org.apache.commons.collections.buffer.BlockingBuffer.remove(BlockingBuffer.java:107)\n       - locked <0x114f38e0> (a org.apache.commons.collections.buffer.BlockingBuffer)\n       at org.apache.jackrabbit.core.observation.ObservationManagerFactory.run(ObservationManagerFactory.java:155)\n       at java.lang.Thread.run(Thread.java:534)\n\n\"Signal Dispatcher\" daemon prio=10 tid=0x00a05590 nid=0x1914 waiting on condition [0..0]\n\n\"Finalizer\" daemon prio=9 tid=0x00a027f8 nid=0x17a4 in Object.wait() [2c9f000..2c9fd8c]\n       at java.lang.Object.wait(Native Method)\n       - waiting on <0x113db118> (a java.lang.ref.ReferenceQueue$Lock)\n       at java.lang.ref.ReferenceQueue.remove(ReferenceQueue.java:111)\n       - locked <0x113db118> (a java.lang.ref.ReferenceQueue$Lock)\n       at java.lang.ref.ReferenceQueue.remove(ReferenceQueue.java:127)\n       at java.lang.ref.Finalizer$FinalizerThread.run(Finalizer.java:159)\n\n\"Reference Handler\" daemon prio=10 tid=0x00a01478 nid=0x16d4 in Object.wait() [2c5f000..2c5fd8c]\n       at java.lang.Object.wait(Native Method)\n       - waiting on <0x113db180> (a java.lang.ref.Reference$Lock)\n       at java.lang.Object.wait(Object.java:429)\n       at java.lang.ref.Reference$ReferenceHandler.run(Reference.java:115)\n       - locked <0x113db180> (a java.lang.ref.Reference$Lock)\n\n\"main\" prio=5 tid=0x0003e6f0 nid=0x1470 in Object.wait() [7f000..7fc38]\n       at java.lang.Object.wait(Native Method)\n       - waiting on <0x11524f10> (a com.oyster.mom.contentserver.jcr.transaction.JrTestDeadlock)\n       at java.lang.Thread.join(Thread.java:1001)\n       - locked <0x11524f10> (a com.oyster.mom.contentserver.jcr.transaction.JrTestDeadlock)\n       at java.lang.Thread.join(Thread.java:1054)\n       at com.oyster.mom.contentserver.jcr.transaction.JrTestDeadlock.main(JrTestDeadlock.java:33)\n\n\"VM Thread\" prio=5 tid=0x00a42730 nid=0x17d0 runnable\n\n\"VM Periodic Task Thread\" prio=10 tid=0x00a45540 nid=0x1928 waiting on condition\n\"Suspend Checker Thread\" prio=10 tid=0x00a04af8 nid=0x17ac runnable\n\nimport javax.jcr.Node;\nimport javax.jcr.RepositoryException;\nimport javax.jcr.Session;\nimport javax.jcr.SimpleCredentials;\n\nimport org.apache.jackrabbit.core.RepositoryImpl;\nimport org.apache.jackrabbit.core.config.RepositoryConfig;\n\npublic class JrTestDeadlock extends Thread {\n\n   private static final org.apache.commons.logging.Log log = org.apache.commons.logging.LogFactory.getLog(JrTestDeadlock.class);\n\n   public static String REPOSITORY_HOME = \"d:/repo/jackrabbit/\";\n\n   public static String REPOSITORY_CONFIG = REPOSITORY_HOME + \"repository.xml\";\n\n   public static void main(String[] args) throws Exception {\n\n       JrTestDeadlock test = new JrTestDeadlock(-1);\n       test.startup();\n\n       JrTestDeadlock tests[] = new JrTestDeadlock[2];\n\n       for (int i = 0; i < tests.length; i++) {\n           JrTestDeadlock x = new JrTestDeadlock(i);\n           x.start();\n           tests[i] = x;\n       }\n\n       for (int i = 0; i < tests.length; i++) {\n           tests[i].join();\n       }\n\n       test.shutdown();\n   }\n\n   private static RepositoryImpl repository;\n\n   private int id;\n\n   public JrTestDeadlock(int i) {\n       this.id = i;\n   }\n\n   public void startup() throws Exception {\n       System.setProperty(\"java.security.auth.login.config\", \"c:/jaas.config\");\n\n       RepositoryConfig config = RepositoryConfig.create(REPOSITORY_CONFIG, REPOSITORY_HOME);\n       repository = RepositoryImpl.create(config);\n\n       Session session = repository.login(new SimpleCredentials(\"admin\", \"admin\".toCharArray()));\n       Node rootNode = session.getRootNode();\n       if (!rootNode.hasNode(\"folder\")) {\n           Node folder = rootNode.addNode(\"folder\");\n           folder.addMixin(\"mix:versionable\");\n           folder.addMixin(\"mix:lockable\");\n           rootNode.save();\n       }\n       session.logout();\n   }\n\n   public void shutdown() throws RepositoryException {\n       repository.shutdown();\n   }\n\n   public Node getFolder(Session session) throws RepositoryException {\n       return session.getRootNode().getNode(\"folder\");\n   }\n\n   public void run() {\n       try {\n           Session session = repository.login(new SimpleCredentials(\"admin\", \"admin\".toCharArray()));\n           for (int i = 0; i < 100; i++) {\n               log.error(\"START id:\" + id + \", i=\" + i);\n\n               boolean success = false;\n\n               JackrabbitUserTransaction ut = new JackrabbitUserTransaction(session);\n               try {\n                   ut.begin();\n\n                   Node folder = getFolder(session);\n                   folder.checkout();\n                   folder.checkin();\n\n                   success = true;\n                   log.info(\"SUCCESS id:\" + id + \", i=\" + i);\n               }\n               catch (Exception e) {\n                   log.warn(\"FAIL:\" + id + \", i=\" + i, e);\n               }\n               finally {\n                   try {\n                       if (success) {\n                           ut.commit();\n                       }\n                       else {\n                           ut.rollback();\n                       }\n                   }\n                   catch (Exception e) {\n                       log.fatal(e);\n                   }\n               }\n           }\n           session.logout();\n       }\n       catch (RepositoryException e) {\n           e.printStackTrace();\n       }\n   }\n}\n\n\n13:46 ERROR JrTestDeadlock.run(JrTestDeadlock.java:76) - START id:0, i=0\n13:46 ERROR JrTestDeadlock.run(JrTestDeadlock.java:76) - START id:1, i=0\n13:46 INFO  JrTestDeadlock.run(JrTestDeadlock.java:89) - SUCCESS id:0, i=0\n13:46 INFO  JrTestDeadlock.run(JrTestDeadlock.java:89) - SUCCESS id:1, i=0\n13:46 ERROR org.apache.jackrabbit.core.state.XAItemStateManager.prepare(XAItemStateManager.java:156) - org.apache.jackrabbit.core.state.StaleItemStateException: 233e656f-79f8-414d-9e37-3fce865b492d/{http://www.jcp.org/jcr/1.0}isCheckedOut has been modified externally\n13:46 FATAL JrTestDeadlock.run(JrTestDeadlock.java:104) - javax.transaction.RollbackException: Transaction rolled back: XA_ERR=104\n13:46 ERROR JrTestDeadlock.run(JrTestDeadlock.java:76) - START id:1, i=1\n13:46 WARN  JrTestDeadlock.run(JrTestDeadlock.java:92) - FAIL:1, i=1\nax.jcr.InvalidItemStateException: f83a830b-abbf-4ab2-8625-b9e2c4802316: the item does not exist anymore\n    at org.apache.jackrabbit.core.version.XAVersion.sanityCheck(XAVersion.java:81)\n    at org.apache.jackrabbit.core.version.XAVersion.getInternalVersion(XAVersion.java:70)\n    at org.apache.jackrabbit.core.version.AbstractVersion.getUUID(AbstractVersion.java:107)\n    at org.apache.jackrabbit.core.NodeImpl.checkout(NodeImpl.java:2759)\n    at JrTestDeadlock.run(JrTestDeadlock.java:85)\n13:46 ERROR JrTestDeadlock.run(JrTestDeadlock.java:76) - START id:1, i=2\n13:46 INFO  JrTestDeadlock.run(JrTestDeadlock.java:89) - SUCCESS id:1, i=2\n13:51 WARN  org.apache.jackrabbit.core.TransactionContext.run(TransactionContext.java:239) - Transaction rolled back because timeout expired.\n\n",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "JCR-335",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "Deadlock caused by versioning operations within transaction",
+    "systemSpecification": true,
+    "version": "0.9, 1.0"
+}

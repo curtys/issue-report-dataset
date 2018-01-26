@@ -1,0 +1,119 @@
+{
+    "comments": [
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 144563\nPass methodName as the last parameter\n\nThe patch changes the current glue code to pass the name of the called\ninterface method as the last parameter to JS function.\n\nThis is useful for debugging, for example, even without extending the\nconversion to interfaces with multiple methods with the same signature.",
+            "date": "20040323T13:14:37",
+            "id": 0
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Comment on attachment 144563\nPass methodName as the last parameter\n\nAttachment for the wrong bug...",
+            "date": "20040323T13:15:34",
+            "id": 1
+        },
+        {
+            "author": "hannesw@gmail.com",
+            "body": "Created attachment 198032\nimplementation for __defineGetter__ and __defineSetter__\n\nThis patch implements __defineGetter__ and __defineSetter__ functions in the\nObject prototype. Implementation in ScriptableObject is analogous to Java\ngetter/setter methods, but with a ScriptedGetterSlot class that uses\no.m.j.Function as getter/setter instead of o.m.j.MemberBox.\n\nDefining getters/setters in object initializers isn't implemented by this patch\nas I'm a bit scared of messing with the Rhino parsing code.",
+            "date": "20050930T19:48:01",
+            "id": 2
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Comment on attachment 198032\nimplementation for __defineGetter__ and __defineSetter__\n\nThanks for the patch, it is quite resonable besides few hotspots and the need\nto replace Function by Callable. In Rhino 1.6R2 object can be called if it\nimplements just Callable, not Function interface. In this way host objects that\nwant to allow shortcuts like matrixInstance(i, j) spared from implementing\nFunction.constructior.\n\nAnd here are hotspots:\n\n>+++ src/org/mozilla/javascript/NativeObject.java\t2005-09-30 21:04:34.417942264 +0200\n>@@ -78,6 +78,8 @@\n>@@ -182,6 +184,12 @@\n>+          case Id_defineGetter:\n>+              defineGetter((String) args[0], (Function) args[1], 0);\n>+              return Undefined.instance;\n>+          case Id_defineSetter:\n>+              defineSetter((String) args[0], (Function) args[1], 0);\n>+              return Undefined.instance;\n\nIt is always necessary to check that args[0] exist and has necessary type to\nreport proper execption. ScriptRuntime.notAFunction is your friend here.\n\n>@@ -205,6 +213,10 @@\n>                 if (c=='h') { X=\"hasOwnProperty\";id=Id_hasOwnProperty; }\n>                 else if (c=='t') { X=\"toLocaleString\";id=Id_toLocaleString; }\n>                 break L;\n>+            case 16: c=s.charAt(8);\n>+                if (c=='G') { X=\"__defineGetter__\";id=Id_defineGetter; }\n>+                else if (c=='S') { X=\"__defineSetter__\";id=Id_defineSetter; }\n>+                break L;\n>             case 20: X=\"propertyIsEnumerable\";id=Id_propertyIsEnumerable; break L;\n>             }\n>             if (X!=null && X!=s && !X.equals(s)) id = 0;\n\nUse toolsrc/org/mozilla/javascript/tools/idswitch/Main.java to generate the\nstring switch code, see\nhttp://lxr.mozilla.org/mozilla/source/js/rhino/toolsrc/org/mozilla/javascript/t\nools/idswitch/README. (I should definitely mention that in comments to\nIdScriptableObject)\n\n>+    public void defineGetter(String propertyName, Function getter, int attributes)\n>+    {\n...\n>+        addSlot(propertyName, propertyName.hashCode(), gslot);\n\n>+    }\n>+\n>+    public void defineSetter(String propertyName, Function setter, int attributes)\n>+    {\n....\n>+        addSlot(propertyName, propertyName.hashCode(), gslot);\n>+    }\n>+\nCheck that addSlot would return gslot and report error otherwise: it can happen\nif another thread modifies the object.",
+            "date": "20050930T20:46:42",
+            "id": 3
+        },
+        {
+            "author": "hannesw@gmail.com",
+            "body": "> Thanks for the patch, it is quite resonable besides few hotspots and the need\n> to replace Function by Callable. \n\nThanks for the feedback. I knew the patch was sloppy in parts, but wanted to\nknow if the general direction was ok. I'll upload a revised patch shortly.",
+            "date": "20051001T08:37:39",
+            "id": 4
+        },
+        {
+            "author": "hannesw@gmail.com",
+            "body": "Created attachment 198303\nRevised implementation of __defineGetter__ and __defineSetter__\n\nThis patch incorporates Igor's suggestions. \n\nOne remaining issue: Spidermonkey throws an error when setting a property that\nonly has a getter but no setter, while this code silently ignores the setting.\nShould we emulate spidermonkey behaviour here?",
+            "date": "20051003T14:08:27",
+            "id": 5
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 198444\nImplementation to follow SpiderMonkey as close as possible.\n\nIn SpiderMonkey one can call __defineGetter__ and __defineSetter__\narbitrary number of times in arbitrary order. In addition the\nfunctions can be applied to already created properties. Rhino should\nfollow that and here is a patch to support it.\n\nThe patch unifies native and JS getters and setters and use casts to\ncheck if getter/setter is MemeberBox or Callable. With the patch one\ncan apply native or JS getters/setters in arbitrary order and even mix\nthem. That required to move optional delegate parameter for native\ngetter/setters to MemberBox.\n\nAs a consequence of the changes the usage of native\ngetters/setters is more strict. In particular the patch always passes\nthisObj as \"this\" for native methods without delegation where the\ncurrent code tries to search the prototype chain. But that usage is\nundocumented and was a leftover from times when Rhino used reflection\nto implement the runtime library and that search was necessary due to\nhacks in other places. With the patch the rules for all\ngetters/setters are the same.\n\nAnother undocumented feature removed by the patch is an option for setter to\ndeclare non-void return type which marks it as one-time initialization\nmethod. The current code uses it to implement lazy initialization of\nglobal properties.\n\nWith multiple defineGetter/defineSetter the semantics of the feature\nis no longer clear. For example, what should happen if one changes\ngetter for the property? Or what should happen if another thread\nchange the setter when initializer runs? Not to answer such questions I\nsimply removed the feature and instead added explicit support for\nLazilyLoadedCtor to ScriptableObject.",
+            "date": "20051004T13:17:08",
+            "id": 6
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 198640\nNo more slot replaces\n\nThe previous version of the patch uses replacement Slot->GetterSlot to get room\nto store getter/setter. Although it works for this particular case, it would\nprevent for subclasses to implement their own slot search algorithms. The\nlatter is essential if we want to allow to use __defineGetter__ with array\nindexes and properties managed through IdScriptableObject. For example,\ncurrently the following would not define getter for array[0] and Math.sin since\nthe corresponding values are managed outside of ScriptableObject:\n\narray = [];\narray.__defineGetter__(0, function() { return  0; });\nMath.__defineGetter__('sin', function() { return  0; });\n\nTo support this my current idea is to allow ScriptableObject subclasses to\nsupply there own Slot implementations which ScriptableObject would use to\nproperly store getters/setters. But that requires for Slot class to store\ngetter/setter itself and this is what this version of the patch does. \n\nTo avoid wasting memory for unused getter/setter the patch adds SlotExtra class\nwhich stores attributes together with getter and setter. When getter/setter are\nnull, the attributes objects are shared, so there is no memory increase\ncompared with the previous version and the extra object is created only when\none wants getter/setter.",
+            "date": "20051005T22:43:03",
+            "id": 7
+        },
+        {
+            "author": "jstritar@gmail.com",
+            "body": "This patch doesn't include changes to allow Rhino to parse JavaScript files with getter and setter methods, correct? I am working on a project right now, and I'm trying to modify Rhino to not throw syntax errors when someone uses the \"get propertyName() { },\" syntax in JS files. I just wanted to make sure this doesn't already do it (which it doesn't look like it does).",
+            "date": "20060202T02:53:56",
+            "id": 8
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Reassigning to please_see_bug_288433@eml.cc pending resolution of bug 288433",
+            "date": "20060401T12:26:18",
+            "id": 9
+        },
+        {
+            "author": "inonit@inonit.com",
+            "body": "The most current patch causes at least one regression when applied to 1.6R4.  I haven't been able to figure out exactly where or why yet but it causes the following:\n\nvar a = [];\na.push(\"foo\");\n\nprint(a.length); // prints 1\nprint(a[0]); // prints undefined\nprint(typeof(a[0]) == \"undefined\"); // prints true",
+            "date": "20060928T16:43:44",
+            "id": 10
+        },
+        {
+            "author": "inonit@inonit.com",
+            "body": "The second-to-last patch dated 4-Oct-2005 does not contain the same regressions as the last patch.  The last patch has all the SlotExtra business that is complex enough that I was unable to get to the bottom of the issue.\n\nI can confirm that having run the full test suite against both an unpatched 1.6R4 and a patched version using the 4-Oct-2005 patch that several extra tests pass, including two of the js1_5/GetSet tests and a few miscellaneous tests that rely on the __defineXetter__ methods to be present (notably related to garbage collection).\n\nThus I would recommend committing the 4-Oct patch on the trunk.",
+            "date": "20060928T19:39:44",
+            "id": 11
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "(In reply to comment #12)\n> Thus I would recommend committing the 4-Oct patch on the trunk.\n\nWell, I am surprised that the patch did not cause any regressions. As far as I can remember I had more trust in the last version. In any case, it seems my desire to spend a weekend or two on hacking  Rhino to close bugs like this would not realize. There are too much other things to do. So feel free to commit whatever that works. ",
+            "date": "20060928T19:50:08",
+            "id": 12
+        },
+        {
+            "author": "inonit@inonit.com",
+            "body": "I tried to change the title of this bug to limit it to __defineGetter__ and __defineSetter__, which are implemented by the patch discussed.  There are other things that are not (changes to the parser to support \"get\" and \"set,\" __lookupGetter__ and __lookupSetter__) but this is a partial start.  So we could close this issue, commit the patch, and open new issues for the other aspects of this topic.  Or not; that's just my suggestion. :)  Anyway, I have insufficient privileges to change the title.",
+            "date": "20061004T19:13:47",
+            "id": 13
+        },
+        {
+            "author": "inonit@inonit.com",
+            "body": "I have committed a fix based on the second-to-last patch (attachment #198444).  (The patch was modified in part to deal with bug #359411.)  I've tested it using my version of the test suite (see bug #353501) and gotten the following results:\n\nFixed (13): e4x/Regress/regress-354151-01.js, e4x/Regress/regress-354151-02.js, js1_5/Array/regress-315509-02.js, js1_5/GC/regress-311792-01.js, js1_5/GC/regress-311792-02.js, js1_5/GC/regress-312278.js, js1_5/GC/regress-313763.js, js1_5/GC/regress-325269.js, js1_5/GetSet/getset-004.js, js1_5/GetSet/getset-005.js, js1_5/GetSet/regress-366396.js, js1_5/Regress/regress-366288.js, js1_5/Regress/regress-366292.js\n\nRegressions (7): ecma/Expressions/11.10-2.js, ecma/Expressions/11.10-3.js, js1_5/Array/regress-99120-02.js, js1_5/GC/regress-203278-3.js, js1_5/Regress/regress-256501.js, js1_5/String/regress-314890.js, js1_5/String/regress-322772.js\n\nHowever, all 7 \"regressions\" went away when increasing the timeout-per-test to 10 seconds from 2 seconds, and results in previous runs varied, so I am satisfied this patch is working.\n\nI would like to change the title of this bug to \"implement __defineGetter__ and __defineSetter__\" and open a new bug regarding __lookupGetter__ and __lookupSetter__ and perhaps a third bug with the get and set keywords, but I lack the privileges to do that.  So I will leave this bug open, but it's partially fixed. :)",
+            "date": "20070119T21:45:36",
+            "id": 14
+        },
+        {
+            "author": "inonit@inonit.com",
+            "body": "I am closing this bug and have opened bug 368453 for __lookupGetter__ and __lookupSetter and bug 368455 for the \"get\" and \"set\" forms of this in object initializers.  If you're interested in this bug you might also be interested in bug 368452 (implement __noSuchMethod__).",
+            "date": "20070128T00:01:53",
+            "id": 15
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "Adding target milestone of 1.6R6 based on the date this bug was resolved FIXED.",
+            "date": "20070518T15:09:21",
+            "id": 16
+        }
+    ],
+    "component": "Core",
+    "description": "It would be nice if Rhino would support at least some parts of SpiderMonkey\ngetter/setter functionality.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "224334",
+    "issuetypeClassified": "RFE",
+    "issuetypeTracker": "RFE",
+    "priority": "-- enhancement",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "Implement __defineGetter__ and __defineSetter__ in Rhino",
+    "systemSpecification": false,
+    "version": "other"
+}

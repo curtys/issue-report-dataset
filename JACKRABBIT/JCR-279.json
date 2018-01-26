@@ -1,0 +1,47 @@
+{
+    "comments": [
+        {
+            "author": "Marcel Reutegger",
+            "body": "I agree, it probably happens when a session is being closed and the observation manager still tries to deliver events.\n\nI've changed the method EventConsumer.consumeEvents() to do some sanity checking on the session to avoid the IllegalStateException. However, because events are delivered in a separate thread it may still happen in rare cases that the exception is thrown. The warn log is not severe and does not harm operation of jackrabbit.\n\nCostin: could you please check if this change avoids the IllegalStateExceptions you see? Thanks.\n\nFixed in revision: 348920",
+            "date": "2005-11-25T18:38:30.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Costin Leau",
+            "body": "Sure (I'll do an update right now and see how it goes). However isn't event delivery guaranteed not matter if it's asynchronous or not? A listener should receive events no matter if the session has been closed or not.",
+            "date": "2005-11-25T18:45:43.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "Every event listener has to be bound to a session to check access rights. \n\nSee spec section: 8.3.5. Event Filtering\n\n<spec>\nAn event listener will only receive events for which its session (the\nsession through which it was registered) has sufficient access\ncontrol permissions and which meet the filtering restrictions\nspecified upon registration. See 8.3.3 Observation Manager.\n</spec>\n\nIMO once the session is logged out, there is no way to check for access control anymore and the listener must be unregistered. Which is the case in jackrabbit.",
+            "date": "2005-11-25T20:08:21.000+0000",
+            "id": 2
+        },
+        {
+            "author": "Costin Leau",
+            "body": "I've checked the example and indeed there are no more exceptions. Thanks.",
+            "date": "2005-11-27T07:10:38.000+0000",
+            "id": 3
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "Ok, then I'll close this issue.\n\nThanks for testing Costin.",
+            "date": "2005-11-28T17:38:50.000+0000",
+            "id": 4
+        }
+    ],
+    "component": "observation",
+    "description": "i assume, when session is closed, or beeing closed, the observation still tries to deliver some events:\n\n[java] 2005-11-24 22:58:41,764 [ObservationManager] WARN  org.apache.jackrabbit.core.observation.ObservationManagerFactory - EventConsumer threw exception: java.lang.IllegalStateException: not in\nitialized\n[java] 2005-11-24 22:58:41,764 [ObservationManager] DEBUG org.apache.jackrabbit.core.observation.ObservationManagerFactory - Stacktrace:\n[java] java.lang.IllegalStateException: not initialized\n[java]     at org.apache.jackrabbit.core.security.SimpleAccessManager.isGranted(SimpleAccessManager.java:119)\n[java]     at org.apache.jackrabbit.core.observation.EventConsumer.consumeEvents(EventConsumer.java:231)\n[java]     at org.apache.jackrabbit.core.observation.ObservationManagerFactory.run(ObservationManagerFactory.java:161)\n[java]     at java.lang.Thread.run(Thread.java:595)\n\n",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "JCR-279",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Minor",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "IllegalStateException thrown when consuming events",
+    "systemSpecification": false,
+    "version": ""
+}

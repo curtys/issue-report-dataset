@@ -1,0 +1,77 @@
+{
+    "comments": [
+        {
+            "author": null,
+            "body": "Created attachment 23070\nready-to-use WAR file that reproduces the issue",
+            "date": "20090102T09:38:46",
+            "id": 0
+        },
+        {
+            "author": null,
+            "body": "I have arranged the OP's sources as a ready-to-use web application - that is the WAR file that I attached above.\n\nUsing it I can reproduce the problem in the following TC versions:\n5.5.27, 6.0.18 and the current tc6.0.x branch as at revision 730794. Thus bumping the Version field.\n\nTo reproduce:\n1. Deploy the application\n2. Access http://localhost:8080/bug42390/\n3. The following compilation error is displayed: (tc6.0.x)\n\norg.apache.jasper.JasperException: Unable to compile class for JSP: \n\nAn error occurred at line: 99 in the generated java file\n_jspx_X_1 cannot be resolved\n...\n\nNote: The tag file compiles fine. It is JSP that does not compile.\n",
+            "date": "20090102T09:48:48",
+            "id": 1
+        },
+        {
+            "author": null,
+            "body": "Created attachment 23072\npatch for tc6.0.x that fixes the issue\n\nI am attaching patch that fixes the issue. It is against the tc6.0.x branch.\n\nThe cause was that scripting var info of the nested Node.CustomTag was not populated by ScriptingVariableVisitor#setScriptingVars() call.\n\nIt occurred because it thought that the variable was already declared, because it was present in ScriptingVariableVisitor#scriptVars, because the same instance of ScriptingVariableVisitor was used for the parent and child.",
+            "date": "20090102T19:14:26",
+            "id": 2
+        },
+        {
+            "author": null,
+            "body": "Again, many thanks for the patch.\n\nIt has been applied to trunk and proposed for 6.0.x and 5.5.x",
+            "date": "20090409T09:15:08",
+            "id": 3
+        },
+        {
+            "author": null,
+            "body": "Patch has been reverted for more testing.",
+            "date": "20090522T08:46:30",
+            "id": 4
+        },
+        {
+            "author": null,
+            "body": "I have done some further testing of the patch and can't find any regressions. I have therefore re-proposed the patch for 6.0.x and 5.5.x",
+            "date": "20090816T11:08:38",
+            "id": 5
+        },
+        {
+            "author": null,
+            "body": "The patch has been applied to 6.0.x and will be included in 6.0.21 onwards.",
+            "date": "20090920T15:36:16",
+            "id": 6
+        },
+        {
+            "author": null,
+            "body": "Note that the patch caused bug48616. Find a solution that fixes both bugs will be tracked in bug48616.",
+            "date": "20100131T04:27:55",
+            "id": 7
+        },
+        {
+            "author": null,
+            "body": "The proposed patch for 5.5.x has been updated with a fix for the regession.",
+            "date": "20100131T16:09:41",
+            "id": 8
+        },
+        {
+            "author": null,
+            "body": "This issue was fixed in 5.5.x in r935941 and will be in 5.5.30 onwards.",
+            "date": "20100420T10:37:43",
+            "id": 9
+        }
+    ],
+    "component": "Jasper",
+    "description": "Given a tagfile \"test.tag\" in /WEB-INF/tags/t:\n---- begin test.tag ----\n<%@ variable name-given=\"X\" scope=\"AT_BEGIN\" %>\n<jsp:doBody/>\n---- end test.tag ----\nthe following JSP \"testTest.jsp\":\n---- begin testTest.jsp ----\n<t:test><t:test/></t:test>\n---- end testTest.jsp ----\ngives a JSP compilation error:\norg.apache.jasper.JasperException: Unable to compile class for JSP: \nStacktrace:\n        at\norg.apache.jasper.compiler.DefaultErrorHandler.javacError(DefaultErrorHandler.java:85)\n        at\norg.apache.jasper.compiler.ErrorDispatcher.javacError(ErrorDispatcher.java:330)\n        at\norg.apache.jasper.compiler.JDTCompiler.generateClass(JDTCompiler.java:435)\n        at org.apache.jasper.compiler.Compiler.compile(Compiler.java:298)\n        at org.apache.jasper.compiler.Compiler.compile(Compiler.java:277)\n        at org.apache.jasper.compiler.Compiler.compile(Compiler.java:265)\n        at\norg.apache.jasper.JspCompilationContext.compile(JspCompilationContext.java:564)\n        at\norg.apache.jasper.servlet.JspServletWrapper.service(JspServletWrapper.java:299)\n        at org.apache.jasper.servlet.JspServlet.serviceJspFile(JspServlet.java:315)\n        at org.apache.jasper.servlet.JspServlet.service(JspServlet.java:265)\n        at javax.servlet.http.HttpServlet.service(HttpServlet.java:803)\n        at\norg.apache.catalina.core.ApplicationFilterChain.internalDoFilter(ApplicationFilterChain.java:269)\n        at\norg.apache.catalina.core.ApplicationFilterChain.doFilter(ApplicationFilterChain.java:188)\n        at\norg.apache.catalina.core.StandardWrapperValve.invoke(StandardWrapperValve.java:210)\n        at\norg.apache.catalina.core.StandardContextValve.invoke(StandardContextValve.java:174)\n        at\norg.apache.catalina.core.StandardHostValve.invoke(StandardHostValve.java:127)\n        at\norg.apache.catalina.valves.ErrorReportValve.invoke(ErrorReportValve.java:117)\n        at org.apache.catalina.valves.AccessLogValve.invoke(AccessLogValve.java:542)\n        at\norg.apache.catalina.core.StandardEngineValve.invoke(StandardEngineValve.java:108)\n        at\norg.apache.catalina.connector.CoyoteAdapter.service(CoyoteAdapter.java:151)\n        at\norg.apache.coyote.http11.Http11Processor.process(Http11Processor.java:870)\n        at\norg.apache.coyote.http11.Http11BaseProtocol$Http11ConnectionHandler.processConnection(Http11BaseProtocol.java:665)\n        at\norg.apache.tomcat.util.net.PoolTcpEndpoint.processSocket(PoolTcpEndpoint.java:528)\n        at\norg.apache.tomcat.util.net.LeaderFollowerWorkerThread.runIt(LeaderFollowerWorkerThread.java:81)\n        at\norg.apache.tomcat.util.threads.ThreadPool$ControlRunnable.run(ThreadPool.java:685)\n        at java.lang.Thread.run(Thread.java:613)",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "42390",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "P1 major",
+    "product": "Tomcat 5",
+    "project": "TOMCAT",
+    "summary": "JSP compilation error with nested tagfile tags with variables with \"AT_BEGIN\" scope",
+    "systemSpecification": true,
+    "version": "5.5.27"
+}

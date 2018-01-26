@@ -1,0 +1,41 @@
+{
+    "comments": [
+        {
+            "author": "Tobias Bocanegra",
+            "body": "fixed.\n\nNew Revision: 393452\n",
+            "date": "2006-04-12T21:04:09.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Przemo Pakulski",
+            "body": "After fix transactions doesn't work at all.\n\nI'm not familiar with Jackrabbit code, but it looks that  'end' method is not good place to clear TransactionContext, because it is stil needed by 'commit/rollback' methods. Probably it should be done in 'commit/rollback' methods.\n",
+            "date": "2006-04-13T18:53:59.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Dominique Pfister",
+            "body": "Fixed as suggested in revision 394937.",
+            "date": "2006-04-18T20:21:13.000+0000",
+            "id": 2
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Merged for 1.0.1 in revision 409542.",
+            "date": "2006-05-26T09:34:05.000+0000",
+            "id": 3
+        }
+    ],
+    "component": "transactions",
+    "description": "There is global static map in XASessionImpl class which stores all Xids and TransactionContexts\n\n    /**\n     * Global transactions\n     */\n    private static final Map txGlobal = new HashMap();\n\nIt looks like this map is never cleared, even after end of transaction. It leads to memory leak because TransactionContexts and all nested objects (including XASessionImpl) are still referenced and couldn't be freed.\n\nProposed solution : Is it posssible to add just single line which will remove TransactionContext from static map at the end of transaction ?\n\n      if (flags == TMSUCCESS || flags == TMFAIL) {\n            associate(null);\n-->       txGlobal.remove(xid);\n        } else  if (flags == TMSUSPEND) {\n            associate(null);\n        } else {\n            throw new XAException(XAException.XAER_INVAL);\n        }\n\nIf this is not acceptable, then we have to unreference TransactionContext in another way.",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "JCR-395",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "Using transactions leads to memory leak",
+    "systemSpecification": true,
+    "version": "0.9, 1.0"
+}

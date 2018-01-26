@@ -1,0 +1,83 @@
+{
+    "comments": [
+        {
+            "author": "Uwe Schindler",
+            "body": "Here the patch.",
+            "date": "2010-03-13T11:36:48.475+0000",
+            "id": 0
+        },
+        {
+            "author": "Shai Erera",
+            "body": "Minor comment - in copyTo, can you put state.attribute.getClass() in the message of the thrown exception, so whoever encounters it will know what's the invalid attribute?\n\nOn a more general note, can State implement Iterable?",
+            "date": "2010-03-13T12:55:14.500+0000",
+            "id": 1
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "bq. Minor comment - in copyTo, can you put state.attribute.getClass() in the message of the thrown exception, so whoever encounters it will know what's the invalid attribute?\n\nGood idea, the same should be done for restoreState (the code way copied from there).\n\nbq. On a more general note, can State implement Iterable?\n\nIt could, but as State is itsself a linked list element it would be... strange. But of course we could make it Iterable<AttributeImpl>. But the internal implementations of AttributeSource should not use this interface as it is optimized for speed, so the creation of iterators is a no-go here.",
+            "date": "2010-03-13T13:33:31.413+0000",
+            "id": 2
+        },
+        {
+            "author": "Shai Erera",
+            "body": "I just thought that instead of the for loop you have now you could have written something like: \"for (State state : this)\" ... a Java 5.0 style iteration. But it's not critical.",
+            "date": "2010-03-13T13:49:28.532+0000",
+            "id": 3
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Because of speed we do not do this. That was performance tested in 2.9 development. The for-loop using the linked list directly is far faster. the captureState is one of the most optimized methods.",
+            "date": "2010-03-13T13:53:43.478+0000",
+            "id": 4
+        },
+        {
+            "author": "Shai Erera",
+            "body": "Ok. Performance is always preferred than beautiful looking code :).",
+            "date": "2010-03-13T13:56:56.616+0000",
+            "id": 5
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "New patch with some improvements in cloneAttributes() and the requested class names in the IAEs.",
+            "date": "2010-03-13T16:18:36.493+0000",
+            "id": 6
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "Small comment on javadoc wording. \n\nMaybe like that:\n{code}\n/**\n * Copies the contents of this AttributeSource to the given AttributeSource.\n * The given instance has to provide all {@link Attribute}s this instance contains. \n * The actual attribute implementations must be identical in both {@link AttributeSource} instances.\n * Ideally both AttributeSource instances should use the same {@link AttributeFactory} \n */\n{code}\n\n\n",
+            "date": "2010-03-13T16:40:19.666+0000",
+            "id": 7
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Updated javadocs. Will commit tomorrow.",
+            "date": "2010-03-13T17:35:13.347+0000",
+            "id": 8
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "looks good to me!",
+            "date": "2010-03-13T17:38:40.181+0000",
+            "id": 9
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Committed revision: 922797",
+            "date": "2010-03-14T09:10:05.508+0000",
+            "id": 10
+        }
+    ],
+    "component": "",
+    "description": "One problem with AttributeSource at the moment is the missing \"insight\" into AttributeSource.State. If you want to create TokenStreams that inspect cpatured states, you have no chance. Making the contents of State public is a bad idea, as it does not help for inspecting (its a linked list, so you have to iterate).\n\nAttributeSource currently contains a cloneAttributes() call, which returns a new AttrubuteSource with all current attributes cloned. This is the (more expensive) captureState. The problem is that you cannot copy back the cloned AS (which is the restoreState). To use this behaviour (by the way, ShingleMatrix can use it), one can alternatively use cloneAttributes and copyTo. You can easily change the cloned attributes and store them in lists and copy them back. The only problem is lower performance of these calls (as State is a very optimized class).\n\nOne use case could be:\n{code}\nAttributeSource state = cloneAttributes();\n// .... do something ...\nstate.getAttribute(TermAttribute.class).setTermBuffer(foobar);\n// ... more work\nstate.copyTo(this);\n{code}",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-2314",
+    "issuetypeClassified": "RFE",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Minor",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "Add AttributeSource.copyTo(AttributeSource)",
+    "systemSpecification": true,
+    "version": ""
+}

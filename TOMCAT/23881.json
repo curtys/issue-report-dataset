@@ -1,0 +1,77 @@
+{
+    "comments": [
+        {
+            "author": null,
+            "body": "also the register method in AuthenticatorBase creates a new cookie for \nSingleSignOn - i guess should check against an already existing cookie (using \nlookup) - and just call method associate in case this one exists. this solves a \npotential memory leak and the logout issue (register is called after every \nsuccessful authenticate with the container realm). ",
+            "date": "20031017T09:08:35",
+            "id": 0
+        },
+        {
+            "author": null,
+            "body": "Created attachment 9247\nPatch w/ diff and one new class",
+            "date": "20031123T00:01:06",
+            "id": 1
+        },
+        {
+            "author": null,
+            "body": "Attached is a proposed patch.  It adds a configurable \nattribute \"requiresReauthentication\" to SingleSignOn.  If \"false\" (the \ndefault), applications will behave as they do now.  If \"true\", each incoming \nrequest will need to be reauthenticated to the Realm.  The various \nauthenticators have been modified to handle this.  In this case the \nSingleSignOnEntry serves as a store of authentication credentials.\n\nIf the 1st webapp a user visits uses FORM or BASIC auth, and then they visit \nanother app that requires DIGEST, the cached username/password from the \nFORM/BASIC authentication will not be sufficient information to do a digest \nauthentication, so the user will be prompted for a digest login.  Possibly we \ncould add a config option to allow a username/password authentication to \noverride the DIGEST auth specified in the web.xml.\n\nSimilarly, if the user first visits a webapp with DIGEST auth, and then visits \none that uses FORM or BASIC, again the cached credentials will not be \nsufficient (no cached password from the digest auth), so they will have to be \nprompted for their username/password.\n\nThe attached patch includes logic that deals with all this and ensures that a \nsingle SSO session is maintained throughout.\n\nOf course, if webapps in a deployment don't mix their authentication schemes, \nnone of the above details are an issue.\n\nThis bug was raised against TC 4; sorry the patch is against TC 5.  I can very \neasily pull together a TC4.1 version if desired.\n\nThis patch also addresses bug 10040.",
+            "date": "20031123T00:18:29",
+            "id": 2
+        },
+        {
+            "author": null,
+            "body": "I think I'm going to apply this patch. Esp since it has been tested in JB land\nfirst (otherwise, I wouldn't want to commit it so close to a release).",
+            "date": "20031123T17:45:49",
+            "id": 3
+        },
+        {
+            "author": null,
+            "body": "I have applied your patch, thanks.",
+            "date": "20031124T16:53:11",
+            "id": 4
+        },
+        {
+            "author": null,
+            "body": "Created attachment 9288\nPort of the TC5 patch to TC 4.1; includes related fix to 9077 and 10040",
+            "date": "20031126T04:53:11",
+            "id": 5
+        },
+        {
+            "author": null,
+            "body": "*** Bug 4350 has been marked as a duplicate of this bug. ***",
+            "date": "20031207T19:27:50",
+            "id": 6
+        },
+        {
+            "author": null,
+            "body": "Created attachment 9694\nPrevious patch to 4.1 updated to avoid conflict with patch applied today by Mark Thomas",
+            "date": "20031224T06:44:21",
+            "id": 7
+        },
+        {
+            "author": null,
+            "body": "Patch attached a moment ago is a zip file which includes a diff plus a new \nclass.  The new class is just the existing SingleSignOnEntry inner class \nextracted out of SingleSignOn.",
+            "date": "20031224T06:48:03",
+            "id": 8
+        },
+        {
+            "author": null,
+            "body": "I have applied you patch to TC4.",
+            "date": "20031224T20:42:42",
+            "id": 9
+        }
+    ],
+    "component": "Catalina",
+    "description": "SingleSignOn valve and FormAuthenticator fail to authenticate correctly when \nTomcat works as embedded engine using a jaas realm (jboss). SingleSignOn code \nwrongly sets the principal inside request based on his cookie and \nFormAuthenticator just thinks everything is ok. In fact FormAuthenticator has \nto call authenticate again using the 'username' and 'password' stored inside \nthe entry for that ssoId (value of the cookie). One way to fix it is to set \nonly the request REQ_SSOID_NOTE (not the principal too) inside SingleSignOn \nvalve. FormAuthenticator has to make a SingleSignOn lookup, retrieve the \nusername and password and call authenticate. This should happen after checking \n(unsuccessfully) the credentials stored inside the session. This kind of fix \nmade it working for me , although the code is still somewhat not optimal - \n(associate is called way to often, and the same for register , which will reset \nthe cookie)",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "23881",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "BUG",
+    "priority": "P3 normal",
+    "product": "Tomcat 5",
+    "project": "TOMCAT",
+    "summary": "SingleSignOn and FormAuthenticator in embedded tomcat",
+    "systemSpecification": true,
+    "version": "5.0.14"
+}

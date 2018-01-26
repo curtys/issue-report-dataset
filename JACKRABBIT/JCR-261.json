@@ -1,0 +1,23 @@
+{
+    "comments": [
+        {
+            "author": "Stefan Guggisberg",
+            "body": "fixed in svn r328639",
+            "date": "2005-10-26T21:21:08.000+0000",
+            "id": 0
+        }
+    ],
+    "component": "jackrabbit-core",
+    "description": "code fragment to reproduce the issue:\n\n            // setup test\n            if (root.hasNode(\"tmp\")) {\n                root.getNode(\"tmp\").remove();\n                session.save();\n            }\n            Node tmp = root.addNode(\"tmp\");\n            for (int i = 0; i < 4; i++) {\n                Node a = tmp.addNode(\"a\");\n                System.out.println(\"added \" + a.getPath());\n            }\n            session.save();\n\n            // iterative removal of same name sibling child nodes\n            NodeIterator ni = tmp.getNodes();\n            while (ni.hasNext()) {\n                Node n = ni.nextNode();\n                System.out.println(\"removing \" + n.getPath());\n                n.remove();\n                tmp.save();\n            }\n\nconsole output:\n\nadded /tmp/a\nadded /tmp/a[2]\nadded /tmp/a[3]\nadded /tmp/a[4]\nremoving /tmp/a\nremoving /tmp/a\nremoving /\njavax.jcr.RepositoryException: /: cannot remove root node\n\tat org.apache.jackrabbit.core.ItemImpl.internalRemove(ItemImpl.java:766)\n\tat org.apache.jackrabbit.core.ItemImpl.remove(ItemImpl.java:997)\n\tat org.apache.jackrabbit.core.Test.main(Test.java:141)\n\n\nnote that the msg of the exception is misleading: the above code did never try to remove\nthe root node. \n\nthe exception is caused by a bug in CachingHierarchyManager which fails to update\nthe cache correctly.\n\nbtw: if you comment the first logging stmt, i.e. \n\n                //System.out.println(\"added \" + a.getPath());\n\nthe problem doesn't occur anymore.",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "JCR-261",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "iterative removal of same-name sibling nodes might under certain circumstances throw unexpected exceptions",
+    "systemSpecification": true,
+    "version": ""
+}

@@ -1,0 +1,47 @@
+{
+    "comments": [
+        {
+            "author": "Rhett Sutphin",
+            "body": "Created an attachment (id=14044)\nPatch to optimize in rewrite instead of createWeight\n\nThis patch moves the optimization from createWeight to rewrite.  This patch is\nagainst the current CVS even though my initial bug report was against the 1.4.3\nrelease.",
+            "date": "2005-01-19T07:31:39.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Daniel Naber",
+            "body": "Thank you -- could you also attach a test case or a code snippet that triggers \nthe problem? \n ",
+            "date": "2005-01-19T08:05:48.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Rhett Sutphin",
+            "body": "Created an attachment (id=14045)\nA testcase that demonstrates the bug\n",
+            "date": "2005-01-19T08:58:03.000+0000",
+            "id": 2
+        },
+        {
+            "author": "Rhett Sutphin",
+            "body": "Here's the stacktrace I get when running that test without the fix in place:\n\njava.lang.UnsupportedOperationException\n\tat org.apache.lucene.search.BooleanScorer.skipTo(BooleanScorer.java:189)\n\tat org.apache.lucene.search.ConjunctionScorer.doNext(ConjunctionScorer.java:53)\n\tat org.apache.lucene.search.ConjunctionScorer.next(ConjunctionScorer.java:48)\n\tat org.apache.lucene.search.Scorer.score(Scorer.java:37)\n\tat org.apache.lucene.search.IndexSearcher.search(IndexSearcher.java:92)\n\tat org.apache.lucene.search.Hits.getMoreDocs(Hits.java:64)\n\tat org.apache.lucene.search.Hits.<init>(Hits.java:43)\n\tat org.apache.lucene.search.Searcher.search(Searcher.java:33)\n\tat org.apache.lucene.search.Searcher.search(Searcher.java:27)\n\tat\norg.apache.lucene.search.TestBooleanQueryContainingPhrasePrefixQueries.testBooleanQueryContainingSingleTermPrefixQuery(TestBooleanQueryContainingPhrasePrefixQueries.java:57)\n",
+            "date": "2005-01-19T09:00:34.000+0000",
+            "id": 3
+        },
+        {
+            "author": "Daniel Naber",
+            "body": "Thanks, I committed your patch and the testcase to our CVS.  ",
+            "date": "2005-01-20T08:35:48.000+0000",
+            "id": 4
+        }
+    ],
+    "component": "core/search",
+    "description": "A BooleanQuery including a PhrasePrefixQuery can cause an exception to be thrown\nfrom BooleanScorer#skipTo when the search is executed:  \n\njava.lang.UnsupportedOperationException\n\tat org.apache.lucene.search.BooleanScorer.skipTo(BooleanScorer.java:189)\n\tat org.apache.lucene.search.ConjunctionScorer.doNext(ConjunctionScorer.java:53)\n\tat org.apache.lucene.search.ConjunctionScorer.next(ConjunctionScorer.java:48)\n\tat org.apache.lucene.search.Scorer.score(Scorer.java:37)\n\tat org.apache.lucene.search.IndexSearcher.search(IndexSearcher.java:92)\n\tat org.apache.lucene.search.Hits.getMoreDocs(Hits.java:64)\n\tat org.apache.lucene.search.Hits.<init>(Hits.java:43)\n\tat org.apache.lucene.search.Searcher.search(Searcher.java:33)\n\tat org.apache.lucene.search.Searcher.search(Searcher.java:27)\n        ... (non-lucene code)\n\nThe problem appears to be that PhrasePrefixQuery optimizes itself into a\nBooleanQuery when it contains only one term.  However, it does this in the\ncreateWeight() method of its scorer instead of in the rewrite method of the\nquery itself.  Thus it bypasses the boolean typecheck when BooleanQuery is\ndeciding whether to use ConjunctionScorer or BooleanScorer, eventually resulting\nin the UOE.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-337",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "Combination of BooleanQuery and PhrasePrefixQuery can provoke UnsupportedOperationException",
+    "systemSpecification": true,
+    "version": "1.4"
+}

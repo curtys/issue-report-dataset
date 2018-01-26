@@ -1,0 +1,41 @@
+{
+    "comments": [
+        {
+            "author": "Thomas Mueller",
+            "body": "The easiest solution is to call syncCount++ before calling journal.sync(), but I will also replace the volatile syncCount with AtomicInteger.",
+            "date": "2010-10-15T14:21:01.487+0000",
+            "id": 0
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Moving the syncCount increment before the sync() call can cause unnecessary cluster syncs when multiple sessions are refreshed concurrently.",
+            "date": "2010-10-15T14:46:39.763+0000",
+            "id": 1
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "Hi Jukka - what do you suggest?\n\nHaving some way to enforce a cluster sync is nice; in my view it doesn't need to be Session.refresh(..).",
+            "date": "2010-10-15T15:00:43.338+0000",
+            "id": 2
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "My original thinking behind the syncCount mechanism from JCR-1753 was to skip the cluster sync if another thread completes the sync after the sync() method was entered. I missed the case where a thread performs the sync but is then delayed before it gets to the syncCount++ statement.\n\nYour fix changes the logic from checking whether a sync was completed to whether a sync was *started* after the sync() method was entered, which raises the likelihood of extra cluster syncs. However, of the top of my head I don't see any good way to reliably track the completion of a cluster sync, so for now I think your solution is the best. At least it can only causes one extra cluster sync even if n threads were blocked waiting on syncLock.\n\nPS: AtomicInteger enables a more elegant way to implement the check-and-increment operation:\n\nif (count == syncCount.get()) {\n    syncCount.incrementAndGet();\n    ...\n}\n\nvs.\n\nif (syncCount.compareAndSet(count, count + 1)) {\n    ...;\n}\n",
+            "date": "2010-10-15T15:43:30.528+0000",
+            "id": 3
+        }
+    ],
+    "component": "clustering",
+    "description": "Session.refresh(..) is supposed to synchronize cluster changes, but this doesn't always happen, specially if the syncDelay is low. The reason is a wrong assumption in ClusterNode.sync: The code there to avoid duplicate sync calls doesn't always work as expected. The following algorithm is used:\n\n        int count = syncCount;\n        syncLock.acquire();\n        if (count == syncCount) {\n            journalSync();\n            syncCount++;\n        }\n        syncLock.release();\n\nThe problem is that the background thread might be at the line \"syncCount++\" when Session.refresh(..) is called, so that the main thread believes journalSync was already called and thus doesn't call it.",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "JCR-2786",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "Cluster sync not always done when calling session.refresh(..)",
+    "systemSpecification": true,
+    "version": ""
+}

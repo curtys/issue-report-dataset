@@ -1,0 +1,59 @@
+{
+    "comments": [
+        {
+            "author": "Edgar Poce",
+            "body": "> The problem comes from the fact that the simple presence of the .lock file is used to indicate a live instance.\n\nNot only a live instance ... The idea was no only to prevent 2 jackrabbit instances running but also to let the user know that the repository wasn't shutdown propertly. Clean shutdowns are very important, actually I turned my repository inconsistent a couple of times killing the jvm process.\n\n> I suggest replacing this behavior using this method (used for example by eclipse when opening workspaces):\n> - when an instance is loaded create a \".lock\" file and open it with exclusive access\n\nI'm not sure but I think this was the policy for the index lock some months ago, and I'm happy it changed because a few times I had to reboot XP when I killed the jvm process. I couldn't remove the lock, not even from the explorer. So, I don't think it's a good idea to change the current behaviour.",
+            "date": "2005-10-03T08:22:18.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Tobias Bocanegra",
+            "body": "i also opt for an exclusive file lock mechanism. i already have a patched version running...i will provide the patch shortly\n\nbtw: you can use process explorer (http://www.sysinternals.com/Utilities/ProcessExplorer.html) to search the process that has locked the file and terminate it (like fuser on unix). sometimes it was even explorer.exe that had the lock.\n\n",
+            "date": "2005-10-03T15:30:44.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "I also like the approach to use an exclusive file lock.\n\nAs a consequence it seems that creating and removing the .lock file is of no use anymore, because it does not actually indicate whether an instance is really using the lock file. The primary indicator is the presence on an exclusive lock on a well known file.\n\nSo, how about initially creating the lock file if it is not there and then use only file locking to prevent multiple instances running on the same repository data?",
+            "date": "2005-10-03T16:43:19.000+0000",
+            "id": 2
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "Edgar wrote:\n> Clean shutdowns are very important, actually I turned my repository inconsistent a couple of times killing the jvm process.\n\nIMO the repository should be able to handle such process kills, if it is not we should fix it. There are far too many components involved, which are not 100% reliable. JVMs will always crash, at least the ones that are available right now. So there is no way we can get around this.",
+            "date": "2005-10-03T16:51:22.000+0000",
+            "id": 3
+        },
+        {
+            "author": "Tobias Bocanegra",
+            "body": "i though of creating and deleting the .lock file as before, but using an exclusive filelock for the actual locking. so if a starting repository detetcs an existing .lock file, it can issue a warning, that the repository was not shutdown properly.",
+            "date": "2005-10-03T17:11:45.000+0000",
+            "id": 4
+        },
+        {
+            "author": "Tobias Bocanegra",
+            "body": "patch for exclusive locking",
+            "date": "2005-10-03T17:12:21.000+0000",
+            "id": 5
+        },
+        {
+            "author": "Tobias Bocanegra",
+            "body": "fixed as proposed.\n\nAuthor: tripod\nDate: Tue Oct 11 05:37:32 2005\nNew Revision: 312865\n\nURL: http://svn.apache.org/viewcvs?rev=312865&view=rev\nLog:\nJCR-233 repository lock file not removed without a clean shutdown\n\nModified:\n   incubator/jackrabbit/trunk/src/java/org/apache/jackrabbit/core/RepositoryImpl.java\n\n",
+            "date": "2005-10-11T21:38:38.000+0000",
+            "id": 6
+        }
+    ],
+    "component": "jackrabbit-core",
+    "description": "actually when a repository is loaded a \".lock\" file is created. This file is removed only after a clean shutdown but, if a jackrabbit instance has been killed, you have to manually delete the file in order to load the repository again, also if there was no live instance of jackrabbit that was using it.\n\nThe problem comes from the fact that the simple presence of the .lock file is used to indicate a live instance.\nI suggest replacing this behavior using this method (used for example by eclipse when opening workspaces):\n- when an instance is loaded create a \".lock\" file and open it with exclusive access\n- when a new instance is started try to delete an eventual .lock file. Only if the file can't be deleted because in use assume that another jackrabbit instance is running.\n",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "JCR-233",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "repository lock file not removed without a clean shutdown",
+    "systemSpecification": false,
+    "version": ""
+}

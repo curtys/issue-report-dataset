@@ -1,0 +1,107 @@
+{
+    "comments": [
+        {
+            "author": "Michael Becke",
+            "body": "Hi Jesse,\n\nIf the ProtocolSocketFactory does not implement equals, the object identity is used.  In most cases \nthis has worked, since the socket factories are usually singletons.  After looking at the code \nthough, it is possible that more than one instance of DefaultProtocolSocketFactory and \nSSLProtocolSocketFactory could be created.  It seems that we have a couple of options here to fix \nthis:\n\n - change Protocol to not rely on ProtocolSocketFactory.equals().\n - add equals methods to the socket factories\n - ensure that the socket factories are singletons\n\nMy preference is to do #2&3.  What do others think?\n\nMike",
+            "date": "2004-01-15T03:29:09.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Jesse Kinkead",
+            "body": "I was experiencing this while using the GetMethod(String) constructor, which\ncalls the HttpMethodBase constructor, which constructs a new HostConfiguration\neach time.\n\nI _think_ that the multithreaded client won't work properly unless you use\nseparate new GetMethods like this.\n\nAnyway, a usage like this would break unless equals() was added.  I vote #2, 3\nwhere possible.",
+            "date": "2004-01-15T03:37:27.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Roland Weber",
+            "body": "Hello Mike,\n\nsince socket factories can be provided from outside the HTTP Client itself,\nI'd rather not require them to be singletons. You couldn't enforce it anyway.\n#2 seems the best approach to me.\n\ncheers,\n  Roland",
+            "date": "2004-01-19T14:47:46.000+0000",
+            "id": 2
+        },
+        {
+            "author": "Ortwin Gl\u00fcck",
+            "body": "I agree with Roland about the Singleton issue. A class beeing a Singleton is an\nimplementation detail and must/can not be enforced with an interface definition.",
+            "date": "2004-01-19T15:39:09.000+0000",
+            "id": 3
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Hi Roland,\n\n> since socket factories can be provided from outside the HTTP Client itself,\n> I'd rather not require them to be singletons. You couldn't enforce it anyway.\n> #2 seems the best approach to me.\n\nI agree that requiring them to be singletons is not the ultimate solution, since there is no way to \nenforce that.  Unfortuantely, there is also no way to enforce that equals() works correctly as well.  \nMy plan, yet to be implemented, is to do 2&3 for all of the various HttpClient classes, and to add \njavadocs suggesting that all implementors do the same.  How does that sound?\n\nMike",
+            "date": "2004-01-22T05:26:02.000+0000",
+            "id": 4
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "> My plan, yet to be implemented, is to do 2&3 for all of the various \n> HttpClient classes, and to add javadocs suggesting that all implementors \n> do the same.  How does that sound?\n\nSounds good, and ambitious. A review of Object#equals method in all HttpClient\nclasses is going to be quite an undertaking. Let me know if you need a helping hand.\n\nOleg",
+            "date": "2004-01-23T01:30:49.000+0000",
+            "id": 5
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Oleg,\n\nTo clarify, my plan is to revisit the equals() methods for all HttpClient classes related to this \nproblem (socket factories, etc.).  It may eventually extend to all classes, but that is a separate \nproblem I think.\n\nMike",
+            "date": "2004-01-23T02:49:53.000+0000",
+            "id": 6
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Created an attachment (id=10078)\nPatch 1\n",
+            "date": "2004-01-24T23:46:15.000+0000",
+            "id": 7
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Here's a first stab at this one.  Let me know what you think.\n\nMike",
+            "date": "2004-01-24T23:46:41.000+0000",
+            "id": 8
+        },
+        {
+            "author": "Roland Weber",
+            "body": "Hi Mike,\n\nSorry for answering late, I've been offline for a while.\nYour implementation beats all concerns I would have raised\nabout deriving classes from singletons. I like it.\n\ncheers,\n  Roland\n",
+            "date": "2004-01-26T21:49:44.000+0000",
+            "id": 9
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Mike, the patch looks good. Can you take care of *ProtocolSocketFactory classes\nin the contrib package too, please?\n\nOleg",
+            "date": "2004-01-26T23:58:00.000+0000",
+            "id": 10
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Roland, Oleg,\n\nThank you for looking the patch over.  I will make the changes to the ProtocolSocketFactory classes \nin contrib and commit.\n\nMike",
+            "date": "2004-01-27T07:59:32.000+0000",
+            "id": 11
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Patch applied to HEAD.  Should we put this is for 2.0 as well?\n\nMike",
+            "date": "2004-01-28T06:19:22.000+0000",
+            "id": 12
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "I think so.\n\nOleg",
+            "date": "2004-01-28T17:38:16.000+0000",
+            "id": 13
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Patch applied to 2.0.\n\nMike",
+            "date": "2004-01-31T03:23:55.000+0000",
+            "id": 14
+        }
+    ],
+    "component": "HttpClient (classic)",
+    "description": "Note: I have '2.0 release candidate 1'; I'm not sure which version this\ntranslates into.  The bug is definitely present in the current source.\n\nMultiThreadedHttpClient uses the following code:\n\n// Look for a list of connections for the given config\nHostConnectionPool listConnections = (HostConnectionPool) \n    mapHosts.get(hostConfiguration);\nif (listConnections == null) { \n    // First time for this config\n    listConnections = new HostConnectionPool();\n    listConnections.hostConfiguration = hostConfiguration;\n    mapHosts.put(hostConfiguration, listConnections);\n}\n\n\nThe hash map relys on HostConfiguration's .equals() to resolve equality &\ndetermine if there is a mapping for the configuration.\n\nHostConfiguration has the following in it's .equals() method:\n\nif (!protocol.equals(config.getProtocol())) {\n    return false;\n}\n\n. . . and Protocol has:\n\nif (obj instanceof Protocol) {\n            \n    Protocol p = (Protocol) obj;\n            \n    return (\n        defaultPort == p.getDefaultPort()\n        && scheme.equalsIgnoreCase(p.getScheme())\n        && secure == p.isSecure()\n        && socketFactory.equals(p.getSocketFactory()));\n\n}\n\nHowever, there is no .equals() method in any of the ProtocolSocketFactory\nobjects, and there isn't any note in the interface about the necessity of the\n.equals() method.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "HTTPCLIENT-310",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "HTTPCLIENT",
+    "project": "HTTPCLIENT",
+    "summary": "Memory leak in MultiThreadedHttpClient caused by bad .equals()",
+    "systemSpecification": true,
+    "version": ""
+}

@@ -1,0 +1,113 @@
+{
+    "comments": [
+        {
+            "author": null,
+            "body": "I did some parallel work this week and found the same result for mod_jk and\nAJP/13 connector with JDK1.5 hprof. We can see the leak in production too,\nbecause we have a lot of worker thread creation and destruction.\n\nThe analysis of Robert is correct. I did a quick fix by adding addThread and\nremoveThread methods to /org/apache/tomcat/util/log/SystemLogHandler.java and\nthen registered a ThreadPoolListener in /org/apache/jk/common/ChannelSocket.java\nthat handles addThread and removeThread. Still need to verify, that the leak is\ngone.\n\nIT#s intersting that there is another class\n/org/apache/jasper/util/SystemLogHandler.java that is used in a similar way,\nbut cares better about freeing the thread objects at the end of work.\n\nIf you are interested I will produce a patch for the Coyote HTTP connector too,\nso you can check, if that would fix the problem.",
+            "date": "20050204T18:59:26",
+            "id": 0
+        },
+        {
+            "author": null,
+            "body": "Using a thread local or a weak reference seems the way of fixing the issue.\n\nAnyway, I don't quite understand why the class uses a stack and stuff, and isn't\nsimply identical to the Jasper one. I don't see any recursion going on. Since\nyou're actually using the class, maybe you can test this ?",
+            "date": "20050204T20:13:23",
+            "id": 1
+        },
+        {
+            "author": null,
+            "body": "As a workaround for the 5.0 branch I attach a patch for \n\n- /org/apache/tomcat/util/log/SystemLogHandler.java\n- /org/apache/jk/common/ChannelSocket.java\n- /java/org/apache/coyote/http11/Http11Protocol.java\n\nIt uses a ThreadPoolListener (that was already present in Http11Protocol).\n\nI tested it with creation of app. 44.000 Threads for Coyote HTTP as well as for\nthe AJP/13 connector (and getting a bunch of non-session static content for each\nthread). After each creation of 2.000 threads I did a Full GC. Old Generation\nvaries betweeen 20545K and 28517K with no noticeable increase in time (first GC\n26319K, last GC 27450K).\n",
+            "date": "20050205T04:57:27",
+            "id": 2
+        },
+        {
+            "author": null,
+            "body": "Created attachment 14184\nAdd addThread and removeThread to SystemLogHandler",
+            "date": "20050205T05:04:15",
+            "id": 3
+        },
+        {
+            "author": null,
+            "body": "Created attachment 14185\nUse ThreadPoolListener - avoid thread memory leak",
+            "date": "20050205T05:05:11",
+            "id": 4
+        },
+        {
+            "author": null,
+            "body": "Created attachment 14186\nUse ThreadPoolListener - avoid thread memory leak",
+            "date": "20050205T05:05:37",
+            "id": 5
+        },
+        {
+            "author": null,
+            "body": "Created attachment 14187\nCompiled classes and full source code\n\nFor a test extract the classes from the jar to server/classes.\n\nCompatible (at least) with 5.0.27-5.0.31.",
+            "date": "20050205T05:07:39",
+            "id": 6
+        },
+        {
+            "author": null,
+            "body": "Thanks, but as I have stated, I am not interested in this way to fix it ;)",
+            "date": "20050205T10:51:39",
+            "id": 7
+        },
+        {
+            "author": null,
+            "body": "Remy: I did understand, that you prefer some refactoring there. But you weren't\nprecise about only introducing a ThreadLocal (easy) or also making analysis on\nprobable recursion. I changed the logs HashTable inside SystemLogHandler to a\nThreadLocal and I'm running a series of tests to see, if the memory leak is\ngone. I wil post the small patch (for both SystemLogHandlers) as soon, as the\ntests succeed.\n\nI would not very much like to go deeper into the question, if a stack\n(supporting recursion) is really necessary. In the jasper case it is not (and so\nnot in the code), but the case of the filters and valves using\n/org/apache/tomcat/util/log/SystemLogHandler.java might be different (and even\ndifferent in the various TC versions).",
+            "date": "20050205T15:20:03",
+            "id": 8
+        },
+        {
+            "author": null,
+            "body": "Created attachment 14189\nThreadLocal Patch for Jaspers SystemLogHandler",
+            "date": "20050205T17:54:40",
+            "id": 9
+        },
+        {
+            "author": null,
+            "body": "Created attachment 14190\nThreadLocal Patch for connectors SystemLogHandler",
+            "date": "20050205T17:55:13",
+            "id": 10
+        },
+        {
+            "author": null,
+            "body": "Created attachment 14191\nComplete Code and classes for the two patches\n\nTest by extracting classes to server/classes.\n\nI could not reproduce the thread memory leak with this version.\n\nNew version of the Jasper SystemLogHandler is compatible with Revision 1.4 (5.0\nand 5.5 branches), but it seems, that it could also be used instead of 1.1.2.2\n(Tomcat 4 branch).\n\nFor the connectors SystemLogHandler the patch can be applied to 1.5 (5.5\nbranch) and 1.4.2.1 (5.0 branch), since they are the same.",
+            "date": "20050205T18:02:21",
+            "id": 11
+        },
+        {
+            "author": null,
+            "body": "The ThreadLocal solution looks good to me. I think fiding out if a stack is\nneeded or not would be useful, since the code is significantly more complex\nbecause of that.",
+            "date": "20050206T12:30:22",
+            "id": 12
+        },
+        {
+            "author": null,
+            "body": "I have applied the patch. Thanks.",
+            "date": "20050208T13:26:06",
+            "id": 13
+        },
+        {
+            "author": null,
+            "body": "This patch has also been back-ported to the TC4 branch.",
+            "date": "20050214T21:31:02",
+            "id": 14
+        },
+        {
+            "author": null,
+            "body": "patch applied to 5.0",
+            "date": "20060412T22:34:05",
+            "id": 15
+        }
+    ],
+    "component": "Catalina",
+    "description": "SystemLogHandler has a map called logs. The key is a ThreadWithAttributes and\nthe value is a stack of CaptureLogs. Because threads come and go from the thread\npool, this map slowly gets bigger and bigger. logs should be a ThreadLocal, not\na map.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "33368",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "P2 normal",
+    "product": "Tomcat 5",
+    "project": "TOMCAT",
+    "summary": "swallowOutput causes memory leak",
+    "systemSpecification": false,
+    "version": "5.0.28"
+}

@@ -1,0 +1,119 @@
+{
+    "comments": [
+        {
+            "author": "Earwin Burrfoot",
+            "body": "Okay, here's the first patch, against latest trunk.\ntest-core, test-contrib pass. test-tag fails due to no-longer-correct test assumptions. Should I checkout the branch and make a separate patch, or how is it done?\n",
+            "date": "2009-05-21T15:58:11.121+0000",
+            "id": 0
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Excellent!  Thanks Earwin.\n\nbq. test-tag fails due to no-longer-correct test assumptions. Should I checkout the branch and make a separate patch, or how is it done?\n\nYes, please make mods to the tags/XXX checkout, and include those mods in the patch.",
+            "date": "2009-05-21T16:05:20.345+0000",
+            "id": 1
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Earwin are you working on the patch for back-compat tests, here?",
+            "date": "2009-05-26T18:09:51.118+0000",
+            "id": 2
+        },
+        {
+            "author": "Earwin Burrfoot",
+            "body": "Yup, will post one soon, didn't have enough time on hands.",
+            "date": "2009-05-26T19:09:58.082+0000",
+            "id": 3
+        },
+        {
+            "author": "Earwin Burrfoot",
+            "body": "Hm.. okay, I've got back to work on this patch. To fix tests relying on getting SR from IR.open() on trunk I introduced a package-private utility method that extracts SR from MSR if it is the only one there. The tests in tags/XXX don't see this method, should I backport it somewhere there?",
+            "date": "2009-06-02T20:40:11.106+0000",
+            "id": 4
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "You can add a stub method (matches signature but does nothing) to src/java in the back-compat branch, just so the tests compile.  The back-compat tests run against the trunk's jar.",
+            "date": "2009-06-02T20:46:04.284+0000",
+            "id": 5
+        },
+        {
+            "author": "Earwin Burrfoot",
+            "body": "Here are the patches for current lucene trunk and back compat tag.",
+            "date": "2009-06-02T22:21:19.981+0000",
+            "id": 6
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "I'm hitting compilation errors:\n{code}\ncommon.compile-core:\n    [mkdir] Created dir: /lucene/src/msr.1651/build/classes/java\n    [javac] Compiling 374 source files to /lucene/src/msr.1651/build/classes/java\n    [javac] /lucene/src/msr.1651/src/java/org/apache/lucene/index/SegmentReader.java:419: directory has private access in org.apache.lucene.index.IndexReader\n    [javac]     instance.directory = dir;\n    [javac]             ^\n    [javac] /lucene/src/msr.1651/src/java/org/apache/lucene/index/SegmentReader.java:420: cannot find symbol\n    [javac] symbol  : variable readOnly\n    [javac] location: class org.apache.lucene.index.SegmentReader\n    [javac]     instance.readOnly = readOnly;\n    [javac]             ^\n    [javac] /lucene/src/msr.1651/src/java/org/apache/lucene/index/SegmentReader.java:562: cannot find symbol\n    [javac] symbol  : variable readOnly\n    [javac] location: class org.apache.lucene.index.SegmentReader\n    [javac]       return clone(readOnly); // Preserve current readOnly\n    [javac]                    ^\n    [javac] /lucene/src/msr.1651/src/java/org/apache/lucene/index/SegmentReader.java:588: cannot find symbol\n    [javac] symbol  : variable readOnly\n    [javac] location: class org.apache.lucene.index.SegmentReader\n    [javac]     if (normsUpToDate && deletionsUpToDate && !doClone && openReadOnly && readOnly) {\n    [javac]                                                                           ^\n    [javac] /lucene/src/msr.1651/src/java/org/apache/lucene/index/SegmentReader.java:611: cannot find symbol\n    [javac] symbol  : variable readOnly\n    [javac] location: class org.apache.lucene.index.SegmentReader\n    [javac]       clone.readOnly = openReadOnly;\n    [javac]            ^\n    [javac] /lucene/src/msr.1651/src/java/org/apache/lucene/index/SegmentReader.java:612: directory has private access in org.apache.lucene.index.IndexReader\n    [javac]       clone.directory = directory;\n    [javac]            ^\n    [javac] /lucene/src/msr.1651/src/java/org/apache/lucene/index/SegmentReader.java:612: directory has private access in org.apache.lucene.index.IndexReader\n    [javac]       clone.directory = directory;\n    [javac]                         ^\n    [javac] /lucene/src/msr.1651/src/java/org/apache/lucene/index/SegmentReader.java:1214: directory has private access in org.apache.lucene.index.IndexReader\n    [javac]     return directory;\n    [javac]            ^\n    [javac] Note: Some input files use or override a deprecated API.\n    [javac] Note: Recompile with -Xlint:deprecation for details.\n    [javac] 8 errors\n{code}",
+            "date": "2009-06-03T02:02:29.572+0000",
+            "id": 7
+        },
+        {
+            "author": "Earwin Burrfoot",
+            "body": "Seems the patch didn't apply completely. Your line numbers are off, also directory/readOnly are now members of SegmentReader, no way they can't be seen:\n\n{code}\nclass SegmentReader extends IndexReader implements Cloneable {\n  protected Directory directory;\n  protected boolean readOnly;\n\n  private String segment;\n  private SegmentInfo si;\n  private int readBufferSize;\n{code}\n\nHere's corresponding part of the patch, I bet $Id$ is the reason.\n{code}\n-/**\n- * @version $Id$\n- */\n-class SegmentReader extends DirectoryIndexReader {\n+/** @version $Id$ */\n+class SegmentReader extends IndexReader implements Cloneable {\n+  protected Directory directory;\n+  protected boolean readOnly;\n+\n{code}",
+            "date": "2009-06-03T06:38:17.953+0000",
+            "id": 8
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Hmm -- let me figure out what happened.  Sorry for the false alarm!",
+            "date": "2009-06-03T10:12:21.628+0000",
+            "id": 9
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "OK, I had one hunk fail in SegmentReader.java patch; once I fixed that, t'sall good.\n\nPatch looks good Earwin, thanks!\n\nI think we should now rename MultiSegmentReader to DirectoryIndexReader?",
+            "date": "2009-06-03T10:58:45.105+0000",
+            "id": 10
+        },
+        {
+            "author": "Earwin Burrfoot",
+            "body": "bq. Patch looks good Earwin, thanks!\nI believe the readers can be cleaned up further, but I'm short on time and don't want to delay it for another week or two, and then rebase it against updated trunk once again. Might as well do that under a separate issue.\n\nbq. I think we should now rename MultiSegmentReader to DirectoryIndexReader?\nMaybe DirectoryReader instead of DirectoryIndexReader? But all three are in fact okay with me, I really don't have any preference here.\n",
+            "date": "2009-06-03T11:42:48.869+0000",
+            "id": 11
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Let's just go w/ DirectoryReader?  Can you post a new patch w/ that?  Thanks.\n\nbq. I believe the readers can be cleaned up further, but I'm short on time and don't want to delay it for another week or two, and then rebase it against updated trunk once again. Might as well do that under a separate issue.\n\nAgreed!  Progress not perfection.",
+            "date": "2009-06-03T14:20:51.690+0000",
+            "id": 12
+        },
+        {
+            "author": "Earwin Burrfoot",
+            "body": "Argh! The rename broke test-tag again :) in new and innovative ways.\nNew patches attached.",
+            "date": "2009-06-03T16:02:15.508+0000",
+            "id": 13
+        },
+        {
+            "author": "Earwin Burrfoot",
+            "body": "One more version, applies against current trunk without fuzzy hunk matching.",
+            "date": "2009-06-03T16:15:44.053+0000",
+            "id": 14
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "OK patch looks good. I plan to commit in a day or two. Thanks Earwin!",
+            "date": "2009-06-03T17:44:33.936+0000",
+            "id": 15
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Thanks Earwin!",
+            "date": "2009-06-07T16:34:01.023+0000",
+            "id": 16
+        }
+    ],
+    "component": "",
+    "description": "As per discussion in mailing list, I'm making DirectoryIndexReader.open() always return MSR, even for single-segment indexes.\nWhile theoretically valid in the past (if you make sure to keep your index constantly optimized) this feature is made practically obsolete by per-segment collection.\n\nThe patch somewhat de-hairies (re-)open logic for MSR/SR.\nSR no longer needs an ability to pose as toplevel directory-owning IR.\nAll related logic is moved from DIR to MSR.\nDIR becomes almost empty, and copying two or three remaining fields over to MSR/SR, I remove it.\nLots of tests fail, as they rely on SR returned from IR.open(), I fix by introducing SR.getOnlySegmentReader static package-private method.\nSome previous bugs are uncovered, one is fixed in LUCENE-1645, another (partially fixed in LUCENE-1648) is fixed in this patch. ",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-1651",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "OTHER",
+    "priority": "Major",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "Make IndexReader.open() always return MSR to simplify (re-)opens.",
+    "systemSpecification": true,
+    "version": "2.9"
+}

@@ -1,0 +1,53 @@
+{
+    "comments": [
+        {
+            "author": "Stefan Guggisberg",
+            "body": "not derby-related",
+            "date": "2007-05-16T16:24:21.818+0000",
+            "id": 0
+        },
+        {
+            "author": "Stefan Guggisberg",
+            "body": "the problem is that java.nio.channels.OverlappingFileLockException \nis not caught in RepositoryImpl.acquireRepositoryLock().\n\nthe issue apparently only occurs on java1.6. ",
+            "date": "2007-05-18T14:58:14.416+0000",
+            "id": 1
+        },
+        {
+            "author": "Stefan Guggisberg",
+            "body": "fixed in svn r539491.\n\nthanks for reporting this issue!",
+            "date": "2007-05-18T15:04:12.305+0000",
+            "id": 2
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Merged to the 1.3 branch in revision 544248.",
+            "date": "2007-06-04T20:26:57.058+0000",
+            "id": 3
+        },
+        {
+            "author": "steve neo",
+            "body": "After I upgrade to 1.3.1, I still got this error. I am using ubuntu server, java version is (build 1.6.0-b105). Obviously, i am not only one person to get this error in 1.3.1. Here is a post in maillist http://www.mail-archive.com/users@jackrabbit.apache.org/msg04351.html.\n\n\nHere is my error. \njavax.jcr.RepositoryException: The repository home /var/wibokr/data/repository appears to be in use since the file named .lock is already locked by the current process.\n        at org.apache.jackrabbit.core.util.RepositoryLock.acquire(RepositoryLock.java:122)\n        at org.apache.jackrabbit.core.RepositoryImpl.<init>(RepositoryImpl.java:229)\n        at org.apache.jackrabbit.core.RepositoryImpl.create(RepositoryImpl.java:521)\n        at org.springmodules.jcr.jackrabbit.RepositoryFactoryBean.createRepository(RepositoryFactoryBean.java:57)\n        at org.springmodules.jcr.RepositoryFactoryBean.afterPropertiesSet(RepositoryFactoryBean.java:57)\n        at org.springframework.beans.factory.support.AbstractAutowireCapableBeanFactory.invokeInitMethods(AbstractAutowireCapableBeanFactory.java:1201)\n        at org.springframework.beans.factory.support.AbstractAutowireCapableBeanFactory.initializeBean(AbstractAutowireCapableBeanFactory.java:1171)\n ",
+            "date": "2007-09-08T07:41:00.201+0000",
+            "id": 4
+        },
+        {
+            "author": "Stefan Guggisberg",
+            "body": "steve:\n\nplease note that this issue refers to the fact that java.nio.channels.OverlappingFileLockException was not caught in jackrabbit < 1.3.1.\nthis has been fixed in 1.3.1.\n\nhowever, your 'error' indicates that the specified repository home is already in use, i.e. there's already a Jackrabbit instance running in the same home directory. that's a legitimate error condition and not a bug. \n\n",
+            "date": "2007-09-10T16:26:59.208+0000",
+            "id": 5
+        }
+    ],
+    "component": "jackrabbit-core",
+    "description": "Per email discussion:\nOn Mon, 2007-02-26 at 10:26 +0100, Marcel Reutegger wrote:\n> > just my 2c, I didn't really investigated this issue in more detail...\n> >\n> > according to the javadoc of FileChannel.tryLock() the\n> > OverlappingFileLockException is thrown if the JVM already holds a lock on the\n> > channel.\n> >\n> > in contrast, the current check in the repository startup method primarily\n> > focuses on the situation where *two* JVMs start a repository on the same home\n> > directory.\n> >\n> > I'd say the OverlappingFileLockException is thrown because two repository\n> > instances are startup within the *same* JVM using the same repository home\n> > directory.\n> >\n> > I suggest we add a catch clause, which also covers OverlappingFileLockException\n> > in addition to IOException.\n> >\n> > regards\n> >   marcel\n> >\n> > Stefan Guggisberg wrote:\n> > > btw, afaik OverlappingFileLockException is only thrown on linux,\n> > > FileChannel#getLock on windows e.g. returns null in the same situation.\n> > >\n> > > you might want to test on a different platform to further isolate the\n> > > issue.\n> > > you could also place a breakpoint at the top of the\n> > > RepositoryImpl#acquireRepositoryLock\n> > > method, step through the code, verify the contents of your fs etc.\n> >\n>\n\n\n=== Original email\n\nOn 2/19/07, Patrick Haggood <codezilla@> wrote:\nI'm using Linux, Sun Java 6 and Jackrabbit 1.3 with Derby persistance.\nI have a putNode(object) function that's giving the above error in unit\ntests.  It always fails after the second update, even when I swap tests\n(i.e. save user doc then save user).  Prior to each test, I delete the\nrepository directory.\n\nDo I need to set explicit locks before/after each session.save()?\n\n*********** Unit Test\nDBConn dbc;\n\n    public SessionUtilTest(String testName) {\n        super(testName);\n        dbc = new DBConn();\n    }\n\n// Note - putUser and putDocument both use putNode after determining\nwhich rootnode will be used\n\n   /**\n     * Test of putUnityUser method, of class unityjsr170.jr.SessionUtil.\n     */\n    public void testPutUnityUser() {\n        System.out.println(\"putUnityUser\");\n        UnityUser usr = usr1;\n        SessionUtil instance = dbc.getSutil();\n        String result = instance.putUnityUser(usr1);\n        assertNotNull(result);\n        usr = (UnityUser) instance.getUnityUserByID(result);\n        assertEquals(usr1.getName(),usr.getName());\n    }\n       \n    /**\n     * Test of putUnityDocument method, of class\nunityjsr170.jr.SessionUtil.\n     */\n    public void testPutUnityDocument() {\n        System.out.println(\"putUnityDocument\");\n        UnityDocument udoc = adr1;\n        SessionUtil instance = dbc.getSutil();\n        String result = instance.putUnityDocument(udoc);   <---- File\nLock Error\n        assertNotNull(result);\n        udoc = (UnityDocument) instance.getUnityDocumentByID(result);\n        assertEquals(adr1.getName(),udoc.getName());\n    }\n\n\n********* Here's where I setup my repository connection\n\n    public DBConn(){\n        sutil = null;\n        try {\n            rp = new TransientRepository();\n            sutil= new SessionUtil(rp);\n        } catch (IOException ex) {\n            ex.printStackTrace();\n        }\n    }\n    \n    public void shutdown(){\n        sutil.closeAll();\n    }\n    \n    public SessionUtil getSutil(){\n        return sutil;\n    }\n\n****************  SessionUtil\n\n    public SessionUtil(Repository rp){\n        try {\n            session = rp.login(new\nSimpleCredentials(\"username\",\"password\".toCharArray()));\n            \n        } catch (LoginException ex) {\n            ex.printStackTrace();\n        } catch (RepositoryException ex) {\n            ex.printStackTrace();\n        } \n        \n    }\n    \n    public void closeAll(){\n        try {\n            session.logout();\n        } catch (Exception ex) {\n            ex.printStackTrace();\n            System.out.println(\"Error closing repository\");\n        }\n    }\n    \n // Put a node on the tree under the root node, return the uuid of the\nnew or updated node\n    private String putNode(String nodetype, UnityBaseObject ubo){\n        String resultuuid =null;\n        String uname = ubo.getName();\n        String utype = ubo.getType();\n        String objectuid = ubo.getId();\n        Node pnode; //  node to add or update\n        Session ses = null;\n        try {\n            ses = getSession();\n            // Does updateable node already have node Id?\n            if (objectuid==null) {\n                Node rn = ses.getRootNode();\n                pnode = rn.addNode(utype);\n                pnode.addMixin(\"mix:referenceable\");\n            } else{\n                // grab existing node by uuid\n                pnode = ses.getNodeByUUID(objectuid);\n            }\n            // Did we get an updateable node?\n            if (pnode!=null){\n                ubo.setId(pnode.getUUID());\n                String unityXML =\nutrans.getXMLStringFromUnityBaseObject(ubo);\n                // update all the properties\n                pnode.setProperty(\"name\",ubo.getName());\n                pnode.setProperty(\"type\",ubo.getType());\n                pnode.setProperty(\"xmldata\",unityXML);\n                ses.save();\n                resultuuid = ubo.getId();\n            }\n        } catch(Exception e) {\n            e.printStackTrace();\n        } \n        return resultuuid;\n    }\n\n    private Session getSession(){\n        return session;\n    }\n    \n\n************  repository.xml\n\n <Workspace name=\"${wsp.name}\">\n        <FileSystem\nclass=\"org.apache.jackrabbit.core.fs.local.LocalFileSystem\">\n            <param name=\"path\" value=\"${wsp.home}\"/>\n        </FileSystem>\n        <PersistenceManager\nclass=\"org.apache.jackrabbit.core.state.db.DerbyPersistenceManager\">\n            <param name=\"url\" value=\"jdbc:derby:\n${wsp.home}/db;create=true\"/>\n            <param name=\"schemaObjectPrefix\" value=\"${wsp.name}_\"/>\n        </PersistenceManager>\n        <SearchIndex\nclass=\"org.apache.jackrabbit.core.query.lucene.SearchIndex\">\n            <param name=\"path\" value=\"${wsp.home}/index\"/>\n            <param name=\"useCompoundFile\" value=\"true\"/>\n            <param name=\"minMergeDocs\" value=\"100\"/>\n            <param name=\"volatileIdleTime\" value=\"3\"/>\n            <param name=\"maxMergeDocs\" value=\"100000\"/>\n            <param name=\"mergeFactor\" value=\"10\"/>\n            <param name=\"bufferSize\" value=\"10\"/>\n            <param name=\"cacheSize\" value=\"1000\"/>\n            <param name=\"forceConsistencyCheck\" value=\"false\"/>\n            <param name=\"autoRepair\" value=\"true\"/>\n            <param name=\"analyzer\"\nvalue=\"org.apache.lucene.analysis.standard.StandardAnalyzer\"/>\n        </SearchIndex>\n    </Workspace>\n\n",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "JCR-912",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "OverlappingFileLockException with JRE 1.6",
+    "systemSpecification": true,
+    "version": "1.3"
+}

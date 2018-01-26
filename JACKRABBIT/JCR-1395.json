@@ -1,0 +1,71 @@
+{
+    "comments": [
+        {
+            "author": "Marcel Reutegger",
+            "body": "I think in general we should keep the number of dependencies as low as possible, but if there is a significant amount of code or complexity that we can remove from jackrabbit-core then I think we should do it.\n\nWhat kind of utilities are there that you think are useful?",
+            "date": "2008-02-19T14:02:51.715+0000",
+            "id": 0
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Attached is a quick example patch (io.patch) I put together based mostly on searching for InputStream use within jackrabbit-core. It should illustrate the kinds of benefits we'd see with code-io.\n\n> I think in general we should keep the number of dependencies as low as possible, but if there is a\n> significant amount of code or complexity that we can remove from jackrabbit-core then I think we should do it.\n\nAgreed. Commons IO is probably a borderline case in that we can well live without it, but on the other hand it's relatively small jar (about 100kB) and has no transitive dependencies, so the drawbacks aren't that bad.\n\n> What kind of utilities are there that you think are useful?\n\nSome examples:\n\n1) We have a number of places where we copy streams around using a loop with a temporary buffer. IOUtils.copy() could do such looping and low level buffering for us.\n\n2) We have quite a lot of code that manages temporary files for spooling streams. DeferredFileOutputStream is a perfect utility class for such needs.\n\n3) In a number of places we count the length of a stream. CountingInputStream and CountingOutputStream could do that for us.\n\n4) Even though I personally don't like the idiom \"if (stream != null) { try { stream.close(); } catch (IOException e) { } }\" (I'd rather do just \"stream.close()\" and deal with any exceptions), it is quite widely used within Jackrabbit. IOUtils.closeQuietly(stream) does the same thing.\n\n5) The AutoCloseInputStream class would help us make sure that all streams we pass to a client will be properly closed when fully read or no longer used.\n",
+            "date": "2008-02-19T20:56:01.889+0000",
+            "id": 1
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Just to avoid misunderstandings, I don't prefer to apply the above patch as-is. It's probably better to just introduce the Commons IO dependency, and then incrementally migrate the code to using it. A mass upgrade like the above patch risks introducing unintended errors to known-good code.",
+            "date": "2008-02-19T21:20:27.020+0000",
+            "id": 2
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "I also like to keep the number of dependencies as low as possible. Dependencies mean additional complexity because it means more work for a Jackrabbit user (installation), and because he could depend on a different version of the same library. This can be solved by 'refactoring' the package name of the dependency (complex) or using special class loaders or OSGi (also very complex).\n\nI would prefer if we maintain our own utility classes. It is more work and also a bit risky (I don't think it's that bad actually), but easier for the user and less complex. One extreme is to have no dependencies (only depend on the JDK). I know some view it as 're-inventing the wheel' and they are right.\n\nIf we don't want to maintain our own utility classes (and I think we didn't do a very good job at that so far), using Commons IO is a good solution. It's much better than copy & paste source code. So adding Commons IO is OK for me.",
+            "date": "2008-02-19T21:26:59.160+0000",
+            "id": 3
+        },
+        {
+            "author": "Tobias Bocanegra",
+            "body": "i agree with jukka that commons-io is a worthy dependency since it covers a lot of useful code that a I/O intensive application like jackrabbit needs.\n\nso +1 for adding commons-io as dependency and using where appropriate",
+            "date": "2008-02-19T22:05:44.965+0000",
+            "id": 4
+        },
+        {
+            "author": "Esteban Franqueiro",
+            "body": "I agree with Thomas that we don't do a good job with maintaining the utility classes, and also we have som duplicated code (eg, in BundleDbPersistenceManager there's a closeResultSet() method, and also a few direct calls to ResultSet.close(). The same happens with InputStream's. I think we should have a common DbHelper with methods like close(ResultSet), close(Statement), close(Connection/ConnectionRecoveryManager) (that's because I don't like to call methods closeResultSet or closeSilently since it's obvious by the signature). Like that, I think we should have a common StreamHelper. I don't have a formed opinion on whether we should maintain them or if we should use another component, but we should definitely have one or the other. I'll try to write a DbHelper class and patch for this.\nStill, I think that some of examples mentioned by Jukka are actually very useful. In particular, I think that #5 would be very useful for the DbDataStore and the DbResources/DbInputStream I posted in JCR-1388.",
+            "date": "2008-02-21T13:26:28.571+0000",
+            "id": 5
+        },
+        {
+            "author": "Esteban Franqueiro",
+            "body": "This patch replaces the calls to closing funcions and explicit calls to close() with a call to new unified closing functions. This is juast a PoC, and if there's interest in pursuing this way, I can continue working on it. WDYT?",
+            "date": "2008-02-22T15:25:34.290+0000",
+            "id": 6
+        },
+        {
+            "author": "Esteban Franqueiro",
+            "body": "Same patch, but I deleted some methods but did not replace them. Also added some javadocs.",
+            "date": "2008-02-22T18:22:56.276+0000",
+            "id": 7
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Added the Commons IO dependency and applied a few of the more obvious code simplifications.\n\nResolving as Fixed.",
+            "date": "2008-02-29T07:44:13.478+0000",
+            "id": 8
+        }
+    ],
+    "component": "jackrabbit-core",
+    "description": "Commons IO contains a number of utility classes and methods for working with files and streams. Many of those utilities would be quite useful in Jackrabbit, so I'd like to introduce commons-io 1.4 as a dependency to jackrabbit-core.\n\n",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "JCR-1395",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Minor",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "Use Commons IO 1.4",
+    "systemSpecification": true,
+    "version": ""
+}

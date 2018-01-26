@@ -1,0 +1,41 @@
+{
+    "comments": [
+        {
+            "author": "Julian Reschke",
+            "body": "(confirmed by hacking SessionSaveOperation sp the second branch is always taken)",
+            "date": "2011-10-31T13:45:27.084+0000",
+            "id": 0
+        },
+        {
+            "author": "Julian Reschke",
+            "body": "This seems to reproduce it:\n\n    // https://issues.apache.org/jira/browse/JCR-3131\n    public void testEmptySaveNoRootAccess() throws RepositoryException, NotExecutableException {\n    \t\n    \t// no change in the session\n    \tSession s = getTestSession();\n    \ts.save();\n\n    \tPrivilege[] read = privilegesFromName(Privilege.JCR_READ);\n\n    \ttry {\n            withdrawPrivileges(\"/\", read, getRestrictions(superuser, path));\n        \ts.save();\n    \t}\n    \tfinally {\n            givePrivileges(\"/\", read, getRestrictions(superuser, path));\n    \t}\n    }\n\n(to be added in o.a.c.s.a.a.WriteTest)",
+            "date": "2011-10-31T14:05:53.916+0000",
+            "id": 1
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "+1 the patch looks good",
+            "date": "2011-11-01T11:42:56.081+0000",
+            "id": 2
+        },
+        {
+            "author": "Stefan Guggisberg",
+            "body": "fixed in svn revision 1196062 by committing the patch with some changes (i've chosen a somewhat simpler approach).",
+            "date": "2011-11-01T15:46:30.512+0000",
+            "id": 3
+        }
+    ],
+    "component": "jackrabbit-core",
+    "description": "I'm getting an NPE on the id.denoteNodes() call below, in ItemManager:\n\n    private ItemData retrieveItem(ItemId id) {\n        synchronized (itemCache) {\n            ItemData data = itemCache.get(id);\n            if (data == null && id.denotesNode()) {\n...\n\nbecause the id is null after taking the second branch of this if in SessionSaveOperation.perform:\n\n        if (context.getSessionImpl().hasPermission(\"/\", Session.ACTION_READ)) {\n            id = context.getRootNodeId();\n        } else {\n            id = context.getItemStateManager().getIdOfRootTransientNodeState();\n        }\n\ncontext.toString() says:\n\nsession-author-3623:\nItemManager (org.apache.jackrabbit.core.ItemManager@1e911ccc)\nItems in cache:\n\nSessionItemStateManager (org.apache.jackrabbit.core.state.SessionItemStateManager@15472b43)\n[transient]\n{}[attic]\n{}\n\nwhich I assume means there's nothing to save.\n\nThe correct behavior is probably to do nothing in perform to avoid the NPE.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "JCR-3131",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Minor",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "NPE in ItemManager when calling Session.save() with nothing to save",
+    "systemSpecification": true,
+    "version": "2.3.2"
+}

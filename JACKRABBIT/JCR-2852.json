@@ -1,0 +1,83 @@
+{
+    "comments": [
+        {
+            "author": "Alex Deparvu",
+            "body": "Patch to split an affected query (one that has an OR that spans over both sides of a JOIN), run the 2 splits and then merge the results.",
+            "date": "2011-03-09T18:08:14.585+0000",
+            "id": 0
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Looks good, thanks! I committed the patch in revision 1080186.\n\nSome comments:\n\n* The many \"if (multiple)\" conditions in ConstraintSplitInfo and related code suggest that we might want to use the strategy pattern instead of treating ConstraintSplitInfo as just a data class. Something like that could also simplify the current ConstraintSplitter class.\n\n* I find the \"if (...) { ...; return; } ...;\" pattern you use somewhat confusing. I'd rather just use \"if (...) { ...; } else { ...; }\". If that leads to too much indentation, it's time to break the method to smaller subtasks.\n\n* It would be good to have an outer join test case as well. I'm not sure how the OR conditions interact with outer join semantics.\n\n* I removed some trailing whitespace from here and there in the patch. Not a big issue.\n",
+            "date": "2011-03-10T11:40:45.407+0000",
+            "id": 1
+        },
+        {
+            "author": "Alex Deparvu",
+            "body": "While looking at a test with outer joins, I found this nice NPE just waiting to happen :)\n\nIn case of outer joins, the right row variable can be null, thus breaking the toString implementation of the JoinRow class.",
+            "date": "2011-03-10T15:23:36.403+0000",
+            "id": 2
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Good catch! Patch committed in revision 1080540.",
+            "date": "2011-03-11T11:59:31.472+0000",
+            "id": 3
+        },
+        {
+            "author": "Alex Deparvu",
+            "body": "Attached a simple Outer Join test",
+            "date": "2011-03-18T16:21:50.759+0000",
+            "id": 4
+        },
+        {
+            "author": "Alex Deparvu",
+            "body": "Apparently JCR-2933 stumbled upon a case that does not fit into my patch :(\n\nIf we have an outer join with an OR condition that references the 2 sides of the join on both branches of the condition. The Constraint splitter fails to recognize that and executes 2 wrong queries, thus resulting in a 0 set.\nEx: \nSelect * from [test:SamplePage] as page left outer join [test:SampleContent] as content on ISDESCENDANTNODE(content,page) where (page.prop1 = 'page1' and content.prop1 = 'content3') or (page.prop1='page2' and content.prop1='content3')\n\nThe Or has 2 branches that reference both sides: \n1. page.prop1 = 'page1' and content.prop1 = 'content3'\n  OR\n2. page.prop1='page2' and content.prop1='content3'\n\nA suggested workaround (as I think this will have horrible performance anyway) is to rewrite the query in a more simple way to not cross reference anymore:\n where (page.prop1 = 'page1' or page.prop1='page2') and content.prop1 = 'content3'  \n\nbut this does not fix the issue\n\n",
+            "date": "2011-04-01T16:48:00.752+0000",
+            "id": 5
+        },
+        {
+            "author": "Alex Deparvu",
+            "body": "I've submitted a patch on JCR-2933 that incorporates an upgrade for this issue.\n\nFurther development on this issue will be continued over there.",
+            "date": "2011-04-07T11:53:43.840+0000",
+            "id": 6
+        },
+        {
+            "author": "Alex Deparvu",
+            "body": "parent issue is resolved JCR-2933 ",
+            "date": "2011-05-23T15:08:37.312+0000",
+            "id": 7
+        },
+        {
+            "author": "Federico Grilli",
+            "body": "Hi, I just updated to jackrabbit 2.2.7. The {{javax.jcr.UnsupportedRepositoryOperationException: Unable to split a constraint that references both sides of a join.}} exception is actually gone but another issue seems to have arisen. I have a query like this \n{{select mytype.* from [my:type] as mytype inner join [my:child] as mychild on ischildnode (mychild, mytype) where contains(mytype.*, 'foo') or contains(mychild.*, 'foo')}}\nRegardless of whether _foo_ is there or not, the entire dataset is returned every time.",
+            "date": "2011-06-28T10:41:56.974+0000",
+            "id": 8
+        },
+        {
+            "author": "Federico Grilli",
+            "body": "OK, just seen this https://issues.apache.org/jira/browse/JCR-3000 so you should be aware that things still don't work as expected. :) And running a test performing a query similar to the one above against 2.2.7 actually raised junit.framework.AssertionFailedError: Wrong hit count. expected:<0> but was:<35>\n\t\n",
+            "date": "2011-06-28T15:36:53.315+0000",
+            "id": 9
+        },
+        {
+            "author": "Alex Deparvu",
+            "body": "Hi Frederico, you are right, I'll put a link to the new issue.\nWe've managed to find more interesting test cases, so I can debug this issue further, make sure everything works as expected.\n\nI'm trying to keep 2.2 up to date with all the fixed I push on the trunk.\nYou are welcome to join in on the testing, any feedback is appreciated ;)",
+            "date": "2011-07-04T14:51:30.171+0000",
+            "id": 10
+        }
+    ],
+    "component": "jackrabbit-core, query",
+    "description": "Our current join implementation doesn't support OR constraints that refer to more than one selector. For example the following query is not possible:\n\n    SELECT a.* FROM [my:type] AS a INNER JOIN [my:type] as b ON a.foo = b.bar WHERE a.baz = 'x' OR b.baz = 'y'\n\nThis limitation is a result of the way the join execution splits the query into per-selector components and merges the result based on the given join condition.\n\nA simple but often inefficient solution would be to process such OR constraints as post-processing filters like we already do for some other more complex constraint types.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "JCR-2852",
+    "issuetypeClassified": "RFE",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Major",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "Support multi-selector OR constraints in join queries",
+    "systemSpecification": true,
+    "version": ""
+}

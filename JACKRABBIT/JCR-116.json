@@ -1,0 +1,83 @@
+{
+    "comments": [
+        {
+            "author": "Jukka Zitting",
+            "body": "Attached the patch against latest maven.xml.\n\nPS. Note that this change may cause developers to modify the project path settings in their IDEs.",
+            "date": "2005-04-27T16:44:47.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "Hi Jukka,\n\nI agree with you that we should separate the source files into a version controlled tree and a generated source tree. You mentioned the path settings in IDEs, does the maven idea goal respect the additional path entry, or do you have to manually add the generated source directory to the source paths?",
+            "date": "2005-05-09T23:22:41.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "I believe that the IDE integration tools only look at the build/sourceDirectory element of project.xml. As Maven does not allow more than one source directory (they do have a good point for this), I unfortunately don't think that the configuration can be automated.\n\nThe generated sources are added to the internal Maven source path by the maven:addPath element in maven.xml of the attached patch. I don't know of any automated way to make the path externally visible.\n",
+            "date": "2005-05-09T23:42:30.000+0000",
+            "id": 2
+        },
+        {
+            "author": "fabrizio giustina",
+            "body": "the maven eclipse plugin DOES add addiction paths for generated files, but only if you are using maven in order to generate java source files.\nActually during jackrabbit build javacc is called using an ant task, and not using the standar maven javacc plugin http://maven.apache.org/reference/plugins/javacc/index.html\n\nI suppose also the IDEA plugin should support generate sources dir, if the maven javacc plugin is used.\n",
+            "date": "2005-05-10T03:24:06.000+0000",
+            "id": 3
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Fabrizio Giustina wrote:\n> the maven eclipse plugin DOES add addiction paths for generated files,\n> but only if you are using maven in order to generate java source files.\n\nOh, nice! Thanks for the information!\n\nWhen I created the attached patch I first tried using the Maven JavaCC plugin. I ran into a problem with how to handle the XSLT-generated XPath grammar files and decided to just skip the plugin.\n\nMight it be feasible to try again, now that there's a clear added benefit in using the Maven plugin?\n",
+            "date": "2005-05-10T03:41:00.000+0000",
+            "id": 4
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "I guess another problem is that jackrabbit uses two grammar files, and it seems that the maven javacc plugin is only able to handle one grammar file per project using properties.\n\nAlso checked with the maven idea plugin and it appears that the plugin is currently not able to handle multiple source directories. See: http://jira.codehaus.org/browse/MPIDEA-16.",
+            "date": "2005-05-11T19:00:38.000+0000",
+            "id": 5
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "How about this:\n\n- Keep custom maven scripts to generate the parsers. Unless we find a way how to specify two grammar files for jackrabbit? If you are still watching this issue fabrizio, do you know if this is possible?\n\n- Apply the patch provided by Jukka and make sure that all the properties that are set by the maven javacc plugin are also set by our own jelly script in maven.xml. This should ensure that the eclipse project files are generated correctly.\n\n- I'll try to clean up the sources that we can get rid of the ant delete calls for the duplicate classes.",
+            "date": "2005-05-12T22:00:07.000+0000",
+            "id": 6
+        },
+        {
+            "author": "fabrizio giustina",
+            "body": "> Keep custom maven scripts to generate the parsers. Unless we find a way how to specify two grammar files for jackrabbit? If you are still watching this issue fabrizio, do you know if this is possible? \n\nMh, at the moment the javacc maven plugin doesn't support more than one grammar file, so there is no a clean-maven-way to do it.\nAnyway, I think that you could get rid of ant with a little hack in maven.xml: since the problem is that the maven.javacc.javacc.grammar and maven.javacc.jjtree.grammar can hold a single value you can simply change the property on the fly in maven.xml and repeat the javacc goal twice... not really clean but it should work\n\nYou should add an enhancement request to the maven javacc jira at http://jira.codehaus.org/browse/MPJAVACC. A better solution would be adding the multiple file support to the plugin directly and submit a patch (the maven javacc plugin is just a jelly file which calls ant, just like the custom maven.xml in jackrabbit, so it should not be so difficult)",
+            "date": "2005-05-12T22:53:17.000+0000",
+            "id": 7
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "I had a look at the Maven Eclipse plugin sources, and it seems that the plugin will add all subdirectories of ${maven.gen.src} to an Eclipse project. Thus adding the following line to project.properties makes the generated source directories automatically available in Eclipse:\n\n    maven.gen.src=${maven.build.dir}/generated-src\n\nThis seems to work fine with \"maven eclipse\", but does not work with the Eclipse Mevenide plugin nor does it seem to work with the Maven IDEA plugin.\n\nThis issue seems to boil down to a source tree clarity vs. IDE convenience question. I'd vote for the former, but I'm a \"maven eclipse\" user so the change has little drawbacks for me. :-)\n",
+            "date": "2005-05-12T23:00:40.000+0000",
+            "id": 8
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Attached an updated patch that uses the hack proposed by Fabrizio. The new patch also adds the maven.gen.src variable to project.properties so that the Maven Eclipse plugin can automatically locate the generated sources.\n\nThe concept of generated sources doesn't seem to be very well handled by Maven. The JavaCC plugin uses a hardcoded generated-src/main path, the Eclipse plugin uses the ${maven.gen.src} variable, and both Mevenide and the IDEA plugin seem to be going for their own solutions.\n\nFor background, please see the following:\n\n* http://jira.codehaus.org/browse/MPECLIPSE-5\n* http://mail-archives.apache.org/mod_mbox/maven-dev/200407.mbox/%3cPKENIMMEAHDAHILNLIJPMELAEMAB.epugh@upstate.com%3e\n* http://jira.codehaus.org/browse/MEVENIDE-181\n* http://jira.codehaus.org/browse/MPIDEA-10",
+            "date": "2005-05-13T02:03:42.000+0000",
+            "id": 9
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "Applied the second patch and removed the svn:ignore from sql and xpath packages.\n\nThanks Jukka and Fabrizio for your help. The sources are now much cleaner and well separated.\n\nNotes to all other devs and users of jackrabbit:\n\n- After updating you need to remove the now obsolete source files (those not under version control) in package o.a.j.c.query.sql and o.a.j.c.query.xpath.\n\n- If you use IntelliJ you need to manually add a second source path to the jackrabbit module: target/generated-src/main/java\n\n- The eclipse .classpath file is generated correctly by the maven plugin.\n\nFixed in revision: 170000",
+            "date": "2005-05-13T18:04:05.000+0000",
+            "id": 10
+        }
+    ],
+    "component": "maven, sql, xpath",
+    "description": "Currently the JavaCC grammars in src/grammar/{xpath,sql} are processed into Java source files in src/java/org/apache/jacrabbit/core/query/{xpath,sql} where we also have normal version controlled source files. This leads to the need to maintain special svn:ignore properties and also the more general issue of mixing manually written and automatically generated source files. Because of this the \"maven clean\" command does not (at the moment) truly restore your source tree to a \"fresh checkout\" state.\n\nI'm proposing (as a wish, you are free to disagree) that the JavaCC grammars be generated into Java files within the Maven build directory. The attached patch modifies the javacc maven goals to generate files into ${maven.build.dir}/generated-src. The modified prepare-filesystem goal also adds the generated source path ${maven.build.dir}/generated-src/main/java into the maven compile set so that the generated sources are included in the normal builds.\n\nPS. There are a couple of JavaCC generated files that have been intentionally modified for Jackrabbit. The ant:delete commands at the end of the jacrabbit:generate-*-parser goals specifically remove these generated files. It would however be nicer if custom modifications would not be needed.",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "JCR-116",
+    "issuetypeClassified": "OTHER",
+    "issuetypeTracker": "",
+    "priority": "Minor",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "JavaCC grammar generation to ${maven.build.dir}/generated-src",
+    "systemSpecification": true,
+    "version": ""
+}

@@ -1,0 +1,71 @@
+{
+    "comments": [
+        {
+            "author": "Thomas Mueller",
+            "body": "Thread.sleep can't be the root cause of a new deadlock. (Thread.sleep was added in JCR-2402, but no additional synchronization or locking was introduced). But Thread.sleep can *trigger* a deadlock that normally doesn't show up. So it it's really a deadlock, it could also occur even without JCR-2402 (but less likely).\n\nJCR-2402 calls Thread.sleep in a loop. If I replace the loop with an \"if\" then I can reproduce some kind of deadlock. Currently it looks more like a bug in DefaultISMLocking however... I'm analyzing it.",
+            "date": "2010-09-20T14:16:22.373+0000",
+            "id": 0
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "There seems to be a bug in DefaultISMLocking:\n\n1) The main thread gets a read lock.\n\n2) The ObservationManager thread tries to lock for writing, which is blocked because there is still a read lock.\n\n3) Then the main thread tries to get a second read lock, which is blocked because there is a waiting write lock.\n\nIt looks like JCR-2402 is triggering this (so far hidden / undetected?) problem.",
+            "date": "2010-09-20T14:27:04.319+0000",
+            "id": 1
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "The bug in DefaultISMLocking was introduces with JCR-2089 (Use java.util.concurrent), revisions 995411 and 995412. I think the safe solution is to revert those to commits. Test case:\n\npublic void test() throws InterruptedException {\n    final ISMLocking lock = new DefaultISMLocking();\n    ReadLock r1 = lock.acquireReadLock(null);\n    final InterruptedException[] ex = new InterruptedException[1];\n    Thread thread = new Thread() {\n        public void run() {\n            try {\n                lock.acquireWriteLock(null).release();\n            } catch (InterruptedException e) {\n                ex[0] = e;\n            }\n        }\n    };\n    thread.start();\n    Thread.sleep(100);\n    lock.acquireReadLock(null).release();\n    r1.release();\n    thread.join();\n    if (ex[0] != null) {\n        throw ex[0];\n    }\n}\n\nThis will result in a deadlock with the current DefaultISMLocking, but not with the old.\n",
+            "date": "2010-09-21T07:30:37.449+0000",
+            "id": 2
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "The deadlock in DefaultISMLocking is now tracked in JCR-2753.\n\nEven if this is fixed, there is a problem with the ObservationDispatcher: the loop to wait for the observation queue to shrink may be endless, because locks are held by the current thread. It doesn't looks like there is an easy solution, except for only waiting once (slowing down the main thread) instead of waiting until the queue is shorter. In most cases, this will solve the original problem (events are generated faster than processed), but it can't result in an endless loop, even if the observation listener tries to read from or write to the repository. Another option is to never wait / sleep, only to log a warning.",
+            "date": "2010-09-21T10:07:42.300+0000",
+            "id": 3
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "Test case to get the endless loop.",
+            "date": "2010-09-21T10:32:54.316+0000",
+            "id": 4
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "Sleeping no longer happens in a loop. Also, instead of sleeping in the observation dispatcher (while locks are held), the delay is now done before the next operation (before locks are acquired).",
+            "date": "2010-09-21T13:34:12.418+0000",
+            "id": 5
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Could we come up with a solution that doesn't require the extra bits of state and responsibility in SessionContext and the new public method in SessionImpl? Also, having the delay carried over to the next session operation seems a bit troublesome to me. It would be better to keep the extra delay within the scope of the currently executed operation.\n\nHow about the attached patch where I move the delay to the finally block of SessionState.perform() and use just an extra ObservationDispatcher.isEventQueueOverloaded() predicate to carry the required bit of state across the system?",
+            "date": "2010-09-22T12:46:17.354+0000",
+            "id": 6
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "The updated version of the patch changes the key method to ObservationDispatcher.delayIfEventQueueOverloaded(), and makes sure that no delay is added when executing within the observation thread.",
+            "date": "2010-09-22T13:39:25.825+0000",
+            "id": 7
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "I committed the proposed patch in revision 1000950.",
+            "date": "2010-09-24T16:45:27.997+0000",
+            "id": 8
+        }
+    ],
+    "component": "jackrabbit-core, observation",
+    "description": "The rate-limitation code we added in JCR-2402 to prevent the observation queue from growing too large was a good idea, but the current implementation is a bit troublesome since it blocks the thread while it still holds the journal lock, the SISM reader lock, and the SessionState lock. This can cause a deadlock under heavy workloads if any of the observation listeners attempts to reuse the session (not recommended/supported, but can still happen) or write to the repository (quite likely).\n\nTo solve this problem we should move the rate-limiter code to outside the scope of any internal locks.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "JCR-2746",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "Sleep in possibly endless loop in ObservationDispatcher",
+    "systemSpecification": true,
+    "version": "2.0, 2.1, 2.1.1"
+}

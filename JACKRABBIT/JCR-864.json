@@ -1,0 +1,41 @@
+{
+    "comments": [
+        {
+            "author": "Christophe Lombart",
+            "body": "I don't see a bug here. The unit tests work fine. Futhermore, if I apply your patch, one unit test fails.\nFollowing the JDK doc, a Date can be converted into a long which represents the numbers of milliseconds since the standard base time known as \"the epoch\", namely January 1, 1970, 00:00:00.\nSearching on Date and Calendar is not very friendly with lucene, that's why calendar & date are converted into long values. \n",
+            "date": "2005-11-13T06:04:02.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Martin Ko\u010d\u00ed",
+            "body": "I think with this solution following is not possible:\n\nCustom node type with property of type Date:\n        <propertyDefinition name=\"jcr:lastModified\" requiredType=\"Date\" autoCreated=\"false\" mandatory=\"true\" onParentVersion=\"IGNORE\" protected=\"false\" multiple=\"false\"/>\n\njcrmapping with that property:\n\t\t<field-descriptor fieldName=\"lastModified\" jcrName=\"jcr:lastModified\" />\n\nDomain object with that property:\nprotected Date lastModified;\n\nJackrabbit throws exception because UtilDateTypeConverterImpl returns LongValue object but property is declared as Date. \nThis can be fixed with changing requiredType=\"Date\" to requiredType=\"Long\" but I want use Date type with JCR. Jcrmapping can support saving/converting Date properties as Longs as optional feature.\n",
+            "date": "2005-11-14T22:39:27.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Christophe Lombart",
+            "body": "I'm ok to change if  we find a nice solution for searching correctly on date. Lucene has a bad support for searching on date. \n\nFYI, I would like to specify in the mapping file which atomic converter to use like this : \n\n<field-descriptor fieldName=\"lastModified\" jcrName=\"jcr:lastModified\"  atomicConverterClass =\"com.blable.myDate2LongConverter\"/>\n\nOf course, it will be a optional feature. If the attribute \"atomicConverterClass\" is not specify, the current code will be used. \n\n\n",
+            "date": "2005-11-15T06:00:45.000+0000",
+            "id": 2
+        },
+        {
+            "author": "Christophe Lombart",
+            "body": "Done - Now the date attributes are not converted if the UtilDateConverteImpl is used. \nXPath queries seem to work with date.",
+            "date": "2007-06-06T21:28:05.825+0000",
+            "id": 3
+        }
+    ],
+    "component": "jackrabbit-ocm",
+    "description": "In this converter following line is used:\nreturn this.getValueFactory().createValue(((java.util.Date) propValue).getTime());\nbut propValue must be converted to java.util.Calendar, not into long! ValueFactory than converts to LongValue not DateValue as expected.\n\nFollowing code works OK:\nfinal long timeInMilis = ((java.util.Date) propValue).getTime();\nfinal Calendar calendar = Calendar.getInstance();\ncalendar.setTimeInMillis(timeInMilis);\nreturn this.getValueFactory().createValue( calendar );\n\nbut I dont know better Date-> Calendar conversion.\n",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "JCR-864",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Minor",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "Bug in UtilDateTypeConverterImpl",
+    "systemSpecification": true,
+    "version": ""
+}

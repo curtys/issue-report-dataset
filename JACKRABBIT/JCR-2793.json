@@ -1,0 +1,59 @@
+{
+    "comments": [
+        {
+            "author": "Jukka Zitting",
+            "body": "This sounds more like a problem in DbFileSystem to me.",
+            "date": "2010-10-21T10:34:40.967+0000",
+            "id": 0
+        },
+        {
+            "author": "Serge Huber",
+            "body": "Thanks for your answer Jukka,\n\nActually, in my mail on the list ( http://markmail.org/thread/l3rrvrasnweb4bsn ), I mentioned that it might have been caused by the removal of the BasedFileSystem around the NodeTypeRegistry instance, which was removed for some reason in the RepositoryImpl. \n\nSo the old code in 2.1.1 looked like this : \n\nRepositoryImpl constructor : \n...\n            // create registries\n            nsReg = createNamespaceRegistry(new BasedFileSystem(repStore, \"/namespaces\"));\n            ntReg = createNodeTypeRegistry(nsReg, new BasedFileSystem(repStore, \"/nodetypes\"));\n...\n\nPossibly because we moved this into the constructor for example of the NamespaceRegistryImpl we now have the following : \n\nRepositoryImpl : \n\n            // create registries\n            context.setNamespaceRegistry(createNamespaceRegistry());\n            context.setNodeTypeRegistry(createNodeTypeRegistry());\n\n...\n    protected NamespaceRegistryImpl createNamespaceRegistry()\n            throws RepositoryException {\n        return new NamespaceRegistryImpl(context.getFileSystem());\n    }\n...\n    protected NodeTypeRegistry createNodeTypeRegistry()\n            throws RepositoryException {\n        return new NodeTypeRegistry(\n                context.getNamespaceRegistry(), context.getFileSystem());\n    }\n\n\nIn NamespaceRegistryImpl : \n\n    public NamespaceRegistryImpl(FileSystem fs) throws RepositoryException {\n        this.nsRegStore = new BasedFileSystem(fs, \"/namespaces\");\n        load();\n    }\n\nAnd for NodeTypeRegistry : \n\n    private static final String CUSTOM_NODETYPES_RESOURCE_NAME =\n            \"nodetypes/custom_nodetypes.xml\";\n\n    @SuppressWarnings(\"unchecked\")\n    public NodeTypeRegistry(NamespaceRegistry nsReg, FileSystem fs)\n            throws RepositoryException {\n        this.nsReg = nsReg;\n        customNodeTypesResource =\n            new FileSystemResource(fs, CUSTOM_NODETYPES_RESOURCE_NAME);\n\nSo in comparing the two I assumed that if we removed the BasedFileSystem for a reason, we might need the \"/\" back at the beginning of the constant. Because the code right after that in the NodeTypeRegistry is : \n\n\n        try {\n            // make sure path to resource exists\n            if (!customNodeTypesResource.exists()) {\n                customNodeTypesResource.makeParentDirs();\n            }\n        } catch (FileSystemException fse) {\n            String error = \"internal error: invalid resource: \"\n                    + customNodeTypesResource.getPath();\n            log.debug(error);\n            throw new RepositoryException(error, fse);\n        }\n\nwhich fails because of the exists() clause which calls the following in DatabaseFileSystem : \n\n\n    /**\n     * {@inheritDoc}\n     */\n    public boolean exists(String path) throws FileSystemException {\n        if (!initialized) {\n            throw new IllegalStateException(\"not initialized\");\n        }\n\n        FileSystemPathUtil.checkFormat(path);\n\n        String parentDir = FileSystemPathUtil.getParentDir(path);\n        String name = FileSystemPathUtil.getName(path);\n\nThe failure is in the checkFormat call that checks if the path starts with a \"/\". This code hasn't changed since 2.1.1, so I was assuming it wasn't the source of the problem, but maybe it needs to change ?\n\nAgain, I am not very familiar with the codebase yet, so I didn't know what the best solution was, I was just basing my analysis on what had been modified.",
+            "date": "2010-10-21T11:49:31.356+0000",
+            "id": 1
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Thanks for the background! Yes, I see now that it's the removal of the BasedFileSystem layer that's causing the problem. It would be cleaner though if either all or none of the FileSystem implementations (including BasedFileSystem) supported paths without the leading slash. Anyway, +1 to committing the patch as is.",
+            "date": "2010-10-21T12:02:15.942+0000",
+            "id": 2
+        },
+        {
+            "author": "Serge Huber",
+            "body": "So who should do this ? Can this be included in 2.2.0 ?\n\nI'm a bit rusty in my Apache commiter skills but I'd be willing to do it :) \n\nRegards,\n  Serge... ",
+            "date": "2010-11-16T15:42:50.851+0000",
+            "id": 3
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Feel free to go ahead and commit this.",
+            "date": "2010-11-18T10:34:36.396+0000",
+            "id": 4
+        },
+        {
+            "author": "Serge Huber",
+            "body": "Ok I have committed this in revision 1040033. This was committed in the trunk, I'm assuming you will merge it to the 2.2 branch ?",
+            "date": "2010-11-29T08:26:07.317+0000",
+            "id": 5
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Thanks! Yes, I merged this to 2.2. Marking as resolved.",
+            "date": "2010-11-29T15:28:56.226+0000",
+            "id": 6
+        }
+    ],
+    "component": "jackrabbit-core",
+    "description": "It seems a little typo has been introduced in the NodeTypeRegistry, as illustrated in this stack trace : \n\nCaused by: javax.jcr.RepositoryException: internal error: invalid resource: nodetypes/custom_nodetypes.xml\n\tat org.apache.jackrabbit.core.nodetype.NodeTypeRegistry.<init>(NodeTypeRegistry.java:703) ~[jackrabbit-core-2.2-SNAPSHOT.jar:2.2-SNAPSHOT]\n\tat org.apache.jackrabbit.core.RepositoryImpl.createNodeTypeRegistry(RepositoryImpl.java:422) ~[jackrabbit-core-2.2-SNAPSHOT.jar:na]\n\tat org.apache.jackrabbit.core.RepositoryImpl.<init>(RepositoryImpl.java:294) ~[jackrabbit-core-2.2-SNAPSHOT.jar:na]\n\nThis happens when using a DbFileSystem for the root filesystem. This didn't cause a problem in 2.1.1\n\nThe patch attached to this ticket correct the issue.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "JCR-2793",
+    "issuetypeClassified": "OTHER",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "Typo in NodeTypeRegistry",
+    "systemSpecification": true,
+    "version": "2.2"
+}

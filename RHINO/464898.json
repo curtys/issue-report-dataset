@@ -1,0 +1,107 @@
+{
+    "comments": [
+        {
+            "author": "mguillemot@yahoo.fr",
+            "body": "Created attachment 349177\nPatch adding jstests.jar to the classpath for the unit tests\n\nOne part of the problem is that the junit test don't have jstests.jar in the classpath which contains com.netscape.*\n\nOn my computer this reduces the number of failed standard tests from 657 to 380.",
+            "date": "20081120T13:13:04",
+            "id": 0
+        },
+        {
+            "author": "hannesw@gmail.com",
+            "body": "Thanks Marc. I committed your patch to both HEAD and Rhino1_7R2_BRANCH.",
+            "date": "20081120T20:25:28",
+            "id": 1
+        },
+        {
+            "author": "mguillemot@yahoo.fr",
+            "body": "Cool!\n\nhttp://cn-rhino01.nl.mozilla.org:8085/browse/RHINO-HEAD-163 shows that if fixed 146 tests ... but that 241 are still failing :-(",
+            "date": "20081121T08:20:35",
+            "id": 2
+        },
+        {
+            "author": "hannesw@gmail.com",
+            "body": "Looking at the remaining failing bugs, it seems like the two biggest groups are failing due to the missing global options() function in Rhino, and because trying to call js1_8 tests and calling version(180). \n\noption() seems to be used to enable/disable the jit compiler - option() without arguments returns a string with current options status, and it looks like option('jit') should toggle the jit. I couldn't reproduce this in spidermonkey shell - options() always returns an empty string. Maybe spidermonkey always runs with jit and options() is left in for backwards compatibility?\n\nThe js 1.8 issue is strange, because the js1_8 directory is in the skip list. I guess something there's a problem with processing the skip lists here. \n\nBTW, in my local copy with the js 1.8 patches we have already applied, 29 of the js1_8 test cases pass already, which is nice :-)",
+            "date": "20081121T10:25:24",
+            "id": 3
+        },
+        {
+            "author": "hannesw@gmail.com",
+            "body": "Doh! StandardTests checks the skip list using Properties.containsKey(), but the skip list also contains directories (i.e. 'js1_8' for all tests in that directory). Patch coming soon.",
+            "date": "20081121T10:57:34",
+            "id": 4
+        },
+        {
+            "author": "hannesw@gmail.com",
+            "body": "Created attachment 349394\ncheck skiplist for partial paths\n\nI'm down to 24 failures with this patch. Still have to check out if there are more issues left, or if this was actually the only cause for the diverging results.",
+            "date": "20081121T11:22:38",
+            "id": 5
+        },
+        {
+            "author": "mguillemot@yahoo.fr",
+            "body": "Isn't it possible to share the logic of test selection with JsDriver to avoid different results?",
+            "date": "20081121T11:39:02",
+            "id": 6
+        },
+        {
+            "author": "hannesw@gmail.com",
+            "body": "(In reply to comment #7)\n> Isn't it possible to share the logic of test selection with JsDriver to avoid\n> different results?\n\nI guess it would be, and I guess that's the way it should be. JSDriver currently uses a String array and loops over it using startsWith() while StandardTests only checks on a directory/file level. Thus a skip list entry of \"js1_8\" covers directory \"js1_8_1\" in JSDriver, but does not in StandardTests. \n\nAny opinions on which behaviour is more desirable/compatible/whatever?",
+            "date": "20081121T11:51:46",
+            "id": 7
+        },
+        {
+            "author": "mguillemot@yahoo.fr",
+            "body": "(In reply to comment #8)\n> \n> Any opinions on which behaviour is more desirable/compatible/whatever?\n\nI don't care personally. What matters is to be sure that the same logic is used.",
+            "date": "20081121T12:43:56",
+            "id": 8
+        },
+        {
+            "author": "hannesw@gmail.com",
+            "body": "Created attachment 351549\npatch to unify exclude list handling in test drivers",
+            "date": "20081205T14:42:52",
+            "id": 9
+        },
+        {
+            "author": "hannesw@gmail.com",
+            "body": "Created attachment 351593\npatch with added options() function\n\nMost remaining bugs fail because of the missing options() function in spidermonkey. This patch extends the previous one to add a dummy options() function to the test scope.",
+            "date": "20081205T20:32:09",
+            "id": 10
+        },
+        {
+            "author": "hannesw@gmail.com",
+            "body": "Committed to HEAD.\n\nRemoving testsrc/org/mozilla/javascript/drivers/FileUtils.java;\n/cvsroot/mozilla/js/rhino/testsrc/org/mozilla/javascript/drivers/FileUtils.java,v  <--  FileUtils.java\nnew revision: delete; previous revision: 1.2\ndone\nChecking in testsrc/org/mozilla/javascript/drivers/JsDriver.java;\n/cvsroot/mozilla/js/rhino/testsrc/org/mozilla/javascript/drivers/JsDriver.java,v  <--  JsDriver.java\nnew revision: 1.9; previous revision: 1.8\ndone\nChecking in testsrc/org/mozilla/javascript/drivers/ShellTest.java;\n/cvsroot/mozilla/js/rhino/testsrc/org/mozilla/javascript/drivers/ShellTest.java,v  <--  ShellTest.java\nnew revision: 1.11; previous revision: 1.10\ndone\nChecking in testsrc/org/mozilla/javascript/drivers/StandardTests.java;\n/cvsroot/mozilla/js/rhino/testsrc/org/mozilla/javascript/drivers/StandardTests.java,v  <--  StandardTests.java\nnew revision: 1.11; previous revision: 1.10\ndone\nRCS file: /cvsroot/mozilla/js/rhino/testsrc/org/mozilla/javascript/drivers/TestUtils.java,v\ndone\nChecking in testsrc/org/mozilla/javascript/drivers/TestUtils.java;\n/cvsroot/mozilla/js/rhino/testsrc/org/mozilla/javascript/drivers/TestUtils.java,v  <--  TestUtils.java\ninitial revision: 1.1\ndone\nChecking in testsrc/org/mozilla/javascript/tests/DoctestsTest.java;\n/cvsroot/mozilla/js/rhino/testsrc/org/mozilla/javascript/tests/DoctestsTest.java,v  <--  DoctestsTest.java\nnew revision: 1.4; previous revision: 1.3\ndone\nChecking in testsrc/org/mozilla/javascript/tests/JsTestsTest.java;\n/cvsroot/mozilla/js/rhino/testsrc/org/mozilla/javascript/tests/JsTestsTest.java,v  <--  JsTestsTest.java\nnew revision: 1.3; previous revision: 1.2\ndone\n\nWith this, I have 10 tests failing with jsdriver and 11 with ant/junit. The one differing test fails with a stack overflow which is likely due to the different testing environment. Marking bug as fixed.",
+            "date": "20081205T20:38:44",
+            "id": 11
+        },
+        {
+            "author": "mguillemot@yahoo.fr",
+            "body": "You're the hero!\n\nDoes this mean that we will soon have a passed build? Shouldn't the failing tests be added to the skip list(s)?",
+            "date": "20081205T20:44:13",
+            "id": 12
+        },
+        {
+            "author": "hannesw@gmail.com",
+            "body": "Thanks :-) I think we should look at the failing tests one by one and decide in each case if it applies to Rhino. But yes, I think passing the test suite is now well within reach.",
+            "date": "20081205T21:30:40",
+            "id": 13
+        },
+        {
+            "author": "hannesw@gmail.com",
+            "body": "Committed last patch to Rhino1_7R2_BRANCH.",
+            "date": "20081212T10:28:48",
+            "id": 14
+        }
+    ],
+    "component": "Core",
+    "description": "User-Agent:       Mozilla/5.0 (X11; U; Linux i686; en-US; rv:1.9.0.3) Gecko/2008092510 Ubuntu/8.04 (hardy) Firefox/3.0.3\nBuild Identifier: \n\nRunning the tests with ant-junit all reports a lot of failed tests. Running tests as explained at https://developer.mozilla.org/en/Running_the_Rhino_tests doesn't report any failure (at least for interpreted mode).\nThis shows that there is a big problem at least in one of the two methods.\n\nThe first failing test reported when running the tests as junit tests is lc3/ArrayMethods/object-001.js. Which is not reported as failing by JsDriver.\n\nIf I add following as first statement of JsDriver.excluded:\n            if (!path.contains(\"lc3/ArrayMethods/object-001.js\"))\n            \treturn true;\nand run JsDriver tests again, then only this single test is run... and if fails exactly like when running it as unit test.\n\nFor me this shows a really big problem in the tests. Particularly this seems to mean that we can't trust the results of JsDriver and that the unit test result are (more?) correct. In which case, a lot of tests fail currently!\n\nAdditionally, do we really need JsDriver? It is important to be able to build and run the tests in automatic build process and have usable results that we can trust. JUnit seems better suited for this purpose.\n\nI set the severity of this issue as critical because I think that we can't have any reliable information on Rhino's quality as long as it is not fixed.\n\nReproducible: Always\n\nSteps to Reproduce:\n1.\n2.\n3.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "464898",
+    "issuetypeClassified": "OTHER",
+    "issuetypeTracker": "BUG",
+    "priority": "-- critical",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "Rhino standard tests don't run cleanly",
+    "systemSpecification": true,
+    "version": "other"
+}

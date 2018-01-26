@@ -1,0 +1,113 @@
+{
+    "comments": [
+        {
+            "author": "Shai Erera",
+            "body": "My search app has such a scenario, and currently we just delete all the documents given a certain criteria (something similar to the above MatchAllDocsQuery. But I actually think that's the wrong approach. If you want to delete all the documents from the index, you'd better create a new one. The main reason is that if your index has, say, 10M documents, a deleteAll() will keep those 10M in the index, and when you'll re-index, the index size will be doubled. Worth still, the deleted documents may belong to segments which will not be merged/optimized right away (depends on your mergeFactor setting), and therefore will stick around for a long time (until you call optimize() or expungeDeletes()).\n\nBut, creating a new IndexWriter right away, while overriding the current one is not so smart, because your users will be left w/ no search results until the index has accumulated enough documents. Therefore I think the solution for such an approach should be:\n# Call writer.rollback() - abort all current operations, cancel everything until the last commit.\n# Create a new IndexWriter in a new directory and re-index everything.\n# In the meantime, all your search operations go against the current index, which you know is not going to change until the other one is re-built, and therefore you can also optimize things, by opening an IndexReader and stop any accounting your code may do - just leave it open.\n# When re-indexing has complete, sync all your code and:\n#* Define your workDir to be the new index dir. That way new searches can begin right away on the index index)\n#* Safely delete the old index dir (probably need to do something here to ensure no readers are open against this dir etc.).\n\nThat's a high-level description and I realize it may have some holes here and there, but you get the point.\n\nIf we were to create a deleteAll() method, I'd expect it to work that way. I.e., the solution you proposed above (write a new segments file referencing no segments) would prevent all searches until something new is actually re-indexed right?\n\nI have to admit though, that I don't have an idea yet on how it can be done inside Lucene, such that new readers will see the old segments, while when I finish re-indexing and call commit, the previous segments will just be deleted.\n\nA wild shot (and then I'll go to sleep on it) - how about if you re-index everything, not committing during that time at all. Readers that are open against the current directory will see all the documents, EXCEPT the new ones you're adding (same for new readers that you may open). When you're done re-indexing, you'll call a commitNewOnly, which will create an empty segments file and then call commit. That way, assuming you're using KeepOnlyLastCommitDeletionPolicy, after the existing readers will close, any new reader that will be opened will see the new segments only, and the next time you commit, the old segments will be deleted.\n\nThat will move the deleteAll() method to the application side, since it knows when it can safely delete all the current segments. If you don't have such a requirement (keeping an index for searches until re-indexing is complete), then I think you can safely close() the index and re-create it?",
+            "date": "2009-06-19T21:00:43.827+0000",
+            "id": 0
+        },
+        {
+            "author": "Tim Smith",
+            "body": "My use case is like so:\n\n* IndexReader opened against old index (the last committed index)\n* user requests \"clearing the index\" (for whatever reason, up to them to decide) \n** this will close the current IndexWriter and reopen with create=true (ideally this would just call writer.deleteAll())\n** IndexWriter.init() writes out new segments.gen file referencing no segments with create=true (old segments are not yet deleted as IndexReader is still open for them)\n** NOTE: new IndexReader not yet opened because they haven't said \"commit\" yet\n** (previous commit will still be the \"live\" index seen by searches - obviously this means disk is not reclaimed yet)\n* user may then feed new documents, or not, (up to them)\n* user will then eventually say commit\n* new IndexReader will be opened, which should only contain documents added since the \"deleteAll()\" operation\n\nIdeally, i want to perform this delete all operation very efficiently without needing to reopen an IndexWriter \nThe rollback() call would possibly slightly optimize what i am currently doing, but even better still would be a highly efficient deleteAll() method (as all the semantics of this operation would be handled nicely (without jumping through hoops to clear the index))\n\nCreating a new IndexWriter in the same directory with create=true works like a champ, (existing IndexReaders still see the previous commit)\njust want do avoid the IndexWriter.close() call\n\n",
+            "date": "2009-06-19T21:25:30.675+0000",
+            "id": 1
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "This should be simple to implement, by taking the logic that's now in IndexWriter's init method (under the {{if (create) {}}) and pulling out into a separate method.\n\nFrom IndexWriter's standpoint, this is just another commit, on equal footing with all prior commits even though it up and deleted all segments.  So eg a deletion policy could choose to keep those past commits around, IndexReaders can open those past commits, etc.\n\nOne good functional gain by offering this method is it could be done within a single IndexWriter transaction.  Ie you could deleteAll, make further changes, etc., but then change your mind and rollback the entire transaction.  Whereas, requiring if you close & re-open the writer with create=true, you've necessarily committed the change to the index.\n\nSo I don't think we should implicitly do a commit() from within deleteAll(); I think the user should call commit() on their own.",
+            "date": "2009-06-20T11:03:09.711+0000",
+            "id": 2
+        },
+        {
+            "author": "Tim Smith",
+            "body": "I agree, it would be best if the deleteAll() could be rolled back and was just like any other add/update/delete operation on the index (provided it doesn't cause performance of the operation to degrade to a delete by query with a \\*:\\*)\n\nThat then greatly improves the current way that deleteAll() must be done (either sending a \\*:\\* to query delete method, or closing IndexWriter and reopening)\n\n",
+            "date": "2009-06-22T12:58:01.053+0000",
+            "id": 3
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "bq. provided it doesn't cause performance of the operation to degrade to a delete by query with a *:*\n\nThe delete actually would not be with a *:* query; instead, we simple remove all referenced segments from the segments_N file.  So, it would be exceptionally fast.\n\nDo you wanna cons up a patch?  It should be a refactoring of what's now done inside IndexWriter's init method...",
+            "date": "2009-06-22T14:12:52.195+0000",
+            "id": 4
+        },
+        {
+            "author": "Tim Smith",
+            "body": "bq. Do you wanna cons up a patch? It should be a refactoring of what's now done inside IndexWriter's init method...\n\nHad a feeling this was coming.  \n\nI'll give it a shot, (unless someone else volunteers)\n\n\n",
+            "date": "2009-06-22T15:08:13.757+0000",
+            "id": 5
+        },
+        {
+            "author": "Shai Erera",
+            "body": "bq. I'll give it a shot, (unless someone else volunteers)\n\nI don't mind to have a deep dive here, if you're willing to wait a couple days.",
+            "date": "2009-06-22T15:21:52.042+0000",
+            "id": 6
+        },
+        {
+            "author": "Tim Smith",
+            "body": "It seems like this method could be very simple (obviously i'm not an expert on IndexWriter code (yet))\n\nseems like this is pretty close:\n{code}\npublic synchronized void deleteAll() throws IOException {\n  rollbackTransaction(); // might need to unroll this and not do everything here\n  segmentInfos.clear();\n  checkpoint(); // should we do this here? or just let the inevitable commit do this?\n}\n{code}\n\n\nAlternatively, i suppose we could just copy rollbackTransaction to a deleteAll() method with the one change of not restoring the rollbackSegmentInfos (just leave it cleared)\n\nThis may result in doing less work (and be more self contained\n\n\n\n\n\n",
+            "date": "2009-06-22T15:49:07.529+0000",
+            "id": 7
+        },
+        {
+            "author": "Tim Smith",
+            "body": "Looking closer, rollbackTransaction() isn't the right thing to use here (but it looks pretty close to the right thing)\n\nwill work up a patch adapting rollbackTransaction() to a deleteAll() method\n\nmight also need to borrow some from rollbackInternal() (not sure if i see rollbackTransaction rolling back any documents buffered in memory)",
+            "date": "2009-06-22T15:57:27.702+0000",
+            "id": 8
+        },
+        {
+            "author": "Tim Smith",
+            "body": "Here's a patch adding a deleteAll() method (based on internalRollback())\n\nPatch includes tests.\n\ndeleteAll() method can be rolled back (if IndexWriter supports rollback)\n\nThis seems to work quite nicely\n\nplease comment if there are any edge cases not being handled.",
+            "date": "2009-06-22T19:34:15.456+0000",
+            "id": 9
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Patch looks good Tim!\n\nI added another test case (for NRT reader), removed the un-needed notifyAll & assert, and tweaked javadocs.  I think it's ready to go in... I'll wait a day or two.",
+            "date": "2009-06-25T10:52:59.486+0000",
+            "id": 10
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Thanks Tim!",
+            "date": "2009-06-26T17:45:51.560+0000",
+            "id": 11
+        },
+        {
+            "author": "Tim Smith",
+            "body": "Looks like i found an issue with this\n\nThe deleteAll() method isn't resetting the nextDocID on the DocumentsWriter (or some similar behaviour)\n\nso, the following state will result in an error:\n* deleteAll()\n* updateDocument(\"5\", doc)\n* commit()\n\nthis results in a delete for doc \"5\" getting buffered, but with a very high \"maxDocId\"\nat the same time, doc is added, however, the following will then occur on commit:\n* flush segments to disk\n* doc \"5\" is now in a segment on disk\n* run deletes\n* doc \"5\" is now blacklisted from segment \n\nWill work on fixing this and post a new patch (along with updated test case)\n\n(was worried i was missing an edge case)",
+            "date": "2009-06-29T16:00:33.775+0000",
+            "id": 12
+        },
+        {
+            "author": "Tim Smith",
+            "body": "Here's a patch to TestIndexWriterDelete that shows the problem\n\nafter the deleteAll(), a document is added and a document is updated\nthe added document gets indexed, the updated document does not",
+            "date": "2009-06-29T17:25:14.252+0000",
+            "id": 13
+        },
+        {
+            "author": "Tim Smith",
+            "body": "Here's a patch that fixes the deleteAll() + updateDocument() issue\n\njust needed to set the FlushDocCount to 0 after aborting the outstanding documents",
+            "date": "2009-06-29T18:00:01.549+0000",
+            "id": 14
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Thanks Tim!  I just committed this.",
+            "date": "2009-06-30T10:19:57.344+0000",
+            "id": 15
+        }
+    ],
+    "component": "core/index",
+    "description": "Ideally, there would be a deleteAllDocuments() or clear() method on the IndexWriter\n\nThis method should have the same performance and characteristics as:\n* currentWriter.close()\n* currentWriter = new IndexWriter(..., create=true,...)\n\nThis would greatly optimize a delete all documents case. Using deleteDocuments(new MatchAllDocsQuery()) could be expensive given a large existing index.\n\nIndexWriter.deleteAllDocuments() should have the same semantics as a commit(), as far as index visibility goes (new IndexReader opening would get the empty index)\n\nI see this was previously asked for in LUCENE-932, however it would be nice to finally see this added such that the IndexWriter would not need to be closed to perform the \"clear\" as this seems to be the general recommendation for working with an IndexWriter now\n\ndeleteAllDocuments() method should:\n* abort any background merges (they are pointless once a deleteAll has been received)\n* write new segments file referencing no segments\n\nThis method would remove one of the final reasons i would ever need to close an IndexWriter and reopen a new one \n",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-1705",
+    "issuetypeClassified": "RFE",
+    "issuetypeTracker": "",
+    "priority": "Major",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "Add deleteAllDocuments() method to IndexWriter",
+    "systemSpecification": true,
+    "version": "2.4"
+}

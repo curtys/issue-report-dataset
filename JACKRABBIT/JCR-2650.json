@@ -1,0 +1,53 @@
+{
+    "comments": [
+        {
+            "author": "Stefan Guggisberg",
+            "body": "proposed patch",
+            "date": "2010-07-14T15:03:32.607+0000",
+            "id": 0
+        },
+        {
+            "author": "Stefan Guggisberg",
+            "body": "attached patch with proposed changes.",
+            "date": "2010-07-14T15:06:16.392+0000",
+            "id": 1
+        },
+        {
+            "author": "Stefan Guggisberg",
+            "body": "new patch (removed some unwanted changes to test cases)",
+            "date": "2010-07-14T16:04:25.137+0000",
+            "id": 2
+        },
+        {
+            "author": "Stefan Guggisberg",
+            "body": "applied patch in trunk (svn r966697)",
+            "date": "2010-07-22T14:59:36.139+0000",
+            "id": 3
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Nice work! It looks like you proactively fixed the following deadlock scenario that we ran into with Jackrabbit 2.0:\n\n   java.lang.Thread.State: BLOCKED (on object monitor)\n\tat org.apache.jackrabbit.core.state.NodeState.copy(NodeState.java:117)\n\t- waiting to lock <0xffffffff69f83dc0> (a org.apache.jackrabbit.core.state.NodeState)\n\t- locked <0xffffffff69f83d80> (a org.apache.jackrabbit.core.state.NodeState)\n\tat org.apache.jackrabbit.core.state.ItemState.pull(ItemState.java:156)\n\t- locked <0xffffffff69f83d80> (a org.apache.jackrabbit.core.state.NodeState)\n\tat org.apache.jackrabbit.core.state.SessionItemStateManager.stateCreated(SessionItemStateManager.java:907)\n\tat org.apache.jackrabbit.core.state.StateChangeDispatcher.notifyStateCreated(StateChangeDispatcher.java:92)\n\tat org.apache.jackrabbit.core.state.LocalItemStateManager.stateCreated(LocalItemStateManager.java:426)\n\tat org.apache.jackrabbit.core.state.StateChangeDispatcher.notifyStateCreated(StateChangeDispatcher.java:92)\n\tat org.apache.jackrabbit.core.state.SharedItemStateManager.stateCreated(SharedItemStateManager.java:397)\n\tat org.apache.jackrabbit.core.state.ItemState.notifyStateCreated(ItemState.java:235)\n\tat org.apache.jackrabbit.core.state.ChangeLog.persisted(ChangeLog.java:320)\n\tat org.apache.jackrabbit.core.state.SharedItemStateManager$Update.end(SharedItemStateManager.java:775)\n\tat org.apache.jackrabbit.core.state.SharedItemStateManager.update(SharedItemStateManager.java:1488)\n\tat org.apache.jackrabbit.core.state.LocalItemStateManager.update(LocalItemStateManager.java:349)\n\tat org.apache.jackrabbit.core.state.XAItemStateManager.update(XAItemStateManager.java:354)\n\tat org.apache.jackrabbit.core.state.LocalItemStateManager.update(LocalItemStateManager.java:324)\n\tat org.apache.jackrabbit.core.state.SessionItemStateManager.update(SessionItemStateManager.java:328)\n\tat org.apache.jackrabbit.core.ItemImpl.save(ItemImpl.java:1141)\n\n   java.lang.Thread.State: BLOCKED (on object monitor)\n\tat org.apache.jackrabbit.core.state.NodeState.getPropertyNames(NodeState.java:436)\n\t- waiting to lock <0xffffffff69f83d80> (a org.apache.jackrabbit.core.state.NodeState)\n\tat org.apache.jackrabbit.core.NodeImpl.makePersistent(NodeImpl.java:802)\n\t- locked <0xffffffff69f83dc0> (a org.apache.jackrabbit.core.state.NodeState)\n\tat org.apache.jackrabbit.core.ItemImpl.persistTransientItems(ItemImpl.java:661)\n\tat org.apache.jackrabbit.core.ItemImpl.save(ItemImpl.java:1126)\n\t- locked <0xfffffffef2bc04d8> (a com.day.crx.core.CRXSessionImpl)\n\tat org.apache.jackrabbit.core.SessionImpl.save(SessionImpl.java:920)\n",
+            "date": "2011-04-14T10:39:49.941+0000",
+            "id": 4
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "In fact the above deadlock scenario still exists (see JCR-3226). Instead of stateCreated(), this issue fixed the potential problem with the (much more frequent) stateModified() method.",
+            "date": "2012-02-06T11:50:30.995+0000",
+            "id": 5
+        }
+    ],
+    "component": "jackrabbit-core",
+    "description": "currently, external changes (i.e. changes committed by other sessions) are silently merged with transient changes. this might potentially cause concurrency issues/inconsistent transient state (see e.g. JCR-2632).\n\nit would probably be better to isolate transient changes from external changes until they're saved (true copy-on-write). ",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "JCR-2650",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Major",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "don't silently merge session-local transient changes with external changes before save().",
+    "systemSpecification": true,
+    "version": ""
+}

@@ -1,0 +1,125 @@
+{
+    "comments": [
+        {
+            "author": "user@apochta.com",
+            "body": "Created attachment 112789\nDefine generated classes with the same privileges as rhino classes themselves\n\nThe patch effectively makes omj/DefiningClassLoader to call\nClassLoader.defineClass with ProtectionDomain argument containg necessary\nprivileges.",
+            "date": "20030127T21:32:02",
+            "id": 0
+        },
+        {
+            "author": "user@apochta.com",
+            "body": "The above patch is a post 1.5R4 stuff and I added it now just in case if someone\nwill have that problem when scripting java classes via JavaAdapter. There is a\npotential issue with the patch that may arise if Sun finally fix a nasty\nsecurity problem that effectively allows to gain any permission as long as the\napplication can create class loaders.\n\nAnother problem is that it uses to match reflection to stay within 1.1\ncompatibility. It may be better to have something like omj.jdk12 package for\ncode like that.",
+            "date": "20030127T21:41:05",
+            "id": 1
+        },
+        {
+            "author": "heng@ag.arizona.edu",
+            "body": "Created attachment 193149\nA jar file which contains two Java source files that use Proxy to do JavaAdapter's job\n\nA problem with patches above is that it still depends on custom ClassLoader. \nAt least in Java 1.4 such approach will generate permission exception whenever\na custom ClassLoader is created.  As the result, codes that requires\nJavaAdapter to function will run into problems.\n\nRhino's default behavior cannot be run in Java Web Start Sandbox due to two\nreasons.\n\n1. Optimization flag is on by default, which would produce byte code.\n2. JavaAdapter requires some byte compilation of the code.\n\nAs the result, both requires custom ClassLoader to load new classes from byte\ncode.\n\nIn JDK 1.3, java.lang.reflect.Proxy allows dynamic creation of Java classes\nwithout using ClassLoader.  If we also turn off Context optimization flag,\ncustom ClassLoader won't be created and permission exception can be avoided.\n\nMy software CookJS (http://cookxml.sourceforge.net/cookjs/) has the\nProxyJavaAdapter class implemented.  The attached jar file contains the two\njava files cookxml.cookjs.util.ProxyHandler and\ncookxml.cookjs.util.ProxyJavaAdapter that can solve the problem.  It is not as\nfeature rich as JavaAdapter and mostly depend on JavaAdapter to do all the hard\nwork.\n\nThe following code shows how it works:\n\nScriptable scope = cx.initStandardObjects ();\ncx.setOptimizationLevel (-1);\nProxyJavaAdapter.init (cx, scope, true);\nObject result = cx.evaluateString (scope, code, src, 1, null);\n\nBasically it overrides the default JavaAdapter object in the scope.  Nothing in\nRhino 1.6R1 needs any changes.",
+            "date": "20050819T12:03:09",
+            "id": 2
+        },
+        {
+            "author": "kyle@kylecordes.com",
+            "body": "I found Heng's workaround very helpful, and pointed out how to grab just those bits from CookXML, here:\n\nhttp://kylecordes.com/2006/03/24/rhino-web-start/\n\nThis is not helpful for fixing Rhino, but it might be helpful for the next person who lands here via a web search (which I how I landed here).",
+            "date": "20060325T00:24:09",
+            "id": 3
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "Also if you're looking to disable Rhino's compilation mode, you can remove all the classes in the org.mozilla.classfile package and Rhino is smart enough just to start up in interpreter mode. ",
+            "date": "20060511T23:16:06",
+            "id": 4
+        },
+        {
+            "author": "szegedia@freemail.hu",
+            "body": "This is a real problem - I want to preserve JDK 1.1 compatibility for 1.6R3, but once it is out, we'll move over to at least 1.2 compatibility, and we'll be able to solve it by using a JDK 1.2-introduced defineClass() method that takes a ProtectionDomain argument",
+            "date": "20060530T20:45:21",
+            "id": 5
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "Changing priority to P5 based on recent bug triage.",
+            "date": "20070525T01:30:32",
+            "id": 6
+        },
+        {
+            "author": "songguoq@hotmail.com",
+            "body": "I encountered a similar bug in Rhino 1.6R7. \n\nI was using JavaAdapter in my script. According to the documentation of JavaAdapter, if I call\n\n    new JavaAdapter(java-class, javascript-object)\n\nRhino generates a class on the fly which delegates all calls to the methods of the javascript-object. However, the generated class does not have any security privileges so I got AccessControlException when SecurityManager was installed.\n\nAfter some debugging, I found the problem exists in 'loadAdapterClass' method in JavaAdapter.\n\n       static Class loadAdapterClass(String className, byte[] classBytes)\n       {\n           GeneratedClassLoader loader\n               = SecurityController.createLoader(null, null);\n           Class result = loader.defineClass(className, classBytes);\n           loader.linkClass(result);\n           return result;\n       }\n\nNote the SecurityController.createLoader call has two NULL parameters. The second parameter should be a security domain, and the method creates a class loader with restrictions imposed by the security domain. Since the parameter is null in Rhino 1.6R7 implementation, the generated adapter class is loaded with no security domain, and there will be AccessControlException when Java Security Manager checks security permissions on this class.\n\nTo fix this bug, I think we need pass in proper security domain parameters in the SecurityController.createLoader call. The security domain should be the same one associated with the javascript-object (which is being adaptered).\n\nActually, we may follow the example in org.mozilla.javascript.optimizer.CodeGen class. The CodeGen class generates 'javascript-object' which can be used with JavaAdapter and the generated byte codes are loaded with proper security domain information. The 'defineClass' method in the class make use of security domain information properly:\n\n    private Class defineClass(Object bytecode,\n                              Object staticSecurityDomain)\n    {\n        Object[] nameBytesPair = (Object[])bytecode;\n        String className = (String)nameBytesPair[0];\n        byte[] classBytes = (byte[])nameBytesPair[1];\n\n        // The generated classes in this case refer only to Rhino classes\n        // which must be accessible through this class loader\n        ClassLoader rhinoLoader = getClass().getClassLoader();\n        GeneratedClassLoader loader;\n        loader = SecurityController.createLoader(rhinoLoader,\n                                                 staticSecurityDomain);\n        Exception e;\n        try {\n            Class cl = loader.defineClass(className, classBytes);\n            loader.linkClass(cl);\n            return cl;\n        } catch (SecurityException x) {\n            e = x;\n        } catch (IllegalArgumentException x) {\n            e = x;\n        }\n        throw new RuntimeException(\"Malformed optimizer package \" + e);\n    }\n\nIf JavaAdapter can obtain the security domain associated with the 'javascript-object' class, then this bug can be fixed.\n  ",
+            "date": "20071016T07:20:31",
+            "id": 7
+        },
+        {
+            "author": "songguoq@hotmail.com",
+            "body": "Created attachment 302760\nProposed bug fix on org.mozilla.javascript.JavaAdapter\n\nThis JavaAdapter.java is modified based on release 1.6R7.\n\nThe changes are in method loadAdapterClass() and getAdapterClass(), which now loads the adapter class using proper classloader and protection domain.",
+            "date": "20080212T06:36:13",
+            "id": 8
+        },
+        {
+            "author": "songguoq@hotmail.com",
+            "body": "Attila, please have a look my proposal. I'm willing to make this issue closed in 1.7 release.",
+            "date": "20080212T06:40:26",
+            "id": 9
+        },
+        {
+            "author": "szegedia@freemail.hu",
+            "body": "Well, I've looked into it, and unfortunately I don't think it is valid. The problem is that you'll mostly end up running with the CodeSource of js.jar, as the \"obj\" will more often than not be a NativeObject. \n\nNow, on the other hand, since the generated code is actually generated by Rhino, I believe we should use the CodeSource of JavaAdapter itself (as the meat of the generated methods delegate anyway to JavaAdapter static methods). When individual functions are invoked, they'll get their CodeSource applied to the current access context anyway, so all should be well. \n\nTherefore, I think the correct solution is to replace\n\nSecurityController.createLoader(null, null)\n\nwith something similar to:\n\nSecureClassLoader cl = (SecureClassLoader)JavaAdapter.class.getClassLoader();\nSecurityController.createLoader(cl, cl.getProtectionDomain().getCodeSource());\n\nof course, with safeguard provisions for cases when \"cl\" is not a SecureClassLoader, or when the SecurityController in effect does not, in fact, understand CodeSource (such is the price of an overgeneric SecurityController interface...).\n\nIf you agree, I can implement this fairly quickly.",
+            "date": "20080212T09:20:09",
+            "id": 10
+        },
+        {
+            "author": "szegedia@freemail.hu",
+            "body": "Ok, the logic I came up with is in the end:\n\n        Object staticDomain;\n        Class domainClass = SecurityController.getStaticSecurityDomainClass();\n        if(domainClass == CodeSource.class || domainClass == ProtectionDomain.class) {\n            ProtectionDomain protectionDomain = JavaAdapter.class.getProtectionDomain();\n            if(domainClass == CodeSource.class) {\n                staticDomain = protectionDomain == null ? null : protectionDomain.getCodeSource();\n            }\n            else {\n                staticDomain = protectionDomain;\n            }\n        }\n        else {\n            staticDomain = null;\n        }\n        GeneratedClassLoader loader = SecurityController.createLoader(null, \n                staticDomain);\n\nI added a \"SecurityController.getStaticSecurityDomainClass()\" method so that the security controller can declare the kind of the security domain object it expects -- our PolicySecurityController accepts CodeSource while our JavaPolicySecurity (found in shell) uses a ProtectionDomain, although I believe that's flawed, but don't want to touch it for now, so I'll rather make the JavaAdapter code more flexible.\n\nDo you agree with this solution?",
+            "date": "20080212T09:38:21",
+            "id": 11
+        },
+        {
+            "author": "songguoq@hotmail.com",
+            "body": "Attila, thanks for looking into this issue!\n\nActually, our ideas are not very different.\n\nThere are two decisions we need to make here about the two parameters passing to SecurityController.createLoader():\n\n1/ Which class loader should we pass to SecurityController? \n\nI think \"JavaAdapter.class.getClassLoader()\" should be fine. This means we use the class loader that loads Rhino. (You leave this parameter as null in your last post, is it a typo?)\n\n2/ Which ProtectionDomain/CodeSource to use?\n\nI think \"JavaAdapter.class.getProtectionDomain()\" should be fine. Since JavaAdapter is loaded from js.jar, in effect we assign js.jar's security privileges to the generated adapter class. \n\nIn your post, you were saying \"The problem is that you'll mostly end up running with the CodeSource of js.jar..\" I still don't see the problem of using CodeSource of js.jar. Your solution also has the same effect, isn't it?\n\nIn my proposed fix, \"obj.getClass().getProtectionDomain()\" will get the domain for NativeObject class in most of the cases; when the 'obj' is not a NativeObject, I don't know what will happen. So \"JavaAdapter.class.getProtectionDomain()\" is more clear.\n",
+            "date": "20080213T07:46:16",
+            "id": 12
+        },
+        {
+            "author": "szegedia@freemail.hu",
+            "body": "(In reply to comment #13)\n> \n> 1/ Which class loader should we pass to SecurityController? \n> \n> I think \"JavaAdapter.class.getClassLoader()\" should be fine. This means we use\n> the class loader that loads Rhino. (You leave this parameter as null in your\n> last post, is it a typo?)\n\nActually, no. null will cause it to use Context.getApplicationClassLoader(), which I think is a better choice. In reality, it shouldn't really matter much, as it's really just used as the parent for a newly created class loader that will be used to load this single adapter only.\n\n> \n> 2/ Which ProtectionDomain/CodeSource to use?\n> \n> I think \"JavaAdapter.class.getProtectionDomain()\" should be fine. Since\n> JavaAdapter is loaded from js.jar, in effect we assign js.jar's security\n> privileges to the generated adapter class. \n> \n> In your post, you were saying \"The problem is that you'll mostly end up running\n> with the CodeSource of js.jar..\" I still don't see the problem of using\n> CodeSource of js.jar. Your solution also has the same effect, isn't it?\n\nYes. I was writing a reply to you as I was thinking about the issue, and didn't properly edit it post fact :-). I was going \"hm... this will usually use js.jar code source... hey, wait a minute, shouldn't it actually always use js.jar code source? Let's see if the generated code will ensure that further protection domain acrobatics are performed for individual function invocations... check, check... yes they are... okay, then we should really always use js.jar code source, as the generated code is basically constant modulo function names\".\n\nSo yes, we should always use the code source (or less preferably, protection domain) of js.jar for JavaAdapter generated code.\n\n> In my proposed fix, \"obj.getClass().getProtectionDomain()\" will get the domain\n> for NativeObject class in most of the cases; when the 'obj' is not a\n> NativeObject, I don't know what will happen. So\n> \"JavaAdapter.class.getProtectionDomain()\" is more clear.\n> \n\n",
+            "date": "20080213T16:13:12",
+            "id": 13
+        },
+        {
+            "author": "szegedia@freemail.hu",
+            "body": "Committed the fix:\n\n    Checking in src/org/mozilla/javascript/JavaAdapter.java;\n    /cvsroot/mozilla/js/rhino/src/org/mozilla/javascript/JavaAdapter.java,v  <--  JavaAdapter.java\n    new revision: 1.111; previous revision: 1.110\n\n",
+            "date": "20080213T16:40:07",
+            "id": 14
+        },
+        {
+            "author": "szegedia@freemail.hu",
+            "body": "Also:\n\n    Checking in toolsrc/org/mozilla/javascript/tools/shell/JavaPolicySecurity.java;\n    /cvsroot/mozilla/js/rhino/toolsrc/org/mozilla/javascript/tools/shell/JavaPolicySecurity.java,v  <--  JavaPolicySecurity.java\n    new revision: 1.11; previous revision: 1.10\n    done\n    Checking in src/org/mozilla/javascript/SecurityController.java;\n    /cvsroot/mozilla/js/rhino/src/org/mozilla/javascript/SecurityController.java,v  <--  SecurityController.java\n    new revision: 1.13; previous revision: 1.12\n    done\n    Checking in src/org/mozilla/javascript/PolicySecurityController.java;\n    /cvsroot/mozilla/js/rhino/src/org/mozilla/javascript/PolicySecurityController.java,v  <--  PolicySecurityController.java\n    new revision: 1.8; previous revision: 1.7\n    done\n\n",
+            "date": "20080213T16:44:25",
+            "id": 15
+        },
+        {
+            "author": "songguoq@hotmail.com",
+            "body": "I have verified the fix in my application. It solves my problem.\n\nAttila, thanks for your hard work! ",
+            "date": "20080214T02:38:32",
+            "id": 16
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "Marking fixed since the changes are checked in.",
+            "date": "20080214T18:56:06",
+            "id": 17
+        }
+    ],
+    "component": "Core",
+    "description": "User-Agent:       Mozilla/5.0 (X11; U; Linux i686; en-US; rv:1.0.1) Gecko/20021003\nBuild Identifier: Rhino CVS from 2003-01-27\n\nCurrently any generated class will have lowest possible privileges which does\nnot allow to use the optimizer or scripting of Java classes with SecurityManager\ninstalled even if the Rhino classes are allowed to carry corresponding task.\n\n\nReproducible: Always\n\nSteps to Reproduce:\nRun Rhino shell with security manager installed and a polycy file that gives\nrhino classes all permissions, like in:\n\njava -Djava.security.manager \\\n  -Djava.security.policy=file:/home/some-path/java.policy \\\n  -Drhino.classes=file:/home/some-path/js.jar \\\n  -jar /home/some-path/js.jar \\\n  sectest.js\n\nwhere file:/home/some-path/java.policy is a modified java.policy from a JDK\ndistribution with the following lines added:\n\ngrant codeBase \"${rhino.classes}\" {\n\tpermission java.security.AllPermission;\n};\n\nand sectest.js contains the single line:\n\nprint(java.lang.System.getProperty(\"user.home\"));\n\nNote that it is essential to use a separated file for the test as in the\ninteractive mode the shell uses pure interpreter which works.\nActual Results:  \njs: uncaught JavaScript exception: java.security.AccessControlException: access\ndenied (java.util.PropertyPermission user.home read)\n\n\nExpected Results:  \nA path to user home directory, like /home/igor",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "190841",
+    "issuetypeClassified": "OTHER",
+    "issuetypeTracker": "BUG",
+    "priority": "P5 normal",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "Generated classes have too low privileges",
+    "systemSpecification": false,
+    "version": "other"
+}

@@ -1,0 +1,53 @@
+{
+    "comments": [
+        {
+            "author": "hannesw@gmail.com",
+            "body": "I guess this might have to do with the patch from bug 382340. I just tried and it is broken with 1.6R6, which is the first release containing that patch. FWIW, invoking that method varargs style works:\n\njava.lang.reflect.Array.newInstance(java.lang.Object, 17, 4);",
+            "date": "20081201T20:39:39",
+            "id": 0
+        },
+        {
+            "author": "hannesw@gmail.com",
+            "body": "I found the problem. The java.lang.reflect.Array.newInstance() method taking an int array as second argument has changed to varargs signature in Java 6, and NativeJavaMethod.preferSignature() currently always prefers non-varargs methods over varargs methods. Thus, the method with int as second argument is called on Java 6, while on Java 5 the right method in chosen.\n\nI guess we shouldn't blindly prefer non-varargs methods over varargs ones. Removing that code results in the varargs method being called with an array object, and the non-varargs one with a number argument. \n\nApart from that, I wonder if it is right that NativeJavaObject.canConvert() returns true for Scriptable -> java.lang.Number conversion. Is there a scenario where this conversion actually works - and makes sense?",
+            "date": "20081205T11:01:15",
+            "id": 1
+        },
+        {
+            "author": "hannesw@gmail.com",
+            "body": "Created attachment 351536\npatch and test case\n\nThis patch removes the code that always prefers non-varargs methods over varargs ones. From the original comment, my feeling is that the author added that code without a stringent cause such as actual code requiring it, and the testcase shows the new code works in this case. The comment is updated to point to this bug.",
+            "date": "20081205T12:03:15",
+            "id": 2
+        },
+        {
+            "author": "hannesw@gmail.com",
+            "body": "Committed to HEAD:\n\nChecking in src/org/mozilla/javascript/NativeJavaMethod.java;\n/cvsroot/mozilla/js/rhino/src/org/mozilla/javascript/NativeJavaMethod.java,v  <--  NativeJavaMethod.java\nnew revision: 1.64; previous revision: 1.63\ndone\nRCS file: /cvsroot/mozilla/js/rhino/testsrc/org/mozilla/javascript/tests/Attic/Bug467396Test.java,v\ndone\nChecking in testsrc/org/mozilla/javascript/tests/Bug467396Test.java;\n/cvsroot/mozilla/js/rhino/testsrc/org/mozilla/javascript/tests/Attic/Bug467396Test.java,v  <--  Bug467396Test.java\nnew revision: 1.1.2.1; previous revision: 1.1\ndone\n\nProbably should go also to Rhino1_7R2_BRANCH, although there's a slight chance something else might break.",
+            "date": "20081205T12:19:16",
+            "id": 3
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "This change caused a regression (see bug 496585). I'm working on a fix that will preserve this case as well.",
+            "date": "20090609T17:41:12",
+            "id": 4
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "I committed my fix to bug 496585. That fix includes a new regression test for this bug: testsrc/doctests/467396.doctest.",
+            "date": "20090609T17:45:16",
+            "id": 5
+        }
+    ],
+    "component": "Core",
+    "description": "User-Agent:       Mozilla/5.0 (X11; U; Linux i686 (x86_64); en-US; rv:1.9) Gecko/2008052912 Firefox/3.0\nBuild Identifier: Rhino 1.7R1\n\nIf i try to run follow code:\n\nvar layRegE00 =  java.lang.reflect.Array.newInstance(java.lang.Object, [17,4]);\n\ni get the exception:\n\nCannot convert 17,4 to java.lang.Integer.\n\nthis code works in version 1.6R1 of Rhino.\n\n\n\nReproducible: Always\n\nSteps to Reproduce:\n1.\n2.\n3.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "467396",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "-- major",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "Rhino always prefers non-varargs java method over varargs one",
+    "systemSpecification": true,
+    "version": "other"
+}

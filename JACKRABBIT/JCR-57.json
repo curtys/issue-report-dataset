@@ -1,0 +1,47 @@
+{
+    "comments": [
+        {
+            "author": "Marcel Reutegger",
+            "body": "Interesting problem ;)\n\nSo, you're saying in an eclipse environment, jackrabbit is not allowed to create instances of classes on shutdown that it never used while it was running? This seems to be a rather strong restriction. I guess your proposed change will probably solve the issue. But what about other code that we write in the future, we'd always have to keep in mind that restriction.\n\nMaybe we're not looking at the real issue? Isn't the real cause, that jackrabbit registeres itself with a shutdown hook to the JVM? and then shuts down too late, when some context class loader is not available anymore?\n\nWho controls startup and shutdown in your environment? Is it possible to find a more 'symetric' way to control the life-cycle of jackrabbit (controlled startup and shutdown) in respect to classloaders?\n\nMaybe we should also re-consider that shutdown hook we have in the RepositoryImpl class. However I consider this a safety feature which shuts down jackrabbit properly if RepositoryImpl.shutdown() is not called before the JVM exits.",
+            "date": "2005-03-09T18:24:31.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Felix Meschberger",
+            "body": "An interesting problem it is, really :-)\n\nActually, in the realm of Eclipse, the restriction makes sense. I'm pretty sure I can circumvent in my current use case. And you may be right, that the current implementation of shutting down the repositories on shutdown of Eclipse is not the perfect implementation (this is not an Eclipse problem, just to be clear).\n\nNow for the real problem. In my opinion, shutting down should use as scarce resources as possible, actually the issue is to dispose of resources used, so it seems somewhat illogical to first acquire even more resources, to dispose of them immediately. So it is true: shutting down the repository is not optimal at the moment and future extensions/enhancements of the repository should really take care to not acquire new resources just before disposing of all of them.\n\nRegarding the shutdown hook: I think it is ok to have a shutdown hook just for stability to do the least possible to try to cleanly shutdown - of course this is only a safety rope if the user of the repository fails to cleanly shutdown. That is the primary means of shutting down the repository must be the client calling RepositoryImpl.shutdown().\n\nThis being said, I personally think, it is not the best implementation to from the outside of the observation manager get the listeners and remove them one by one. We prevent the oberservation manager from doing more intelligent resource disposal if we do not inform the observation manager on the real event going on. An then it is not the best solution performance wise.\n\nI think, if we dispose of the workspace, the workspace should in turn dispose of the observation manager, which finally knows best how to clean up the listeners and anything else behind itself. The observation manager might even be capable of preventing the allocation of new objects (the iterator and the listener wrappers) just to remove the listeners. Speaking of symetry: The observation manager has a constructor knowing how to set up the class. It is not the workspace setting up the observation manager internall. So why should disposal be different ?",
+            "date": "2005-03-09T18:58:07.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "It wasn't my intention to blame eclipse for any of its behaviour. Just took eclipse as an example.\n\nI agree with you the shutdown of the observation manager is not optimal, I will change it as you suggested. Still, I think it gives the application using jackrabbit a false sense of security, because the issue might come up again in the future, in an other place with other code.\n\nWhich eventually makes the change I'm going to implement rather a workaround than a fix for this issue :-/ IMO the solution to this issue is a proper shutdown of jackrabbit with the context classloader that was used when jackrabbit was started.",
+            "date": "2005-03-09T21:40:31.000+0000",
+            "id": 2
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "Fixed as suggested by Felix.\n\nAt revision: 156640",
+            "date": "2005-03-09T21:55:52.000+0000",
+            "id": 3
+        },
+        {
+            "author": "Felix Meschberger",
+            "body": "Thanks for the fix.\n\nUnfortunately, this only partly solves the problem because the EventListenerIteratorImpl is still implemented. But as I can see from the code and a discussion with Marcel, this is not easily fixable due to design decisions of the observation framework.\n\nI will therefore try to follow different paves to prevent the ClassNotFoundException.",
+            "date": "2005-03-10T01:27:06.000+0000",
+            "id": 4
+        }
+    ],
+    "component": "",
+    "description": "Wenn using Jackrabbit in an environment, where ClassLoaders may get inactivated in the sense, the loading new classes is not possible anymore, shutting down the repository may result in a ClassNotFoundException during WorkspaceImpl.dispose().\n\nReason for this is, that in the dispose() method, the ObservationManager is asked for all registered event listeners for them to be removed from the ObservationManager one-by-one. Asking for the listeners results in a new EventListenerIteratorImpl object being created.\n\nIf now, this class has never been used during the live time of the repository, this would cause a ClassNotFoundException because the class loader is not laoding classes anymore in the specific environment.\n\nThe specific environment is Eclipse, where one plugin is managing different Repository instances provided by separate plugins. When now the Jackrabbit provider plugin has already been stopped while the managing plugin tries to shutdown the Jackrabbit repository, the EventListenerIteratorImpl class cannot be loaded anymore and disposing the WorkspaceImpl in a controlled way fails.\n\nI suggest adding an ObservationManagerImpl.dispose() method, which is called by the WorkspaceImpl like :\n    WorkspaceImpl.dispose() {\n       if (obsMgr != null) {\n         obsMgr.dispose();\n         obsMgr = null;\n        }\n    }\n\nAs a side effect of not calling getObservationManager[Impl]() the observation manager would also not be created if not existing yet.\n\nAs a side effect to having the dispose method is, that the ObservationManagerImpl class could also do other cleanup work in addition to clearing the listener lists.",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "JCR-57",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "WorkspaceImpl.dispose() might cause ClassNotFoundException",
+    "systemSpecification": true,
+    "version": ""
+}

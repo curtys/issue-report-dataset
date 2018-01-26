@@ -1,0 +1,107 @@
+{
+    "comments": [
+        {
+            "author": "Shai Erera",
+            "body": "This is great Mike !\n\nI reviewed SearcherManager and have a comment about the TODO on whether or not to call warm in the ctor. If an extending class relies on some internal members to be initialized before warm() can safely be called, then this will lead to exceptions. I think that warm() should not be called in the ctor, or at least add a ctor which accepts a boolean doWarm, while the other ctors call it with 'true'.\n\nCalling warm() in the ctor is useful if one wants to warm the IndexSearcher instance before SearcherManager is ready for use. So perhaps an additional ctor with the boolean gives the most flexibility.\n\nAlso, I remember there was a ctor which took IndexWriter, to allow for an NRT-SearcherManager. What happened to it? :)",
+            "date": "2011-09-21T18:43:20.133+0000",
+            "id": 0
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "Mike, would it be possible to merge the NRT and SearcherManager into one class / manager or that maybe both implement the same interface?",
+            "date": "2011-09-21T20:51:16.780+0000",
+            "id": 1
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Maybe we just shouldn't ever call warm from the ctor?  Caller can easily call warm themselves... we can just jdoc this.\n\nbq. Also, I remember there was a ctor which took IndexWriter, to allow for an NRT-SearcherManager. What happened to it?\n\nRight, I removed it because we have NRTManager now.\n\nbq. Mike, would it be possible to merge the NRT and SearcherManager into one class / manager or that maybe both implement the same interface?\n\nRight, they used to be merged.... we could consider merging them again?\n\nNRTManager is more feature-full, though, because it offers add/updateDocument(s) APIs that invoke the writer but return a [long] gen, which you can then turnaround and pass to .get() to ensure the returned searcher includes those changes.  SearcherManager doesn't have notion... unless we somehow tie in the IndexReader.getVersion() somehow?  I'm torn... they seem different enough that maybe they should remain separate.  Plus, users usually know quite strongly if they use NRT or not and could pick the right manager accordingly...",
+            "date": "2011-09-21T22:51:11.463+0000",
+            "id": 2
+        },
+        {
+            "author": "Shai Erera",
+            "body": "bq. Caller can easily call warm themselves\n\nwarm() is protected. If you don't want to extend SearcherManager, how would you ensure it's warmed-up after creation?\n\nbq. I removed it because we have NRTManager now\n\nOk, I wasn't aware of that.",
+            "date": "2011-09-22T06:43:24.363+0000",
+            "id": 3
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "bq. warm() is protected. If you don't want to extend SearcherManager, how would you ensure it's warmed-up after creation?\n\nWell, warm() is a no-op if you don't extend SearcherManager, so, if you extend, you'd impl warm, and then in your ctor you should call warm on the initial searcher if need be.  Definitely trappy so we should jdoc that subclass's ctor must handle warming initial searcher....",
+            "date": "2011-09-22T21:07:20.527+0000",
+            "id": 4
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "bq. Well, warm() is a no-op if you don't extend SearcherManager, so, if you extend, you'd impl warm, and then in your ctor you should call warm on the initial searcher if need be. Definitely trappy so we should jdoc that subclass's ctor must handle warming initial searcher....\n\nit seems pretty trappy to have this in the ctor though. Since this is a noop by default and it requires subclassing to do something with it it might be worth introducing a SearchWarmer interface and simply pass this interface into the ctor ie. have two ctors where by default we pass a noop warmer?",
+            "date": "2011-09-22T21:16:09.957+0000",
+            "id": 5
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "I like that approach; we can then use that same interface for passing to NRTManager.  I'll do that.",
+            "date": "2011-09-22T21:32:20.603+0000",
+            "id": 6
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "New patch, adds a SearcherWarmer interface (also in contrib/misc), and switches Searcher/NRTManager to accepting a warmer to their ctors instead of subclassing.\n\nI think it's ready for commit!",
+            "date": "2011-09-23T16:57:45.408+0000",
+            "id": 7
+        },
+        {
+            "author": "Greg Steffensen",
+            "body": "What are the different use cases for this and NRTManager?",
+            "date": "2011-09-27T20:40:42.212+0000",
+            "id": 8
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "I have a couple of smallish improvements to SearcherManager making the hottest method in SM non-blocking. I added a tryIncRef to index reader that makes is easier to work with IR refcounts in a non-blocking fashion. I also renamed SM#get to SM#acquire which seems to be more clear about what happens here (also kind of stronger than get - so you'd better release it). \n\n",
+            "date": "2011-09-27T21:39:36.614+0000",
+            "id": 9
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "+1 -- changes look great!  Nice to have .acquire be lock free.",
+            "date": "2011-09-27T21:49:06.786+0000",
+            "id": 10
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "Committed the last patch in revision 1176772. Thanks for review mike.\n",
+            "date": "2011-09-28T08:02:31.310+0000",
+            "id": 11
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "backported to 3.x in rev. 1176933",
+            "date": "2011-09-28T15:52:23.576+0000",
+            "id": 12
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Thanks Simon!",
+            "date": "2011-09-28T17:07:39.517+0000",
+            "id": 13
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Bulk close after release of 3.5",
+            "date": "2011-11-27T12:29:29.241+0000",
+            "id": 14
+        }
+    ],
+    "component": "",
+    "description": "This is a simple helper class I wrote for Lucene in Action 2nd ed.\nI'd like to commit under Lucene (contrib/misc).\n\nIt simplifies using & reopening an IndexSearcher across multiple\nthreads, by using IndexReader's ref counts to know when it's safe\nto close the reader.\n\nIn the process I also factored out a test base class for tests that\nwant to make lots of simultaneous indexing and searching threads, and\nfixed TestNRTThreads (core), TestNRTManager (contrib/misc) and the new\nTestSearcherManager (contrib/misc) to use this base class.\n",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-3445",
+    "issuetypeClassified": "RFE",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Major",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "Add SearcherManager, to manage IndexSearcher usage across threads and reopens",
+    "systemSpecification": true,
+    "version": ""
+}

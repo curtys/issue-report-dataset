@@ -1,0 +1,119 @@
+{
+    "comments": [
+        {
+            "author": null,
+            "body": "Jess, I know you test practically every Tomcat release, and IIRC 5.5.15\nintroduced better source-level debugging for JSPs.  Has this gone away, or is it\nstill an issue?",
+            "date": "20060413T19:46:46",
+            "id": 0
+        },
+        {
+            "author": null,
+            "body": "I am using 5.5.15 these days, but have not given this a try lately.\n\nI'll try to find a spare few minutes to try this.\n\n[I may have tossed my old test Ant script, unfortunately...]",
+            "date": "20060413T21:59:17",
+            "id": 1
+        },
+        {
+            "author": null,
+            "body": "I just tested this again with 5.5.15 -- and it is still broken.\n\nThe issue is that if I use a precompilation Ant script, containing something like:\n\n  <target name=\"-jspc\"\n          unless=\"nojspc\">\n    <!-- Description: Produces Java sources for the JSP files specified by\n'jspFileList' -->\n    <taskdef classname=\"org.apache.jasper.JspC\" name=\"jasper2\" >\n      <classpath id=\"jspc.classpath\">\n        <pathelement location=\"${java.home}/../lib/tools.jar\"/>\n        <fileset dir=\"${tomcatHome}/bin\">\n          <include name=\"*.jar\"/>\n        </fileset>\n        <fileset dir=\"${tomcatHome}/server/lib\">\n          <include name=\"*.jar\"/>\n        </fileset>\n        <fileset dir=\"${tomcatHome}/common/lib\">\n          <include name=\"*.jar\"/>\n        </fileset>\n      </classpath>\n    </taskdef>\n    <condition property=\"jspcVerbosityLevel\" value=\"999\">\n      <istrue value=\"${verboseJspc}\"/>\n    </condition>\n    <property name=\"jspcVerbosityLevel\" value=\"0\"/>\n    <jasper2 uriroot=\"${docBase}\" smapSuppressed=\"false\"\n             outputDir=\"${jspcJavaOutputDir}\"\n             webXmlFragment=\"${jspcJavaOutputDir}/generated_web.xml\"\n             compilerSourceVM=\"${sourceVer}\" compilerTargetVM=\"${targetVer}\"\n             validateXml=\"false\" listErrors=\"true\" verbose=\"${jspcVerbosityLevel}\"\n             jspFiles=\"${jspFileList}\"/>\n  </target>\n\neverything works fine *except* SMAP output appears to always be suppressed --\neven though I'm explicitly using smapSuppressed=\"false\".\n\nI use the fragment above in the context of a larger, Ant script.  Breakpoints I\nset in JSPs with my IDE (NetBeans 5) are ignored.  I remove one of the\nprecompiled classes and reload the page in the browser -- and suddenly the\nbreakpoints work just fine.  I also note there is a notable size difference\nbetween class file sizes in these cases (e.g. 6.96KB vs. 7.54KB in a test case).\n Thus overall I'm pretty sure the SMAP data is getting suppressed when invoked\nfrom precompilation, even though I don't know how to verify this with certainty\nfrom a class file.",
+            "date": "20060414T21:26:39",
+            "id": 2
+        },
+        {
+            "author": null,
+            "body": "This is probably heading to a variant of WONTFIX.  I spent some time on this \n(by changing the /admin precompile in the default build.xml), and the results \nare:  With your settings, the smap info is generated and thrown away.\n\nUsing compile=\"true\" (and fixing the output dir) seems to work.  It's possible \nthat there are some combinations of options that will get dumpSmap=\"true\" to \nwork as well (but I haven't found them :).",
+            "date": "20060416T02:10:00",
+            "id": 3
+        },
+        {
+            "author": null,
+            "body": "Can you specify a custom classpath with compile=\"true\"?\n\n[I need one -- I use a custom web app classloader to this effect and need the\nsame effect when I precompile.]\n",
+            "date": "20060416T13:54:47",
+            "id": 4
+        },
+        {
+            "author": null,
+            "body": "(In reply to comment #5)\n> Can you specify a custom classpath with compile=\"true\"?\n> [I need one -- I use a custom web app classloader to this effect and need the\n> same effect when I precompile.]\n\nFrom my (limited :) understanding of Ant, I believe the answer is 'yes'.  Of \ncourse, just trying it would give you the answer much faster than asking ;-).",
+            "date": "20060417T00:38:20",
+            "id": 5
+        },
+        {
+            "author": null,
+            "body": "I tried:\n\n    <jasper2 uriroot=\"${docBase}\"\n             outputDir=\"${jspcJavaOutputDir}\" compile=\"true\" classpath=\"${docBase}\" \n             webXmlFragment=\"${jspcJavaOutputDir}/generated_web.xml\"\n             compilerSourceVM=\"${sourceVer}\" compilerTargetVM=\"${targetVer}\"\n             validateXml=\"false\" listErrors=\"true\" verbose=\"${jspcVerbosityLevel}\"\n             jspFiles=\"${jspFileList}\"/>\n\n[Yes, I need the classpath bit.]\n\nThe JSPs compiled fine -- but with no SMAP info (in 5.5.15).",
+            "date": "20060417T13:14:56",
+            "id": 6
+        },
+        {
+            "author": null,
+            "body": "I tried smapDumped=\"true\" as well to no avail.\n\nAlso, my settings (with no 'compile=\"true\"') are essentially those shown in the\ndocumentation -- so if there is a limitation as serious as losing SMAP info with\nnot having JspC do the Java compilation (which it doesn't by default), then this\nshould be noted in the documentation.\n\nOverall, I have yet to get any combination to work.",
+            "date": "20060417T13:21:17",
+            "id": 7
+        },
+        {
+            "author": null,
+            "body": "I have added a comment to the 5.5.x and 6.x docs.\n\ncompile=\"true\" and supressSmap=\"false\" works for me with the latest 5.5.x code.\n\nI did toy with the idea of an enhancement request for a new Ant task that merged the smap info into the generated classes but I couldn't see anything that would achieve that isn't achieved by using JspC.",
+            "date": "20090103T16:26:31",
+            "id": 8
+        },
+        {
+            "author": null,
+            "body": "The issue with using compile=\"true\" is that it does not give as much control over compilation.  For starters we use a custom extension to the web app classloader to introduce another directory to the classpath *before* WEB-INF/classes.  That's the main item -- we could probably live with just using compile=\"true\" if we could control the compilation classpath.  We also use UTF-8 as the encoding for javac, but I believe jspc must do so internally as well -- as that's what it produces.  [By the way, the documentation should really make the fact that jspc produces UTF-8 Java sources clear as this is not the normal default for Java sources or javac.]\n\nI'm re-opening this since there is a use case for compile=\"false\", but I'll understand if that use case is insufficiently interesting to everyone else (as we can work around this ourselves as well by not using pre-compiled JSPs when debugging).",
+            "date": "20090103T17:21:31",
+            "id": 9
+        },
+        {
+            "author": null,
+            "body": "(In reply to comment #10)\n> The issue with using compile=\"true\" is that it does not give as much control\n> over compilation.  For starters we use a custom extension to the web app\n> classloader to introduce another directory to the classpath *before*\n> WEB-INF/classes.\nThat should be fine. If you set the classpath attribute of Jasper2 WEB-INF/classes and web-INF/lib get added to the end of whatever you set.\n\n> We also\n> use UTF-8 as the encoding for javac, but I believe jspc must do so internally\n> as well -- as that's what it produces.  [By the way, the documentation should\n> really make the fact that jspc produces UTF-8 Java sources clear as this is not\n> the normal default for Java sources or javac.]\nI'll check what is going on and update the docs as required.\n\n> I'm re-opening this since there is a use case for compile=\"false\", but I'll\n> understand if that use case is insufficiently interesting to everyone else (as\n> we can work around this ourselves as well by not using pre-compiled JSPs when\n> debugging).\nI'm not clear what this use case is. What is it that you can't do with compile=\"true\" that you can do with compile=\"false\"?\n\nNote that I used the latest 5.5.x to test with the default build.xml for JspC (from the docs)  plus\nclasspath=\"${webapp.path}\"\nsmapSuppressed=\"false\"\ncompile=\"true\"\n\nand the Smap info was included in the class files.",
+            "date": "20090104T16:45:42",
+            "id": 10
+        },
+        {
+            "author": null,
+            "body": "Somehow I missed the classpath attribute.  That indeed solves my problem.\n\nI have one much smaller (nuisance) problem.  I want to specify -source and -target of 1.6 -- as I would with javac.  The JDT used by JspC by default complains about this claiming it does not understand a value of 1.6 here, which is silly -- 1.6 has been out a long time now and does have slightly different byte-code output than previous Java versions.  I could presumably force use of javac, but I'd rather be more consistent with on-the-fly JSP compilation.  Yes, I could force use of javac there as well, but I'd rather not.  Is there no JDT available that understands a -source/-target of 1.6?\n\nFeel free to close the bug, but some answer about the JDT issue would be appreciated.",
+            "date": "20090105T05:53:50",
+            "id": 11
+        },
+        {
+            "author": null,
+            "body": "The JDT issue is a bug. I have committed a fix to trunk and proposed it for 6.0.x",
+            "date": "20090105T15:56:06",
+            "id": 12
+        },
+        {
+            "author": null,
+            "body": "Add also proposed for 5.5.x",
+            "date": "20090105T15:57:32",
+            "id": 13
+        },
+        {
+            "author": null,
+            "body": "Thanks!",
+            "date": "20090105T16:49:10",
+            "id": 14
+        },
+        {
+            "author": null,
+            "body": "This has been applied to 6.0.x and will be in 6.0.19 onwards.",
+            "date": "20090114T16:31:05",
+            "id": 15
+        },
+        {
+            "author": null,
+            "body": "JDT 1.6/1/7 options added to 5.5.x and will be included in 5.5.28 onwards.",
+            "date": "20090603T14:47:17",
+            "id": 16
+        }
+    ],
+    "component": "Jasper",
+    "description": "I've noticed that in Tomcat 5.5.12 one can pass the JspC task an smapSuppressed\nattribute.\n\nUnfortunately, it appears that one *still* cannot do source-level debugging of\nJSPs when they are precompiled via JspC with smapSuppressed=false in 5.5.12.\n\nNote that the same JSP are source-level debuggable in exactly the same set up if\nthey are compiled on the fly by Tomcat.\n\nUnfortunately I am baffled as to why this does not work...",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "37515",
+    "issuetypeClassified": "OTHER",
+    "issuetypeTracker": "BUG",
+    "priority": "P2 normal",
+    "product": "Tomcat 5",
+    "project": "TOMCAT",
+    "summary": "smap not generated by JspC when used from Ant for precompilation",
+    "systemSpecification": false,
+    "version": "5.5.12"
+}

@@ -1,0 +1,113 @@
+{
+    "comments": [
+        {
+            "author": "Adrian Sutton",
+            "body": "Created an attachment (id=6906)\nFix take 1\n",
+            "date": "2003-06-20T12:35:30.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Adrian,\nI am afraid the patch will break support for chunk-encoded responses.\nChunk-encoded responses use 'Transfer-Encoding' header instead of\n'Content-Length' header. The patch in its existing form will cause connections\nto be dropped after a chunk-encoded response is received.\nOleg",
+            "date": "2003-06-20T14:27:03.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Adrian Sutton",
+            "body": "doh...  Do we not have test cases for that?  I guess that's something else to add.  I'll take another \nshot at it tonight.",
+            "date": "2003-06-20T14:30:24.000+0000",
+            "id": 2
+        },
+        {
+            "author": "Adrian Sutton",
+            "body": "Created an attachment (id=6909)\nFix take 2.\n",
+            "date": "2003-06-20T16:13:46.000+0000",
+            "id": 3
+        },
+        {
+            "author": "Adrian Sutton",
+            "body": "Patch take 2 features:\n\n1. Works with chunked encoding.\n2. A test case for chunked encoding.\n3. Everything that was in take 1.\n",
+            "date": "2003-06-20T16:14:51.000+0000",
+            "id": 4
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Adrian,\nI do not like that darn 'isChunked' flag. Besides, you forget to reset it in\nHttpMethodBase#recycle. (I DO get convinced that the whole idea of recycling is\nevil after all).\n\nI suggest that you just check for presence of 'Transfer-Encoding' or\n'Content-Length' header in response. That is it. Do not even parse them. We can\nassume that the headers will be correctly reacted upon elsewhere.\n\nOleg",
+            "date": "2003-06-20T16:25:18.000+0000",
+            "id": 5
+        },
+        {
+            "author": "Adrian Sutton",
+            "body": "Yeah, I didn't like the flag much either (and I never understood why you'd recycle methods) but \ndidn't really like blindly assuming that the transfer encoding header was right.  I'm happy with it if \nyou are though.  New patch coming soon.",
+            "date": "2003-06-20T16:36:59.000+0000",
+            "id": 6
+        },
+        {
+            "author": "Adrian Sutton",
+            "body": "Created an attachment (id=6910)\nTake 3.\n",
+            "date": "2003-06-20T16:40:18.000+0000",
+            "id": 7
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Adrian,\nMy rationale is that by the time decision needs to be made whether the\nconnection is to be closed, an invalid 'Transfer-Encoding' or 'Content-Length'\nheader would already have caused an exception. I would even go as far as saying\nthat the check would be sufficient\n\n+  if (responseHeaders.getFirstHeader(\"Transfer-Encoding\") == null &&\n+      responseHeaders.getFirstHeader(\"Content-Length\") == null) {\n+          LOG.debug(\"Should close connection as content-length is missing.\");\n+          return true;\n+  }\n\nOleg",
+            "date": "2003-06-20T17:03:08.000+0000",
+            "id": 8
+        },
+        {
+            "author": "Adrian Sutton",
+            "body": "Good point, my mind is now at ease.  :)  Any other issues you can see?  I'd like to wait for Mike to \ntake a look at the patch before committing it anyway since he'd been looking into the problem \nearlier.",
+            "date": "2003-06-20T17:17:38.000+0000",
+            "id": 9
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Sure. Let Mike take a look. As far as I am concerned all the issues have been \naddressed. I would like to streamline HttpMethodBase#getResponseContentLength() \nmethod a bit, but I'll submit it as a separate incremental patch\n\nOleg",
+            "date": "2003-06-20T17:22:04.000+0000",
+            "id": 10
+        },
+        {
+            "author": "Michael Becke",
+            "body": "This patch does not work in the absence of keep-alive headers.  I will attach a fix for this plus \nsome more test cases in a moment.  This patch just moves the content length test to the top of \nshouldCloseConnection().\n\nMike",
+            "date": "2003-06-20T19:52:34.000+0000",
+            "id": 11
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Created an attachment (id=6912)\npatch 3\n",
+            "date": "2003-06-20T19:52:59.000+0000",
+            "id": 12
+        },
+        {
+            "author": "Adrian Sutton",
+            "body": "gah... You're right.  Your changes make sense and looks good to me.\n\nOleg, how does this affect your reorganisation of that method?",
+            "date": "2003-06-20T19:59:43.000+0000",
+            "id": 13
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "It does not affect it at all. I believe the patch is good to go now \n\nOleg",
+            "date": "2003-06-20T20:06:25.000+0000",
+            "id": 14
+        },
+        {
+            "author": "Adrian Sutton",
+            "body": "Patch committed.",
+            "date": "2003-06-20T20:35:55.000+0000",
+            "id": 15
+        }
+    ],
+    "component": "HttpClient (classic)",
+    "description": "Essentially, we have an invalid HTTP server (Stellent CMS actually and we will file a bug with them), \nwhich is returning headers like:\n\nHTTP/1.1 401 Unauthorized\nWWW-Authenticate: Basic \"Secure Realm\"\nConnection: keep-alive\n\nWhich is clearly missing the Content-Length header.  Now, previously HttpClient handled this \nperfectly by reading until the end of the connection (ie: treating it like it was a Connection: close), \nhowever for some reason a socket exception is being thrown and the invalid connection is added \nback into the connection pool and then every connection to the server after that thows an \nexception.\n\nSee the thread \"SocketException with invalid server\" for the full discussion of the issue.\n\nI'll attach a patch that fixes the problem.  The biggest thing to consider is the changes to the \nduplicate Connection header test cases which resolves around the question: if Connection: keep-\nalive is present but no Content-Length is provided, should the connection be closed?  The patch \nrequires the answer to be yes and I really can't see any other way to do it.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "HTTPCLIENT-227",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "HTTPCLIENT",
+    "project": "HTTPCLIENT",
+    "summary": "Missing Content-Length header causes a SocketException",
+    "systemSpecification": true,
+    "version": "1.0 Alpha"
+}

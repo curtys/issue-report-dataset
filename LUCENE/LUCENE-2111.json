@@ -1,0 +1,365 @@
+{
+    "comments": [
+        {
+            "author": "Uwe Schindler",
+            "body": "Also the current flex branch produces lots of unchecked warnings... The Generics policeman will visit them and will hopefully help fixing!",
+            "date": "2009-12-03T23:48:24.530+0000",
+            "id": 0
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "bq. The Generics policeman will visit them and will hopefully help fixing!\n\nUh-oh... I sense heavy committing in flex branch's future!",
+            "date": "2009-12-04T00:03:08.867+0000",
+            "id": 1
+        },
+        {
+            "author": "Karthik K",
+            "body": "What would the branch name for flex indexing ?  ",
+            "date": "2009-12-04T02:16:31.589+0000",
+            "id": 2
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "I Mike,\n\nmaybe I found an issue in LegacyFieldsEnum & Co:\n\n- The LegacyTermsEnum correctly seeks to the first Term/TermRef but as the deprec TermEnum still iterates after the last term, the TermsEnum returns all terms from all later fields, too. So seek() and next() should also do a field==Term.field() comparison and set SeekStatus/return value correctly.\n- Also (you see it because missing @Override): The new abstract Enums have no close method / not implement java.io.Closeable, so the underlying old enums are never closed by client code. Shouldn't all the enum classes not also be Closeable, even when the new Codec API current would implement these as a no-op for core classes. But maybe someone creates a codec that needs close?\n\nbq. Uh-oh... I sense heavy committing in flex branch's future!\n\nIt is not so much, mainly in code added before the final Java 1.5 switch. Should be easy to fix, will look into it in a few days. So the police inspector only has few minor complaints :-)\n",
+            "date": "2009-12-04T08:02:08.453+0000",
+            "id": 3
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "bq. What would the branch name for flex indexing ?\n\nIt's https://svn.apache.org/repos/asf/lucene/java/branches/flex_1458",
+            "date": "2009-12-04T11:32:02.597+0000",
+            "id": 4
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "bq. The LegacyTermsEnum correctly seeks to the first Term/TermRef but as the deprec TermEnum still iterates after the last term, the TermsEnum returns all terms from all later fields, too. So seek() and next() should also do a field==Term.field() comparison and set SeekStatus/return value correctly.\n\nNice catch -- I'll open a new issue & fix.\n\nbq. Also (you see it because missing @Override): The new abstract Enums have no close method / not implement java.io.Closeable, so the underlying old enums are never closed by client code. Shouldn't all the enum classes not also be Closeable, even when the new Codec API current would implement these as a no-op for core classes. But maybe someone creates a codec that needs close?\n\nI actually intentionally left .close() out of all *Enums.\n\nFirst, to strongly bias impls from doing such costly things that close\nis necessary.  These enums are used in hotspots during searching.\n\nSecond, because for Lucene's core impls, close() is [almost?] always a\nno-op: these impls are very lightweight.\n\nThird, because in Lucene we don't consistently close the enums we\npull, today, so we have confusion (there have been posts to java-user\nabout this -- \"do I need to close the TermEnum/TermDocs\").  I'd rather\nnot add a \"close\" that for all core impls is a no-op and so Lucene\ndoesn't have to call close.\n\nFourth, because it complicates our impls if we really must close\nwhenever we pull a enum -- eg our Scorers pull enums today, but never\nclose them.\n",
+            "date": "2009-12-04T13:19:19.434+0000",
+            "id": 5
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Attached patch -- will commit soon.  I found a bug in the \"flex API on\nnon-flex\" layer (the preflex codec) -- exposed with a new test case in\nTestBackCompat, and fixed.  Also cleaned up some nocommits, added\nindexDivisor to the loadTermsIndex API, and fixed preflex to actually\nimplement it.\n",
+            "date": "2009-12-05T10:22:02.377+0000",
+            "id": 6
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Attached patch, which adds some nice test coverage of the back compat layers.  We still need more tests but this is a good step forward...",
+            "date": "2009-12-19T19:56:25.974+0000",
+            "id": 7
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "New patch attached -- strengthened the back compat testing, which\nuncovered some issues in the back compat layers, that I've now\nfixed.\n\nI ran the FlexTestUtil.verifyFlexVsPreFlex on a 5M doc pre-flex\nwikipedia index, and a 1M doc flex wikipedia index, with no problems.\n\nI also ran my NRT stress test, starting from a pre-flex 5M wikipedia,\nand indexing using flex, so this is a good test of mixed pre/post flex\nsegments, with no problems.\n\nGetting closer...\n",
+            "date": "2009-12-20T22:51:55.349+0000",
+            "id": 8
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Attached patch, changing oal.index.TermRef -> oal.util.BytesRef.\n\nI think, eventually, we should fix the various places that refer to byte slices, eg Field.get/setBinary*, Payload, UnicodeUtil.UTF8Result, IndexOutput.writeBytes, IndexInput.readBytes, to use BytesRef instead.",
+            "date": "2010-01-17T11:52:00.832+0000",
+            "id": 9
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Attached patch w/ various fixes:\n\n  - Switch over payloads to use BytesRef, in flex API\n\n  - DocsEnum.positions now returns null if no positions were indexed\n    (ie omitTFAP was set for the field).  Also fixed Phrase/SpanQuery\n    to throw IllegalStateException when run against an omitTFAP\n    field.\n\n  - Rename PositionsConsumer.addPosition -> .add\n",
+            "date": "2010-01-19T13:35:58.844+0000",
+            "id": 10
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Attached patch with a major reworking of some parts of flex:\n\n  * Simplified how the StandardTermsDictReader/Writer interacts with\n    the postings impl.  The PostingsReader for the codec is now\n    stateless, capturing all state for a given term in a dedicated\n    TermState class (which also works well w/ caching, since we needed\n    to capture state for that anyway).\n\n  * Merged docs & positions readers, in the codec's impl and in the\n    exposed flex API.  It was just too hairy before, with separate\n    classes for reading docs & positions.  This is a step back towards\n    current trunk API, ie, up front you ask for either a DocsEnum or a\n    DocsAndPositionsEnum.\n\n  * Modified API semantics: if a field or term does not exist, then\n    IndexReader.termDocs/PositionsEnum may now return null (previously\n    they returned a fake empty enum).  This means more Weight.scorer()\n    may return null.\n\n  * I added IndexReader.getSubReaderDocBase (there is a separate jira\n    issue open for this) -- this is now more important because a\n    filter can no longer guess its doc base by adding up docCount of\n    all readers it sees since if the scorer for that segment is null,\n    Filter.getDocIdSet will not be called.\n\n  * Changed the reuse of Docs/AndPositionsEnum to be explicit.\n    Previously the Terms or TermsEnum instance was holding a private\n    reused instance... but that was no good because typically we can\n    share the TermsEnum but cannot share postings enums.\n\n  * Likeways, changed the public flex reading API, so that you don't\n    separately ask for positions enum at each doc.  Instead, up front\n    you either ask for a DocsEnum or a DocsAndPositionsEnum.  This\n    matches how the current Lucene APIs work.\n\n  * Terms dict cache is now at the top level, not per field (this\n    matches how trunk works, ie all fields share the 1024 sized cache)\n\nI cutover all codecs to the new API... all tests pass if you switch\nthe default codec (in oal.index.codec.Codecs.getWriter) to any of the\nfour.\n",
+            "date": "2010-01-28T10:54:41.418+0000",
+            "id": 11
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "New flex patch attached:\n\n  * I factored out separate public Multi* (Fields, Terms, etc.) from\n    DirectoryReader, DirectoryReader.  These classes merge multiple\n    flex \"sub readers\" into a single flex API on the fly.\n\n  * Refactored all places that need to merge sub-readers to use this\n    API (DirectoryReader, MultiReader, SegmentMerger).  This is\n    cleaner because previously SegmentMerger had its own duplicated\n    code for doing this merging; now we have a single source for it\n    (though merging swaps in its own docs/positions enum, to remap\n    docIDs around deletions).\n\n  * Changed the semantics of IndexReader.fields() -- for a multi\n    reader (any reader that consist of sequential sub readers),\n    fields() now throws UOE.\n\nThis is an important change with flex -- the caller now bears\nresponsibility for create a MultiFields if they really need it.\n\nMy thinking is that primary places in Lucene that consume postings now\noperate per-segment, so a multi reader (Dir/MultiReader) should not\nautomatically \"join up high\" because it entails a hidden performance\nhit.  So consumers that must access the flex API at the multi reader\nlevel should be explicit about it...\n\nHowever, to make this simple, I created a sugar static methods on\nMultiFields (eg, MultiFields.getFields(IndexReader)) to easily do\nthis, and cutover places in Lucene that may need direct postings from\na multi-reader to use this method.\n\nI've updated the javadocs explaining this.\n",
+            "date": "2010-02-09T11:43:12.379+0000",
+            "id": 12
+        },
+        {
+            "author": "Robert Muir",
+            "body": "Mike, here is a patch for removal of fuzzy nocommits:\n* remove synchronization (not necessary, history here: LUCENE-296)\n* reuse char[] rather than create Strings\n* remove unused ctors",
+            "date": "2010-02-10T04:31:33.409+0000",
+            "id": 13
+        },
+        {
+            "author": "Robert Muir",
+            "body": "btw, i benched that patch with my contrived benchmark for LUCENE-2089, wierd that flex was slower than trunk before.\nnumbers are stable across many iterations.\n||unpatched flex||patched flex||trunk||\n|4362ms|3239ms|3459ms|",
+            "date": "2010-02-10T05:02:06.189+0000",
+            "id": 14
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Mike: I reviewed this EmptyTermsEnum in MTQ. I would leave it in, but simply make EmptyTermsEnum a singleton (which is perfectly fine, because its stateless). Returning null here makes no performance in MTQs, it only makes the code in MTQ#rewrite and MTQWF#getDocIdSet ugly. The biggest problem with returning null here is the backwards layer that must be fixed then (because it checks if getTermsEnum return null and falls back to FilteredTermEnum from trunk). If you really want null, getTermsEnum should per default (if not overriddden) throw UOE and the rewrite code should catch this UOE and only then delegate to backwards layer.",
+            "date": "2010-02-10T08:00:40.630+0000",
+            "id": 15
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Here the EmptyTermsEnum singleton patch (against flex trunk).",
+            "date": "2010-02-10T08:48:04.984+0000",
+            "id": 16
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Robert, I think flex was faster before because the previous impl of Multi*Enums was using the same Docs/AndPositionsEnums before.  This patch fixes that.",
+            "date": "2010-02-10T10:16:23.250+0000",
+            "id": 17
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Updated patch for empty TermsEnum. It is now a singleton in TermsEnum class itsself.",
+            "date": "2010-02-10T11:36:19.678+0000",
+            "id": 18
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "New patch looks good Uwe -- thanks for re-merging!",
+            "date": "2010-02-10T11:44:58.103+0000",
+            "id": 19
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "bq. Robert, I think flex was faster before because the previous impl of Multi*Enums was using the same Docs/AndPositionsEnums before. This patch fixes that.\n\nAhh, and also because your patch switches from String to char[], which should improve perf.\n\nYour patch looks good Robert!  Thanks.",
+            "date": "2010-02-10T12:00:41.996+0000",
+            "id": 20
+        },
+        {
+            "author": "Robert Muir",
+            "body": "bq. Ahh, and also because your patch switches from String to char[], which should improve perf.\n\nactually i didnt apply your LUCENE-2111 when running the benchmark (the improvement is simply the char[]).\nthe test is now actually slightly slower now with the rest of LUCENE-2111",
+            "date": "2010-02-10T13:14:16.915+0000",
+            "id": 21
+        },
+        {
+            "author": "Robert Muir",
+            "body": "here is a rough patch, that merges BytesRef/UnicodeUtil\n* added a fn to UnicodeUtil that computes the hash as it encodes, for termshash\n* when doing utf16->utf8 conversion, remove an if for every character by simple allocating utf16*4\n* some method signatures were generalized from String -> CharSequence (i.e. so you could create a BytesRef from a StringBuilder if you want)\n\nthere are some breaks (e.g. binary api compat), but its an internal api.\n",
+            "date": "2010-02-23T17:55:39.581+0000",
+            "id": 22
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Patch looks good Robert!  Thanks :)\n\nWhy not just remove UTF8Result altogether?  (ie don't bother deprecating).  It's an internal API...\n\nThe new method to compute hash is great, saving the extra pass in THPF.",
+            "date": "2010-02-23T18:24:59.037+0000",
+            "id": 23
+        },
+        {
+            "author": "Robert Muir",
+            "body": "ok, i ditched UTF8 result entirely, committed in revision 915511",
+            "date": "2010-02-23T20:51:51.962+0000",
+            "id": 24
+        },
+        {
+            "author": "Robert Muir",
+            "body": "attached is a patch that changes various exposed apis to use @lucene.experimental\n\ni didnt mess with IndexFileNames as there is an open issue about it right now.",
+            "date": "2010-02-24T13:27:09.044+0000",
+            "id": 25
+        },
+        {
+            "author": "Robert Muir",
+            "body": "these tags are added in revision 915791.",
+            "date": "2010-02-24T14:09:09.978+0000",
+            "id": 26
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Attached patch, fixing some more nocommits, and renaming BytesRef.toString -> BytesRef.utf8ToString.",
+            "date": "2010-02-24T16:06:10.862+0000",
+            "id": 27
+        },
+        {
+            "author": "Robert Muir",
+            "body": "Here is a few more toString -> utf8ToString.\nwill look at the backwards tests now",
+            "date": "2010-02-24T16:43:06.464+0000",
+            "id": 28
+        },
+        {
+            "author": "Robert Muir",
+            "body": "a few more easy nocommits",
+            "date": "2010-02-25T20:08:03.252+0000",
+            "id": 29
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Attached patch, fixes flex APIs to not return null (instead return .EMPTY objects).",
+            "date": "2010-02-25T23:52:40.181+0000",
+            "id": 30
+        },
+        {
+            "author": "Robert Muir",
+            "body": "patch for review of flex merge",
+            "date": "2010-02-26T09:24:38.204+0000",
+            "id": 31
+        },
+        {
+            "author": "Robert Muir",
+            "body": "patch for review, backwards tests merge to flex",
+            "date": "2010-02-26T09:25:04.469+0000",
+            "id": 32
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Cuts over to returning .EMPTY instead of null when requesting enums.\n\nAlso disallows Multi/DirReader.getDeletedDocs in favor of static convenience method MultiFields.getDeletedDocs.\n\nBut... we now need a way to determine that a codec does not store positions.  I [illegally, adding nocommits] had to add a few places where I check the return result against .EMPTY.",
+            "date": "2010-03-06T12:49:56.086+0000",
+            "id": 33
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "bq. But... we now need a way to determine that a codec does not store positions.\n\nThinking more about this... I think we should switch back to a null return from .docsAndPositionsEnum if the codec doesn't support positions.  We only return .EMPTY if the enum is really just empty.",
+            "date": "2010-03-06T12:57:06.545+0000",
+            "id": 34
+        },
+        {
+            "author": "Robert Muir",
+            "body": "Patch for MTQ to not use null in getTermsEnum for backwards compat, \nso null can have some other meaning. Instead it uses VirtualMethod, \nwith the default implementatinos throwing UOE.",
+            "date": "2010-03-06T18:10:53.134+0000",
+            "id": 35
+        },
+        {
+            "author": "Robert Muir",
+            "body": "Uwe asked for a test for the MTQ back compat... attached is one.\nI think it looks kinda dumb but if its useful, I'll commit it.\n",
+            "date": "2010-03-07T14:34:25.394+0000",
+            "id": 36
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Changed .iterator() to never return null, MTQ.getTermsEnum() to never return null, but IR.fields() and Fields.terms(String field), and .docs/.docsAndPositions can return null.\n\nAlso whittled down more nocommits -- down to 53 now!",
+            "date": "2010-03-07T16:10:03.844+0000",
+            "id": 37
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Back compat test for MTQ looks good Robert... thanks!",
+            "date": "2010-03-07T16:23:53.692+0000",
+            "id": 38
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Down to 15 nocommits!",
+            "date": "2010-03-07T23:26:22.431+0000",
+            "id": 39
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Same patch, just fixes the Java 1.6 only changes (adding @Override to interface).",
+            "date": "2010-03-08T00:43:21.160+0000",
+            "id": 40
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "New rev, just a few changes:\n\n  * Rename BytesRef.toBytesString -> toString (thanks Robert!)\n\n  * No more BytesRef.Comparator -- just use java.util.Comparator<BytesRef> (thanks Uwe!)\n\n  * Use Set<String> not Collection<String> when asking Codec for its files/extensions (thanks Mark!)\n\nI'll commit (on flex branch) sometime today.  Making me nervous carrying such a large patch...",
+            "date": "2010-03-08T11:52:46.238+0000",
+            "id": 41
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "More nocommit reductions and other fixes:\n\n  * Rename Codecs -> CodecProvider\n\n  * Try to optimize flex API on pre-flex index (don't clone the\n    SegmentTermEnum during seek)\n\n  * Use SegmentReadState class when getting fieldsProducer (matches\n    SegmentWriteState)\n\n  * Cuts over to a new bulk-read API on DocsEnum that's designed to\n    let int block codecs provide direct access to the int[] they have\n    (saves extra copy).\n\n  * Down to 9 nocommits!!\n",
+            "date": "2010-03-10T21:15:18.431+0000",
+            "id": 42
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Forgot to add SegmentReadState.java",
+            "date": "2010-03-10T21:35:34.810+0000",
+            "id": 43
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Also adds reuse to pre-flex API when getting a new TermsEnum.",
+            "date": "2010-03-10T22:20:41.136+0000",
+            "id": 44
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Thanks Shai!",
+            "date": "2010-03-19T22:29:27.430+0000",
+            "id": 45
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Duh -- wrong issue!  I only wish.... ;)",
+            "date": "2010-03-19T22:33:56.076+0000",
+            "id": 46
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Attached patch, eliminating all remaining nocommits on flex branch!  I turned most of them into TODOs :)",
+            "date": "2010-03-24T09:37:56.394+0000",
+            "id": 47
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "I'm benchmarking flex vs trunk, but uncovered a strange performance loss with WildcardQuery.  I'm attaching the python wrapper around contrib/benchmark that I'm using.  Hopefully this is something silly...\n\nYou have to edit flexBench.py, specificaly the TRUNK_DIR and FLEX_DIR must point to the .../contrib/benchmark of each source area, and you have to edit the WIKI_LINE_FILE and/or WIKI_FILE (I think WIKI_LINE_FILE can be None in which case it should (but I haven't tested recently!) fallback to parsing the .xml.bz2 wikipedia export).\n\nI'll first build an index of the first 5M wikipedia docs, once for flex and once for trunk, and then run the test queries.  It also tests the \"flex API on trunk index\" case, to test perf of the flex emulation layer... this layer is looking a bit slowish now but I'm not sure how much we can do to speed it up...\n\nRun like this:\n{code}\npython -u flexBench.py -run test\n{code}\n\nI have it set to only test only the wildcard query uni*t right now... and I'm getting this result:\n{code}\nJAVA:\njava version \"1.6.0_17\"\nJava(TM) SE Runtime Environment (build 1.6.0_17-b04)\nJava HotSpot(TM) 64-Bit Server VM (build 14.3-b01, mixed mode)\n\n\nOS:\nLinux centos 2.6.18-164.6.1.el5 #1 SMP Tue Nov 3 16:12:36 EST 2009 x86_64 x86_64 x86_64 GNU/Linux\n\nIndex /x/lucene/flex.work.wiki.nd5M already exists...\nIndex /x/lucene/trunk.work.wiki.nd5M already exists...\nIndex /x/lucene/flex.work.random.nd5M already exists...\nIndex /x/lucene/trunk.work.random.nd5M already exists...\n\nRUN: source=wiki query=un*t sort=None\n  run trunk...\n    cd /root/src/clean/lucene/contrib/benchmark\n    log: /root/src/clean/lucene/contrib/benchmark/logs/trunk.0\n    62.49 QPS\n  run flex on trunk index...\n    cd /root/src/flex.clean/contrib/benchmark\n    log: /root/src/flex.clean/contrib/benchmark/logs/flexOnTrunk.1\n    25.87 QPS [-58.6% worse]\n  run flex on flex index...\n    cd /root/src/flex.clean/contrib/benchmark\n    log: /root/src/flex.clean/contrib/benchmark/logs/flexOnFlex.2\n    39.30 QPS [-37.1% worse]\n  124623 hits\n{code}\n\nOther queries I've tested look OK so far...",
+            "date": "2010-03-27T09:38:08.589+0000",
+            "id": 48
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Towards wrapping up flex, I ran a set of tests to benchmark flex's\nsearch performance vs trunk.\n\nAll tests are on a 5M doc Wikipedia index, best qps of 5 runs where\neach run runs the query for 5.0 seconds.  Env is:\n{noformat}\nJAVA:\njava version \"1.6.0_17\"\nJava(TM) SE Runtime Environment (build 1.6.0_17-b04)\nJava HotSpot(TM) 64-Bit Server VM (build 14.3-b01, mixed mode)\n\nOS:\nLinux centos 2.6.18-164.6.1.el5 #1 SMP Tue Nov 3 16:12:36 EST 2009 x86_64 x86_64 x86_64 GNU/Linux\n{noformat}\n\nFirst table compares trunk against \"flex on flex\", ie, a flex index\n(fully reindexed after upgrading to flex):\n\n||Query||Tot hits||Sort||QPS trunk||QPS new||Pct change||\n|1|591225| |68.36|80.64|{color:green}18.0%{color}|\n| | |title|64.12|68.53|{color:green}6.9%{color}|\n|1 OR 2|953081| |19.35|20.80|{color:green}7.5%{color}|\n| | |title|16.50|17.48|{color:green}5.9%{color}|\n|1 OR 2 OR 3|1131679| |14.37|15.50|{color:green}7.9%{color}|\n| | |title|12.42|13.26|{color:green}6.8%{color}|\n|1 OR 2 OR 3 OR 4|1266805| |10.94|12.76|{color:green}16.6%{color}|\n| | |title|10.36|11.05|{color:green}6.7%{color}|\n|1 AND 2|239303| |21.19|22.32|{color:green}5.3%{color}|\n| | |title|22.77|24.25|{color:green}6.5%{color}|\n|1 AND 2 AND 3|109513| |18.83|19.17|{color:green}1.8%{color}|\n| | |title|19.30|20.06|{color:green}3.9%{color}|\n|1 AND 2 AND 3 AND 4|60795| |16.21|17.51|{color:green}8.0%{color}|\n| | |title|16.75|18.29|{color:green}9.2%{color}|\n|\"united states\"|528845| |7.54|8.54|{color:green}13.3%{color}|\n| | |title|7.36|8.14|{color:green}10.6%{color}|\n|\"united states of america\"|12144| |20.64|21.48|{color:green}4.1%{color}|\n| | |title|20.45|21.06|{color:green}3.0%{color}|\n|un*|2250238| |9.31|11.54|{color:green}24.0%{color}|\n| | |title|8.42|10.96|{color:green}30.2%{color}|\n|*ent|2482701| |0.32|0.92|{color:green}187.5%{color}|\n| | |title|0.32|0.91|{color:green}184.4%{color}|\n|u*t|169192| |18.53|47.97|{color:green}158.9%{color}|\n| | |title|17.26|40.10|{color:green}132.3%{color}|\n|uni*|1308332| |18.54|23.49|{color:green}26.7%{color}|\n| | |title|16.28|20.02|{color:green}23.0%{color}|\n|un*t|124623| |62.13|105.23|{color:green}69.4%{color}|\n| | |title|50.38|74.99|{color:green}48.8%{color}|\n|?t|554722| |0.51|29.31|{color:green}5647.1%{color}|\n| | |title|0.51|26.25|{color:green}5047.1%{color}|\n|??t|1605437| |0.60|6.69|{color:green}1015.0%{color}|\n| | |title|0.60|6.22|{color:green}936.7%{color}|\n|???t|3100067| |0.54|1.92|{color:green}255.6%{color}|\n| | |title|0.53|1.89|{color:green}256.6%{color}|\n|????t|2973045| |0.51|0.71|{color:green}39.2%{color}|\n| | |title|0.51|0.70|{color:green}37.3%{color}|\n|?????t|2323871| |0.51|0.39|{color:red}-23.5%{color}|\n| | |title|0.50|0.39|{color:red}-22.0%{color}|\n|??????t|2459025| |0.49|0.31|{color:red}-36.7%{color}|\n| | |title|0.48|0.15|{color:red}-68.7%{color}|\n|un?t|86664| |92.45|241.46|{color:green}161.2%{color}|\n| | |title|72.59|151.28|{color:green}108.4%{color}|\n|un??t|2860| |222.11|408.52|{color:green}83.9%{color}|\n| | |title|220.91|405.84|{color:green}83.7%{color}|\n|un???t|5828| |117.38|99.64|{color:red}-15.1%{color}|\n| | |title|111.47|98.64|{color:red}-11.5%{color}|\n|un????t|1426| |207.03|100.60|{color:red}-51.4%{color}|\n| | |title|207.23|101.36|{color:red}-51.1%{color}|\n|united~0.5|872873| |0.35|0.31|{color:red}-11.4%{color}|\n| | |title|0.35|0.31|{color:red}-11.4%{color}|\n|united~0.6|764041| |0.46|5.22|{color:green}1034.8%{color}|\n| | |title|0.45|5.00|{color:green}1011.1%{color}|\n|united~0.7|695756| |0.59|21.19|{color:green}3491.5%{color}|\n| | |title|0.60|19.10|{color:green}3083.3%{color}|\n|united~0.8|693134| |0.59|21.44|{color:green}3533.9%{color}|\n| | |title|0.58|19.55|{color:green}3270.7%{color}|\n|united~0.9|692299| |57.06|67.80|{color:green}18.8%{color}|\n| | |title|55.28|57.87|{color:green}4.7%{color}|\n\nI also ran the same queries through, but this time using the trunk\n(pre-flex) index with flex, ie to perf test the \"flex on pre-flex\"\nemulation layer.  This is the initial experience users will see if\nthey upgrade to flex but don't reindex:\n\n||Query||Tot hits||Sort||QPS trunk||QPS new||Pct change||\n|1|591225| |68.36|66.91|{color:red}-2.1%{color}|\n| | |title|64.12|58.47|{color:red}-8.8%{color}|\n|1 OR 2|953081| |19.35|19.06|{color:red}-1.5%{color}|\n| | |title|16.50|16.03|{color:red}-2.8%{color}|\n|1 OR 2 OR 3|1131679| |14.37|14.14|{color:red}-1.6%{color}|\n| | |title|12.42|12.11|{color:red}-2.5%{color}|\n|1 OR 2 OR 3 OR 4|1266805| |10.94|11.61|{color:green}6.1%{color}|\n| | |title|10.36|10.04|{color:red}-3.1%{color}|\n|1 AND 2|239303| |21.19|21.12|{color:red}-0.3%{color}|\n| | |title|22.77|22.46|{color:red}-1.4%{color}|\n|1 AND 2 AND 3|109513| |18.83|18.81|{color:red}-0.1%{color}|\n| | |title|19.30|19.29|{color:red}-0.1%{color}|\n|1 AND 2 AND 3 AND 4|60795| |16.21|17.18|{color:green}6.0%{color}|\n| | |title|16.75|17.46|{color:green}4.2%{color}|\n|\"united states\"|528845| |7.54|7.63|{color:green}1.2%{color}|\n| | |title|7.36|7.12|{color:red}-3.3%{color}|\n|\"united states of america\"|12144| |20.64|19.33|{color:red}-6.3%{color}|\n| | |title|20.45|19.50|{color:red}-4.6%{color}|\n|un*|2250238| |9.31|9.79|{color:green}5.2%{color}|\n| | |title|8.42|9.65|{color:green}14.6%{color}|\n|*ent|2482701| |0.32|0.45|{color:green}40.6%{color}|\n| | |title|0.32|0.45|{color:green}40.6%{color}|\n|u*t|169192| |18.53|24.75|{color:green}33.6%{color}|\n| | |title|17.26|21.96|{color:green}27.2%{color}|\n|uni*|1308332| |18.54|19.39|{color:green}4.6%{color}|\n| | |title|16.28|15.86|{color:red}-2.6%{color}|\n|un*t|124623| |62.13|59.73|{color:red}-3.9%{color}|\n| | |title|50.38|48.51|{color:red}-3.7%{color}|\n|?t|554722| |0.51|23.65|{color:green}4537.3%{color}|\n| | |title|0.51|21.42|{color:green}4100.0%{color}|\n|??t|1605437| |0.60|5.13|{color:green}755.0%{color}|\n| | |title|0.60|4.61|{color:green}668.3%{color}|\n|???t|3100067| |0.54|1.28|{color:green}137.0%{color}|\n| | |title|0.53|1.24|{color:green}134.0%{color}|\n|????t|2973045| |0.51|0.55|{color:green}7.8%{color}|\n| | |title|0.51|0.54|{color:green}5.9%{color}|\n|?????t|2323871| |0.51|0.29|{color:red}-43.1%{color}|\n| | |title|0.50|0.29|{color:red}-42.0%{color}|\n|??????t|2459025| |0.49|0.18|{color:red}-63.3%{color}|\n| | |title|0.48|0.21|{color:red}-56.2%{color}|\n|un?t|86664| |92.45|202.48|{color:green}119.0%{color}|\n| | |title|72.59|134.55|{color:green}85.4%{color}|\n|un??t|2860| |222.11|187.05|{color:red}-15.8%{color}|\n| | |title|220.91|186.81|{color:red}-15.4%{color}|\n|un???t|5828| |117.38|69.30|{color:red}-41.0%{color}|\n| | |title|111.47|68.59|{color:red}-38.5%{color}|\n|un????t|1426| |207.03|60.98|{color:red}-70.5%{color}|\n| | |title|207.23|60.62|{color:red}-70.7%{color}|\n|united~0.5|872873| |0.35|0.23|{color:red}-34.3%{color}|\n| | |title|0.35|0.23|{color:red}-34.3%{color}|\n|united~0.6|764041| |0.46|3.84|{color:green}734.8%{color}|\n| | |title|0.45|3.76|{color:green}735.6%{color}|\n|united~0.7|695756| |0.59|17.45|{color:green}2857.6%{color}|\n| | |title|0.60|15.53|{color:green}2488.3%{color}|\n|united~0.8|693134| |0.59|17.56|{color:green}2876.3%{color}|\n| | |title|0.58|15.97|{color:green}2653.4%{color}|\n|united~0.9|692299| |57.06|56.02|{color:red}-1.8%{color}|\n| | |title|55.28|49.26|{color:red}-10.9%{color}|\n\nThere are alot of numbers to absorb... but here's my take:\n\n  * Flex is generally faster.\n\n  * Fuzzy queries and certain wildcard queries (using AutomatonQuery)\n    are insanely faster.\n\n  * There are certain specific wildcard corner cases where we are\n    slower, but these are likely rarely used in practice (many ?'s\n    followed by a suffix).\n\n  * Flex API on a trunk index does take a perf hit but it looks contained enough\n    that we don't need to spend any time optimizing that emulation layer...\n\nI also ran an indexing test (index first 10M docs of wikipedia) and\nflex and trunk had similar times.\n\nI think net/net we are good to land flex!\n",
+            "date": "2010-03-30T12:36:03.525+0000",
+            "id": 49
+        },
+        {
+            "author": "Robert Muir",
+            "body": "bq. I think net/net we are good to land flex!\n\n+1. The tests have been passing for some time now, and Solr tests pass too. \n\nIt would be nice to look at merging flex into the trunk soon so that it gets more exposure.\n",
+            "date": "2010-03-30T13:56:35.600+0000",
+            "id": 50
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Small fixes for flex -- fixes SpanTermQuerty to throw exc if it's run on a field that omitTFAPs (matches PhraseQuery), fixes all jdoc warnings, spells out back compat breaks in changes.",
+            "date": "2010-03-30T15:31:03.471+0000",
+            "id": 51
+        },
+        {
+            "author": "Michael Busch",
+            "body": "bq. Flex is generally faster.\n\nAwesome work!  What changes make those queries run faster with the default codec?  Mostly terms dict changes and automaton for fuzzy/wildcard?\n\nHow's the indexing performance?\n\n\nbq. I think net/net we are good to land flex!\n\n+1!  Even if there are still small things to change/fix I think it makes sense to merge with trunk now.\n",
+            "date": "2010-03-30T16:18:57.846+0000",
+            "id": 52
+        },
+        {
+            "author": "Robert Muir",
+            "body": "{quote}\nThere are certain specific wildcard corner cases where we are\nslower, but these are likely rarely used in practice (many ?'s\nfollowed by a suffix).\n{quote}\n\nI think it would be good to fix this in the future, but I certainly think its a rare case.\nThe problem is similar to where an SQL engine decides to just table-scan instead\nof using a btree index... In this case we are trying to be too smart and just seek\nto the correct term based on the query instead of scanning, but this causes too\nmany seeks.\n\nAt the same time, you have to be careful or you make the wrong decision\nand give O\\(n\\) performance instead of O\\(log n\\). \n\nIn my opinion it would be better to think in the future how we can improve lucene\nin the following ways:\n* The term dictionary should be more \"DFA-friendly\", e.g. the whole concept of TermsEnum is wrong, \nlinear enumeration of terms is inefficient for any big index. we should get away from it.\n* Instead it would be nice to think of the index like an FST, and instead of enumerating things and filtering them,\nwe provide a DFA and enumerate the transduced results.\n* We need to eliminate the UTF-8/UTF-16 impedence mismatch which causes so much\ncomplication and unnecessary hairy code today.\n\nAll this being said, I think flex is a great move forward for multitermqueries, at least\nwe have a seeking-friendly API! One step at a time.\n\n",
+            "date": "2010-03-30T16:33:14.098+0000",
+            "id": 53
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "bq. Awesome work! What changes make those queries run faster with the default codec? Mostly terms dict changes and automaton for fuzzy/wildcard?\n\nThe AutomatonQuery (for fuzzy/wildcard) gives the biggest gains :)  Other MTQs (prefix) see gains I think because of more efficient terms enum.  The TermQuery speedup surprises me -- that can't be a terms dict thing (just one lookup); i'm not sure offhand why it's faster.  That code is not very different than trunk.\n\nbq. How's the indexing performance?\n\nUnchanged -- I indexed first 10M docs of wikipedia and the times were nearly identical.",
+            "date": "2010-03-30T18:58:36.715+0000",
+            "id": 54
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "{quote}\nThe term dictionary should be more \"DFA-friendly\", e.g. the whole concept of TermsEnum is wrong,\nlinear enumeration of terms is inefficient for any big index. we should get away from it.\nInstead it would be nice to think of the index like an FST, and instead of enumerating things and filtering them,\nwe provide a DFA and enumerate the transduced results.\nWe need to eliminate the UTF-8/UTF-16 impedence mismatch which causes so much\ncomplication and unnecessary hairy code today.\n{quote}\n\n+1 -- we already see these limitations now in making AutomatonQuery consume the straight enum.  If we flipped the problem around (you pass a DFA to the codec and it does the intersection & enums the result), and we used byte-based DFAs, I think we'd get a good speedup.",
+            "date": "2010-03-30T19:01:06.704+0000",
+            "id": 55
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Flex has some trouble making > 2B terms -- attached patch creates such an index.  I'm still getting to the bottom of it...",
+            "date": "2010-03-31T22:44:01.623+0000",
+            "id": 56
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Patch fixes standard codec's terms dict to handle > 2B terms; I also strengthened CheckIndex to verify that .ord() of the TermsEnum always returns the right result, for codecs that implement .ord.  I'll commit shortly...",
+            "date": "2010-04-01T10:09:29.604+0000",
+            "id": 57
+        }
+    ],
+    "component": "core/index",
+    "description": "Spinoff from LUCENE-1458.\n\nThe flex branch is in fairly good shape -- all tests pass, initial search performance testing looks good, it survived several visits from the Unicode policeman ;)\n\nBut it still has a number of nocommits, could use some more scrutiny especially on the \"emulate old API on flex index\" and vice/versa code paths, and still needs some more performance testing.  I'll do these under this issue, and we should open separate issues for other self contained fixes.\n\nThe end is in sight!",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-2111",
+    "issuetypeClassified": "OTHER",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Major",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "Wrapup flexible indexing",
+    "systemSpecification": true,
+    "version": "4.0-ALPHA"
+}

@@ -1,0 +1,83 @@
+{
+    "comments": [
+        {
+            "author": "fabrizio giustina",
+            "body": "stack from error (1)",
+            "date": "2005-05-11T05:01:10.000+0000",
+            "id": 0
+        },
+        {
+            "author": "fabrizio giustina",
+            "body": "stack from error (2)",
+            "date": "2005-05-11T05:01:35.000+0000",
+            "id": 1
+        },
+        {
+            "author": "fabrizio giustina",
+            "body": "svn diff",
+            "date": "2005-05-11T05:02:00.000+0000",
+            "id": 2
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "As discussed in JCR-57, this is a rather tricky question where the correct solution is not obvious. I'm a bit worried about the proposed solution as it will break as soon as the dispose() code gets refactored to use different classes.\n\nWhat would be the best solution to this problem? I tried looking for a more generic solution, but couldn't find any.",
+            "date": "2005-05-21T17:01:28.000+0000",
+            "id": 3
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Fixed as suggested in revision 179394.\n\nPlease reopen this issue if a better workaround is found.",
+            "date": "2005-06-02T03:24:30.000+0000",
+            "id": 4
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Reopening this issue as it seems that the fix did get broken. :-( See http://article.gmane.org/gmane.comp.apache.jackrabbit.devel/3745 for Fabrizio's message that details the breakage.\n\nI propose to remove the entire addShutdownHook() call from the RepositoryImpl class. The shutdown hook could possibly be set up by the BindableRepositoryFactory class and other similar container tools, but normal client code that instantiates a RepositoryImpl object should be required to also explicitly call RepositoryImpl.shutdown() to properly close the repository.",
+            "date": "2005-10-03T01:43:27.000+0000",
+            "id": 5
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Scheduled for 1.0 and changed from an observation improvement request to a core bug report.",
+            "date": "2005-10-03T01:45:28.000+0000",
+            "id": 6
+        },
+        {
+            "author": "Stefan Guggisberg",
+            "body": "> I propose to remove the entire addShutdownHook() call from the RepositoryImpl class\n\n+1",
+            "date": "2005-10-03T19:15:28.000+0000",
+            "id": 7
+        },
+        {
+            "author": "Felix Meschberger",
+            "body": " > I propose to remove the entire addShutdownHook() call from the RepositoryImpl class\n\n+1",
+            "date": "2005-10-03T19:33:51.000+0000",
+            "id": 8
+        },
+        {
+            "author": "Edgar Poce",
+            "body": "  > I propose to remove the entire addShutdownHook() call from the RepositoryImpl class \n\n+1. ",
+            "date": "2005-10-06T04:22:41.000+0000",
+            "id": 9
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Removed the shutdown hook in revision 307128. This change makes it the responsibility of the client application that instantiates the RepositoryImpl object to also invoke the shutdown method. However I did place a similar shutdown hook into the BindableRepository class in order to minimize the effect on JNDI environments where there is no easy way to explicitly invoke the shutdown method.\n\nI'm closing this issue with this change. See JCR-245 and the related issues for further discussion on how to best manage repository shutdown.\n",
+            "date": "2005-10-07T23:10:53.000+0000",
+            "id": 10
+        }
+    ],
+    "component": "jackrabbit-core, observation",
+    "description": "This is the same issue already discudded in http://issues.apache.org/jira/browse/JCR-57\n\nThe problem only occurs when Jackrabbit is deployed in the WEB-INF/lib directory of a web application in Tomcat.\nDuring dispose() jackrabbit tries to instantiate a few objects from classes which were not previously loaded by the webapp classloader, but tomcat doesn't allow to load new classes while shutting down.\nThis causes the repository not to be closed properly, and an annoying set of stack traces are written to the log.\n\nIt seems that there are only two classes which are loaded in this situation: org.apache.jackrabbit.core.observation.EventListenerIteratorImpl and org.apache.jackrabbit.core.fs.FileSystemPathUtil. This is the log from the server standard output:\n\norg.apache.catalina.loader.WebappClassLoader loadClass\nINFO: Illegal access: this web application instance has been stopped already.  Could not load org.apache.jackrabbit.core.observation.EventListenerIteratorImpl.  The eventual following stack trace is caused by an error thrown for debugging purposes as well as to attempt to terminate the thread which caused the illegal access, and has no functional impact.\n[repeaded more times at each shutdown]\n\norg.apache.catalina.loader.WebappClassLoader loadClass\nINFO: Illegal access: this web application instance has been stopped already.  Could not load org.apache.jackrabbit.core.fs.FileSystemPathUtil.  The eventual following stack trace is caused by an error thrown for debugging purposes as well as to attempt to terminate the thread which caused the illegal access, and has no functional impact.\n\n\nA quick fix is to force preloading of classes normally needed only during shutdown, simply adding a static block to caller classes. The following patch makes tomcat happy, causing classes to be loaded by the webapp classloaded when still allowed  (probably not really elegant, but perfectly working...)\n\n\n\n\nIndex: org/apache/jackrabbit/core/fs/FileSystemResource.java\n===================================================================\n--- src\\java\\org\\apache\\jackrabbit\\core\\fs\\FileSystemResource.java\t(revision 169503)\n+++ src\\java\\org\\apache\\jackrabbit\\core\\fs\\FileSystemResource.java\t(working copy)\n@@ -30,6 +30,11 @@\n \n     protected final String path;\n \n+    static {\n+        // preload FileSystemPathUtil to prevent classloader issues during shutdown\n+        FileSystemPathUtil.class.hashCode();\n+    }\n+\n     /**\n      * Creates a new <code>FileSystemResource</code>\n      *\nIndex: org/apache/jackrabbit/core/observation/ObservationManagerImpl.java\n===================================================================\n--- src\\java\\org\\apache\\jackrabbit\\core\\observation\\ObservationManagerImpl.java\t(revision 169503)\n+++ src\\java\\org\\apache\\jackrabbit\\core\\observation\\ObservationManagerImpl.java\t(working copy)\n@@ -54,6 +54,11 @@\n      */\n     private final ObservationManagerFactory obsMgrFactory;\n \n+    static {\n+        // preload EventListenerIteratorImpl to prevent classloader issues during shutdown\n+        EventListenerIteratorImpl.class.hashCode();\n+    }\n+\n     /**\n      * Creates an <code>ObservationManager</code> instance.\n      *\n\n\n",
+    "hasPatch": false,
+    "hasScreenshot": true,
+    "id": "JCR-120",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "Jackrabbit fails to shutdown properly when tomcat is shutting down",
+    "systemSpecification": false,
+    "version": ""
+}

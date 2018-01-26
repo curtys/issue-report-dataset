@@ -1,0 +1,53 @@
+{
+    "comments": [
+        {
+            "author": "Grant Ingersoll",
+            "body": "+1",
+            "date": "2011-10-25T12:34:07.793+0000",
+            "id": 0
+        },
+        {
+            "author": "Robert Muir",
+            "body": "I'm gonna try to work on this: I have a perf improvement to spans and this class prevents it.",
+            "date": "2011-11-05T19:17:57.424+0000",
+            "id": 1
+        },
+        {
+            "author": "Robert Muir",
+            "body": "Patch, nuking these, but also removing stupid extra seeks from SpanQueries.\n\nThe problem is currently:\n# seek to every term in every segment to compute IDF/etc\n# seek to every term again in every segment to get docsAndPositionsEnum\n# (possibly) seek to every term AGAIN in each segment if it doesn't exist, this is when d&penum returns null, to throw an error message \"positions were not indexed\". if this third seek returns null it will return EMPTY_SPANS\n\nwith the patch we just do 1 seek",
+            "date": "2011-11-05T19:55:22.281+0000",
+            "id": 2
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Robert do you want to take this? Should we nuke it on 3.x, too?",
+            "date": "2011-11-12T00:04:24.370+0000",
+            "id": 3
+        },
+        {
+            "author": "Robert Muir",
+            "body": "It would be good to get a review on the patch: I think its ok in general.\n\nit removes a lot of stupidity from the spans, except for one case:\n\nthe SpanMultiTermQueryWrapper is still not single pass (it simply throws all termcontexts away).\n\nI thought about how to solve that one too, and I'm convinced its unfixable\nbecause SpanQueries aren't really query trees, its just one query that\ncalls extractTerms on everything underneath it.\n\nFor this reason, even if i made this MTQ one single-pass by allowing TermContexts\nto be passed to e.g. SpanOrQuery, it would work, but if you had that query inside\nanother SpanQuery then it would still do the extra seek like it does now.\n\nBut still, with the patch spans are a little better.",
+            "date": "2011-11-12T00:20:35.757+0000",
+            "id": 4
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Patch looks good!  One less query relying on TermsEnum caching...",
+            "date": "2011-11-13T18:39:01.608+0000",
+            "id": 5
+        }
+    ],
+    "component": "",
+    "description": "SpanFilters are inefficient and OOM easily (they don't scale at all: Create large Lists of Objects for every match, also filtering deleted docs is a pain). Some talks with Grant on Eurocon and also the fact that caching of them is still broken in 3.x (but fixed on trunk) - I assume nobody uses them, so let's nuke them. They are also in wrong package, so standard statement: \"Die, SpanFilters, die!\"",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-3533",
+    "issuetypeClassified": "OTHER",
+    "issuetypeTracker": "OTHER",
+    "priority": "Major",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "Nuke SpanFilters and CachingSpanFilter (maybe move to sandbox)",
+    "systemSpecification": true,
+    "version": ""
+}

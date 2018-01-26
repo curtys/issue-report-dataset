@@ -1,0 +1,101 @@
+{
+    "comments": [
+        {
+            "author": "Alexander Klimetschek",
+            "body": "Are you sure, the null object is because of that warning? I would suppose the serializable problem should be logged as an error if it was truly critical...",
+            "date": "2009-01-20T20:43:51.978+0000",
+            "id": 0
+        },
+        {
+            "author": "Michael Xue",
+            "body": "Yes, I'm.   The jackrabbit entry in weblogic JNDI tree is not populated with 'org.apache.jackrabbit.jca.JCAResourceAdapter' at all, showing a red ! instead.  Originally I deployed the same jackrabbit-jca.rar in the dev server, which is single (non-cluster) server environment.  Everything worked great.   However, as soon as I moved to the cluster environment, JCAResourceAdapter just couldn't fit.   Yes, I agree, JCAResourceAdapter must implement Serializable.  Otherwise, it won't be deployable in any cluster environment.     ",
+            "date": "2009-01-20T22:18:39.260+0000",
+            "id": 1
+        },
+        {
+            "author": "Michael Xue",
+            "body": "A picture worths a thousand of words.  I'm attaching the the snapshots of JNDI lookup entry (called JCRRepo) in a single WLS 10 server and in WLS cluster servers.  Just from the color of that entry, you can tell the difference.  ",
+            "date": "2009-01-20T22:30:03.256+0000",
+            "id": 2
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Not a blocker as this only affects specific environments.\n\nWould anyone be interested in writing a patch for this? The required changes don't seem too complex.",
+            "date": "2009-09-29T15:58:54.352+0000",
+            "id": 3
+        },
+        {
+            "author": "Claus K\u00f6ll",
+            "body": "ok if it is only to implement Serializeable i will fix it :-)",
+            "date": "2009-09-30T06:59:49.765+0000",
+            "id": 4
+        },
+        {
+            "author": "Claus K\u00f6ll",
+            "body": "Committed in rev. 820257",
+            "date": "2009-09-30T12:43:46.073+0000",
+            "id": 5
+        },
+        {
+            "author": "Michael Xue",
+            "body": "Thanks a lot, Claus.  Where can I download this rev.  Sorry for my innocence.",
+            "date": "2009-09-30T13:49:45.706+0000",
+            "id": 6
+        },
+        {
+            "author": "Claus K\u00f6ll",
+            "body": "It will be available in the upcoming 2.0 release or if you want we can backport it to the 1.6.1 realease \nor you can download  the current build from http://hudson.zones.apache.org/hudson/view/Jackrabbit/job/Jackrabbit-trunk/\ngreets\nclaus",
+            "date": "2009-09-30T15:18:58.385+0000",
+            "id": 7
+        },
+        {
+            "author": "Michael Xue",
+            "body": "great, Claus.  I just downloaded the build #864 and will test it as soon as the cluster environment is available (need make a request to get it scheduled).  BTW, do you have any timeline for the upcoming 2.0 release?  It will be very exciting.  Thanks, Michael ",
+            "date": "2009-09-30T17:31:09.639+0000",
+            "id": 8
+        },
+        {
+            "author": "Michael Xue",
+            "body": "Claus, I'm getting java.lang.NoClassDefFoundError: javax/jcr/Binary exception after deploying build #864.  I'm using jcr-1.0.jar and couldn't find javax/jcr/Binary there.   ",
+            "date": "2009-10-01T21:34:54.819+0000",
+            "id": 9
+        },
+        {
+            "author": "Claus K\u00f6ll",
+            "body": "the current trunk is compiled against the new jcr 2.0 api. if you need it in a older version we can backport it or you must\napply it it by yourself\ngreets\nclaus",
+            "date": "2009-10-02T08:49:38.614+0000",
+            "id": 10
+        },
+        {
+            "author": "Michael Xue",
+            "body": "sure, Claus.  I applied jcr-2.0-b114.jar and moved over the \"javax/jcr/Binary\".  However, another exception comes up.   \"javax.resource.ResourceException: Failed to create session: Cannot instantiate persistence manager org.apache.jackrabbit.core.persistence.bundle.BundleFsPersistenceManager \".  I guess it is another jackrabbit/jcr upgrade issue.  Our current configuration is based on jackrabbit release 1.5.   The following is the repository.xml.   Do you see anything wrong with the configuration of BundleFsPersistenceManager?   Thanks, Michael\n\n<?xml version=\"1.0\" encoding=\"ISO-8859-1\"?>\n<!DOCTYPE Repository PUBLIC \"-//The Apache Software Foundation//DTD Jackrabbit 1.2//EN\"\n\"http://jackrabbit.apache.org/dtd/repository-1.4.dtd\">\n<Repository>\n    <FileSystem class=\"org.apache.jackrabbit.core.fs.local.LocalFileSystem\">\n        <param name=\"path\" value=\"/data/repo-home/repository\"/>\n    </FileSystem>\n    <Security appName=\"Jackrabbit\">\n        <AccessManager class=\"org.apache.jackrabbit.core.security.SimpleAccessManager\" />\n        <LoginModule class=\"org.apache.jackrabbit.core.security.SimpleLoginModule\">\n                <param name=\"anonymous\" value=\"anonymous\"/>\n        </LoginModule>\n        </Security>\n    <Workspaces rootPath=\"/doc-archives/JCRRepo/workspaces\" defaultWorkspace=\"default\" />\n    <Workspace name=\"${wsp.name}\">\n        <FileSystem class=\"org.apache.jackrabbit.core.fs.local.LocalFileSystem\">\n                <param name=\"path\" value=\"${wsp.home}\"/>\n        </FileSystem>\n        <PersistenceManager class=\"org.apache.jackrabbit.core.persistence.bundle.BundleFsPersistenceManager\">\n                <param name=\"bundlecacheSize\" value=\"8\"/>\n                <param name=\"consistencyCheck\" value=\"false\"/>\n                <param name=\"errorHandling\" value=\"\"/>\n        </PersistenceManager>\n        <!-- Dont want a SearchIndex, setup for Indexing -->\n    </Workspace>\n    <Versioning rootPath=\"${rep.home}/versions\">\n        <FileSystem class=\"org.apache.jackrabbit.core.fs.local.LocalFileSystem\">\n            <param name=\"path\" value=\"${rep.home}/versions\"/>\n        </FileSystem>\n        <PersistenceManager class=\"org.apache.jackrabbit.core.state.xml.XMLPersistenceManager\" />\n    </Versioning>\n    <Cluster id=\"${weblogic.Name}\">\n        <Journal class=\"org.apache.jackrabbit.core.journal.FileJournal\">\n        <param name=\"revision\" value=\"/doc-archives/JCRRepo/cluster-revision/revision.log\" />\n        <param name=\"directory\" value=\"/doc-archives/JCRRepo/cluster-journal/\" />\n        </Journal>\n</Cluster>\n</Repository>   \n",
+            "date": "2009-10-02T15:16:02.929+0000",
+            "id": 11
+        },
+        {
+            "author": "Thomas Mueller",
+            "body": "Hi,\n\nUnrelated to the problem, I'm not sure if you know about the disadvantages of the BundleFsPersistenceManager. See http://wiki.apache.org/jackrabbit/PersistenceManagerFAQ \"If the JVM process is killed the repository might turn inconsistent\".",
+            "date": "2009-10-02T15:36:58.284+0000",
+            "id": 12
+        },
+        {
+            "author": "Michael Xue",
+            "body": "Good point.  We'll probably use database (MS SQL Server) in production environment.  We're still working on the cluster issue.",
+            "date": "2009-10-02T16:50:43.457+0000",
+            "id": 13
+        }
+    ],
+    "component": "jackrabbit-jca",
+    "description": "We are running Weblogic 10.0 servers in cluster environment.   When deploying the rar, we always get this warning from weblogic stdout.log: \n\n<Jan 15, 2009 2:42:10 AM PST> <Warning> <Connector> <BEA-190155> <Compliance checking/validation of the resource adapter /home/user/jackrabbit_rar/jackrabbit-jca-1.5.0.rar resulted in the following warnings:  The ra.xml <resourceadapter-class> class 'org.apache.jackrabbit.jca.JCAResourceAdapter' should implement java.io.Serializable but does not.> \n\nWhen trying to do the JNDI lookup the repository, we got the error \"No Object found: jackrabbit|null\".   The jackrabbit entry in the jndi tree is visible only as a javax.naming.reference and not as the JCARepositoryHandle due to the above warning.  Due to that, we can't deploy jackrabbit-jca in Test/Production environment.  \n\nI'm no expert in JCA, but feel it is fairly easy to implement Serializable for  JCAResourceAdapter.  Please help us out.\n",
+    "hasPatch": false,
+    "hasScreenshot": true,
+    "id": "JCR-1946",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Major",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "JCAResourceAdapter must implement Serializable",
+    "systemSpecification": true,
+    "version": "1.5"
+}

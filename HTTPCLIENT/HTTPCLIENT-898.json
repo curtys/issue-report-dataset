@@ -1,0 +1,89 @@
+{
+    "comments": [
+        {
+            "author": "Glyn Davies",
+            "body": "Hi Oleg,\n\nI don't know if this is of use, but is the logic I am using at the moment, which is an extension of the existing DefaultMultihomePlainSocketFactory\n\nEssentially, this shares the set timeout between the available 'A' records, and allows iteration through those.\n\n\nList<InetAddress> addresses = new ArrayList<InetAddress>(inetadrs.length);\n        addresses.addAll(Arrays.asList(inetadrs));\n        Collections.shuffle(addresses);\n\n        IOException lastEx = null;        \n        \n        int individualTimeout = timeout / addresses.size();\n        \n        for (int i=0;i<addresses.size();i++) {\n            InetAddress remoteAddress =  addresses.get(i);\n            try { \n                wireLog.debug(\"Attempting to connect to \"+remoteAddress+\":\"+port+\" with timeout value of \"+individualTimeout);                \n                sock.connect(new InetSocketAddress(remoteAddress, port), individualTimeout);\n                wireLog.debug(\"RETURNING SOCKET - \"+sock.toString());\n                return sock;\n            } catch (SocketTimeoutException ex) {\n                // If the last socket on the list, then throw a timeout exception\n                if (i == addresses.size()-1)\n                {\n                    wireLog.warn(\"Connect to \" + remoteAddress + \" timed out.  Throwing timeout exception.\");\n                    throw new ConnectTimeoutException(\"Connect to \" + remoteAddress + \" timed out\");\n                }\n                else\n                {\n                    wireLog.warn(\"Connect to \" + remoteAddress + \" timed out.  Trying next in the list.\");        \n                    // should we close the old socket?!\n                    sock = new Socket();\n                }\n            } catch (IOException ex) {\n                // create new socket\n                // should we close the old socket?!\n                sock = new Socket();\n                wireLog.warn(\"Connect to \" + remoteAddress + \" caused exception.  Trying next in the list.\", ex);\n                // keep the last exception and retry\n                lastEx = ex;\n            }\n                        \n        }\n\n",
+            "date": "2009-12-10T11:35:58.309+0000",
+            "id": 0
+        },
+        {
+            "author": "Steinar H. Gunderson",
+            "body": "Two comments:\n\n- Please don't use Collections.shuffle() on the address list. The list comes from the resolver in a given order for good reasons (see RFC 3484), and randomizing it will do Very Bad Things in some situations.\n- The address list can potentially be very long (20+ addresses). Trying to divide the timeout evenly between these addresses might not be the best thing to do. Most other libraries simply specify that timeout is done once per host tried, which would probably not be unreasonable here either.",
+            "date": "2010-02-19T13:06:19.570+0000",
+            "id": 1
+        },
+        {
+            "author": "Steinar H. Gunderson",
+            "body": "FWIW, the following code fragment was newly checked into Android's repository. Note that you need to deal with LayeredSocketFactory specifically, or you will break SSL, since SSLSocketFactory uses the given (textual) hostname both to figure out where to connect and for SSL hostname verification (so if you just give it an IP, it breaks verification).\n\ndiff --git a/src/org/apache/http/conn/scheme/PlainSocketFactory.java b/src/org/apache/http/conn/scheme/PlainSocketFactory.java\nindex acc13f7..b15df44 100644\n--- a/src/org/apache/http/conn/scheme/PlainSocketFactory.java\n+++ b/src/org/apache/http/conn/scheme/PlainSocketFactory.java\n@@ -35,7 +35,9 @@ import java.io.IOException;\n import java.net.InetAddress;\n import java.net.InetSocketAddress;\n import java.net.Socket;\n+import java.net.SocketTimeoutException;\n \n+import org.apache.http.conn.ConnectTimeoutException;\n import org.apache.http.params.HttpConnectionParams;\n import org.apache.http.params.HttpParams;\n \n@@ -113,9 +115,11 @@ public final class PlainSocketFactory implements SocketFactory {\n         } else {\n             remoteAddress = new InetSocketAddress(host, port);            \n         }\n-        \n-        sock.connect(remoteAddress, timeout);\n-\n+        try {\n+            sock.connect(remoteAddress, timeout);\n+        } catch (SocketTimeoutException ex) {\n+            throw new ConnectTimeoutException(\"Connect to \" + remoteAddress + \" timed out\");\n+        }\n         return sock;\n \n     } // connectSocket\ndiff --git a/src/org/apache/http/impl/conn/DefaultClientConnectionOperator.java b/src/org/apache/http/impl/conn/DefaultClientConnectionOperator.java\nindex 41488e1..854b2b0 100644\n--- a/src/org/apache/http/impl/conn/DefaultClientConnectionOperator.java\n+++ b/src/org/apache/http/impl/conn/DefaultClientConnectionOperator.java\n@@ -44,7 +44,9 @@ import org.apache.http.protocol.HttpContext;\n import org.apache.http.conn.HttpHostConnectException;\n import org.apache.http.conn.OperatedClientConnection;\n import org.apache.http.conn.ClientConnectionOperator;\n+import org.apache.http.conn.ConnectTimeoutException;\n import org.apache.http.conn.scheme.LayeredSocketFactory;\n+import org.apache.http.conn.scheme.PlainSocketFactory;\n import org.apache.http.conn.scheme.Scheme;\n import org.apache.http.conn.scheme.SchemeRegistry;\n import org.apache.http.conn.scheme.SocketFactory;\n@@ -67,6 +69,7 @@ import org.apache.http.conn.scheme.SocketFactory;\n public class DefaultClientConnectionOperator\n     implements ClientConnectionOperator {\n \n+    private static final PlainSocketFactory staticPlainSocketFactory = new PlainSocketFactory();\n \n     /** The scheme registry for looking up socket factories. */\n     protected SchemeRegistry schemeRegistry;\n@@ -121,19 +124,55 @@ public class DefaultClientConnectionOperator\n \n         final Scheme schm = schemeRegistry.getScheme(target.getSchemeName());\n         final SocketFactory sf = schm.getSocketFactory();\n+        final SocketFactory plain_sf;\n+        final LayeredSocketFactory layered_sf;\n+        if (sf instanceof LayeredSocketFactory) {\n+            plain_sf = staticPlainSocketFactory;\n+            layered_sf = (LayeredSocketFactory)sf;\n+        } else {\n+            plain_sf = sf;\n+            layered_sf = null;\n+        }\n+        InetAddress[] addresses = InetAddress.getAllByName(target.getHostName());\n \n-        Socket sock = sf.createSocket();\n-        conn.opening(sock, target);\n+        for (int i = 0; i < addresses.length; ++i) {\n+            Socket sock = plain_sf.createSocket();\n+            conn.opening(sock, target);\n \n-        try {\n-            sock = sf.connectSocket(sock, target.getHostName(),\n+            try {\n+                Socket connsock = plain_sf.connectSocket(sock,\n+                    addresses[i].getHostAddress(),\n                     schm.resolvePort(target.getPort()),\n+                        true);\n+                    if (layeredsock != sock) {\n+                        conn.opening(layeredsock, target);\n+                    }\n+                    prepareSocket(layeredsock, context, params);\n+                    conn.openCompleted(sf.isSecure(layeredsock), params);\n+                } else {\n+                    prepareSocket(sock, context, params);\n+                    conn.openCompleted(sf.isSecure(sock), params);\n+                }\n+                break;\n+            } catch (ConnectException ex) {\n+                if (i == addresses.length - 1) {\n+                    throw new HttpHostConnectException(target, ex);\n+                }\n+            } catch (ConnectTimeoutException ex) {\n+                if (i == addresses.length - 1) {\n+                    throw ex;\n+                }\n+            }\n         }\n-        prepareSocket(sock, context, params);\n-        conn.openCompleted(sf.isSecure(sock), params);\n     } // openConnection\n \n \n",
+            "date": "2010-03-09T16:59:12.181+0000",
+            "id": 2
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "I cannot find these changes in the master branch\n\nhttp://android.git.kernel.org/?p=platform/external/apache-http.git;a=summary\n\nI would be a shame if Google patched their own version of HttpClient, which is a very old pre-BETA snapshot, effectively creating a fork, instead of submitting them upstream.\n\nOleg",
+            "date": "2010-03-09T22:10:09.146+0000",
+            "id": 3
+        },
+        {
+            "author": "Steinar H. Gunderson",
+            "body": "It's not in the public git tree yet, but it will be. I'm not entirely sure what you mean by \"instead of submitting them upstream\" -- the patch is right there in my comment?",
+            "date": "2010-03-11T14:29:35.721+0000",
+            "id": 4
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "I did not realize you were with Google. My bad. I should have looked at your profile.\n\n(1) Do you happen to know if Andoid project has any plans of syncing their code line to the official HttpClient 4.0.x branch at some point of time? \n\n(2) As far your patch is concerned it does solve the problem. However I would prefer a more radical but somewhat cleaner approach. I am thinking about deprecating the actual SocketFactory and LayeredSocketFactory interfaces and all implementing classes and replacing them with similar interfaces that are multihome capable\n\n---\npublic interface SocketFactory {\n\n    Socket createSocket() throws IOException;\n\n    Socket connectSocket(\n        Socket sock,\n        String hostname, \n        InetAddress removeAddress, \n        int port, \n        InetAddress localAddress, \n        int localPort,\n        HttpParams params\n    ) throws IOException, UnknownHostException, ConnectTimeoutException;\n\n    boolean isSecure(Socket sock) throws IllegalArgumentException;\n\n}\n---\n\nAlternatively we could introduce a optional interface for multihome support, which would be slightly uglier but would allow us to continue using all old interfaces and classes.\n\nWhat would be your preference?\n\nOleg",
+            "date": "2010-03-11T15:09:06.554+0000",
+            "id": 5
+        },
+        {
+            "author": "Steinar H. Gunderson",
+            "body": "In general I don't work on Android (I'm working on IPv6, and this patch is mainly to improve the IPv6 support), so I can't really speak for the Android team on that side. As far as I've understood, though, breaking API compatibility will be problematic (userspace applications depend on these APIs). I'd assume you already have contacts within the Android team with which you can discuss these issues? If not, I can try digging up some addresses if you want.",
+            "date": "2010-03-13T01:28:19.181+0000",
+            "id": 6
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "This change will not result in API breakage. All deprecated code will still be in place. \n\nAnd yes, it would be great to have a contact person on the Google side. I used to stay in contact with Bob Lee for such matters but he stopped answering my emails some time ago.\n\nOleg",
+            "date": "2010-03-13T09:51:08.427+0000",
+            "id": 7
+        },
+        {
+            "author": "Jesse Wilson",
+            "body": "Oleg,\n\nI'm Bob's successor on the Android team. If you've got questions about our use of the HTTP client code, I'll do my best to answer 'em. I regret that we haven't given this code much attention lately; that said I'm happy that it hasn't really needed it.\n\n",
+            "date": "2010-03-16T05:20:25.846+0000",
+            "id": 8
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Steinar,\n\nI committed your patch to the 4.0.x branch in case Google decided to sync up its version with the ASF code line. Please review:\n\nhttp://svn.apache.org/viewvc?rev=930190&view=rev\n\nI will be working on a somewhat less hacky fix for the 4.1 release.\n\nOleg",
+            "date": "2010-04-02T09:12:48.110+0000",
+            "id": 9
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "I refactored socket factory API in the SVN trunk. Old socket factory interfaces are now deprecated in favour of new ones that are better suited for dealing with multihome hosts. HttpClient remains API / binary compatible with 4.0. \n\nFeel free to review and give feedback. \n\nhttp://svn.apache.org/viewvc?rev=931624&view=rev\n\nOleg",
+            "date": "2010-04-07T17:31:19.300+0000",
+            "id": 10
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Fixed in SVN trunk and 4.0.x branch.\n\nOleg",
+            "date": "2010-04-08T17:28:53.070+0000",
+            "id": 11
+        }
+    ],
+    "component": "HttpClient (classic)",
+    "description": "MultihomePlainSocketFactory is basically broken and should be deprecated. Multihome logic needs to be moved to the DefaultClientConnectionOperator",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "HTTPCLIENT-898",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Major",
+    "product": "HTTPCLIENT",
+    "project": "HTTPCLIENT",
+    "summary": "Improve multihome support",
+    "systemSpecification": true,
+    "version": "4.0 Final, 4.0.1, 4.1 Alpha1"
+}

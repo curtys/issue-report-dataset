@@ -1,0 +1,59 @@
+{
+    "comments": [
+        {
+            "author": "Michael McCandless",
+            "body": "Hmmm, this does not sound good!  I'll apply the patch and track it down.",
+            "date": "2007-03-23T19:59:00.850+0000",
+            "id": 0
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Steve, I applied the patch from LUCENE-847 and all tests ran successfully.  Do I need to do something else to see this issue happen?",
+            "date": "2007-03-23T20:11:05.678+0000",
+            "id": 1
+        },
+        {
+            "author": "Steven Parkes",
+            "body": "Ahh ... meant to mention that. I disabled TestIndexWriter#testAddIndexOnDiskFull in the patch by prefixing the name with an underscore. Remove it to reenable the test.",
+            "date": "2007-03-23T20:16:28.693+0000",
+            "id": 2
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "OK, thanks.\n\nHurm, I found the _, removed it, but the test still ran successfully.  Now I'm getting nervous!",
+            "date": "2007-03-23T20:20:27.623+0000",
+            "id": 3
+        },
+        {
+            "author": "Steven Parkes",
+            "body": "Dang. It used to fail but I've made some updates since then that would change the merge policy (fancy that) and it's no longer happening.\n\nLet me see if I have a snapshot lying around that has the old code where it still happens.\n\n[As as aside, I've been thinking of looking into svk or brz (or whatever its called) that would allow me to version control stuff without it going into svn. All of a sudden I can see why the linux folks like distributed version control ...]",
+            "date": "2007-03-23T20:33:09.678+0000",
+            "id": 4
+        },
+        {
+            "author": "Steven Parkes",
+            "body": "Okay, here's an old version of 847 that demonstrates the problem (at least it does for me.)\n\nNo looking at the rest of my half-baked code.\n\nAnd there's a bunch of debugging turned on in the patch, too.",
+            "date": "2007-03-23T21:00:49.002+0000",
+            "id": 5
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Excellent I can repro the problem as well, thanks Steven!\n\nOK I see what's going on here: if you open a writer with\nautoCommit=false, and you call addIndexes(*), and you hit an exception\n(eg disk full) during the addIndexes, the addIndexes call tries to\nrollback to the index state when it started but in doing so restores\nthe writer's SegmentInfos instance to where it was when addIndexes\nstarted.\n\nThe problem is when autoCommit is false those segments have often\nalready been replaced/merged/etc. and are now gone.\n\nThe good news is this bug was born with the fix for LUCENE-710, so, it\nhas not been released yet.\n\nAlso good news is this is straightforward to fix: the addIndexes calls\njust need to incRef this SegmentInfos' files at the start (and then\ndecRef once done) to protect them from deletion.",
+            "date": "2007-03-25T10:16:14.591+0000",
+            "id": 6
+        }
+    ],
+    "component": "core/index",
+    "description": "If you hit an IOException, e.g., disk full, while making a cfs from its constituent parts, you may not be able to rollback to the before-merge process. This happens via addIndexes.\n\nI don't have a nice easy test for this; generating IOEs ain't so easy. But it does happen in the patch for the factored merge policy with the existing tests because the pseudo-randomly generated IOEs fall in a different place.",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "LUCENE-846",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "IOExeception can cause loss of data due to premature segment deletion",
+    "systemSpecification": true,
+    "version": ""
+}

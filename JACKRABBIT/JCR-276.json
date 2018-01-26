@@ -1,0 +1,47 @@
+{
+    "comments": [
+        {
+            "author": "Brian Moseley",
+            "body": "i haven't integrated this code into my own build yet, so i am not familiar with it, but couldn't the root collection simply use the default workspace? i certainly don't want to have to specify a workspace name in my webdav urls, so i'll have to address this one way or another.",
+            "date": "2005-11-22T01:47:48.000+0000",
+            "id": 0
+        },
+        {
+            "author": "angela",
+            "body": "rather not...\n\nbut you don't have to have the workspace in your webdav urls: we have nice get/set methods for the factory, as suggested by brian some time ago. just reset it to the simple loc factory :)",
+            "date": "2005-11-22T02:10:32.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Brian Moseley",
+            "body": "sounds like a plan :)",
+            "date": "2005-11-22T03:07:18.000+0000",
+            "id": 2
+        },
+        {
+            "author": "angela",
+            "body": "discussion of variants:\n\n1) redirection to the default-workspace\n-----------------------------------------------------------------------------------------------------\n\nwhen accessing the not-existing root collection  -> login with 'null' workspace\nand redirect to resource representing the repository root-node, thus \nincluding the workspace name obtained from the session.\n\n-> my favorite solution. but windows builtin dav client does not respect\n     redirects. therefore dropped.\n\n\n2) build a fake-root resource\n------------------------------------------------------------------------------------------------------\n\nresource with no representation in the repository. none of the write or\nlock methods would be allowed. it would only serve as collection for\nall the available workspaces.\n\n-> separate resource implementation needed (see also jcr package)\n-> need to make sure, that the new Repository-login is issued when the\n    user accesses any of the workspace resources (and its members)\n-> perhaps confusing if the root does not allow any write operation?\n\nwould be an option but i'm not sure, whether its really favorable....\n\n\n3) don't allow connection without valid resource-locator\n-------------------------------------------------------------------------------------------------------\n\nperform Repository.login with 'null' workspace in case the locator obtained from\nthe dav-request does not provide workspace information (e.g. when\nusing the simple-resourcelocator) of if the workspace is \"\".\nvalidation check however is delegated to the resource implementation\nitself -> thus throwing 404 if the locator is null or does not provide a\nresourcepath.\n\nconsequence:\nwhen using webdav/jcr/DavLocatorFactoryImpl accessing the 'root-collection'\n(thus connecting without valid workspace name) is not possible.\nswitching back to the factory implementation in webdav/simple allows\nconnection without workspace name.\n\n",
+            "date": "2005-11-30T17:54:49.000+0000",
+            "id": 3
+        },
+        {
+            "author": "angela",
+            "body": "implemented option 3) with rev. 349905 as a first fix of the inconsistency that connection to the root works but then results in 404.\n\nthus: with default installation connection to the non existing root collection is not allowed any more.\n\nresolving issue fixed.\nwe may reopen it if we find out that another solution would be much better.",
+            "date": "2005-11-30T17:59:17.000+0000",
+            "id": 4
+        }
+    ],
+    "component": "",
+    "description": "in order to avoid strange 404 error when accessing the root collection in simple webdav servlet (thus missing workspace name), that request should either be redirected or handled by a create fake root that has no correspondance in the jsr170 repository.",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "JCR-276",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Minor",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "SimpleWebdavServlet: avoid 404 for the root collection",
+    "systemSpecification": false,
+    "version": ""
+}

@@ -1,0 +1,149 @@
+{
+    "comments": [
+        {
+            "author": "Alexander Klimetschek",
+            "body": "After a chat with Jukka, we came up with this solution:\n\n- only work with UUIDs, because this is what the PM uses as identifiers and what is displayed in the error log if something is inconsistent\n\n- extend the PersistenceManger interface by a new method: PersistenceManager.checkConsistency(String[] uuids, bool recurse\n- implement it only in BundleDbPersistenceManager, as it is now done by checkConsistency(), but handle the new parameters\n- keep the existing configuration based consistencyCheck upon startup (needs migration for the new method)\n\n- RepositoryImpl.checkConsistency(String workspace, String[] uuids) which calls PersistenceManager.checkConsistency(uuids, false)\n- RepositoryImpl.checkConsistency(String workspace) will check the entire workspace, calls PersistenceManager.checkConsistency(root_uuid, true)\n- to clean up the versioning \"workspace\", pass \"jcr:system\" as workspace name\n\n- WorkspaceImpl.checkConsistency(String[] uuids) calls RepositoryImpl.checkConsistency(getName(), uuids)\n- WorkspaceImpl.checkConsistency() calls RepositoryImpl.checkConsistency(getName())\n\n- only logging during the check, no special return values\n\nOpen Problem: \n\n- Doing the consistency check on an active workspace might cause problems with cache coherence and other such stuff. Doing the consistency check only at startup avoids all those issues, but is much less convenient than an API for doing that.\n\nWe could simply defer this to the client calling the consistency check to do so only when there is no activity, but it probably has no full control or awareness of that. Another idea would be to \"stop\" activity, ie. invalidate any transient sessions and clearing all caches.\n\nWDYT?",
+            "date": "2008-02-27T17:58:20.112+0000",
+            "id": 0
+        },
+        {
+            "author": "Alexander Klimetschek",
+            "body": "I missed that the existing configuration-based implementation has two flags:\n\n- consistencyCheck for enabling the basic process and\n- consistencyFix for enabling fixes\n\nIf consistencyCheck is \"true\" and consistencyFix is \"false\", any inconsistencies would only get logged, but no modification on the data will be done.\n\nThis could be done by adding a flag to all new methods or by introducing a separate checkAndFixConsistency() set of methods. I'd prefer the first variant to minimize the number of new API methods (currently I have 3 for WorkspaceImpl and 3 for RepositoryImpl already - checkConsistency(), checkConsistency(String[] uuids) and checkConsistency(String[] uuids, boolean recursive)).",
+            "date": "2008-02-27T22:39:26.860+0000",
+            "id": 1
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "Why are the consistency check method needed on RepositoryImpl? Consistency checking a large workspace is a heavy\nweight operation that may have performance effects. Shouldn't such an operation only be allowed to an admin user (-> login required)?\n\n> [...] problems with cache coherence and other such stuff.\n\nwhy exactly is that an issue? the consistency check works on the persistence manager level, which does not know about transient changes?\n\n> to clean up the versioning \"workspace\", pass \"jcr:system\" as workspace name\n\nI would rather use the uuid of the jcr:system node and the method checkConsistency(String[] uuids, boolean)\n\n> currently I have 3 for WorkspaceImpl and 3 for RepositoryImpl already - checkConsistency(),\n> checkConsistency(String[] uuids) and checkConsistency(String[] uuids, boolean recursive)\n\ncheckConsistency(String[] uuids) is a convenience method, right? I'd remove that one.",
+            "date": "2008-02-29T09:34:08.297+0000",
+            "id": 2
+        },
+        {
+            "author": "Alexander Klimetschek",
+            "body": "> Why are the consistency check method needed on RepositoryImpl?\n\nTo build a tool that can call this programmatically. The configuration based variant needs a restart and fiddling with workspace.xml\n\n> Consistency checking a large workspace is a heavy weight operation that may have performance effects.\n\nI improved the check so that it allows you to specify single nodes via uuids.\n\n> Shouldn't such an operation only be allowed to an admin user (-> login required)?\n\nMakes sense. How would I check this inside RepositoryImpl?\n\n> > [...] problems with cache coherence and other such stuff.\n> why exactly is that an issue? the consistency check works on the persistence manager level, which does not know about transient changes?\n\nCached bundles that get deleted by the consistency check on the database level will lead to problems. The cache needs to be invalidated. This is still an open issue...\n\n> > to clean up the versioning \"workspace\", pass \"jcr:system\" as workspace name\n> I would rather use the uuid of the jcr:system node and the method checkConsistency(String[] uuids, boolean)\n\nRepositoryImpl just calls the consistency check on the persistence manager. Therefore you can specify the workspace in the checkConsistency() methods that will select the PM of the chosen workspace. It was natural to select the versioning PM with a special name then.\n\nI am open for another solution. My question at this point: The versioning PM stores all versions for all workspaces, right? If the nodes in the versioning space have backreferences to the workspace nodes, they have to be global?\n\n> checkConsistency(String[] uuids) is a convenience method, right? I'd remove that one.\n\nYes, the only one really needed is RepositoryImpl.consistencyCheck(String workspace, String[] uuids, boolean recursive, boolean fix). The other methods in RepositoryImpl and WorkspaceImpl are for convenience (entire workspace check is done via uuids=null).\n\nShall I go for developer convenience or axiomatic, ie. minimalistic approach here?",
+            "date": "2008-02-29T10:01:38.725+0000",
+            "id": 3
+        },
+        {
+            "author": "Alexander Klimetschek",
+            "body": "BTW: my status is that I have a patch ready, I am currently testing it.",
+            "date": "2008-02-29T10:02:21.866+0000",
+            "id": 4
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": ">> Shouldn't such an operation only be allowed to an admin user (-> login required)?\n> \n> Makes sense. How would I check this inside RepositoryImpl?\n\nYou can't. That's why one should login first and do the consistency check on WorkspaceImpl only.\n",
+            "date": "2008-02-29T10:59:30.909+0000",
+            "id": 5
+        },
+        {
+            "author": "Alexander Klimetschek",
+            "body": "> That's why one should login first and do the consistency check on WorkspaceImpl only.\n\nI see, that's why you proposed to use the uuid of the jcr:system node for checking the versioning pm. Didn't see that there is one WorkspaceImpl per session, hence possibly multiple WorkspaceImpl per actual workspace, and not exact on WorkspaceImpl per workspace (jackrabbit's internal architecture is sometimes hard to follow, because of the mix of JCR API and internal impl naming...).\n\nThe problem is that WorkspaceImpl has no access to the persistence managers stored in RepositoryImpl (getWorkspaceInfo() and vMgr for versioning). I see only two solutions:\n\na) have a public method in RepositoryImpl so that WorkspaceImpl can access it -> no restriction to admin user possible\nb) introduce a special private interface that is passed to WorkspaceImpl in constructor that allows access to PMs -> larger refactoring of central classes\n\nJukka and others, WDYT?",
+            "date": "2008-02-29T11:46:35.684+0000",
+            "id": 6
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "I'm sorry, that's probably a misunderstanding. I'm OK with having one or more methods on RepositoryImpl to check consistency as long as they are not public and are only used by WorkspaceImpl.",
+            "date": "2008-02-29T12:24:36.251+0000",
+            "id": 7
+        },
+        {
+            "author": "Alexander Klimetschek",
+            "body": "> I'm OK with having one or more methods on RepositoryImpl to check consistency as long as they are not public and are only used by WorkspaceImpl\n\nThat's not possible without some refactoring in the constructors of WorkspaceImpl and probably others. Don't wanna use package-protected visibility as it is easy to workaround in client code by putting the client class into o.a.j.core (although this is a nice hack in some SWT cases ;-)).",
+            "date": "2008-02-29T12:47:32.897+0000",
+            "id": 8
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "The rationale for having the method on RepositoryImpl is that for now the only known safe time to invoke the consistency check is when the workspace in question has not been opened and there aren't any cached entries. If the method was in WorkspaceImpl, you could only call it once the workspace in question has been opened.\n\nHow about making the method protected, then you'd need to subclass RepositoryImpl to access that functionality. That would be in line with the proposed solution in JCR-954.",
+            "date": "2008-02-29T13:04:35.245+0000",
+            "id": 9
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "Jukka wrote:\n> How about making the method protected, then you'd need to subclass RepositoryImpl to access that functionality.\n\n+1",
+            "date": "2008-02-29T14:41:23.305+0000",
+            "id": 10
+        },
+        {
+            "author": "Alexander Klimetschek",
+            "body": "> How about making the method protected, then you'd need to subclass RepositoryImpl to access that functionality. \n\nSumming up, this would be the best solution, because the login problem is avoided. I would also drop all convenience methods in RepositoryImpl and WorkspaceImpl.",
+            "date": "2008-02-29T14:59:20.567+0000",
+            "id": 11
+        },
+        {
+            "author": "Alexander Klimetschek",
+            "body": "What should be the name of this new RepositoryImpl subclass? Should be the same as in JCR-954.\n\nSome ideas:\n\nAdminRepositoryImpl (my fav)\nAdvancedRepositoryImpl\nJackrabbitRepositoryImpl\nUseAtYourOwnRiskRepositoryImpl ;-)\n",
+            "date": "2008-02-29T16:13:27.983+0000",
+            "id": 12
+        },
+        {
+            "author": "Stefan Guggisberg",
+            "body": ">  Alexander Klimetschek commented on JCR-1428:\n>  --------------------------------------------\n>  \n>  What should be the name of this new RepositoryImpl subclass? Should be the same as in JCR-954.\n\nmy understanding was that we agreed to *not* provide a RepositoryImpl subclass in jackrabbit, just provide\nprotected methods in RepositoryImpl... \n\n\n>  \n>  Some ideas:\n>  \n>  AdminRepositoryImpl (my fav)\n>  AdvancedRepositoryImpl\n>  JackrabbitRepositoryImpl\n>  UseAtYourOwnRiskRepositoryImpl ;-)",
+            "date": "2008-02-29T16:45:52.927+0000",
+            "id": 13
+        },
+        {
+            "author": "Alexander Klimetschek",
+            "body": "> my understanding was that we agreed to *not* provide a RepositoryImpl subclass in jackrabbit, just provide protected methods in RepositoryImpl... \n\nYes, you are right of course. Was just tempted to do that because I need to access that method in a test case.",
+            "date": "2008-02-29T16:52:01.788+0000",
+            "id": 14
+        },
+        {
+            "author": "Alexander Klimetschek",
+            "body": "Had some trouble to actually trigger a problem in the JCR API with a child node entry pointing to a missing node, but finally found it (the second one):\n\n> session.getRootNode().getNode(\"fruits\").getNode(\"bananas\");\n\nthrows a PathNotFoundException (which is IMHO correct)\n\n> session.getRootNode().getNode(\"fruits/bananas\");\n\nthrows \"javax.jcr.RepositoryException: failed to retrieve state of intermediary node: 39d2c699-0dad-4b27-aabd-0437913b5339: 39d2c699-0dad-4b27-aabd-0437913b5339\" (which should be a PathNotFoundException, hence the consistency check + fix)\n\nCaused by: org.apache.jackrabbit.core.state.NoSuchItemStateException: 03679565-9b2b-4602-9030-1ac2e2e324a4\n\tat org.apache.jackrabbit.core.state.SessionItemStateManager.getItemState(SessionItemStateManager.java:178)\n\tat org.apache.jackrabbit.core.HierarchyManagerImpl.getItemState(HierarchyManagerImpl.java:119)\n\tat org.apache.jackrabbit.core.HierarchyManagerImpl.resolvePath(HierarchyManagerImpl.java:266)\n\tat org.apache.jackrabbit.core.CachingHierarchyManager.resolvePath(CachingHierarchyManager.java:132)\n\tat org.apache.jackrabbit.core.HierarchyManagerImpl.resolvePath(HierarchyManagerImpl.java:266)\n\tat org.apache.jackrabbit.core.CachingHierarchyManager.resolvePath(CachingHierarchyManager.java:132)\n\tat org.apache.jackrabbit.core.HierarchyManagerImpl.resolvePath(HierarchyManagerImpl.java:202)\n\t... 23 more\n\nThis could also be fixed by simply throwing a PathNotFoundEx in HierarchyManagerImpl.resolvePath(Path path, ItemId id, int next) instead of a RepositoryEx when a NoSuchItemStateEx is catched there. This would be more consistent.\n\nOtherwise there are probably various complicated scenarios when the child node entry in the underlying database \"breaks\" during runtime and exceptions pop up everywhere. Are there any typical error.log examples?\n\n",
+            "date": "2008-02-29T19:33:33.805+0000",
+            "id": 15
+        },
+        {
+            "author": "Alexander Klimetschek",
+            "body": "Patch which adds a protected RepositoryImpl.checkConsistency(), a public PersistenceManager.checkConsistency() and a full implementation in BundleDbPersistenceManager. For 1.3 branch against rev 631607.",
+            "date": "2008-02-29T22:11:02.329+0000",
+            "id": 16
+        },
+        {
+            "author": "Alexander Klimetschek",
+            "body": "Adds a new test case o.a.j.core.persistence.ConsistencyCheckTest that tests the consistencyCheck feature (and gives an example for RepositoryImpl subclassing). For 1.3 branch.",
+            "date": "2008-02-29T22:15:12.595+0000",
+            "id": 17
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Committed to trunk (with some changes to make the patch apply) in revision 632993.\nCommitted to the 1.3 branch in revision 632996.\n\nNote that the version in trunk does not yet include the test case as it depends on JCR-1412.\n\nResolving as Fixed. Thanks!",
+            "date": "2008-03-03T09:46:48.154+0000",
+            "id": 18
+        },
+        {
+            "author": "Alexander Klimetschek",
+            "body": "Patch (against already commited JCR-1428) that improves the error output to print the full jcr path for a node that has broken child entries. Adds a getBundlePath() helper method to BundleDbPersistenceManager.\n\nThis is not vital but might help administrators a lot in debugging the error log output (especially when the node uuids are not already known, eg. in a whole workspace check).",
+            "date": "2008-03-03T15:31:52.313+0000",
+            "id": 19
+        },
+        {
+            "author": "Alexander Klimetschek",
+            "body": "Patch that improves the committed ConsistencyCheckTest from a previous patch to reduced debug logging and to shutdown and clean the repository after testing. Repositories are created as temp directories, which is typically /tmp/jackrabbitXXXX on *nix and C:\\Temp under windows. The cleanup avoids piling up files in that directory when running the test multiple times.\n\n(Against 1.3 branch)",
+            "date": "2008-03-03T15:35:52.552+0000",
+            "id": 20
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Merged to the 1.4 branch in revision 650354.",
+            "date": "2008-04-22T01:51:45.887+0000",
+            "id": 21
+        }
+    ],
+    "component": "jackrabbit-core",
+    "description": "Add a jackrabbit-specific API for doing a selective consistencyCheck, ie. on single nodes. The current entire-workspace check can be very slow if there workspace is large enough. Also it should be easy to write a tool to invoke that feature programmatically rather than by configuration + restart (see below).\n\nExisting Implementation:\nThe current bundle consistencyCheck feature is enabled by setting a bundle PM parameter and restarting Jackrabbit, it will then run upon startup (see JCR-972 for the only issue regarding bundle consistency check). This check looks for broken parent-child relationships, ie. it will remove any child node entries that reference non-existing parent nodes. For non-existing parent UUIDs and other problems in bundles it will log those.\n\nOutlook:\nAn advanced consistencyCheck could also check for non-existing version nodes and vice-versa (see JCR-630), but this is not the focus of this issue and could be a later addition to the API.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "JCR-1428",
+    "issuetypeClassified": "RFE",
+    "issuetypeTracker": "RFE",
+    "priority": "Major",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "Add API for selective bundle consistency check (Jackrabbit-specific)",
+    "systemSpecification": true,
+    "version": ""
+}

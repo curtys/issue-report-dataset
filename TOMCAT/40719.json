@@ -1,0 +1,119 @@
+{
+    "comments": [
+        {
+            "author": null,
+            "body": "*** Bug 40730 has been marked as a duplicate of this bug. ***",
+            "date": "20061011T14:10:59",
+            "id": 0
+        },
+        {
+            "author": null,
+            "body": "Hi all,\n\ntoday I have found the following lines in my tomcat 5.0.x log\n\njava.lang.ArrayIndexOutOfBoundsException\nOct 16, 2006 9:52:21 AM org.apache.coyote.http11.Http11Processor process\nSEVERE: Error finishing response\njava.lang.ArrayIndexOutOfBoundsException\n\nThe problem was deterministic but my software is very complex and currently I\nhave no time to reduce it to a reasonable testcase.\n\nBy the way I add the following notes, based on the debugging I made on my\nsoftware. Hoping they can help.\n\n1. the problem arose when I was connected directly on the tomcat port. No\nproblem if I was accessing tomcat by means of apache web server\n\n2. I guess the problem is related to a change of encoding in the string\nmanagement. More precisely: I think it can be related to the attempt of\nconcatenate two strings of different encoding.\n\nRegards,\nAntonio",
+            "date": "20061016T06:14:54",
+            "id": 1
+        },
+        {
+            "author": null,
+            "body": "Without a test case or steps to reproduce, there is little I can do to\ninvestigate this issue. Also, please confirm whether or not you are using Java\n2D in your web application.",
+            "date": "20061118T19:49:08",
+            "id": 2
+        },
+        {
+            "author": null,
+            "body": "(In reply to comment #3)\n> Without a test case or steps to reproduce, there is little I can do to\n> investigate this issue. Also, please confirm whether or not you are using Java\n> 2D in your web application.\n\nNo, NOT using Java 2D in any shape or form at all.\n\nIt's was pretty random, this error, so I can't produce a test case unfortunately. Maybe it was\na JVM bug or something.... does looking inside the method at the top of the tomcat exception \nstack trace help ?\n\n--j (bug submitter)",
+            "date": "20061118T23:10:30",
+            "id": 3
+        },
+        {
+            "author": null,
+            "body": "*** Bug 40485 has been marked as a duplicate of this bug. ***",
+            "date": "20061119T20:03:15",
+            "id": 4
+        },
+        {
+            "author": null,
+            "body": "I am seeing the same behaviour on Tomcat 5.0.28 running on SuSE Linux 10.1.\n\nI have a web application using Spring MVC. I have a form where I submit some\ndata, a controller picks this up, does some stuff in the database and returns a\nview to the browser. This worked fine. However, as soon as I changed the view to\na Spring RedirectView I get this exception in the log and the redirect does not\ntake place. If instead I do a manual redirect in my controller then it works\nfine, no stack trace.\n\nI can reproduce this 100%, it happens every time with Spring's RedirectView, it\nis not random for me at all.",
+            "date": "20061124T07:25:24",
+            "id": 5
+        },
+        {
+            "author": null,
+            "body": "Please can you provide the simplest possible WAR that exhibits this issue?",
+            "date": "20061124T16:17:52",
+            "id": 6
+        },
+        {
+            "author": null,
+            "body": "And enable the security manager with all permissions, and see if it still happens.",
+            "date": "20061125T05:35:09",
+            "id": 7
+        },
+        {
+            "author": null,
+            "body": "I can't reproduce this. The stack trace indicates the exception is thrown when\nwriting 8 bytes to to a buffer than is usually 8KB. I can't see any code paths\nthat would reduce the size of the buffer or fail to correctly recycle it should\nan error occur.\n\nA test case is required in order to progress this bug.",
+            "date": "20061210T18:43:18",
+            "id": 8
+        },
+        {
+            "author": null,
+            "body": "I have gone back to the code where I had this bug to try reproduce it and then\nbased on that to try recreate it in a very simple web application. Unfortunately\nI cannot reproduce it now, I changed the workaround I had put in (a manual\nredirect on the HTTP response object) back to a Spring RedirectView which caused\nthe problem and now it works just fine. I'm afraid I'm not sure what else\nchanged in our code in the meantime to cause this. If I see it come back again I\nwill definitely investigate further and try get a simple web-app together that\nreproduces it.",
+            "date": "20061211T01:49:49",
+            "id": 9
+        },
+        {
+            "author": null,
+            "body": "I have seen this exception when there is too much data for the HTTP header (e.g\ntoo many cookies or large amount of data in the cookies). This was with Tomcat\n5.0.28 using Java 1.5.0_11.\n\nThe code in \n  org.apache.coyote.http11.InternalOutputBuffer.write()\ndoes not check the number of bytes written to the byte buffer 'buf'. \n\nAs a workaround, try editing the http connector \n   <Connector port=\"8080\" ...> \nin the server.xml configuration file. Add the attribute to this tag\n   <Connector port=\"8080\" ...\n              maxHttpHeaderSize=\"8192\" />\nor some other large number (default size is 4096 for Tomcat 5.0) to see if your\nweb app works.\n\n",
+            "date": "20070130T14:16:52",
+            "id": 10
+        },
+        {
+            "author": null,
+            "body": "Created attachment 19490\nJSP Example that generates the ArrayIndexOutOfBoundsException\n\nThis JSP generated the error using Tomcat 5.0.28 with Java 1.5.0_11.\nIt uses the response.addHeader() method to build a large HTTP header.\nThe default InternalOutputBuffer size is 4096 bytes so this JSP should create\nenough data to simulate the error.",
+            "date": "20070131T05:50:11",
+            "id": 11
+        },
+        {
+            "author": null,
+            "body": "Yep, that explains it. The solution, as Bill points out above, is to increase\nthe maxHttpHeaderSize on the connector.\n\nI am marking this as INVALID as there is nothing to fix here.",
+            "date": "20070804T12:03:28",
+            "id": 12
+        },
+        {
+            "author": null,
+            "body": "*** Bug 43034 has been marked as a duplicate of this bug. ***",
+            "date": "20070804T12:03:45",
+            "id": 13
+        },
+        {
+            "author": null,
+            "body": "Im the original submitter for this bug.\n\nThis bug is NOT just related to header sizes. It seems to ALSO trigger when there is a large amount of \npage compilation/parsing errors which cause a servlet exception to be thrown and then the \ncontainer forwards to a error page. Also happens during other random times.\n\nTomcat dies during this internal forward process with this exact same stack trace. NO HEADERS have\nbeen sent to the client at this stage NOR have ANY HEADERS BEEN SET.\n\nTo sum up: NO HEADERS (via addHeader or whatever) are being set to trigger this bug.\n\nIs tomcat erronesously using the same internal buffers to store internal parse/compilation errors\nas the output header buffer ?\n\n",
+            "date": "20070804T12:29:25",
+            "id": 14
+        },
+        {
+            "author": null,
+            "body": "Further experimentation has shown that setting maxHttpHeaderSize to a larger value DOES solve\nthis problem. But the 'maxHttpHeaderSize'  buffer is ALSO being used for internal redirects to\nerror pages (whereby the error page itself shows a very short error message to the browser). \n\nThis makes the 'maxHttpHeaderSize' parameter a bit misleading according to the tomcat\ndocumentation.\n\n\n",
+            "date": "20070804T12:36:50",
+            "id": 15
+        },
+        {
+            "author": null,
+            "body": "I just encountered this bug too (so IMO it is not fixed), and I also could circumvent it by increasing the maxHttpHeaderSize.\n\nI think the problem occurs, when you use \"response.sendRedirect()\" with an URI larger than maxHttpHeaderSize.",
+            "date": "20081031T03:57:59",
+            "id": 16
+        }
+    ],
+    "component": "Connector:Coyote",
+    "description": "I'm getting these at random, tomcat version: 5.5.20\n\nThese looks like a serious coding bug (there should\nnever be ArrayIndexOutOfBoundsExceptions), but it's not\nclear whether this bug exists in the JDK or in the tomcat code.\n\n    # java -version\n    java version \"1.5.0_06\"\n    Java(TM) 2 Runtime Environment, Standard Edition (build 1.5.0_06-112)\n    Java HotSpot(TM) Client VM (build 1.5.0_06-64, mixed mode, sharing)\n\nThis is a critical bug, tomcat dies completely.\n\n----------------Crash Error ------------------------\n\njava.lang.ArrayIndexOutOfBoundsException\n        at java.lang.System.arraycopy(Native Method)\n        at\norg.apache.coyote.http11.InternalOutputBuffer.write(InternalOutputBuffer.java:689)\n        at\norg.apache.coyote.http11.InternalOutputBuffer.sendStatus(InternalOutputBuffer.java:428)\n        at\norg.apache.coyote.http11.Http11Processor.prepareResponse(Http11Processor.java:1604)\n        at\norg.apache.coyote.http11.Http11Processor.action(Http11Processor.java:962)\n        at\norg.apache.coyote.Response.action(Response.java:180)\n        at\norg.apache.coyote.http11.InternalOutputBuffer.doWrite(InternalOutputBuffer.java:572)\n        at\norg.apache.coyote.Response.doWrite(Response.java:559)\n        at\norg.apache.catalina.connector.OutputBuffer.realWriteBytes(OutputBuffer.java:361)\n        at\norg.apache.tomcat.util.buf.ByteChunk.append(ByteChunk.java:324)\n        at\norg.apache.tomcat.util.buf.IntermediateOutputStream.write(C2BConverter.java:235)\n        at\nsun.nio.cs.StreamEncoder$CharsetSE.writeBytes(StreamEncoder.java:336)\n        at\nsun.nio.cs.StreamEncoder$CharsetSE.implFlushBuffer(StreamEncoder.java:404)\n        at\nsun.nio.cs.StreamEncoder$CharsetSE.implFlush(StreamEncoder.java:408)\n        at\nsun.nio.cs.StreamEncoder.flush(StreamEncoder.java:152)\n        at\njava.io.OutputStreamWriter.flush(OutputStreamWriter.java:213)\n        at\norg.apache.tomcat.util.buf.WriteConvertor.flush(C2BConverter.java:184)\n        at\norg.apache.tomcat.util.buf.C2BConverter.flushBuffer(C2BConverter.java:127)\n        at\norg.apache.catalina.connector.OutputBuffer.realWriteChars(OutputBuffer.java:536)\n        at\norg.apache.tomcat.util.buf.CharChunk.flushBuffer(CharChunk.java:439)\n        at\norg.apache.catalina.connector.OutputBuffer.close(OutputBuffer.java:268)\n        at\norg.apache.catalina.connector.Response.finishResponse(Response.java:476)\n        at\norg.apache.catalina.connector.CoyoteAdapter.service(CoyoteAdapter.java:151)\n        at\norg.apache.coyote.http11.Http11Processor.process(Http11Processor.java:869)\n        at\norg.apache.coyote.http11.Http11BaseProtocol$Http11ConnectionHandler.processConnection\n(Http11BaseProtocol.java:664)\n        at\norg.apache.tomcat.util.net.PoolTcpEndpoint.processSocket(PoolTcpEndpoint.java:527)\n        at\norg.apache.tomcat.util.net.LeaderFollowerWorkerThread.runIt(LeaderFollowerWorkerThread.java:80)\n        at\norg.apache.tomcat.util.threads.ThreadPool$ControlRunnable.run(ThreadPool.java:684)\n        at java.lang.Thread.run(Thread.java:613)\nOct 10, 2006 7:02:28 PM\norg.apache.coyote.http11.Http11Processor process\nSEVERE: Error finishing response\njava.lang.ArrayIndexOutOfBoundsException\n        at java.lang.System.arraycopy(Native Method)\n        at\norg.apache.coyote.http11.InternalOutputBuffer.write(InternalOutputBuffer.java:689)\n        at\norg.apache.coyote.http11.InternalOutputBuffer.sendStatus(InternalOutputBuffer.java:428)\n        at\norg.apache.coyote.http11.Http11Processor.prepareResponse(Http11Processor.java:1604)\n        at\norg.apache.coyote.http11.Http11Processor.action(Http11Processor.java:962)\n        at\norg.apache.coyote.Response.action(Response.java:180)\n        at\norg.apache.coyote.http11.InternalOutputBuffer.endRequest(InternalOutputBuffer.java:388)\n        at\norg.apache.coyote.http11.Http11Processor.process(Http11Processor.java:906)\n        at\norg.apache.coyote.http11.Http11BaseProtocol$Http11ConnectionHandler.processConnection\n(Http11BaseProtocol.java:664)\n        at\norg.apache.tomcat.util.net.PoolTcpEndpoint.processSocket(PoolTcpEndpoint.java:527)\n        at\norg.apache.tomcat.util.net.LeaderFollowerWorkerThread.runIt(LeaderFollowerWorkerThread.java:80)\n        at\norg.apache.tomcat.util.threads.ThreadPool$ControlRunnable.run(ThreadPool.java:684)\n        at java.lang.Thread.run(Thread.java:613)",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "40719",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "P1 critical",
+    "product": "Tomcat 5",
+    "project": "TOMCAT",
+    "summary": "Tomcat 5.5.20 Internal error/crash",
+    "systemSpecification": true,
+    "version": "5.5.18"
+}

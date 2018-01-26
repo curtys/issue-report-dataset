@@ -1,0 +1,131 @@
+{
+    "comments": [
+        {
+            "author": "Doron Cohen",
+            "body": "( modified   'and javadocs'   -->    'ant javadocs' )",
+            "date": "2007-05-03T21:58:56.010+0000",
+            "id": 0
+        },
+        {
+            "author": "Doron Cohen",
+            "body": "Attached patch fixes all javadocs warnings and errors when using javadocs 1.4.2.\n\n(*) javadocs with jdk 5 - current build.xml creates javadocs also for contrib/gdata only \n     under jdk 5. To fix the javadocs some jars had to be added to the javadocs classpath. \n     But for gdata, even after adding the required jars there remained lots of errors that I \n     did not want to handle here. So I commented out the addition of gdata jars, and focused \n     in running javadocs with jdk 1.4.2.\n\n(*) Some of the warning had to do with peculiarities of javadocs, In one case I replaced '?' \n     with  '&#63;' - wasn't too happy with this, but it seemed nice at that particular code \n     to have the '?' at the middle of a summary line, which was causing the warning. (in \n     other places I changed the wording so that '?' was o more in the summary line).\n\n(*) This is quite a technical fix - only javadoc comments where modified (and build.xml), so unless \n     there are objections I intend to commit it pretty soon.",
+            "date": "2007-05-03T23:23:50.543+0000",
+            "id": 1
+        },
+        {
+            "author": "Hoss Man",
+            "body": "skimmed the patch, noticed isPayloadAvailable method added to MemoryIndex .. unintentional?",
+            "date": "2007-05-04T17:11:26.727+0000",
+            "id": 2
+        },
+        {
+            "author": "Doron Cohen",
+            "body": "yes...  thanks for reviewing this Hoss. \n\nMemoryIndex doesn't compile without implementing this method.\nBut this is unrelated to the javadocs, so I will not include in this change.\n",
+            "date": "2007-05-04T17:37:22.046+0000",
+            "id": 3
+        },
+        {
+            "author": "Hoss Man",
+            "body": "i vote for adding...\n\n    failonerror=\"true\"\n\n...as well.  it won't help in the case of warnings, but it will at least ensure that the build fails if we have any seriously eggregious errors in the javadocs that completely prevent them from being generated.",
+            "date": "2007-05-04T17:58:01.718+0000",
+            "id": 4
+        },
+        {
+            "author": "Doron Cohen",
+            "body": "Agree, I will add that.\n\n",
+            "date": "2007-05-04T18:44:12.922+0000",
+            "id": 5
+        },
+        {
+            "author": "Doron Cohen",
+            "body": "> it won't help in the case of warnings\n\nWe could make it fail also in case of warnings: logging javadoc stdio also to file; fail if the file has warnings (otherwise delete file); \n",
+            "date": "2007-05-04T19:30:27.692+0000",
+            "id": 6
+        },
+        {
+            "author": "Doron Cohen",
+            "body": "An updated patch:\n  - without the MemoryIndex changes (was fixed separately).\n  - failonerror=true added as Hoss suggested.\n  - now fails also on javadoc warnings, as discussed above.",
+            "date": "2007-05-04T20:06:42.934+0000",
+            "id": 7
+        },
+        {
+            "author": "Doron Cohen",
+            "body": "It occurred to me that with this, javadoc with jdk 1.5, which also processes gdata, would fail on errors. Ucommenting the gdata-jars addition to javadocs-classpath would solve the errors but there are many warnings still. Then, the fail-on-warning logic would cause javadoc to fail.\n\nBy itself this is not necessarily a bad thing, as it would encourage to fix that sooner. However when invoked as part of a larger target, like \"package\" or \"nightly\", it would stop that target in the middle.\n",
+            "date": "2007-05-04T22:17:54.663+0000",
+            "id": 8
+        },
+        {
+            "author": "Hoss Man",
+            "body": "huh ... i've never seen the <record> task before ... interesting.\n\nnot being familiar with it, i don't really have an opinion about using it it in this way, but the gdata situation is ... annoying.  we may want to hold off on failing on warnings until we can get them all squared away (and/or have a better system in place for dealing with contribs that require 1.5)",
+            "date": "2007-05-05T05:06:35.255+0000",
+            "id": 9
+        },
+        {
+            "author": "Doron Cohen",
+            "body": "Agree.\nI am changing it to fail-on-warning only under 1.4, with TODO comment to remove this condition once gdata javadocs is fixed. \nI intend to commit this and create a new issue for gdata's javadoc warnings.\n",
+            "date": "2007-05-05T05:17:50.503+0000",
+            "id": 10
+        },
+        {
+            "author": "Doron Cohen",
+            "body": "Updated patch:\n  1) as discussed, disable fail-on-warning under jdk5. \n  2) updated  Changes.txt ",
+            "date": "2007-05-05T05:22:08.456+0000",
+            "id": 11
+        },
+        {
+            "author": "Doron Cohen",
+            "body": "Just committed.",
+            "date": "2007-05-05T05:40:48.452+0000",
+            "id": 12
+        },
+        {
+            "author": "Hoss Man",
+            "body": "Grrr... it seems we may need to reopen this, i didn't realize until just now that the previous patch (including \"fail on warnings unless 1.4\" was already committed) and my recent tweak to the build.xml so that all contribs get their javadocs built has spanwed some more warnings/problems that i didn't notice before because i was using 1.5 (and apparently so is hudson because the nightly build is still working).\n\nNote, if you are using java 1.5 and wnat to reproduce these problems, use...\n    ant -Dant.java.version=1.4 javadocs\n\nCurrent issues:\n\n1) running javadocs on a virgin checkout does not force contribs that download their dependencies on the fly to do so -- the javadocs task currently has no dependencies that relate to contribs, so \"ant javadocs\" or even \"ant package\" will get errors from things like contrib/db because the sleepycat jar has never been downloaded.\n(NOTE: you can NOT reproduce this by running \"ant clean javadocs\" ... the clean target doesn't remove lib jars that contribs download on the fly .. if you've ever build contribs you've got the jars and it will mask this bug)\n\nPossible solution: make \"javadocs\" depend on build-contrib ?  or a new task that does the contrib-crawl and calls whatever task contribs use to fetch third party jars?\n\n2) even if all the jars are downloaded, and running in 1.4 mode so current gdata errors are ignored, there are still 3 warnings...\n\n  [javadoc] javadoc: warning - Multiple sources of package comments found for package \"org.apache\"\n  [javadoc] javadoc: warning - Multiple sources of package comments found for package \"org\"\n  [javadoc] javadoc: warning - Multiple sources of package comments found for package \"org.apache.commons\"\n\n...my first guess is that multiple lib jars in the contribs had package.html files for these packages ... but i can't find evidence of that ... i haven't tried the trial and error approach of commenting out contribs one at a time until those errors go away to try and track down the source of the problem\n\n3) Hudson seems to be running the nightly build using java 1.5, so the hook to ensure that there are no javadoc warnings isn't getting triggered.\n\n",
+            "date": "2007-05-10T05:25:34.064+0000",
+            "id": 13
+        },
+        {
+            "author": "Doron Cohen",
+            "body": "I checked with 1.4 earlier today and didn't get these \"Multiple sources\" warnings.\nI checked again now, also with 1.5 and -Dant.java.version=1.4 and it passes as well. \nThis was Windows: Standard Doclet version 1.5.0_06 and Standard Doclet version 1.4.2_08\nSo I don't know what is causing these errors. \nSeems ok to have \"javadocs\" depend on \"build-contrib\". \nShould we disable this fail-on-warning logic until clearing it further...?\n\n",
+            "date": "2007-05-10T05:43:49.247+0000",
+            "id": 14
+        },
+        {
+            "author": "Doron Cohen",
+            "body": "Also, since failOnEror was added to the javadocs task, build services (e.g. parabuild) with jars misconfigured would fail not only because of javadoc warnings but also because of javadoc errors. \n\nI feel that the noise this created with the failures of builds due to javadocs problems is a price to high to pay for being automatically \"forced\" to keep javadocs error/warning free. I am disabling both fail-on-jdoc-error and fail-on-jdoc-warning.\n\nI will add an item \"check javadocs creation\" to Wiki's \"Patch Check List\" page.",
+            "date": "2007-05-10T16:43:01.058+0000",
+            "id": 15
+        },
+        {
+            "author": "Doron Cohen",
+            "body": "I also made \"javadocs\" depend on \"build-contrib\". \n\nThis too might create some noise, because when attempting to download jars from the net, some firewall prompt might pop up. If running unattended and no one approves, it might eventually time out and fail. On the other hand, we do want the jars to be downloaded...   So let's wait a few days and see how this works out.\n",
+            "date": "2007-05-10T17:30:43.981+0000",
+            "id": 16
+        },
+        {
+            "author": "Hoss Man",
+            "body": "I'm not sure i follow why failOnError concerns you ... but in general i think you're right ... Lucene's build system just isn't quite \"clean\" enough at the moment to be so critical of javadoc issues.\n\nas for the \"Multiple sources of package comments\" i'm using \"Standard Doclet version 1.5.0_02\" FWIW.",
+            "date": "2007-05-10T17:59:09.928+0000",
+            "id": 17
+        },
+        {
+            "author": "Doron Cohen",
+            "body": "Fixed - we remain with not failing a build due to javadoc warnings or errors - verifying these would remain manual.",
+            "date": "2007-06-01T18:49:43.682+0000",
+            "id": 18
+        }
+    ],
+    "component": "general/javadocs",
+    "description": "Currently running 'ant javadocs' creates so many warnings that you have to grep the output to verify that new code did not add more.\n\nWhile most current errors might be minor, they might hide a few serious ones that we will never know abut until someone complains. \n\nBest if we fix all of them and keep it always clean...",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "LUCENE-875",
+    "issuetypeClassified": "OTHER",
+    "issuetypeTracker": "OTHER",
+    "priority": "Minor",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "javadocs creation has too many warnings/errors",
+    "systemSpecification": true,
+    "version": "2.2"
+}

@@ -1,0 +1,95 @@
+{
+    "comments": [
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Here's my attempt at cleaning things up. \n\nChangelog:\n\n* Each method derived from HttpMethodBase now has a non-null HostConfiguration\ninstance\n* The HostConfiguration instance associated with an executed method contains all\nthe parameters that were in effect at the time of method's execution\n\nPlease let me know what you think\n\nOleg",
+            "date": "2004-09-30T01:44:47.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Created an attachment (id=12896)\nPatch (take 1)\n",
+            "date": "2004-09-30T01:45:14.000+0000",
+            "id": 1
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Hi Oleg,\n\nI think the idea is correct, but I'm not terribly happy about copying the params from one host config to \nanother in copyDefaults.  It seems like there must be a more elegant way to go about this.  \n\nI'm also starting to think we may want to move away from having a HostConfig at both the client and \nmethod level.  In particular now that the host config has params, and redirection and proxies has been \nmoved outside of the method, perhaps the method should no longer use the host config.  I haven't fully \nworked this out yet but I thought I'd bring it up for discussion.\n\nMike ",
+            "date": "2004-09-30T11:09:16.000+0000",
+            "id": 2
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Mike,\nI have long had BIIIIG gripes with what HostConfigration has become but felt its\nrefactoring should be hold back until 4.0. I'll try to come up with a better,\nyet more radical solution.\n\nLet me know what you have in mind for it\n\nOleg",
+            "date": "2004-09-30T16:19:25.000+0000",
+            "id": 3
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Created an attachment (id=12917)\nPatch (take 2)\n",
+            "date": "2004-10-01T22:29:33.000+0000",
+            "id": 4
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "All right. Mike, that should address your concerns. Please let me know what you\nthink\n\nChangelog:\n* HttpMethods no longer contain a HostConfiguration instance. \n* HostConfiguration heavily refactored\n\nIf the overall approach gets approved, I'll provide missing test cases\n\nAnother thing I would like to evaluate is possibility of factoring\n'virtualHostName' and 'localAddress' out of HostConfiguration and moving them to\nHostParams. How do you feel about it?\n\nOleg",
+            "date": "2004-10-01T22:36:04.000+0000",
+            "id": 5
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Created an attachment (id=12939)\nPatch (take 3)\n",
+            "date": "2004-10-05T16:08:11.000+0000",
+            "id": 6
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "In addition to previous changes I refactored virtual host logic out of\nHttpConnection and HostConfiguration classes and moved it to the\nHttpMethodParams & HostParams. Basically, virtual host has absolutely nothing to\ndo with the physical connection and should not have been there in the first\nplace. Let me know what you think\n\nOleg",
+            "date": "2004-10-05T16:12:02.000+0000",
+            "id": 7
+        },
+        {
+            "author": "Michael Becke",
+            "body": "Hi Oleg,\n\nThis looks much better.  Thanks for persevering on this problem.  My only question is if we need the \nHttpHost as part of the HttpMethod interface.  Though it's not quite as elegant, getUri() should be able \nto take care of all our needs.\n\nMike ",
+            "date": "2004-10-06T09:55:10.000+0000",
+            "id": 8
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Mike,\nIn my opinion HttpMethod interface is hopelessly broken. Having or not having\nHttpMethod#getHost will not significantly change the situation. \n\nI will commit the patch as is shortly, so Vikram could resume testing the\npreferences architecture. Should you strongly favour parsing the URI, I'll\nsubmit a corrective patch\n\nOleg",
+            "date": "2004-10-06T23:52:10.000+0000",
+            "id": 9
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Patch committed.\n\nOleg",
+            "date": "2004-10-07T00:34:59.000+0000",
+            "id": 10
+        },
+        {
+            "author": "Michael Becke",
+            "body": "I agree that the HttpMethod interface is not pretty, but we also don't want to make to make it any \nworse.  My preference would be to leave out the HttpHost API changes.\n\nMike",
+            "date": "2004-10-07T07:33:46.000+0000",
+            "id": 11
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Mike,\nIt turned out that URL approach required no extra badness. I am glad you made me\nrethink it:\n\n  -            if (method.getHost() != null) {\n  -                hostConfiguration.setHost(method.getHost());\n  +            URI uri = method.getURI(); \n  +            if (uri.isAbsoluteURI()) {\n  +                hostConfiguration.setHost(uri);\n\nProblem fixed, API chanhes to the HttpMethod interface rolled back, additional\ntest cases submitted. I am marking the report FIXED\n\nOleg",
+            "date": "2004-10-07T23:24:23.000+0000",
+            "id": 12
+        }
+    ],
+    "component": "HttpClient (classic)",
+    "description": "As discussed on the mailing list, the host configuration handling currently\nappears faulty:\n\nhttp://marc.theaimsgroup.com/?t=109644952000001&r=1&w=2\n\nOleg",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "HTTPCLIENT-383",
+    "issuetypeClassified": "OTHER",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "HTTPCLIENT",
+    "project": "HTTPCLIENT",
+    "summary": "HostConfiguration handling requires cleanup",
+    "systemSpecification": true,
+    "version": ""
+}

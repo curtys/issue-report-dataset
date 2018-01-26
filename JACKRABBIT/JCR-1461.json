@@ -1,0 +1,83 @@
+{
+    "comments": [
+        {
+            "author": "Przemo Pakulski",
+            "body": "Thread dump attached (2 threads only)",
+            "date": "2008-03-07T13:25:45.310+0000",
+            "id": 0
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "Can you please provide a test case?",
+            "date": "2008-03-10T10:34:36.544+0000",
+            "id": 1
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "So far I haven't been able to reproduce the deadlock with a test.\n\nJust looking at the thread dump we can avoid the deadlock by pulling the getPath() in LockManagerImpl.getLockInfo() out of the acquire/release() scope.\n\nI've attached a patch with that change.\n\nPrzemo, can you please build jackrabbit-core-1.3.4-rc1 again with this patch applied and check if the deadlock still occurs?\n\nIt also seems that there's another thread involved in the deadlock. Can you please attach the complete thread dump? Stripping off application specific stack frames is of course OK.",
+            "date": "2008-03-12T10:57:18.097+0000",
+            "id": 2
+        },
+        {
+            "author": "Przemo Pakulski",
+            "body": "Hm, deadlock occured when running 2 threads only. How do you know that another thread was involved ?",
+            "date": "2008-03-12T17:10:01.293+0000",
+            "id": 3
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "I thought there was another thread holding the write lock on the SISM of the version manager, but it is in fact the grinder thread 1. The  So, you're right those are the only two threads than can be involved.",
+            "date": "2008-03-14T09:30:07.887+0000",
+            "id": 4
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "The patch seems correct enough to me (would there be a need to get the path within the locked region?), so I'd like to commit it to trunk and the 1.3 branch for proceeding with a 1.3.4 release candidate.",
+            "date": "2008-03-14T13:03:02.403+0000",
+            "id": 5
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "> would there be a need to get the path within the locked region?\n\naccording to dominique pfister this is not needed. based on his statement I've moved the call further up, outside the locked region.\n\nFeel free to commit the patch or let me know if I should do it.",
+            "date": "2008-03-14T13:14:02.635+0000",
+            "id": 6
+        },
+        {
+            "author": "Greg Klebus",
+            "body": "Could we wait for feedback from Przemo re re-runnig his test using the patched jackrabbit 1.3.4rc? \n",
+            "date": "2008-03-14T13:48:49.362+0000",
+            "id": 7
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "> Could we wait for feedback from Przemo re re-runnig his test using the patched jackrabbit 1.3.4rc?\n\nSure. Przemo, any update?",
+            "date": "2008-03-14T13:51:49.987+0000",
+            "id": 8
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Patch applied in revision 637106. Merged to 1.4 in revision 637107, and to 1.3 in revision 637110.\n\nResolving as Fixed, as it seems obvious that at least the specific deadlock issue shown in the thread dump can not occur after this fix. Please reopen only if there's a regression caused by this issue, and file separate issues if other deadlocks occur.",
+            "date": "2008-03-14T14:33:24.330+0000",
+            "id": 9
+        },
+        {
+            "author": "Marcel Reutegger",
+            "body": "I've finally been able to reproduce the deadlock with new random operation tests. I'll commit them soon.\n\nBtw, that's without the patch that Jukka recently applied.",
+            "date": "2008-03-14T15:12:36.815+0000",
+            "id": 10
+        }
+    ],
+    "component": "jackrabbit-core",
+    "description": "Running concurrently jackrabbit transactions including checkin operations leads to deadlock.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "JCR-1461",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Critical",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "Deadlock on concurrent commit/checkin operations",
+    "systemSpecification": true,
+    "version": "1.3.3"
+}

@@ -1,0 +1,101 @@
+{
+    "comments": [
+        {
+            "author": null,
+            "body": "How does Tomcat not enforce this?  Please provide a test case or steps to\nreproduce the bug.",
+            "date": "20050601T04:38:53",
+            "id": 0
+        },
+        {
+            "author": null,
+            "body": "I've also noticed this issue specifically with the implementation of\nthe RequestDispatcher forward and handling a ServletRequestWrapper.\nSeems to modify the value of the javax.servlet.forward.request_uri\nrequest attribute incorrectly, according to servlet spec SRV.8.4.2.\n\nHere are some specifics, at least with version 5.0.28.\n\nStepping through the Tomcat source in the debugger, it\nappears that the request's requestURI field gets stomped\non in the forward method of the RequestDispatcher\n(ApplicationDispatcher). I'm not sure Tomcat is handling\na ServletRequestWrapper correctly.\n\nI gather the servlet spec says that users may wrap the\nrequest/response objects with their own implementation.\n\nTomcat's ApplicationDispatcher gets the request from\nthe outer request (the ServletRequestWrapper), trying to\nkeep track of the previous wrapper and current wrapper\n(or request) as it loops through to get the real request.\nWith a single wrapper, the value of \"previous\" is the\nsame as the original outer request. Then Tomcat calls...\n\n((ServletRequestWrapper) previous).setRequest(wrapper);\n\nwhich is the same as calling setRequest(wrapper) on the\nincoming request. Tomcat does not get and save the value\nof the original request URI. It calls setRequestURI(path)\non the wrapper, effectively changing the request URI of the\noriginal incoming request to the path of the forward.\n\nThen Tomcat sets the javax.servlet.forward.request_uri\nattribute by calling getRequestURI() from the original\nrequest... but that just got modified. Implying the\njavax.servlet.forward.request_uri attribute is going to\nget the value of the path for the forward.\n\nYou can test this on Tomcat by using a couple JSP to. Use\na HttpServletRequestWrapper in one JSP for the forward.\n\nFirst create \"result.jsp\" to display the desired request attribute...\n\n<%@ page language=\"java\" contentType=\"text/html;charset=UTF-8\"%>\n<html>\n    <head>\n        <title>RequestDispatcher Test</title>\n    </head>\n    <body>\n        <h1>Forward Request URI</h1>\n        javax.servlet.forward.request_uri =\n        <%= request.getAttribute(\"javax.servlet.forward.request_uri\") %>\n    </body>\n</html>\n\nCreate a JSP to forward without using a wrapper, \"forward.jsp\"...\n\n<%\n    javax.servlet.RequestDispatcher rd =\n        request.getRequestDispatcher(\"result.jsp\");\n    rd.forward(request, response);\n%>\n\nand a second forward using HttpServletRequestWrapper, \"wrapperforward.jsp\"...\n\n<%\n    HttpServletRequestWrapper wrapper = new HttpServletRequestWrapper(request);\n    javax.servlet.RequestDispatcher rd =\n        wrapper.getRequestDispatcher(\"result.jsp\");\n    rd.forward(wrapper, response);\n%>\n\nWhen you hit forward.jsp, the result page displays \"/some-context/forward.jsp\"\nfor the javax.servlet.forward.request_uri request attribute.\nHowever, hit wrapperforward.jsp and the result page displays\n\"/some-context/result.jsp\". From looking at the spec, I'd expect this \nshould be \"/some-context/wrapperforward.jsp\".\n\nI could probably create a patch for this specific case if you'd like.\nLet me know.",
+            "date": "20050608T08:32:32",
+            "id": 1
+        },
+        {
+            "author": null,
+            "body": "Try to write less headache inducing comments in the future, as I didn't make it\nto the end.\n\nWhat I see is that: we wrap, we call wrequest.setRequestURI(requestURI) on *our*\nApplicationHttpRequest, and then after processing we discard that wrapper. What\nyou wrote does not make sense to me.",
+            "date": "20050608T11:06:36",
+            "id": 2
+        },
+        {
+            "author": null,
+            "body": "I'm experiencing the same problem that Carlin describes on Tomcat 5.0.28 as \nwell.  The javax.servlet.forward.request_uri attribute is definitely NOT being \nset correctly when forwarding with a wrapped request.  Carlin's test case \ndemonstrates the problem pretty clearly.",
+            "date": "20050608T15:03:48",
+            "id": 3
+        },
+        {
+            "author": null,
+            "body": "I would say what Carlin describes is a different bug and is not what the\noriginal request is about. I propose to open a new bug for this. \n\nHere a clarification what this bug is about:\n\nTomcat allows to do sth like that:\n\na)  create a own implementaion of javax.servlet.http.HttpServletRequest\npublic class MyRequestImpl implements javax.servlet.http.HttpServletRequest {\n....\n}\n\nb) use that request objectt in a forward call\n    javax.servlet.RequestDispatcher rd =\n        wrapper.getRequestDispatcher(\"somepage.jsp\");\n    \n    MyRequestImpl myRequest=new MyRequestImpl();\n    rd.forward(myRequest, response);\n\nThis is against the spec, which clearly says either the original request or\nHttpServletRequestWrapper has to be used.\n\nYou can find a real live example for this in the cocoon code. Sepcifically in\norg.apache.cocoon.components.jsp.JSPEngineImplNamedDispatcherInclude from cocoon\n 2.0.4.\n\nThanks",
+            "date": "20050608T15:53:18",
+            "id": 4
+        },
+        {
+            "author": null,
+            "body": "Christian, thanks for the clarification. My apologies for causing any\nconfusion here. I've opened a new Tomcat bug, 35270, for my specific\nissue with regards to servlet spec SRV.8.4.2. Please disregard my\nearlier comment in this bug.",
+            "date": "20050608T17:38:59",
+            "id": 5
+        },
+        {
+            "author": null,
+            "body": "Still confused. Marking as NEEDINFO. Requesting a war file to demonstrate the\nbug if there still is one after wading through the converstation. (since a new\nbug seemed to be open)",
+            "date": "20050727T14:52:46",
+            "id": 6
+        },
+        {
+            "author": null,
+            "body": "The quote from the spec is:\n<quote>\nThe parameters to these methods can be either...\n</quote>\n\nCan is not the same as must. The language as currently written does not mean\nthat the only permitted parameters are the original request/response or the\nwrapped request/response. The example given in comment 5 is perfectly valid for\nthe current spec language.",
+            "date": "20060929T18:38:23",
+            "id": 7
+        },
+        {
+            "author": null,
+            "body": "(In reply to comment #8)\n> The quote from the spec is:\n> <quote>\n> The parameters to these methods can be either...\n> </quote>\n> Can is not the same as must. The language as currently written does not mean\n> that the only permitted parameters are the original request/response or the\n> wrapped request/response. The example given in comment 5 is perfectly valid \nfor\n> the current spec language.\n\nYou are so wrong here:\n<spec-quote version=\"2.4\" section=\"14.2.5.1\">\nThe request and response parameters must be either the same objects as were\npassed to the calling servlet\u2019s service method or be subclasses of the\nServletRequestWrapper or ServletResponseWrapper classes that wrap\nthem.\n</spec-quote>\n\nThat means you can use the Request/Response that Tomcat passes in, or a \nHttpServletRequest/ResponseWrapper that wraps the Request/Response that Tomcat \npasses in. And that is it.  The example in #5 isn't valid wrt the spec.\n",
+            "date": "20060929T19:41:17",
+            "id": 8
+        },
+        {
+            "author": null,
+            "body": "The spec is inconsistent. I was reading section 8.4.2 which uses \"can\", rather\nthan 14.2.5.1 which uses \"must\". I'll send an e-mail to the spec team.\n\nIn the meantime which do we apply? My guess is that 14.2.5.1 was the real\nintention. Thoughts?",
+            "date": "20060929T19:55:44",
+            "id": 9
+        },
+        {
+            "author": null,
+            "body": "(In reply to comment #10)\n> The spec is inconsistent. I was reading section 8.4.2 which uses \"can\", rather\n> than 14.2.5.1 which uses \"must\". I'll send an e-mail to the spec team.\n> \n> In the meantime which do we apply? My guess is that 14.2.5.1 was the real\n> intention. Thoughts?\n\nSorry, that should have be 8.2 not 8.4.2",
+            "date": "20060930T14:42:33",
+            "id": 10
+        },
+        {
+            "author": null,
+            "body": "If you add support for this \"feature\", don't forget to use\nGlobals.STRICT_SERVLET_COMPLIANCE, because besides annoying some people, this\nwon't have any real value.",
+            "date": "20061001T03:12:38",
+            "id": 11
+        },
+        {
+            "author": null,
+            "body": "This has been fixed in SVN for 5.5.x and will be included in 5.5.21 onwards.\nWhen ported to 6.0.x this code will be wrapped in a check for\nGlobals.STRICT_SERVLET_COMPLIANCE==true",
+            "date": "20061001T15:45:04",
+            "id": 12
+        },
+        {
+            "author": null,
+            "body": "It's likely more risky to put it in enabled by default in 5.5, so I think it\nwould be a good idea to add a flag there too, right ?",
+            "date": "20061001T15:50:56",
+            "id": 13
+        }
+    ],
+    "component": "Servlet & JSP API",
+    "description": "Tomcat should enforce the requirements from servlet 2.4 specification SRV.8.2\n\nSRV.8.2 Using a Request Dispatcher\n\n\"To use a request dispatcher, a servlet calls either the include method or\nforward method of the RequestDispatcher interface. The parameters to these\nmethods can be either the request and response arguments that were passed in via\nthe service method of the Servlet interface, or instances of subclasses of the\nrequest and response wrapper classes that have been introduced for version 2.3\nof the specification. In the latter case, the wrapper instances must wrap the\nrequest or response objects that the container passed into the service method.\nThe Container Provider must ensure that the dispatch of the request to a target\nservlet occurs in the same thread of the same VM as the original request\"\n\nJustification:\n==============\nThe absense of this enforcement leads to software beeing developed not following\nthe specification. The software cannot be deployed later on a container which\nconforms to the above paragraph and hence must be changed before deployment.\nThis somehow contradicts the idea of having a standards based infrastructure.",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "34956",
+    "issuetypeClassified": "OTHER",
+    "issuetypeTracker": "BUG",
+    "priority": "P2 normal",
+    "product": "Tomcat 5",
+    "project": "TOMCAT",
+    "summary": "Tomcat should enforce the requirements from servlet 2.4 specification SRV.8.2",
+    "systemSpecification": true,
+    "version": "5.5.9"
+}

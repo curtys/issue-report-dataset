@@ -1,0 +1,71 @@
+{
+    "comments": [
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 132195\nFix: if in RegExpImpl.getParenSubString parens.get(i) is null, return emptySubstring\n\nIf a branch of | with capturing () does not match , then RegExpImpl.parens will\ncontain null for corresponding $<group-number> according to code in\nNativeRegExp.executeRegExp(). The current code does not check for a possible\nnull in RegExpImpl.parens when calling toString and the patch fixes that by\nmaking sure that getParenSubString return SubString.emptySubString in such\ncases.",
+            "date": "20030926T15:43:26",
+            "id": 0
+        },
+        {
+            "author": "pschwartau@meer.net",
+            "body": "Testcases added to JS testsuite:\n\n  mozilla/js/tests/ecma_3/RegExp/regress-220367-001.js\n  mozilla/js/tests/ecma_3/RegExp/regress-220367-002.js\n\nThe first one checks only the match array |str.match(regEx)|;\nthe second one checks the global properties |RegExp.$1|, |RegExp.$2|.\nAs Igor reported, the second one crashes in the current Rhino shell.",
+            "date": "20030926T19:29:43",
+            "id": 1
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "I committed the fix",
+            "date": "20030928T18:24:12",
+            "id": 2
+        },
+        {
+            "author": "pschwartau@meer.net",
+            "body": "With the fix, no longer crash on js/tests/ecma_3/RegExp/regress-220367-002.js.\nHowever, we're getting a discrepancy in Section 3 of the test:\n\n\n         Testcase ecma_3/RegExp/regress-220367-002.js failed:\n         Failure messages were: \n         Section 3 of test -\n         Expected value '', Actual value 'a'\n\n\nFor convenience, here is the body of the test:\n\nvar re = /(a)|(b)/;\n\nre.test('a');\n  status = inSection(1);\n  actual = RegExp.$1;\n  expect = 'a';\n  addThis();\n\n  status = inSection(2);\n  actual = RegExp.$2;\n  expect = '';\n  addThis();\n\nre.test('b');\n  status = inSection(3);\n  actual = RegExp.$1;\n  expect = '';\n  addThis();\n\n  status = inSection(4);\n  actual = RegExp.$2;\n  expect = 'b';\n  addThis();\n\n\n\nFor some reason, Rhino is not clearing out the value of RegExp.$1\nIt continues to hold the value 'a' from the previous re.test(). \n\nThis differs from both SpiderMonkey and IE6, as can be seen via\nthe following javascript: URL\n\njavascript: var msg = ''; var re = /(a)|(b)/; re.test('a'); msg += '$1= ' +\nRegExp.$1 + '\\n' +  '$2= ' +  RegExp.$2 + '\\n\\n\\n'; re.test('b'); msg +=  '$1= '\n+ RegExp.$1 + '\\n' +  '$2= ' + RegExp.$2; alert(msg);",
+            "date": "20031117T00:17:50",
+            "id": 3
+        },
+        {
+            "author": "pschwartau@meer.net",
+            "body": "Still getting the test failure mentioned in Comment #4 -",
+            "date": "20031206T01:02:16",
+            "id": 4
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "reopening after wrong click on fixed button",
+            "date": "20031207T21:37:14",
+            "id": 5
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 137008\nFix: use Java array to store parenthesis results \n\nIn the patch I replaced parens array in RegExpImpl from ObjArray to SubString[]\nsince reuse of parens that ObjArray provides does not justify complexity of\ncode to clean up it. The problem with old version was missed reset of initial\nelements before calling ObjArray.setSize which was responsible for keeping the\nold elements.",
+            "date": "20031207T21:52:14",
+            "id": 6
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Fixing for real",
+            "date": "20031207T21:57:11",
+            "id": 7
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Trageting as resolved against 1.5R5",
+            "date": "20040213T11:33:49",
+            "id": 8
+        }
+    ],
+    "component": "Core",
+    "description": "The following script gives NullPointerException:\n\nvar regEx = /(a)|(b)/;\nvar t = regEx.test( 'b');\nprint( \"RegExp.$1: '\"+RegExp.$1+\"'\");\n\nThe script should print instead:\n\nRegExp.$1: ''\n\nIn general NPE happens whenever after successful match one accesses a captured\ngroup that was not captured as one of the branches of |.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "220367",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "-- normal",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "NPE when accessing RegExp.$1 after matching /(a)|(b)/ against \"b\"",
+    "systemSpecification": false,
+    "version": "other"
+}

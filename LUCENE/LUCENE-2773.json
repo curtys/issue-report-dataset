@@ -1,0 +1,65 @@
+{
+    "comments": [
+        {
+            "author": "Michael McCandless",
+            "body": "Patch.\n\nI added a get/setNoCFSRatio to LogMergePolicy, defaulted to 10% (0.1)\nmeaning if the estimated size of the merged segment is greater than\n10% of the total size of the index, then we leave the merge segment in\nnon-compound format.\n\nI also defaulted the maxMergeMB to 2 GB, meaning (w/ the default\nmergeFactor of 10) your biggest segments will be 2 - 20 GB.\n",
+            "date": "2010-11-20T16:00:29.538+0000",
+            "id": 0
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "I'll commit this soon to trunk, but...\n\nI think we should also back-port it to 2.9.x/3.0.x.\n\nOn the one hand, it's a sizable change to IndexWriter's defaults, in that suddenly, if you use CFS, you'll see your large segments no longer being converted to CFS, and if you have a large index you'll see your large segments no longer getting merged away due to the change to maxMergeMB.  Though, these decisions have always been \"under the hood\", so the change the app sees would be eg on listing the directory, and not really on any \"external\" factors.\n\nBut, on the other hand, if we don't back port, then suddenly large merges require substantially more transient peak disk space than before, which is a very external change.\n\nSo, it's a lesser-of-evils situation, and I think the lesser evil is to change the defaults.",
+            "date": "2010-11-24T11:07:43.120+0000",
+            "id": 1
+        },
+        {
+            "author": "Shay Banon",
+            "body": "Mike, are you sure regarding the default maxMergeMB set to 2gb? This ia a big change in default behavior. For systems that do updates (deletes) we are covered because they are taken (partially) into account when computing the segment size. But, lets say you have a 100gb size index, you will end up with 50 segments, no?",
+            "date": "2010-11-24T11:43:29.013+0000",
+            "id": 2
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "bq. But, lets say you have a 100gb size index, you will end up with 50 segments, no?\n\nSo, in the \"worst\" case, yes... but in the \"best\" case you could end up with 5 segments.  This threshold applies to segments-to-be-merged, so if you have a bunch of segments just under 2 GB, they will get merged and make a nearly 20 GB segment, which would then be merged.\n\nSo basically this setting is terribly coarse.  I think this can be improved (eg something the lines of BalancedSegmentMergePolicy), perhaps by merging (much) fewer than mergeFactor segments at a time to keep the immense merges \"smallish\".  But until we cutover to a better merge policy, we're stuck with this coarse setting...\n\nSo... maybe 5 GB?\n\nBut, on the deletes... in 2.9.x and 3.0.x we do NOT in fact take deletions into account by default; I think, along with this change, we should also fix 2.9.x and 3.0.x to take deletions into account.",
+            "date": "2010-11-24T13:33:08.510+0000",
+            "id": 3
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "OK i think for 2.9/3.0, I will only backport the \"don't make a CFS if the merged segment is large\" change; that change will reduce temp disk space required.\n\nI think the change to maxMergeMB / take deletions into account is too big for 2.9/3.0.\n\nSo for 3.x/trunk (which already take deletions into account by default), I'll switch maxMergeMB default to 2 GB.  I think this is an OK default given that it means your biggest segments will range from 2GB - 20GB.",
+            "date": "2010-11-24T19:02:22.121+0000",
+            "id": 4
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "bq. So for 3.x/trunk (which already take deletions into account by default), I'll switch maxMergeMB default to 2 GB. I think this is an OK default given that it means your biggest segments will range from 2GB - 20GB.\nMike, this also means that an optimize will have no effect if all segments > 2GB with this as default? It seems kind of odd to me ey?\n",
+            "date": "2011-01-14T08:19:08.298+0000",
+            "id": 5
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "bq. Mike, this also means that an optimize will have no effect if all segments > 2GB with this as default? It seems kind of odd to me ey?\n\nThere was a separate issue for this -- LUCENE-2701.\n\nI agree it's debatable... and it's not clear which way we should default it.",
+            "date": "2011-01-14T11:53:21.811+0000",
+            "id": 6
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "bq. There was a separate issue for this - LUCENE-2701.\nI think we should reopen and fix this. I expect optimize to have single segment semantics if I call optmize() as the JDocs states. However we do that :)",
+            "date": "2011-01-14T11:59:53.451+0000",
+            "id": 7
+        }
+    ],
+    "component": "core/index",
+    "description": "Spinoff from LUCENE-2762.\n\nCFS is useful for keeping the open file count down.  But, it costs\nsome added time during indexing to build, and also ties up temporary\ndisk space, causing eg a large spike on the final merge of an\noptimize.\n\nSince MergePolicy dictates which segments should be CFS, we can\nchange it to only build CFS for \"smallish\" merges.\n\nI think we should also set a maxMergeMB by default so that very large\nmerges aren't done.\n",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-2773",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Major",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "Don't create compound file for large segments by default",
+    "systemSpecification": true,
+    "version": ""
+}

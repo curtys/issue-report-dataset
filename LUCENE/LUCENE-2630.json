@@ -1,0 +1,71 @@
+{
+    "comments": [
+        {
+            "author": "Robert Muir",
+            "body": "here's a patch that allows things to compile and tests to run\n\n* removed the sunisms from the compile task so it works with harmony in the expected way:  (-Dbuild.compiler=extJavac)\n* simplified MockTokenizer.SIMPLE, most tests use whitespace anyway and the humongous regexp was really unnecessary.\n* fixed the IOOBE thing in CharacterUtils.\n\nthere are more things that should be fixed, but i'd like to commit this so that its at least possible to compile and run test.",
+            "date": "2010-09-01T01:22:03.356+0000",
+            "id": 0
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "bq. fixed the IOOBE thing in CharacterUtils.\nRobert, I wonder if we really still need CharacterUtils in 4.0 - we don't have to guarantee any bwcompat on the TokenFilter / Tokenizer level and we should not have any problems with different lowercase methodes etc. Maybe we should move the codepoint aware reader code out to another class or clean that one up?",
+            "date": "2010-09-01T06:14:18.260+0000",
+            "id": 1
+        },
+        {
+            "author": "Robert Muir",
+            "body": "{quote}\nRobert, I wonder if we really still need CharacterUtils in 4.0 - we don't have to guarantee any bwcompat on the TokenFilter / Tokenizer level and we should not have any problems with different lowercase methodes etc. Maybe we should move the codepoint aware reader code out to another class or clean that one up?\n{quote}\n\nI'd rather discuss this (dropping 2.x analyzer backwards compatibility/Version) on another jira issue to keep this one simple :)\n",
+            "date": "2010-09-01T15:47:13.225+0000",
+            "id": 2
+        },
+        {
+            "author": "Robert Muir",
+            "body": "The harmony developers applied the UTF-8 fix (HARMONY-6640), so\nwe don't need to hack MockTokenizer anymore.\n\ni've updated patch, 'ant test-core -Dbuild.compiler=extJavac' almost passes.\n\ni'll iterate with some more test improvements now that we are going somewhere.\n",
+            "date": "2010-09-14T15:07:51.872+0000",
+            "id": 3
+        },
+        {
+            "author": "Robert Muir",
+            "body": "Here's the patch for TestCharacterUtils.\nit should expect generic IIOBE according to the javadocs contract.\n\nI opened HARMONY-6648 for the non-bug difference.",
+            "date": "2010-09-14T16:30:46.575+0000",
+            "id": 4
+        },
+        {
+            "author": "Simon Willnauer",
+            "body": "bq. Here's the patch for TestCharacterUtils.\nlooks good to me! go commit!",
+            "date": "2010-09-14T17:24:54.085+0000",
+            "id": 5
+        },
+        {
+            "author": "Robert Muir",
+            "body": "here's a patch for the internationalization differences, since harmony uses ICU.\n* the collator gives different order for Locale.US, though \nits wierd we test the order of non-US characters under US Locale (its not defined and inherited from root locale)\nI conditionalized this test as such:\n{code}\n  // the sort order of \u00d8 versus U depends on the version of the rules being used\n  // for the inherited root locale: \u00d8's order isnt specified in Locale.US since \n  // its not used in english.\n  private boolean oStrokeFirst = Collator.getInstance(new Locale(\"\")).compare(\"\u00d8\", \"U\") < 0;\n{code}\n* the thai dictionary-based break iterator gives different results: I used text that both impls segment the same way.\n",
+            "date": "2010-09-14T19:08:37.200+0000",
+            "id": 6
+        },
+        {
+            "author": "Robert Muir",
+            "body": "happy to mark this one resolved: harmony devs have quickly fixed issues we found.\n\nwith r999725 of harmony, all core, contrib, modules tests pass for both trunk and 3x on harmony (with the exception of contrib/remote due to rmic problems)\n",
+            "date": "2010-09-22T05:52:35.571+0000",
+            "id": 7
+        },
+        {
+            "author": "Grant Ingersoll",
+            "body": "Bulk close for 3.1",
+            "date": "2011-03-30T15:50:03.560+0000",
+            "id": 8
+        }
+    ],
+    "component": "general/build, general/test",
+    "description": "as part of improved testing, i thought it would be a good idea to make the build (ant test) more friendly\nto working under apache harmony.\n\ni'm not suggesting we de-optimize code for sun jvms or anything crazy like that, only use it as a tool.\n\nfor example:\n* bugs in tests/code: for example i found a test that expected ArrayIOOBE \n  when really the javadoc contract for the method is just IOOBE... it just happens to\n  pass always on sun jvm because thats the implementation it always throws.\n* better reproduction of bugs: for example [2 months out of the year|http://en.wikipedia.org/wiki/Unusual_software_bug#Phase_of_the_Moon_bug]\n  it seems TestQueryParser fails with thai locale in a difficult-to-reproduce way.\n  but i *always* get similar failures like this with harmony for this test class.\n* better stability and portability: we should try (if reasonable) to avoid depending\n  upon internal details. the same kinds of things that fail in harmony might suddenly\n  fail in a future sun jdk. because its such a different impl, it brings out a lot of interesting stuff.\n\nat the moment there are currently a lot of failures, I think a lot might be caused by this: http://permalink.gmane.org/gmane.comp.java.harmony.devel/39484\n",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-2630",
+    "issuetypeClassified": "OTHER",
+    "issuetypeTracker": "OTHER",
+    "priority": "Major",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "make the build more friendly to apache harmony",
+    "systemSpecification": true,
+    "version": "4.0-ALPHA"
+}

@@ -1,0 +1,101 @@
+{
+    "comments": [
+        {
+            "author": "Julian Reschke",
+            "body": "Could you try changing ItemDefinitionProviderImpl.getQNodeDefinition() to catch a ConstraintViolationException instead of RepositoryException? \n",
+            "date": "2007-08-30T11:19:15.326+0000",
+            "id": 0
+        },
+        {
+            "author": "David Rauschenbach",
+            "body": "That wouldn't change the flow. I'm having a ConstraintViolationException thrown, so it'd get caught the same way. The exception message is \"no matching child node definition found for {}Inbox\". I guess that's my ultimate problem, that my effective node type object has empty named and unnamed node definition arrays. But those values are coming straight from the in-memory transient repository, through my SPI bridge, so I don't see where the values could get dropped.\n\nNevertheless, if those arrays are empty (maybe due to a counterpart flaw in spi2jcr?), this flow still seems to be invalid, since an SPI can return anything, and it should not trigger a crash.",
+            "date": "2007-08-30T17:05:04.474+0000",
+            "id": 1
+        },
+        {
+            "author": "Julian Reschke",
+            "body": "Understood and agreed. I just wanted to make sure it's not a non-ConstraintViolationException that shouldn't have been called in the first place.\n",
+            "date": "2007-08-30T18:09:28.942+0000",
+            "id": 2
+        },
+        {
+            "author": "David Rauschenbach",
+            "body": "The bottom line, I think, is that in my case the jcr2spi bridge is unable to get around to making the getNodeDefinition SPI invocation, because the call to NodeEntry.getWorkspaceId()  at ItemDefinitionProviderImpl.java:90, which would provide the NodeId to use as the second argument, causes the recursion.",
+            "date": "2007-08-30T18:10:45.895+0000",
+            "id": 3
+        },
+        {
+            "author": "angela",
+            "body": "i will take a look at it.\nbtw: jcr2spi is not released yet -> remove 'affected version'\n",
+            "date": "2007-08-31T07:34:01.429+0000",
+            "id": 4
+        },
+        {
+            "author": "angela",
+            "body": "hi david\n\ni tried to reproduce the problem with the instructions you provided: \ntherefore i created a tests that creates and accesses a node as you did. running that test with my default setup (jcr2spi-spi2jcr-on-jackrabbit). that worked for me.\n\nsecond, i re-read your description regarding configuration setup. unfortunately i don't get it.\nwhat do you mean by:\n\n\"3. that's wrapped in spi2jcr's RepositoryService using default BatchReadConfig\" ?\nand\n\"4. a jcr2spi provider is instantiated that directly couples to spi2jcr\" ?\n\nplease provide additional information that allows me to understand your setup and reproduce the problem.\nthanks\n\nangela",
+            "date": "2007-08-31T08:57:28.296+0000",
+            "id": 5
+        },
+        {
+            "author": "David Rauschenbach",
+            "body": "Thanks Angela,\n\nHere's what I mean by my spi2jcr setup (repository.xml already attached):\n\n    // Bring up the in-mem repository\n    final URL REPOSITORY_URL = getClass().getClassLoader().getResource(\"/repository.xml\");\n    storageDir = new File(System.getProperty(\"java.io.tmpdir\"));\n    RepositoryConfig config = RepositoryConfig.create(REPOSITORY_URL.toURI(), storageDir.getAbsolutePath());\n    repository = new TransientRepository(config);\n\n    // Bring up the spi2jcr bridge in front of in-memory repository\n    BatchReadConfig batchReadConfig = new BatchReadConfig();\n    RepositoryService spi2jcrRepositoryService = new RepositoryServiceImpl(repository, batchReadConfig);\n\nNext, I wrote an SPI that is coupled to that spi2jcrRepositoryService. I wrap my SPI in jcr2spi, so that's what I meant by the direct coupling of a JCR front-end being invoked by unit tests, a jcr back-end that's the in-mem store, and an SPI coupling inbetween.",
+            "date": "2007-08-31T15:19:39.517+0000",
+            "id": 6
+        },
+        {
+            "author": "David Rauschenbach",
+            "body": "Angela, in your test, make sure you don't perform getPath() in the same session that created the test node. Your test would be invalid because of the cache being primed.",
+            "date": "2007-08-31T17:52:05.945+0000",
+            "id": 7
+        },
+        {
+            "author": "Julian Reschke",
+            "body": "I haven't been able to reproduce this either.\n\nHowever, what's clear is that a recursion can occur, because:\n\n- to build the path, we want to know whether the parent allows same-name siblings, so we need that node definition,\n\n- calculation the node definition inside JCR2SPI *can* lead to an exception, and\n\n- re-fetching the QNodeDef through SPI requires knowledge of the node id, whose construction may need the index.\n\n",
+            "date": "2007-09-09T16:18:43.453+0000",
+            "id": 8
+        },
+        {
+            "author": "Julian Reschke",
+            "body": "OK, the problem can be relatively easily reproduced by changing ItemDefinitionProviderImpl.getQNodeDefinition() to\n\n    public QNodeDefinition getQNodeDefinition(NodeState nodeState) throws RepositoryException {\n        if (nodeState.getHierarchyEntry().getParent() == null) {\n            return getRootNodeDefinition();\n        }\n        QNodeDefinition definition;\n        try {\n            // TEST\n            throw new ConstraintViolationException();\n        } catch (RepositoryException e) {\n            definition = service.getNodeDefinition(sessionInfo, nodeState.getNodeEntry().getWorkspaceId());\n        } catch (NodeTypeConflictException e) {\n            definition = service.getNodeDefinition(sessionInfo, nodeState.getNodeEntry().getWorkspaceId());\n        }\n        return definition;\n    }\n\nI think we need to fix this, but I'm not sure where in the recursion the fix needs to take place.\n",
+            "date": "2007-09-10T11:19:21.990+0000",
+            "id": 9
+        },
+        {
+            "author": "David Rauschenbach",
+            "body": "I have identified and resolved the trigger of this problem. In my SPI, my NodeTypeDefinition \"propertyDefs\" were not being populated.\n\nFixing this bug is not a pressing issue for me now, and could probably be a low priority, since it is now only a matter of defensive programming, and preventing bad data from crashing the JVM, and also an issue of the stack overflow obscuring and complicating the problem solving process.\n\nThx again, Angela and Julian.",
+            "date": "2007-09-11T00:13:34.848+0000",
+            "id": 10
+        },
+        {
+            "author": "angela",
+            "body": "> I think we need to fix this, but I'm not sure where in the recursion the fix needs to take place. \n\nwithout having a close look at it, i would guess the best place would be the NodeEntry.getIndex.",
+            "date": "2007-10-02T15:07:51.895+0000",
+            "id": 11
+        },
+        {
+            "author": "angela",
+            "body": "i see 2 possibilities to solve this (apart from the obvious one \"get rid of SNSs\" ;-)):\n\n1) only check for NodeDefinition.allowsSNS if the definition has been retrieved before.\n     if the definition is not yet present (which is the default for existing nodes), the index is calculated from the\n     parents child entries.\n     potential drawback: more traffic to the server since the entries list probably more often get invalidated compared \n     to the chance, that no matching definition is found in the ItemDefinitionProvider (which would result in the \n    described problem).\n\n2) omit the fallback in ItemDefinitionProvider, that tries to retrieve the definition from the server\n     if no matching definition can be found.\n     drawback: if the definition is not available on the client, the retrieval of the definition fails with exception. i couldn't\n     produce that since in my test case all definitions are available, but i'm quite sure that this would cause problems.\n\nso... basically i would prefer 2) but i think 1) is the proper solution to go for just for the sake of stability and that\nspecial (unlikely?) case that no matching definition can be found....  \ncomments?\n\nangela",
+            "date": "2007-10-08T17:19:22.473+0000",
+            "id": 12
+        },
+        {
+            "author": "angela",
+            "body": "resolved as described in variant 1).",
+            "date": "2007-10-22T06:52:55.180+0000",
+            "id": 13
+        }
+    ],
+    "component": "jackrabbit-spi",
+    "description": "The jcr2spi NodeEntryImpl class contains logic that causes getIndex() to call itself.\n\nCalling code:\n\n    Session sess = repo.login(creds);\n    Node inboxNode = sess.getRootNode().getNode(\"Inbox\");\n    inboxNode.getPath(); <== blows stack\n\nTracing reveals:\n\n    1. NodeEntryImpl.getPath() ultimately calls getIndex()\n    2. getIndex() calls NodeState.getDefinition()\n    3. which calls ItemDefinitionProviderImpl.getQNodeDefinition(...)\n    4. which catches a RepositoryException then calls NodeEntryImpl.getWorkspaceId()\n    5. which calls NodeEntryImpl.getWorkspaceIndex()\n    6. which calls getIndex() (back to step 2, ad infinitum)\n\nConfiguration:\n    1. A configuration is loaded specifying in-memory persist manager\n    2. Config is wrapped in TransientRepository\n    3. that's wrapped in spi2jcr's RepositoryService using default BatchReadConfig\n    4. a jcr2spi provider is instantiated that directly couples to spi2jcr\n    5. Node in question is created as follows:\n\n    Session sess = repo.login(creds);\n    sess.getRootNode().addNode(\"Inbox\", \"nt:folder\");\n    sess.save();\n\nI guess that's about it.\nDavid",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "JCR-1099",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "jcr2spi NodeEntryImpl.getPath() blows stack due to getIndex() calling itself",
+    "systemSpecification": true,
+    "version": ""
+}

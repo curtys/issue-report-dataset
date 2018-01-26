@@ -1,0 +1,59 @@
+{
+    "comments": [
+        {
+            "author": null,
+            "body": "Confirming the bug on Tomcat 5.5.17 where Coyote reports itself as Apache-Coyote/1.1.\n\nSteps to reproduce:\n\n$ telnet example.com 8080\nOPTIONS /directory/ HTTP/1.0\n\nHTTP/1.1 200 OK\nServer: Apache-Coyote/1.1\nAllow: GET, HEAD, POST, TRACE, OPTIONS\nContent-Type: text/html\nContent-Length: 0\nDate: Thu, 20 Mar 2008 00:44:46 GMT\nConnection: close\n\n\nWhat's interesting, the same request using HTTP/1.1 instead of HTTP/1.0 fails:\n\n$ telnet example.com 8080\nOPTIONS /directory/ HTTP/1.1\n\nHTTP/1.1 400 Bad Request\nServer: Apache-Coyote/1.1\nTransfer-Encoding: chunked\nDate: Thu, 20 Mar 2008 00:51:03 GMT\nConnection: close\n\n0\n",
+            "date": "20080319T17:52:15",
+            "id": 0
+        },
+        {
+            "author": null,
+            "body": "(In reply to comment #1)\n> Confirming the bug on Tomcat 5.5.17 where Coyote reports itself as\n> Apache-Coyote/1.1.\n> \n> Steps to reproduce:\n> \n> $ telnet example.com 8080\n> OPTIONS /directory/ HTTP/1.0\n> \n> HTTP/1.1 200 OK\n> Server: Apache-Coyote/1.1\n> Allow: GET, HEAD, POST, TRACE, OPTIONS\n> Content-Type: text/html\n> Content-Length: 0\n> Date: Thu, 20 Mar 2008 00:44:46 GMT\n> Connection: close\n> \n> \n> What's interesting, the same request using HTTP/1.1 instead of HTTP/1.0 fails:\n> \n> $ telnet example.com 8080\n> OPTIONS /directory/ HTTP/1.1\n> \n> HTTP/1.1 400 Bad Request\n> Server: Apache-Coyote/1.1\n> Transfer-Encoding: chunked\n> Date: Thu, 20 Mar 2008 00:51:03 GMT\n> Connection: close\n> \n> 0\n> \n\nIF you want HTTP/1.1 shouldn't you create a valid HTTP/1.1 request?",
+            "date": "20080319T18:25:22",
+            "id": 1
+        },
+        {
+            "author": null,
+            "body": "The Allow header should contain those methods for which the server would not return 405 (Not Allowed).\n\nThus, if it returns 403 for DELETE, it's totally correct to include DELETE in the Allow header.\n\nIn doubt, come over to the HTTP mailing list for further discussion :-).",
+            "date": "20080320T09:26:37",
+            "id": 2
+        },
+        {
+            "author": null,
+            "body": "Julian Reschke wrote:\n\n>The Allow header should contain those methods for which the server would not\n>return 405 (Not Allowed).\n>\n>Thus, if it returns 403 for DELETE, it's totally correct to include DELETE in\n>the Allow header.\n\nActually it returns 405 for TRACE method:\n\n\n$ telnet example.com 8080\nOPTIONS /directory/ HTTP/1.0\n\nHTTP/1.1 200 OK\nServer: Apache-Coyote/1.1\nAllow: GET, HEAD, POST, TRACE, OPTIONS\nContent-Type: text/html\nContent-Length: 0\nDate: Thu, 20 Mar 2008 17:19:57 GMT\nConnection: close\n\n$ telnet example.com 8080\nTRACE /directory/ HTTP/1.0\nX-Test-Header: blahblah\n\nHTTP/1.1 405 TRACE method is not allowed\nServer: Apache-Coyote/1.1\nAllow: OPTIONS\nContent-Length: 0\nDate: Thu, 20 Mar 2008 17:20:18 GMT\nConnection: close\n\n_This_ behaviour is inconsistent IMO. Correct me if I'm wrong.\n\n=======\n\nFilip Hanik wrote\n> IF you want HTTP/1.1 shouldn't you create a valid HTTP/1.1 request?\n\nWhat do you mean? I don't see any deviations from RFC 2616 in my second HTTP/1.1 request (although the RFC is quite unspecific on OPTIONS method).\n",
+            "date": "20080320T10:28:11",
+            "id": 3
+        },
+        {
+            "author": null,
+            "body": "Filip's point is that you get a 400 since you have no host header in your request.\n\nI have modified the default servlet to include TRACE in the Allow header based on the setting of allowTrace for the connector associated with the request. This change has been made to trunk and proposed for 6.0.x and 5.5.x.",
+            "date": "20090209T12:24:46",
+            "id": 4
+        },
+        {
+            "author": null,
+            "body": "This has been fixed in 6.0.x and will be included in 6.0.19 onwards.",
+            "date": "20090306T07:21:40",
+            "id": 5
+        },
+        {
+            "author": null,
+            "body": "This was fixed a few months ago in 5.5.x and will be included in 5.5.28 onwards",
+            "date": "20090705T07:28:52",
+            "id": 6
+        }
+    ],
+    "component": "Connector:Coyote",
+    "description": "When an \"options\" http request is made to Tomcat to a directory that has no \ndefault file (like index.jsp) in it, Tomcat reports a full list of allowed \nverbs, when in fact, most of them are NOT allowed.  For example, a request to \na generic img directory:\n\nOPTIONS /img/ HTTP/1.0\n\tCookie: JSESSIONID=C46C2E18BE95AD91828C9370CBDF0AF2\n\tContent-Length: 0\n\tAccept: */*\n\tAccept-Language: en-us\n\tConnection: Keep-Alive\n\tUser-Agent: Mozilla/4.0 (compatible; MSIE 6.0; Windows NT 5.1; \nSV1; .NET CLR 1.1\n\t4322; InfoPath.1)\n\nReturns:\n\nHTTP/1.1 200 OK\nServer: Apache-Coyote/1.1\nAllow: GET, HEAD, POST, PUT, DELETE, TRACE, OPTIONS\nContent-Length: 0\nDate: Mon, 24 Apr 2006 15:11:16 GMT\nConnection: close\n\nWhich shows several destructive options available (PUT, DELETE).  But a \nrequest to DELETE or PUT (correctly) returns a 403 FORBIDDEN result:\n\nDELETE /img/ HTTP/1.0\n\tCookie: JSESSIONID=C46C2E18BE95AD91828C9370CBDF0AF2\n\tContent-Length: 0\n\tAccept: */*\n\tAccept-Language: en-us\n\tConnection: Keep-Alive\n\tUser-Agent: Mozilla/4.0 (compatible; MSIE 6.0; Windows NT 5.1; \nSV1; .NET CLR 1.1\n\t4322; InfoPath.1)\n\nReturns:\nHTTP/1.1 403 Forbidden\nServer: Apache-Coyote/1.1\nContent-Type: text/html;charset=utf-8\nContent-Length: 964\nDate: Mon, 24 Apr 2006 15:12:31 GMT\nConnection: close\n\nBecause the initial OPTIONS request returns a list containing dangerous verbs, \nthe directory will be flagged as a serious security vulnerability by most \nscanners (a false positive).\n\nThe issue DOES NOT occur when the directory HAS a default file in it:\nOPTIONS /user_management/ HTTP/1.0\n\tCookie: JSESSIONID=C46C2E18BE95AD91828C9370CBDF0AF2\n\tContent-Length: 0\n\tAccept: */*\n\tAccept-Language: en-us\n\tConnection: Keep-Alive\n\tUser-Agent: Mozilla/4.0 (compatible; MSIE 6.0; Windows NT 5.1; \nSV1; .NET CLR 1.1\n\t4322; InfoPath.1)\n\nReturns:\n\nHTTP/1.1 200 OK\nServer: Apache-Coyote/1.1\nSet-Cookie: JSESSIONID=BC992F0C86E2BCBD0A2E5F1B3A12C50C; Path=/\nContent-Type: text/html;charset=ISO-8859-1\nDate: Mon, 24 Apr 2006 15:14:27 GMT\nConnection: close",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "39396",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "BUG",
+    "priority": "P2 normal",
+    "product": "Tomcat 5",
+    "project": "TOMCAT",
+    "summary": "OPTIONS request on directory with no default file reports an incorrect list of allowed HTTP verbs",
+    "systemSpecification": true,
+    "version": "5.5.9"
+}

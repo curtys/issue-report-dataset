@@ -1,0 +1,41 @@
+{
+    "comments": [
+        {
+            "author": "albersato@gmail.com",
+            "body": "A simpler test:\n\nvar tmp =<xml><group><groupDesc><id/><name/><member><name/></member></groupDesc></group></xml>;\ntheGroup=tmp.group[0].groupDesc;\ntheGroup.name=\"Group Name\";\ntheGroup.member[0].name=\"Member Name\";\n\nThe xml doesn't get the member.name value\n\n<xml>\n  <group>\n    <groupDesc>\n      <id/>\n      <name>Group Name</name>\n      <member>\n        <name/>\n      </member>\n    </groupDesc>\n  </group>\n</xml>\n\n\nThis is the expected output (spiderMonkey)\n<xml>\n  <group>\n    <groupDesc>\n      <id/>\n      <name>Group Name</name>\n      <member>\n        <name>Member Name</name>\n      </member>\n    </groupDesc>\n  </group>\n</xml>",
+            "date": "20100516T14:42:00",
+            "id": 0
+        },
+        {
+            "author": "albersato@gmail.com",
+            "body": "This patch solves the problem:\n\nhttps://bugzilla.mozilla.org/attachment.cgi?id=446591\n\nBTW, the patch I was refering was BUG 473761, no BUG 524931",
+            "date": "20100520T22:45:11",
+            "id": 1
+        },
+        {
+            "author": "albersato@gmail.com",
+            "body": "Hi, anyone listening ?",
+            "date": "20100615T21:09:01",
+            "id": 2
+        },
+        {
+            "author": "hannesw@gmail.com",
+            "body": "I committed your patch.\n\nhttps://github.com/mozilla/rhino/commit/54dcec6996d4d25f79a329b87de82e58a017f14e",
+            "date": "20111118T23:25:56",
+            "id": 3
+        }
+    ],
+    "component": "E4X",
+    "description": "User-Agent:       Mozilla/5.0 (Macintosh; U; Intel Mac OS X 10.6; es-ES; rv:1.9.2.3) Gecko/20100401 Firefox/3.6.3\nBuild Identifier: rhino1_7R3pre\n\n\nThe next script shows the issue. All changes made to the members are lost. \n\nvar NGROUPS=1;\nvar NMEMBERS=1;\n\n\nvar tmp =<xml><groups><group><groupDesc><id/><name/><member><memberDesc><id/><name/></memberDesc></member></groupDesc></group></groups></xml>;\n\nvar baseGroup=tmp.groups;\nvar groupSkel=baseGroup.group[0];\nfor (var i=0;i<NGROUPS;i++){\n    //Create a new group using the first one as the starting skel\n\tbaseGroup.group[i]+=groupSkel;\n\tvar groupId=i+1;\n        var theGroup=baseGroup.group[groupId].groupDesc;\n\ttheGroup.id=groupId;\n\ttheGroup.name=\"Group \"+groupId;\n\tvar memberSkel=theGroup.member[0];\n\tfor (var j=0;j<NMEMBERS;j++){\n\t\ttheGroup.member[j]+=memberSkel;\n\t\tvar memberId=j+1;\n\t\tvar theMember=theGroup.member[memberId].memberDesc;\n\t\ttheMember.id=groupId+\".\"+memberId;\n\t\ttheMember.name=\"Member \"+memberId+\" of group \"+groupId;\n\t}\n    delete theGroup.member[0];\n}\n//Remove the \"skel\" group\ndelete baseGroup.group[0];\n\nThe result XML (in tmp variable) has none of the new assigned values in the <member> element.\n\n\n\nReproducible: Always\n\nSteps to Reproduce:\n1.Execute the demo script\n2.Check the results agains spiderMonkey, the <member> elment should have:\n\n<memberDesc>\n  <id>1.1</id>\n  <name>Member 1 of group 1</name>\n</memberDesc>\n\n\nActual Results:  \n<xml>\n  <groups>\n    <group>\n      <groupDesc>\n        <id>1</id>\n        <name>Group 1</name>\n        <member>\n          <memberDesc>\n            <id/>\n            <name/>\n          </memberDesc>\n        </member>\n      </groupDesc>\n    </group>\n  </groups>\n</xml>\n\nExpected Results:  \n<xml>\n  <groups>\n    <group>\n      <groupDesc>\n        <id>1</id>\n        <name>Group 1</name>\n        <member>\n          <memberDesc>\n            <id>1.1</id>\n            <name>Member 1 of group 1</name>\n          </memberDesc>\n        </member>\n      </groupDesc>\n    </group>\n  </groups>\n</xml>\n\nThis can be solved by \"refreshing\" theGroup variable. For example, changing the script by the next lines, the output is Ok.\n\n(...)\nvar theGroup=baseGroup.group[groupId].groupDesc;\ntheGroup.id=groupId;\ntheGroup.name=\"Group \"+groupId;\n//refresing theGroup var\ntheGroup=baseGroup.group[groupId].groupDesc;\nvar memberSkel=theGroup.member[0];\n(...)\n\nThis only happens for 1 7R3pre the 7R2 doesn't shows this problem. And it's related to the patch for BUG 524931 (removing the pathc for this bug the problems is solved)",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "566186",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "-- major",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "Changes made in an inner node are lost when using intermediate variables",
+    "systemSpecification": true,
+    "version": "other"
+}

@@ -1,0 +1,65 @@
+{
+    "comments": [
+        {
+            "author": "hannesw@gmail.com",
+            "body": "Created attachment 251067\nFixes this bug by calling checkDynamicScope() when parent scope is null\n\nSince ScriptRuntime.nameIncrDecr() now needs the current Context in order to know whether dynamic scopes are enabled, it now takes a Context parameter. The old signature is deprecated but still left in place for backwards compatibility.\n\n(I also fixed two unrelated javadoc @link tags since Intellij pointed me to it. Sorry if this is confusing.)",
+            "date": "20070110T13:52:58",
+            "id": 0
+        },
+        {
+            "author": "szegedia@freemail.hu",
+            "body": "Can you explain why you need to test for\n\nif (cx.useDynamicScope && scopeChain.getParentScope() == null)\n\ninstead of \n\nif (cx.useDynamicScope)\n\nor even better\n\nif (cx.hasFeature(Context.FEATURE_DYNAMIC_SCOPE))\n\n?",
+            "date": "20070113T14:38:39",
+            "id": 1
+        },
+        {
+            "author": "szegedia@freemail.hu",
+            "body": "Also, it is not completely clear to me when should a dynamic scoping lookup be performed. Namely -- is dynamic scoping the property of the current context, or the property of the function? Functions have a \"dynamic scoping\" flag that is set to true if their *compiling* Context was set to have dynamic scoping. I think that in light of this, ScriptRuntime.nameIncrDecr() should maybe instead have a boolean flag that's set to true if the invoking function was compiled in a Context that had dynamic scopes.\n\nActually, I'm coming to believe that dynamic scope is more trouble than it is worth. For one thing, it's non-ECMA. Back in the day, I used to think it's a nice (even if non-ECMA compliant) feature, especially since I had a system using a shared scope with global functions that was set as the prototype of per--thread scopes. I believe (correct me if I'm wrong) that most people use dynamic scopes in this exact setting. I did however reach the conclusion that having such global shared prototype scopes is not such a good idea -- the performance impact of just defining those global functions in each of your scripts instead is negligable. Even if you use a shared prototype scope, you can do it without dynamic scopes feature -- you just need to remember to explicitly qualify access to global variables with \"this\" withing the body of these global functions. If I had it my way, I'd declare the dynamic scopes to be a deprecated feature, and just educate the users about how to live without it.",
+            "date": "20070113T15:00:26",
+            "id": 2
+        },
+        {
+            "author": "hannesw@gmail.com",
+            "body": "(In reply to comment #2)\n> Can you explain why you need to test for\n> \n> if (cx.useDynamicScope && scopeChain.getParentScope() == null)\n> \n> instead of \n> \n> if (cx.useDynamicScope)\n\nWe're walking down the scope chain, and only the last, top level scope is replaced by the dynamic scope (which must have the static top level scope as its prototype). Calling ScriptRuntime.checkDynamicScope with anything else than the static top scope as second argument would be wrong.\n\n> or even better\n> \n> if (cx.hasFeature(Context.FEATURE_DYNAMIC_SCOPE))\n\ncx.useDynamicScope is merely a \"proxy\" field for cx.hasFeature(Context.FEATURE_DYNAMIC_SCOPE). It is set in ScriptRuntime.doTopCall() and used in various places in ScriptRuntime.",
+            "date": "20070116T14:29:20",
+            "id": 3
+        },
+        {
+            "author": "hannesw@gmail.com",
+            "body": "(In reply to comment #3)\n> Also, it is not completely clear to me when should a dynamic scoping lookup be\n> performed. Namely -- is dynamic scoping the property of the current context, or\n> the property of the function? Functions have a \"dynamic scoping\" flag that is\n> set to true if their *compiling* Context was set to have dynamic scoping. \n\nI think the confusion comes from the fact that there are two ways to enable dynamic scopes: the old, deprecated way, and the current way. The old way worked via setting Context.setCompileFunctionsWithDynamicScope() and was indeed a compile-time feature. The problem is that it didn't work with nested functions, so it was replaced by the current solution, which checks whether to use dynamic scopes at various places in ScriptRuntime.\n\n> Actually, I'm coming to believe that dynamic scope is more trouble than it is\n> worth. For one thing, it's non-ECMA. Back in the day, I used to think it's a\n> nice (even if non-ECMA compliant) feature, especially since I had a system\n> using a shared scope with global functions that was set as the prototype of\n> per--thread scopes. I believe (correct me if I'm wrong) that most people use\n> dynamic scopes in this exact setting. I did however reach the conclusion that\n> having such global shared prototype scopes is not such a good idea -- the\n> performance impact of just defining those global functions in each of your\n> scripts instead is negligable. Even if you use a shared prototype scope, you\n> can do it without dynamic scopes feature -- you just need to remember to\n> explicitly qualify access to global variables with \"this\" withing the body of\n> these global functions. If I had it my way, I'd declare the dynamic scopes to\n> be a deprecated feature, and just educate the users about how to live without\n> it.\n\nPlease don't! Helma applications often grow to several hundred kB of Javascript code, and compiling everything 20 or 40 times instead of just once would simply cause them to stop working under load. \n\nWe have been using dynamic scopes for years and never really had a big problem, except the nested function problem with the old approach, and, well, this bug now. You can blame me for not switching to the new approach earlier, Partly it had to do with the fact that I was confused myself, just see bug #347154 for some of that. \n\nRegarding ECMA, it's true that this setup is obviously not described in the spec, but saying that it is non ECMA-compliant is a bit far-fetched, too. I don't think ECMA specifies how the top level scope object should be implemented, and to the outside, the prototyped dynamic scope behaves exactly as defined in the spec. I' saying this to the best of my knowledge without having looked at the spec recently, but I could check if this is an issue.",
+            "date": "20070116T15:11:02",
+            "id": 4
+        },
+        {
+            "author": "szegedia@freemail.hu",
+            "body": "(In reply to comment #5)\n\n> > these global functions. If I had it my way, I'd declare the dynamic scopes to\n\n> > be a deprecated feature, and just educate the users about how to live without\n\n> > it.\n\n> \n\n> Please don't! Helma applications often grow to several hundred kB of Javascript\n\n> code, and compiling everything 20 or 40 times instead of just once would simply\n\n> cause them to stop working under load. \n\n> \n\n\nNo worries -- I'm not interested in wrecking significant efforts of people who built their own systems atop of Rhino :-) As a matter of fact, you wouldn't need to *compile* everything repeatedly, just *execute* a once-compiled script in every new top-level scope. That'd just create new Function objects, but their code is already compiled (either into InterpreterData instance or into a Java class). It's still more overhead than not even creating new Function objects at all, but the complexity of your scope setup gets reduced in turn. Yes, it's a tradeoff, and what I'd want to do is teach the people about the existence of this tradeoff, so they can choose one way or the other.  \n\n> Regarding ECMA, it's true that this setup is obviously not described in the\n\n> spec, but saying that it is non ECMA-compliant is a bit far-fetched, too. I\n\n> don't think ECMA specifies how the top level scope object should be\n\n> implemented, and to the outside, the prototyped dynamic scope behaves exactly\n\n> as defined in the spec. I' saying this to the best of my knowledge without\n\n> having looked at the spec recently, but I could check if this is an issue.\n\n> \n\n\nThe ECMA spec is very explicit regarding how is a name to be resolved against a scope chain. With dynamic scopes, a function defined in the prototype object resolves names differently based on where it is invoked from. As I see it, people are using this mainly to avoid having to write a lot of \"this.\" qualifiers in the functions in the prototype object. I wouldn't have problems with it if this behaviour were encapsulated within a special implementation of Scriptable - in that case you could claim that the object behaves like that on the \"inside\" while retaining spec-compliant behaviour on the \"outside\". What I have issues with is that the concept of dynamic scopes is being present in the ScriptRuntime.\n\nRegardless, for the time being, I'll commit your patch -- it's a good solution for the problem within the constraints of the current implementation",
+            "date": "20070123T02:06:56",
+            "id": 5
+        },
+        {
+            "author": "szegedia@freemail.hu",
+            "body": "Patch committed to CVS HEAD.",
+            "date": "20070123T02:14:38",
+            "id": 6
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "Adding target milestone of 1.6R6 based on the date this bug was resolved FIXED.",
+            "date": "20070518T15:11:37",
+            "id": 7
+        }
+    ],
+    "component": "Core",
+    "description": "User-Agent:       Mozilla/5.0 (X11; U; Linux i686; de; rv:1.8.1.1) Gecko/20060601 Firefox/2.0.0.1 (Ubuntu-edgy)\nBuild Identifier: \n\nScriptRuntime.nameIncrDecr() is currently not aware of dynamic scopes. When ++ or  -- is applied to a global variable in the dynamic scope, a ReferenceError is thrown. \n\nReproducible: Always",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "366550",
+    "issuetypeClassified": "OTHER",
+    "issuetypeTracker": "BUG",
+    "priority": "-- normal",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "increment and decrement operators don't work for global vars with dynamic scopes",
+    "systemSpecification": true,
+    "version": "other"
+}

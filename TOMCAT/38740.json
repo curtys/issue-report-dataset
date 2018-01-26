@@ -1,0 +1,137 @@
+{
+    "comments": [
+        {
+            "author": null,
+            "body": "Interesting, could you post a little code snippet that causes the problem that\nyou see.\nI will take a look and see why this is happening.",
+            "date": "20060221T19:14:20",
+            "id": 0
+        },
+        {
+            "author": null,
+            "body": "Created attachment 17763\nTest case with workaround\n\nIt looks like I'll be using SimpleTcpReplicationManager anyway, but I figure I\nowe one to Apache after all these years. ;) Test case webapp is attached. Just\ndeploy and then hit sessiondata.jsp, you'll see the \"foo\" attribute created by\nthe session listener. Refresh until you hit a different tomcat in the cluster,\nyou'll see \"foo\" isn't replicated.\n\nIn web.xml, uncomment the servlet filter to see the workaround in action.\nSource for the servlet listener and filter are included under WEB-INF.",
+            "date": "20060221T20:10:31",
+            "id": 1
+        },
+        {
+            "author": null,
+            "body": "Hi Filip,\n\nI stumbled into the same problem just two days ago :)\n\nAt least for 5.0 I vaguely remember, that the DeltaRequest is being reset after\ncreating the session, and any HTTPSessionListener's createSession method is\nbeing called by non cluster code. So I did not see ny obvious fix, although it\nmight be possible to do reset the DeltaRequest first.",
+            "date": "20060221T21:00:46",
+            "id": 2
+        },
+        {
+            "author": null,
+            "body": "Cool, I will look into it. it could have something to do with cross context\nsession replication, and that might have jacked up the flow a bit.",
+            "date": "20060221T21:18:13",
+            "id": 3
+        },
+        {
+            "author": null,
+            "body": "hi there,\nthe web.xml in the clustertest.war is missing the <distributable/> element that\nwill make it available for session replication. I added in this element, and the\ntest worked fine.\n\nPlease reopen this bug if you think I made a mistake",
+            "date": "20060221T21:40:40",
+            "id": 4
+        },
+        {
+            "author": null,
+            "body": "Works for me too, out of curiosity how does that make a difference? I thought\nthat flag just enforced checks for Serializable on session objects?",
+            "date": "20060221T22:25:17",
+            "id": 5
+        },
+        {
+            "author": null,
+            "body": "if that flag isn't available, the servlet container will not replicate your data.\notherwise, the container has no way of knowing what contexts to replicate and\nwhat contexts not to replicate",
+            "date": "20060221T22:31:02",
+            "id": 6
+        },
+        {
+            "author": null,
+            "body": "I take it back, was only working for me since I had already moved to\nSimpleTcpReplicationManager! Ouch.\n\nWithout the flag, non-listener created data was replicating just fine? Probably\nbecause my server.xml configures things at the Host level. I'll attach my\nserver.xml.",
+            "date": "20060221T22:45:29",
+            "id": 7
+        },
+        {
+            "author": null,
+            "body": "Created attachment 17765\nserver.xml used in testign",
+            "date": "20060221T22:48:01",
+            "id": 8
+        },
+        {
+            "author": null,
+            "body": "aah, you are user mod_jk, mod_jk is only intended to work with sticky sessions,\nand for fail over to work, you need to enable the route binder valve and the \n\n<Valve\nclassName=\"org.apache.catalina.cluster.session.JvmRouteBinderValve\"\nenabled=\"true\" />\t\n\nyou will also need to set jvmRoute=\"node01\" (and node02 on the second) on the\n<Engine> element,\n\nexamples can be found at http://tomcat.apache.org/tomcat-5.5-doc/cluster-howto.html",
+            "date": "20060222T00:44:52",
+            "id": 9
+        },
+        {
+            "author": null,
+            "body": "I don't understand why, would rather use the workaround or SimpleTcp. Sticky \nsessions are not true clustering IMHO. I reluctantly accept the 'invalid' mark \nbut I'm reminded of the frustrations of working with OSS.",
+            "date": "20060222T03:38:28",
+            "id": 10
+        },
+        {
+            "author": null,
+            "body": "Believe me, I feel with you. But round robin on each request is not very\nefficient, nor is the SimpleTcpReplicationManager.\n\nYou will get far more juice out of the DeltaManager. \n\nIn order to have round robin, you should add the (waitForAck=\"true\") to your\n<Sender> element, this guarantees that the session is replicated before the\nresponse is returned to the client. \n\nI BELIEVE THE WAITFORACK COULD SOLVE YOUR PROBLEM FOR TRUE ROUND ROBIN REPLICATION.\n\nmod_jk has never been a big favorite of mine, I always use mod_proxy, and we\npair one apache with one tomcat, we always do the load balancing before we hit\napache.\n\nThe reason the bug is invalid, is cause its a simple documentation issue. If\nyour replication doesn't work due to the mod_jk implementation, then this bug is\nstill invalid, and you should open up one against that module. I have tested\nyour scenario and have found nothing wrong nor have I been able to reproduce the\nerror under any circumstances. \n\nI would say you received quite good support for all the $0 dollars you spent and\nnot reading the manual ;)\n\nLet us know if we can help with anything else",
+            "date": "20060222T16:44:37",
+            "id": 11
+        },
+        {
+            "author": null,
+            "body": "FYI we're not using mod_jk for load balancing, we have a hardware load balancer\ngoing between two apaches. These apaches communicate to single tomcat instances.\nDoes that make a difference here?\n\nAnd yes, this is great for free support, apologies if I let my frustrations get\nthe best of me.",
+            "date": "20060222T16:48:52",
+            "id": 12
+        },
+        {
+            "author": null,
+            "body": "hey Nick,\nyour setup should work fine. and clustering should work equally fine in your setup.\n\nfeel free to contact me directly if you still can't get it to work as I think\nI'm going off topic from the original bug :)",
+            "date": "20060222T17:05:46",
+            "id": 13
+        },
+        {
+            "author": null,
+            "body": "Attributes set by a session listener via setAttribute in sessionCreated are not\nreplicated via the cluster. Only the creation of the session (it's ID) is being\nreplicated and after the listener was called the DeltaRequest is being reset.\n\nBut: if notifySessionListenersOnReplication=true for the cluster manager - which\nis the default - then the listener is called after replicating the session\ncreation on the remote side and will then set the Attribute there again. That's\nwhy the attribute can be found on the remote side.\n\nCAUTION: Replicating an attribute and setting it independently on the primary\nand secondary nodes might not be the same. It depends on the type of the\nattribute if that results in an application problem or not.",
+            "date": "20060224T15:45:14",
+            "id": 14
+        },
+        {
+            "author": null,
+            "body": "That's a good point Rainer -- in your test config Filip, did you enable\nnotifySessionListenersOnReplication?\n\nI still think this is a valid bug, but I'll leave it to you to reopen.",
+            "date": "20060224T16:38:41",
+            "id": 15
+        },
+        {
+            "author": null,
+            "body": "I ran the test case as you gave it to me and foo=bar got replicated just fine.\nthe only difference is that I added a HTTP connector as I don't use mod_jk\n\nyou can reopen it if you still are seeing the problem, I marked it invalid since\nI  wasn't able to reproduce it.",
+            "date": "20060224T17:23:33",
+            "id": 16
+        },
+        {
+            "author": null,
+            "body": "actually, the session code looks broken. resetDeltaRequest shoult NOT be called\ninside DeltaManager.createSession, and it should not be called inside\nDeltaManager.sendCreateSession\n\nresetDeltaRequest is called inside the DeltaSession constructor. That is good\nenough.\n\n",
+            "date": "20060224T23:10:28",
+            "id": 17
+        },
+        {
+            "author": null,
+            "body": "Nick,\n\nFilip made a change. Are you able to check with the DeltaManager from trunk?\n\nThe new version should replicate your foo attribute as set by the listener on\nthe primary side. Your listener will also be called by default on the remote\nside (and set the attribute), but it will afterwards be overwritten by the\nreplicated attribute. You could check by setting the attribute \"foo\" to a\ntimestamp instead of \"bar\".",
+            "date": "20060225T01:37:38",
+            "id": 18
+        },
+        {
+            "author": null,
+            "body": "No response in almost a year. I am going to assume the Filip's change resolved\nthis issue.",
+            "date": "20070131T20:23:41",
+            "id": 19
+        }
+    ],
+    "component": "Catalina:Cluster",
+    "description": "This is a bug I experienced in 5.5.15 (it's not listed as a Version option in\nbugzilla).\n\nWhen a session attribute is set within sessionCreated, it is not replicated\nsince DeltaManager resets the DeltaRequest after the createSession method of\nManagerBase is called. This is especially problematic when listener notification\nis disabled on replication (which is necessary for my application logic).\n\nWorkaround: Create a servlet filter which \"re-sets\" session attributes on the\nfirst request. This will create the needed delta request. Utilize another\nsession attribute to prevent filter logic from running on subsequent requests.",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "38740",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "P2 major",
+    "product": "Tomcat 5",
+    "project": "TOMCAT",
+    "summary": "(5.5.15) session attributes set in sessionCreated not synched",
+    "systemSpecification": false,
+    "version": "5.5.14"
+}

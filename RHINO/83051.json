@@ -1,0 +1,83 @@
+{
+    "comments": [
+        {
+            "author": "pschwartau@meer.net",
+            "body": "Update: I AM able to invoke f globally in Rhino (as well as SpiderMonkey)\nif I use a variable assignment instead of a function declaration:\n\njs> with(Math) {var f = function(){return PI}}\n\njs> f()\n3.141592653589793",
+            "date": "20010604T20:38:57",
+            "id": 0
+        },
+        {
+            "author": "pschwartau@meer.net",
+            "body": "This may be the explanation:\n\n1st test above: under the with statement there is a function declaration \n2nd test above: under the with statement there is a function expression \n\n\nIt may be that ECMA does not specifially provide for function declarations\nto appear under with statements, and that this is a SpiderMonkey extension\nto the language. I will have to do more ECMA research to find out - \n",
+            "date": "20010604T22:11:27",
+            "id": 1
+        },
+        {
+            "author": "pschwartau@meer.net",
+            "body": "Another puzzle: Rhino gives me different errors on testcase \n\n         js/tests/ecma_3/Function/scope-001.js\n\ndepending on whether or not I use the -f operator or the load() method:\n\n\n[//d/JS_TRUNK/mozilla/js/tests/ecma_3/Function]\njava org.mozilla.javascript.tools.shell.Main  -f ../shell.js -f scope-001.js\njs: \"D:\\JS_trunk\\mozilla\\js\\tests\\ecma_3\\Function\\scope-001.js\", line 100: \nuncaught JavaScript exception: ReferenceError: \"f\"\nis not defined. (D:\\JS_trunk\\mozilla\\js\\tests\\ecma_3\\Function\\scope-001.js; line \n100)\n\n\n[//d/JS_TRUNK/mozilla/js/tests/ecma_3/Function]\n$ java org.mozilla.javascript.tools.shell.Main\njs> load('../shell.js')\njs> load('scope-001.js')\nBUGNUMBER: (none)\nSTATUS: Testing that functions are scoped statically, not dynamically\nFAILED!: [reported from test()] Section C of test\nFAILED!: [reported from test()] Expected value '2', Actual value '1'\nFAILED!: [reported from test()]\nFAILED!: [reported from test()] Section D of test\nFAILED!: [reported from test()] Expected value '3', Actual value '1'\nFAILED!: [reported from test()]\nFAILED!: [reported from test()] Section E of test\nFAILED!: [reported from test()] Expected value '2', Actual value '1'\nFAILED!: [reported from test()]\nFAILED!: [reported from test()] Section F of test\nFAILED!: [reported from test()] Expected value '2', Actual value '1'\nFAILED!: [reported from test()]\n\n\nAny idea why this would be???\n\n",
+            "date": "20010604T22:14:31",
+            "id": 2
+        },
+        {
+            "author": "pschwartau@meer.net",
+            "body": "Note: in Rhino interpreted mode, I only get the latter type of failure,\nwhether I use the -f option or the load() method -  ",
+            "date": "20010604T22:17:51",
+            "id": 3
+        },
+        {
+            "author": "pschwartau@meer.net",
+            "body": "I take that back : now I'm getting the same behavior in the rhinoi shell \n(interpreted mode) as in the rhino shell(compiled mode: \n\na discrepancy between the failure under the -f option as opposed \nto the load() method. I don't how to explain what happened above ...\n\n\n",
+            "date": "20010604T22:29:47",
+            "id": 4
+        },
+        {
+            "author": "pschwartau@meer.net",
+            "body": "Now I see what I did wrong. When I was using load() to run the two\ndifferent tests in the shell, I wasn't exiting the shell in between them. \nThe function f is successfully defined by the one test. If I then happened \nto run the other test, f was still in memory and produced output...\n\nSorry for the confusion -",
+            "date": "20010605T00:45:35",
+            "id": 5
+        },
+        {
+            "author": "pschwartau@meer.net",
+            "body": "To summarize: whether using the -f option or load(), both Rhino shells error on\n\n             js/tests/ecma_3/Function/scope-001.js\n\njs: \"D:\\JS_trunk\\mozilla\\js\\tests\\ecma_3\\Function\\scope-001.js\", line 100: \nuncaught JavaScript exception: ReferenceError: \"f\"\nis not defined. (D:\\JS_trunk\\mozilla\\js\\tests\\ecma_3\\Function\\scope-001.js; line \n100)\n\n\nThis is the test with the function DECLARATION under the with statement,\nwhere we try to invoke the function globally. SpiderMonkey allows this.\n\n\n\nBoth Rhino and SpiderMonkey pass the other test:\n\n             js/tests/ecma_3/Function/scope-002.js\n\nThis is the test with the function EXPRESSION under the with statement,\nwhere we try to invoke the function globally. Both engines allow this.\n",
+            "date": "20010605T00:50:51",
+            "id": 6
+        },
+        {
+            "author": "user@apochta.com",
+            "body": "This can be market as fixed as the bug 184107 is effectively a duplicate of this\nand it is fixed. Now the bug can be removed from the excluding list in\nmozilla/js/tests/rhino-n.tests:\n\nIndex: rhino-n.tests\n===================================================================\nRCS file: /cvsroot/mozilla/js/tests/rhino-n.tests,v\nretrieving revision 1.50\ndiff -u -r1.50 rhino-n.tests\n--- rhino-n.tests\t4 Sep 2002 22:56:39 -0000\t1.50\n+++ rhino-n.tests\t23 Dec 2002 15:14:53 -0000\n@@ -6,8 +6,6 @@\n #\n #bug 152646 Will not fix this in Rhino; too much of a corner case\n js1_5/Regress/regress-152646.js\n-# bug 83051\n-ecma_3/Function/scope-001.js\n # bug 59861\n ecma/Date/15.9.4.3.js\n #See bug number 94506 \n",
+            "date": "20021223T15:16:33",
+            "id": 7
+        },
+        {
+            "author": "pschwartau@meer.net",
+            "body": "Igor is correct.\n\nThe testcase, js/tests/ecma_3/Function/scope-001.js, started\npassing in Rhino when the fix for bug 184107 was checked in.\n\nMarking FIXED -",
+            "date": "20030109T03:10:30",
+            "id": 8
+        },
+        {
+            "author": "pschwartau@meer.net",
+            "body": "Marking Verified Fixed.\n\nI have removed these two lines from the rhino-n.tests skip list:\n\n# bug 83051\necma_3/Function/scope-001.js\n\n\n[//d/JS_TRUNK/mozilla/js/tests] cvs ci rhino-n.tests\nChecking in rhino-n.tests;\n/cvsroot/mozilla/js/tests/rhino-n.tests,v  <--  rhino-n.tests\nnew revision: 1.51; previous revision: 1.50\ndone",
+            "date": "20030109T03:14:31",
+            "id": 9
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Targeting as resolved against 1.5R4",
+            "date": "20040213T12:20:43",
+            "id": 10
+        }
+    ],
+    "component": "Core",
+    "description": "In SpiderMonkey, I can define f() under a with block and then call it from\ntop-level code. In Rhino, I cannot:\n\nDEFINITION OF f\njs> with(Math) {function f(){return PI}}\nfunction f() {\n    return PI;\n}\n\n\nTHIS SUCCEEDS:\njs> with(Math) {f()}\n3.141592653589793\n\n\nTHIS FAILS: \njs> f()\njs: \"<stdin>\", line 10: uncaught JavaScript exception: ReferenceError: \"f\" is \nnot defined. (<stdin>; line 10)\n\n\n\nThis issue is causing the following testcase to fail:\n\n         js/tests/ecma_3/Function/scope-001.js",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "83051",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "-- normal",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "A function defined under a with block can't be invoked outside it",
+    "systemSpecification": true,
+    "version": "other"
+}

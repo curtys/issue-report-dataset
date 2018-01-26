@@ -1,0 +1,143 @@
+{
+    "comments": [
+        {
+            "author": "Mark Miller",
+            "body": "Okay - I'm going to use the other issue just to revert the Searcher - more of a task.\n\nThis issue can then be used to track the new work for this bug here.",
+            "date": "2009-08-23T20:21:46.811+0000",
+            "id": 0
+        },
+        {
+            "author": "Mark Miller",
+            "body": "rough draft - works as the fix, but could use some polish.\n\nAnd what to do about back compat - because its just explain output, I don't think its a huge deal,\nbut if you overrode idf(Collection terms, Searcher searcher) or idf(Term term, Searcher searcher) on\nSim, right now they wouldn't be called for TermQuery and PhraseQuery. An override of float idf(int docFreq, int numDocs)\nwould still be taken into account though.",
+            "date": "2009-08-24T12:59:53.540+0000",
+            "id": 1
+        },
+        {
+            "author": "Mark Miller",
+            "body": "TestSimilarity fails due to the back compat issue by the way - it overrides a sim to return hard coded values for the two above ref'd methods",
+            "date": "2009-08-24T13:16:15.454+0000",
+            "id": 2
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Patch looks good.  Can we name it IDFExplain instead of IdfExplain?  Nit-picky I know, but I try to do all caps when the thing is already an acronym.\n\nShouldn't we deprecate Similarity's idf methods that return float?\n\nYou may want to defer calling IdfExplain.explain() until the Weight's explain is invoked?  And, then, store the IdfExplain instance in the Weight, and then IdfExplain must implement Serializable, and maybe add a Javadoc stating that Weight instances may hold onto your IdfExplain so be careful about holding references to big/unserializable things if you need to serialize.\n\nOn back-compat... we could check (using reflection) if the subclass has overridden it, and in that case forward to the subclass's method, with some canned explanation eg \"inexplicable\" ;)",
+            "date": "2009-08-24T15:23:06.111+0000",
+            "id": 3
+        },
+        {
+            "author": "Mark Miller",
+            "body": "bq. Can we name it IDFExplain instead of IdfExplain? Nit-picky I know, but I try to do all caps when the thing is already an acronym.\n\nYup, sounds good.\n\nbq. Shouldn't we deprecate Similarity's idf methods that return float?\n\nYes - I've done that locally - just didn't concentrate it on this patch because I hadn't solved the back compat problems yet.\n\nbq. You may want to defer calling IdfExplain.explain() until the Weight's explain is invoked? \n\n+1\n\nbq. On back-compat... we could check (using reflection) if the subclass has overridden it, and in that case forward to the subclass's method, with some canned explanation eg \"inexplicable\" \n\nUgg ... at least this code isn't performance sensitive :) I'll work with that.",
+            "date": "2009-08-24T15:28:14.434+0000",
+            "id": 4
+        },
+        {
+            "author": "Mark Miller",
+            "body": "Its a problem with SpanQuery as well",
+            "date": "2009-08-24T15:35:57.957+0000",
+            "id": 5
+        },
+        {
+            "author": "Mark Miller",
+            "body": "Okay, almost there. This one fixes SpanWeight as well and checks for back compat. Plus other little polish stuff.",
+            "date": "2009-08-24T16:33:16.597+0000",
+            "id": 6
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Looks good!\n\nYour isMethodOverridden is incorrectly checking against\nTokenStream.class (should be Similarity.class instead).  Maybe add a\ntest case that asserts \"maxDocs=XXX\" is present in TermQuery's explain?\n\nSmall typo: explaination -> explanation\n",
+            "date": "2009-08-24T17:38:18.138+0000",
+            "id": 7
+        },
+        {
+            "author": "Mark Miller",
+            "body": "add test case for TermQuery explain over multisearcher.\n\nfixed spelling - my ubber eclipse spellcheck file likes that version ...\n\nnice eyes on the TokenStream - classic cut and paste folly.",
+            "date": "2009-08-24T18:04:45.648+0000",
+            "id": 8
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "New patch has explaination in the javadoc :)\n\nOtherwise patch looks great!  I like the new unit test :)",
+            "date": "2009-08-24T19:40:52.306+0000",
+            "id": 9
+        },
+        {
+            "author": "Mark Miller",
+            "body": "Okay, one final version I hope:\n\nfixed javadoc spelling of explanations\nremoved unused imports\nminor javadoc tweaks",
+            "date": "2009-08-24T20:51:22.676+0000",
+            "id": 10
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Looks good!",
+            "date": "2009-08-24T20:56:29.376+0000",
+            "id": 11
+        },
+        {
+            "author": "Mark Miller",
+            "body": "I'm wondering if we should cache the isMethodOverridden now. clazz.getMethod is painfully slow.\n\nIf I keep teeing up a ton of new TermQuery/PhraseQuery/SpanQuery Weights for searching, its going to be much, much slower in a throughput benchmark.",
+            "date": "2009-08-24T21:03:44.667+0000",
+            "id": 12
+        },
+        {
+            "author": "Mark Miller",
+            "body": "Hmm - it would have to be a static cache - thats not great. But perhaps the lesser of two evils.",
+            "date": "2009-08-24T21:10:26.497+0000",
+            "id": 13
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "You could cache it on the Similarity instance?",
+            "date": "2009-08-24T21:12:17.560+0000",
+            "id": 14
+        },
+        {
+            "author": "Mark Miller",
+            "body": "of course. right where it belongs :) Darn brain is lazier than my aim.",
+            "date": "2009-08-24T21:21:02.879+0000",
+            "id": 15
+        },
+        {
+            "author": "Mark Miller",
+            "body": "Okay, adds a cache and puts it on Similarity -\n\nThis will let user queries that use the new explain stuff use Sims that overload those methods too - not a likely scerioro, but nice to know its covered now.\n\nI changed to inexplicable - thats a great word.\n\nJust finished, so merits another look over before commit ready.",
+            "date": "2009-08-25T02:06:51.829+0000",
+            "id": 16
+        },
+        {
+            "author": "Mark Miller",
+            "body": "Okay, I'm still awake, so one more:\n\nRemoved some white space to clean up diff\nChanged IDFExplain to IDFExplanation\nAdded Phrase and SpanQuery to the new test.",
+            "date": "2009-08-25T02:49:33.830+0000",
+            "id": 17
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "bq. I changed to inexplicable - thats a great word.\n\nYay :)\n\nSmall typo: explantion.  This sure is one hard word to get right!\n\nOtherwise looks good to go!",
+            "date": "2009-08-25T09:32:09.565+0000",
+            "id": 18
+        },
+        {
+            "author": "Mark Miller",
+            "body": "One more -\n\nI killed my spellchecker trying to get explaination out of it :)\n\nFixed the new misspelling though, and removed the java 1.5 code 'contains' - thanks to whoever committed that to the qp test as well - I wouldn't have noticed it was a problem here otherwise :)",
+            "date": "2009-08-25T12:35:57.674+0000",
+            "id": 19
+        },
+        {
+            "author": "Mark Miller",
+            "body": "Thanks a lot Mike !\n\nr807595.",
+            "date": "2009-08-25T12:50:34.143+0000",
+            "id": 20
+        }
+    ],
+    "component": "",
+    "description": "PhraseQuery uses IndexReader in explainfor top level stats - as mentioned by Mike McCandless in LUCENE-1837.\nTermQuery uses IndexReader in explain for top level stats\n\nAlways been a bug with MultiSearcher, but per segment search makes it worse.\n\n",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-1847",
+    "issuetypeClassified": "OTHER",
+    "issuetypeTracker": "BUG",
+    "priority": "Minor",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "PhraseQuery/TermQuery/SpanQuery use IndexReader specific stats in their explains",
+    "systemSpecification": true,
+    "version": ""
+}

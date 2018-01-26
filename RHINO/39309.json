@@ -1,0 +1,71 @@
+{
+    "comments": [
+        {
+            "author": "vajda@2bridge.com",
+            "body": "This happens on the latest rhinoTip, js.jar is dated 4/25 and is 331802 bytes \nlong.",
+            "date": "20000515T19:45:48",
+            "id": 0
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "I tried the following:\n\n[rhino] cat test.js\nvar inputText = \"hi\";\nvar i = 0;\nwhile (i++ < 5) {\n        var text = inputText + i;\n        print(text);\n}\n[rhino] java org.mozilla.javascript.tools.shell.Main -opt 9 test.js\nhi1\nhi2\nhi3\nhi4\nhi5\n\nCan you give me more information on the code that fails?",
+            "date": "20000516T23:20:41",
+            "id": 1
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "Wait....\n\nI found this from a mail:\n==================================================\nI just posted a compiler bug on bugzilla (#39309).\nIt has to do with concatenating a string and a number.\nInterpreted concatenation works. Compiled it produces 'NaN'.\n\nAndi..\n\nfor example:\n\nfunction addSnackItems(textProp, imageProp, len, centerText, \ncenterImages)\n{\n    var fragment = new Fragment(inputNode.doc);\n\n    var i = 0;\n    while (++i <= len) \n    {\n        var iString = i.toString();\n        var name = textProp + iString;\n        var imgname = imageProp + iString;\n\n        if (addSnackTextItem(fragment, name, null, 0, 0, centerText))\n            addSnackImageItem(fragment, imgname, centerImages);\n    }\n\n    return fragment;             \n}\n\nIf you take the .toString() calls away, concatenation name becomes \n'NaN'.",
+            "date": "20000517T00:10:56",
+            "id": 2
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "Okay: this case generates the error:\n\nfunction addSnackItems(textProp, len) {\n    var i = 0;\n    while (++i <= len) {\n       var name = textProp + i;\n       print(name);\n    }\n}\naddSnackItems(\"text\", 1);\n\nThis will print out \"NaN\" rather than \"text1\". \n\nI've tracked down the problem this far: It only occurs with -opt 9 and is caused \nby Optimizer.findSinglyTypedVars calling setIsNumber for the \"name\" variable. \n\nCould you take a look at it, Roger, since it's your code?\n\n",
+            "date": "20000518T17:04:04",
+            "id": 3
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "Reassign back to me.",
+            "date": "20000522T02:54:14",
+            "id": 4
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "Created attachment 8954\nproposed patch",
+            "date": "20000522T02:55:09",
+            "id": 5
+        },
+        {
+            "author": "rogerl@formerly-netscape.com.tld",
+            "body": "Fix checked in + addition to handle case of var being used before def'd.",
+            "date": "20000523T00:06:55",
+            "id": 6
+        },
+        {
+            "author": "pschwartau@meer.net",
+            "body": "Testcase added to JS testsuite:\n\n      mozilla/js/tests/js1_5/Regress/regress-39309.js\n\nMarking Verified FIXED. The testcase passes in the Rhino shell\non WinNT4.0 with optimization levels set to -1, 0, or 9.",
+            "date": "20031001T00:05:04",
+            "id": 7
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Trageting as resolved against 1.5R5",
+            "date": "20040213T11:33:55",
+            "id": 8
+        }
+    ],
+    "component": "Compiler",
+    "description": "Given the code:\n{\n    var i = 0;\n    while (i++ < 5) {\n       var text = inputText + i;\n       ... do stuff ...\n}\n\nInterpreted the above code works, that is text is the inputText followed by a \nnumber.\nCompiled (with max optimization level) text becomes NaN.\nThe interpreted behaviour is the correct one according to the javascript book \n(O'Reilly rhino).\n\nSince this is a discrepancy between interpreted and compiled script it is major. \nThe current workaround is to call i.toString() before concatenating.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "39309",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "P3 major",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "concatenating string and number doesn't work compiled.",
+    "systemSpecification": true,
+    "version": "other"
+}

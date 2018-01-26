@@ -1,0 +1,53 @@
+{
+    "comments": [
+        {
+            "author": "Doron Cohen",
+            "body": "The error (from Jenkins) was:\n\n{noformat}\njunit.framework.AssertionFailedError: Results are not the same!\n\tat org.apache.lucene.util.LuceneTestCaseRunner.runChild(LuceneTestCaseRunner.java:149)\n\tat org.apache.lucene.util.LuceneTestCaseRunner.runChild(LuceneTestCaseRunner.java:51)\n\tat org.apache.lucene.facet.FacetTestBase.assertSameResults(FacetTestBase.java:316)\n\tat org.apache.lucene.facet.search.sampling.BaseSampleTestTopK.assertSampling(BaseSampleTestTopK.java:93)\n\tat org.apache.lucene.facet.search.sampling.BaseSampleTestTopK.testCountUsingSamping(BaseSampleTestTopK.java:76)\n\tat org.apache.lucene.util.LuceneTestCase$2$1.evaluate(LuceneTestCase.java:610)\n\nreproduce with: ant test -Dtestcase=SamplingWrapperTest -Dtestmethod=testCountUsingSamping -Dtests.seed=39c6b88dcada2192:-cf936a4278714b1:-770b2814b4a6acd7\n{noformat}\n",
+            "date": "2011-10-09T15:20:13.174+0000",
+            "id": 0
+        },
+        {
+            "author": "Doron Cohen",
+            "body": "Before applying this patch should do:\n{noformat}\nsvn mv modules/facet/src/java/org/apache/lucene/facet/util/RandomSample.java modules/facet/src/java/org/apache/lucene/facet/search/sampling/RepeatableSampler.java\n{noformat}\n\nI looked at this, and also discussed with Gilad, and it seems that:\n\n* The test is broken as it claims to do N trials in case of failure but it does not, because its try/catch does not catch AssertionError, and so only one trial is attempted. (Few trials make sense because with sampling, there is always a possibility that the selected sample set of docs would not contain the \"correct\" best facets even with a high over sampling ratio (over sampling means that for the selected set of docs more best facets are collected).\n\n* Even after fixing the test to actually try more than once, it still fails, because there is no randomness in RandomSample...  surprising but true.\n\nIn this patch:\n* Sampler made an abstract class.\n* RandomSample renamed to RepeatableSampler which extends Sampler.\n* RandomSampler was added - it too extends Sampler - this is a simple *random* implementation, which is now the default (used by default in SamplingWrapperAccumulator).\n* The test randomly selects between the two sampler implementations. If you want to see the behavior that created the bug, remove that latter randomness by setting to false the variable *useRandomSampler* of *BaseSampleTestTopK.testCountUsingSamping()*.\n\nI think this is ready to commit. \nWasn't sure though, where should the Changes entry go?",
+            "date": "2011-10-09T15:40:26.442+0000",
+            "id": 1
+        },
+        {
+            "author": "Shai Erera",
+            "body": "I briefly went through the patch:\n\n* In the test, I prefer to still catch Exception, or if you want to be on the safe side, Throwable. And have assertSameResult throw RuntimeException. Calling fail() from there, forcing you to handle Errors, seem too low-level to me ...\n\n* In AdaptiveFacetsAccumulator you have this line: //private Sampler sampler = new RepeatableSampler();. Is it a leftover?\n\n* Maybe add a line or two to RandomSample.createSample() (internal comments), such as:\n** \"Skip over 'step' documents\" before the for-loop\n** \"Add all leftover documents to the sampled set\" before last 'while'.\n(Please also confirm my understanding) :)\n\n* CHANGES - in this case you only need a CHANGES entry for 3x (since the change is applied to there as well), and it is under contrib.\n\nOtherwise, it looks very good !",
+            "date": "2011-10-09T16:12:33.819+0000",
+            "id": 2
+        },
+        {
+            "author": "Doron Cohen",
+            "body": "Thanks for reviewing Shai!\nI'll change as you propose (confirming your understanding) and commit tomorrow.",
+            "date": "2011-10-09T18:06:15.898+0000",
+            "id": 3
+        },
+        {
+            "author": "Doron Cohen",
+            "body": "Fixed in trunk: r1181760\n\nShai's comment on catching AssertionError made me search for other cases of catching this error in Lucene. Few such cases exist, and they all seem wrong, as they call fail when failing fail :) due to assert not enabled but fail to detect that failure since they then silently ignore AssertionError thrown by fail(). Opened LUCENE-3506 for this.",
+            "date": "2011-10-11T13:00:44.640+0000",
+            "id": 4
+        },
+        {
+            "author": "Doron Cohen",
+            "body": "Fix merged to 3x: 1188129.\nThanks Gilad and Shai for helping to fix this.",
+            "date": "2011-10-24T12:51:47.008+0000",
+            "id": 5
+        }
+    ],
+    "component": "modules/facet",
+    "description": "RandomSample is not random at all:\nIt does not even import java.util.Random, and its behavior is deterministic.\n\nin addition, the test testCountUsingSamping() never retries as it was supposed to (for taking care of the hoped-for randomness).",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-3501",
+    "issuetypeClassified": "RFE",
+    "issuetypeTracker": "BUG",
+    "priority": "Minor",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "random sampler is not random (and so facet SamplingWrapperTest occasionally fails)",
+    "systemSpecification": true,
+    "version": ""
+}

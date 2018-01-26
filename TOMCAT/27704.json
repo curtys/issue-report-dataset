@@ -1,0 +1,71 @@
+{
+    "comments": [
+        {
+            "author": null,
+            "body": "Created attachment 10803\nTest case for the described behavior.",
+            "date": "20040316T12:53:51",
+            "id": 0
+        },
+        {
+            "author": null,
+            "body": "Well, again, this is normal: the JSP servlet is mapped to the\njsp-property-group. Again, very little chance of being fixed for now ;)",
+            "date": "20040316T12:58:11",
+            "id": 1
+        },
+        {
+            "author": null,
+            "body": "Ok, this may be perfectly normal from a code perspective, but it is unexpected\nbehavior that has by now caused me to replace my Servlet2.4/JSP2.0 application\nfor a Servlet2.3/JSP1.2 application.\n\nOf course everything will also work using the older specs but I'm looking\nforward to these issues being fixed in a (hopefully not to remote) future version.\n\nAnd thanks for not closing my bug this time so I'd have to reopen it again ;)",
+            "date": "20040316T13:10:22",
+            "id": 2
+        },
+        {
+            "author": null,
+            "body": "I completely disagree with your two bug reports. Either they are invalid or the\nspecification is broken. The main problem is this sentence: \"If at least one\n<jsp-propertygroup> contains the most specific matching URL pattern, the\nresource is considered to be a JSP file\". This is clearly extremely bad behavior\nwhen using wildcard patterns.\nI am going to veto any attempt to fix these last two \"bugs\" (with bug 27664)\nuntil I am explained why the specification is not broken.",
+            "date": "20040316T13:32:16",
+            "id": 3
+        },
+        {
+            "author": null,
+            "body": "I do not understand the badness of this behavior. If a resource is matched by a\njsp-property-group, it should be considered a JSP file. If a resource has the\nextension .jsp it should be considered a JSP file. What's the difference between\nthese two?\n\nIf you include directories with the resources that match a url-pattern, this\nexplains bug 27664: a directory is then served as a JSP file, which can not be\nfound, resulting in a 404.\n\nHowever, JSP3.3 states: \"A JSP property group is a collection of properties that\napply to a set of files that represent JSP pages.\" Directories are apparently\nnot included in this definition.\n\nSRV9.10 states: \"The purpose of this mechanism is to allow the deployer to\nspecify an ordered list of partial URIs for the container to use for appending\nto URIs when there is a request for a URI that corresponds to a directory entry\nin the WAR not mapped to a Web component.\" Requests for a directory should\nresult in an attempt to append welcome files to this directory.",
+            "date": "20040316T14:40:41",
+            "id": 4
+        },
+        {
+            "author": null,
+            "body": "The problem is that this jsp-property-group feature is that it conflicts with\nservlet mapping rules, and forces the JSP implementation to be a mini servlet\ncontainer in itslef.",
+            "date": "20040316T14:48:15",
+            "id": 5
+        },
+        {
+            "author": null,
+            "body": "Ok, I agree with the fact that this will probably make a mini servlet container\nof the JSP implementation and that this is undesired. But not fixing this also\nmeans that Tomcat is not fully compliant with the spec. This may become a\nproblem when products that Tomcat is integrated into attempt to become J2EE 1.4\ncompatible.\n\nYou'll probably be happy to know this is the last thing I will say about this issue.",
+            "date": "20040316T15:14:59",
+            "id": 6
+        },
+        {
+            "author": null,
+            "body": "As I said, I contend that this was not what was intended by the spec authors.\nDue to the \"servlet mapping\"-like effect of jsp-property-group, and yet the need\nto have web server like features and a JSP container (I'm sure in 5 minutes\nyou'll be complaining that directory listings do not work), you need special JSP\nspecific processing in your servlet container (and this processing is relatively\ncomplex).\nTo implement jsp-property-group properly, you probably would have to do some\nmapping hacks, and assign some requests to the JSP servlet (after regular\nmapping), which is relatively complex (jsp-property-group/url-mapping is not\ntrivial, and you have to do it during request dispatching as well), has a\nperformance cost (similar to filter mapping), and introduces obvious\ndependencies with JSP.\nThat violates the original design idea of the independence of the servlet and\nJSP specs.",
+            "date": "20040316T15:25:24",
+            "id": 7
+        },
+        {
+            "author": null,
+            "body": "Reopening so that I can close it as FIXED.\n",
+            "date": "20040318T17:25:59",
+            "id": 8
+        }
+    ],
+    "component": "Jasper",
+    "description": "A JSP that maps to a url-pattern in a jsp-property-group does not return the\ncorrect result on calling request.getServletPath(). Instead, this call will\nalways return the property group url pattern minus the trailing '/*'.\n\nExample:\n<url-pattern>/level1/*</url-pattern>\n\nA JSP in the directory '/level1/level2/test.jsp' calls request.getServletPath().\nThe result is '/level1' i.o. '/level1/level2/test.jsp'. This may be related to\nbug 27664.\n\nI will attach a test.war file that demonstrates the described behavior.",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "27704",
+    "issuetypeClassified": "OTHER",
+    "issuetypeTracker": "BUG",
+    "priority": "P3 normal",
+    "product": "Tomcat 5",
+    "project": "TOMCAT",
+    "summary": "Result of request.getServletPath() wrong in case JSP inside jsp-property-group",
+    "systemSpecification": true,
+    "version": "5.0.19"
+}

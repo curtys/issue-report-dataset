@@ -1,0 +1,89 @@
+{
+    "comments": [
+        {
+            "author": "Robert Muir",
+            "body": "Here's the patch, and luceneutil 10M doc results:\n\n(solaris 9, ultra60 2GB ram, 1.6u23 jre with -d64)\n\n||Query||QPS trunk||QPS patch||Pct diff||||\n|spanFirst(unit, 5)|0.68|0.71|{color:green}3.7%{color}|\n|spanNear([unit, state], 10, true)|0.14|0.15|{color:green}7.3%{color}|\n|\"unit state\"|0.34|0.37|{color:green}9.1%{color}|\n|unit state|0.37|0.45|{color:green}21.7%{color}|\n|unit*|1.12|1.40|{color:green}25.4%{color}|\n|uni*|0.61|0.79|{color:green}30.2%{color}|\n|+unit +state|0.52|0.69|{color:green}33.1%{color}|\n|unit~1.0|0.28|0.38|{color:green}34.9%{color}|\n|unit~2.0|0.27|0.37|{color:green}36.2%{color}|\n|state|1.10|1.52|{color:green}38.0%{color}|\n|united~1.0|0.42|0.60|{color:green}42.7%{color}|\n|united~2.0|0.10|0.15|{color:green}46.8%{color}|\n|un*d|1.97|3.09|{color:green}56.5%{color}|\n|u*d|0.52|0.85|{color:green}61.3%{color}|\n|+nebraska +state|3.51|6.73|{color:green}91.6%{color}|\n",
+            "date": "2010-12-20T12:00:37.609+0000",
+            "id": 0
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Is it slower on Linux-64 because you only enable for windows-64 and solaris-64?\n\nIn general I expected that it is faster on all all 64 bit systems.",
+            "date": "2010-12-20T12:43:07.584+0000",
+            "id": 1
+        },
+        {
+            "author": "Robert Muir",
+            "body": "In the case of Linux-64 and Mac OS X, Mike was testing these, but it looked\nlike some queries were actually faster with NIOFS on these platforms.\n\n(This makes no sense to me, but i figured we could set it for Solaris where its obviously faster always)\n",
+            "date": "2010-12-20T12:47:32.360+0000",
+            "id": 2
+        },
+        {
+            "author": "Jason Rutherglen",
+            "body": "bq. some queries were actually faster with NIOFS on these platforms\n\nI think that's to be expected.  MMap should be faster than NIOFS in all cases, if it's not then the JVM could be to blame (on 64-bit).  There's notes at: LUCENE-753\n\nDoesn't MMap automatically consume a lot more memory?",
+            "date": "2010-12-20T14:28:50.419+0000",
+            "id": 3
+        },
+        {
+            "author": "Robert Muir",
+            "body": "bq. Doesn't MMap automatically consume a lot more memory?\n\nNo.\n",
+            "date": "2010-12-20T14:34:13.668+0000",
+            "id": 4
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "bq. Doesn't MMap automatically consume a lot more memory?\n\nNo, it consumes *address space*, this is why it only works without problems on 64 bit. The index files are mapped into address space, so handled like a SWAP file, that's the trick. They only consume as much memory from cache space as the operating system decides. Especially it does not consume memory from java heap!\n",
+            "date": "2010-12-20T14:35:36.531+0000",
+            "id": 5
+        },
+        {
+            "author": "Yonik Seeley",
+            "body": "There could be a number of things that could make this very OS dependent:\n - kernel read-ahead can differ between mmap and traditional IO, and differ between operating systems\n   (think about reading 10 bytes from position 4094... if mmap doesn't read-ahead at least one page then you will suffer a double page fault).\n - CPU cache / TLB effects?  Using more address space isn't completely free.\n - Java mmap overhead - you don't get access to a raw byte[]\n - userspace-kernel transition times (i.e. for a read system call) differ between operating systems.  Linux is very good here, probably leading to less of a penalty for read vs mmap.\n",
+            "date": "2010-12-20T17:14:15.621+0000",
+            "id": 6
+        },
+        {
+            "author": "Robert Muir",
+            "body": "bq. There could be a number of things that could make this very OS dependent:\n\nI agree, we should test any OS before changing any defaults.\n\nIn the Solaris case its clear that mmap is better for our purposes though (as to exactly why, no idea)\n",
+            "date": "2010-12-20T17:29:54.434+0000",
+            "id": 7
+        },
+        {
+            "author": "Robert Muir",
+            "body": "bq. CPU cache / TLB effects? Using more address space isn't completely free.\n\nIn the case of Solaris I think there is much less of a chance of TLB effects? \nFor example on Solaris java automatically uses large pages (unlike Linux, Windows etc).\n\nhttp://www.oracle.com/technetwork/java/javase/tech/largememory-jsp-137182.html\n",
+            "date": "2010-12-26T22:53:40.130+0000",
+            "id": 8
+        },
+        {
+            "author": "Robert Muir",
+            "body": "Committed revision 1052980, 1052981 (3x)",
+            "date": "2010-12-26T22:59:24.706+0000",
+            "id": 9
+        },
+        {
+            "author": "Earwin Burrfoot",
+            "body": "{quote}\nbq. CPU cache / TLB effects? Using more address space isn't completely free.\nIn the case of Solaris I think there is much less of a chance of TLB effects?\nFor example on Solaris java automatically uses large pages (unlike Linux, Windows etc).\n{quote}\n\nFor, like, 13Gb of memory-mapped index, I've seen no noticeable difference between having large pages on and off under Linux. That's some anecdotal evidence, as I'ven't done any extensive research, but still.",
+            "date": "2010-12-27T07:45:31.548+0000",
+            "id": 10
+        },
+        {
+            "author": "Grant Ingersoll",
+            "body": "Bulk close for 3.1",
+            "date": "2011-03-30T15:50:27.752+0000",
+            "id": 11
+        }
+    ],
+    "component": "core/store",
+    "description": "MMap is ~ 30% faster than NIOFS on this platform.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-2825",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Major",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "FSDirectory.open should return MMap on 64-bit Solaris",
+    "systemSpecification": true,
+    "version": ""
+}

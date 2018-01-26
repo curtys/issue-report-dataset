@@ -1,0 +1,89 @@
+{
+    "comments": [
+        {
+            "author": null,
+            "body": "The behavior may not suit you, but is as intended. Feel free to customize it if\nyou have different needs.",
+            "date": "20051205T18:39:53",
+            "id": 0
+        },
+        {
+            "author": null,
+            "body": "(In reply to comment #1)\n> The behavior may not suit you, but is as intended. Feel free to customize it \nif\n> you have different needs.\n\nBy 'customize' it, do you mean to modify the source code and recompile jasper-\nruntime.jar? This doesn't really work for us, since our customers run our \nsoftware on Tomcat 5 and it's odd that we have to ship a new jasper-runtime.jar \nto each and every one of them.\n\nCan you share your rationale for the decision to not reset the 'cb' array? Is \nthere a configuration option to change the behavior?",
+            "date": "20051205T18:52:05",
+            "id": 1
+        },
+        {
+            "author": null,
+            "body": "turn off tag pooling. ",
+            "date": "20051205T19:11:21",
+            "id": 2
+        },
+        {
+            "author": null,
+            "body": "Turning off tag pooling (i.e, set 'enablePooling' initial parameter to 'false' \nfor the JSP page compiler and execution servlet) doesn't turning off the \nPageContext pooling in JspFactoryImpl class. The 'USE_POOL' is set to 'true' \nand can not be overwritten:\n\n   private static final boolean USE_POOL = true;\n\nI am really interested to know the rationale behind the decision of not re-\nsizing the 'cb' character array on setWriter(). If the 'cb' array grows huge by \none tag evaluation, its massive memory block will not be returned to heap until \nthe Jasper runtime is restarted. The merit of this behavior is questionable at \nleast.",
+            "date": "20051205T21:28:34",
+            "id": 3
+        },
+        {
+            "author": null,
+            "body": "I'm seeing the same problem and are in the process of hunting down several\nmemory \"leaks\". Patches against current Tomcat 5.5 SVN will follow.",
+            "date": "20051214T23:30:13",
+            "id": 4
+        },
+        {
+            "author": null,
+            "body": "Please see bug# 33810. It looks like this problem is a \"side-effect\" of fix for\n33810.",
+            "date": "20051218T16:30:46",
+            "id": 5
+        },
+        {
+            "author": null,
+            "body": "This bug resulted in a about 4 months' intermittent downtime on\nhttp://issues.apache.org/jira until we discovered this report. See:\n\nhttp://marc.theaimsgroup.com/?t=114672636400005&r=1&w=2",
+            "date": "20060602T00:17:31",
+            "id": 6
+        },
+        {
+            "author": null,
+            "body": "Using sensibly written software helps. It should be obvious reading the API that\nusing large body tags is going to be a huge problem.",
+            "date": "20060602T09:30:21",
+            "id": 7
+        },
+        {
+            "author": null,
+            "body": "Created attachment 18735\nThe attachment contains profiler snapshots showing char[] holding upto 205MB finally causing the container to go out of memory\n\nWe are struggling with a similar issue with tomcat 5.0.30 and we are not in a\nposition to upgrade the version .\n\nOur JSP pages are large and we are able to bring tomcat down very quickly with\njust 3-4 sessions browsing couple of pages.Memory is mostly held by char[]\nBodyContentImpl and GC tries to clean some memory but eventually the system\ngoes out of memory as GC is not able to free anything held by char[].\n\nThe problem is seen in prod where memory is very high .We replicated in dev\nwith tomcat5.0.30 running with the following settings:\n\n JAVAOPTS: -server -Djava.awt.headless=true -Xms64m -Xmx256m\n-Xloggc:logs/gc.out -XX:+UseParNewGC -XX:+UseConcMarkSweepGC -XX:NewSize=8m\n-XX:MaxNewSize=128m -XX:+DisableExplicitGC\n\nProfiler used in JProfiler. Will appreciate inputs to resolve this issue.\nBreaking down JSP pages can be looked at in the future but would involve\nsignificant effort/time/funding and at this point we need to resolve the issue\nwithout breaking down the JSP pages since the app is already in prod and is\nfalling apart because of this problem.",
+            "date": "20060818T21:59:41",
+            "id": 8
+        },
+        {
+            "author": null,
+            "body": "Note: setting -Dorg.apache.jasper.runtime.BodyContentImpl.LIMIT_BUFFER=true\nhelps only for Tomcat 5.5.15 and above.",
+            "date": "20061011T17:52:51",
+            "id": 9
+        },
+        {
+            "author": null,
+            "body": "As Jeff notes, the option\n-Dorg.apache.jasper.runtime.BodyContentImpl.LIMIT_BUFFER=true is available in\n5.5.15 onwards.",
+            "date": "20061106T18:45:35",
+            "id": 10
+        },
+        {
+            "author": null,
+            "body": "*** Bug 43925 has been marked as a duplicate of this bug. ***",
+            "date": "20080403T04:07:15",
+            "id": 11
+        }
+    ],
+    "component": "Jasper",
+    "description": "In the constructor of BodyContentImpl, member variable 'cb' is initialized via\n\n\tcb = new char[bufferSize];\n\nwith default buffer size = 512. This character array grows at run time to \naccommodate the body content. In our case, one of our pages produces body \ncontent over 4 mega characters, resulting the 'cb' array to be expanded to over \n8 mega characters.\n\nThe problem is that this huge array never gets reset due to the object pooling \nimplementation in Jasper (JspFactoryImpl maintains a pool of PageContextImpl \nobjects. Each PageContextImpl object maintains an array of BodyContentImpl \nobjects), so the memory it consumed is never returned to the heap.\n\nOne suggestion is to reset the 'cb' character array in the setWriter() method.",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "37793",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "P2 normal",
+    "product": "Tomcat 5",
+    "project": "TOMCAT",
+    "summary": "org.apache.jasper.runtime.BodyContentImpl doesn't reset the 'cb' character array, causes memory leak",
+    "systemSpecification": true,
+    "version": "5.5.9"
+}

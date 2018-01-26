@@ -1,0 +1,41 @@
+{
+    "comments": [
+        {
+            "author": "Brian Moseley",
+            "body": "it turns out that i was in fact using cadaver correctly. cadaver's default namespace is \"DAV:\", which of course is not registered in the repository. so the webdav server was throwing a NamespaceException when trying to formulate the jcr name for \"DAV:hi\". cadaver didn't report the response description to me until i figured out how to turn on http-level debugging.\n\nthe correct way to set the property is to set the cadaver namespace to be one that is registered in the repository, then create the property in that namespace:\n\ndav:/home/> set namespace http://osafoundation.org/jcr/dav/1.0\ndav:/home/> propset hi myprop abc123\ndav:/home/> propget hi myprop\nValue of myprop is: abc123\n\nthis begs the question: since webdav servers are required by rfc 2518 to store the values of dead properties, shouldn't jcr-server attempt to register unknown namespaces rather than returning 403 Forbidden?",
+            "date": "2005-08-10T16:58:31.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Brian Moseley",
+            "body": "er, the first sentence of the previous comment should read \"it turns out that i was in fact *not* using cadaver correctly\".",
+            "date": "2005-08-10T17:00:08.000+0000",
+            "id": 1
+        },
+        {
+            "author": "angela",
+            "body": "> shouldn't jcr-server attempt to register unknown namespaces rather than returning 403 Forbidden\n\nit probably should.",
+            "date": "2005-08-10T20:51:57.000+0000",
+            "id": 2
+        },
+        {
+            "author": "angela",
+            "body": "fixed.\n\nif the namespace of a dav-property has not been registered before, an attempt is made to register it.\nplease note, that this still may fail due to a non-unique prefix or due to another error (e.g. missing access rights); i that situation PROPPATCH will fail.",
+            "date": "2005-08-10T23:31:26.000+0000",
+            "id": 3
+        }
+    ],
+    "component": "",
+    "description": "\ni've configured the import-collection chain (called via MKCOL) to add nodes with the node type \"dav:collection\", which is defined as such:\n\nNodeTypeName\n  dav:collection\nSuperTypes\n  nt:folder\nIsMixin\n  false\nHasOrderableChildNodes\n  false\nPrimaryItemName\n  null\nPropertyDef\n  Name *\n  RequiredType UNDEFINED\n  DefaultValues null\n  AutoCreate false\n  Mandatory false\n  OnParentVersion COPY\n  Protected false\n  Multiple false\nPropertyDef\n  Name *\n  RequiredType UNDEFINED\n  DefaultValues null\n  AutoCreate false\n  Mandatory false\n  OnParentVersion COPY\n  Protected false\n  Multiple true\n\nthe idea is that i should be able to set arbitrary webdav properties (single- or multi-value) on a webdav collection.\n\nwhen i use cadaver to mkcol a collection (creating a jcr node of type dav:collection) and then try to propset an arbitrary property on that collection (which as i understand it would set a jcr property of the same name on the dav:collection node), i get a 403 Forbidden error:\n\ndav:/home/> mkcol hi\nCreating `hi': succeeded.\n\ndav:/home/> propset hi hi hi\nSetting property on `hi': failed:\n403 Forbidden\n\nit's not clear to me if i'm using cadaver incorrectly, misunderstanding the PROPPATCH implementation, or both :) ",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "JCR-179",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "PROPPATCH in simple webdav server failing with 403 Forbidden error",
+    "systemSpecification": false,
+    "version": ""
+}

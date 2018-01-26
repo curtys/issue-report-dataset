@@ -1,0 +1,53 @@
+{
+    "comments": [
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Jon, could you please look into that?\n\nOleg",
+            "date": "2011-11-26T13:52:21.886+0000",
+            "id": 0
+        },
+        {
+            "author": "Joe Campbell",
+            "body": "This patch is provided with permission of my employer with rights granted to the asf.",
+            "date": "2011-11-27T01:04:56.428+0000",
+            "id": 1
+        },
+        {
+            "author": "Joe Campbell",
+            "body": "So the attached patch should take care of this problem.  The test has to be reworked a little bit - because right now it is doing external I/O (to get a URL resource) and some file based I/O (because of the directory configuration mentioned in this issue).  I believe that there has to be an easier way to test this issue.",
+            "date": "2011-11-27T01:06:46.199+0000",
+            "id": 2
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Patch checked in to both trunk and 4.1.x branch. Please test.\n\nJoe, many thanks for contributing the patch.\n\nOleg",
+            "date": "2011-12-02T14:18:01.445+0000",
+            "id": 3
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "I did a lousy job reviewing the patch. I missed the fact that the patch broke API compatibility by adding an additional method to the Resource interface. \n\nI backed out those changes as they seem to have no impact on the resolution of the original issue. The test case testing the fix still pass for me even without API breaking changes.\n\nOleg",
+            "date": "2012-02-02T11:15:58.028+0000",
+            "id": 4
+        },
+        {
+            "author": "Sebb",
+            "body": "Adding a method to an interface does not break binary compatibility; however it will in general be source incompatible (unless all 3rd party implementation are subclasses of a base implementation that is also updated).\n\nSee http://java.sun.com/docs/books/jls/second_edition/html/binaryComp.doc.html#45347",
+            "date": "2012-02-02T15:07:04.392+0000",
+            "id": 5
+        }
+    ],
+    "component": "HttpCache",
+    "description": "Set up HttpClient-Cache like this:\nfinal String cacheDir = \"cachedir\";\nHttpClient cachingHttpClient;\nfinal CacheConfig cacheConfig = new CacheConfig();\ncacheConfig.setSharedCache(false);\ncacheConfig.setMaxObjectSizeBytes(262144); //256kb\n\nif(! new File(cacheDir, \"httpclient-cache\").exists()){\n\tif(!new File(cacheDir, \"httpclient-cache\").mkdir()){\n\t\tthrow new RuntimeException(\"failed to create httpclient cache directory: \" + new File(cacheDir, \"httpclient-cache\").getAbsolutePath());\n\t}\n}\nfinal ResourceFactory resourceFactory = new FileResourceFactory(new File(cacheDir, \"httpclient-cache\"));\n\nfinal HttpCacheStorage httpCacheStorage = new ManagedHttpCacheStorage(cacheConfig);\n\ncachingHttpClient = new CachingHttpClient(client, resourceFactory, httpCacheStorage, cacheConfig);\n\nThen make a request:\nfinal HttpGet get = new HttpGet(url);\nfinal HttpResponse response = cachingHttpClient.execute(get);\nfinal StatusLine statusLine = response.getStatusLine();\nif (statusLine.getStatusCode() >= 300) {\n\tif(statusLine.getStatusCode() == 404)\n\t\tthrow new NoResultException();\n    throw new HttpResponseException(statusLine.getStatusCode(),\n            statusLine.getReasonPhrase());\n}\nresponse.getEntity().getContent();\n\nEverything worked as expected.\n\nNow delete the cache directory (\"cachedir/httpclient-cache\" in this example).\n\nAnd make the same request again.\n\nActual:\n Caused by: java.lang.IllegalStateException: Content has been consumed\n\tat org.apache.http.entity.BasicHttpEntity.getContent(BasicHttpEntity.java:84)\n\tat org.apache.http.conn.BasicManagedEntity.getContent(BasicManagedEntity.java:100)\n\nExpected:\nHttpClient shouldn't throw an exception - it should just perform the request again acting like a cache miss.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "HTTPCLIENT-1147",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "HTTPCLIENT",
+    "project": "HTTPCLIENT",
+    "summary": "When HttpClient-Cache cannot open cache file, should act like miss",
+    "systemSpecification": true,
+    "version": "4.2 Alpha1"
+}

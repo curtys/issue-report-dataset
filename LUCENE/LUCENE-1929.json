@@ -1,0 +1,125 @@
+{
+    "comments": [
+        {
+            "author": "Mark Miller",
+            "body": "So making NumericQuery Hilightable is not going to be so quick and easy - best first step is prob just make it be skipped, rather than throwing a NullPointer exception. Highlight support can come later.",
+            "date": "2009-09-27T16:52:41.232+0000",
+            "id": 0
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Does it throw a NPE for every \"unknown\" query type? Or is this because of it is a subclass of MTQ?",
+            "date": "2009-09-27T17:00:26.229+0000",
+            "id": 1
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "I read what stands in SOLR-1221: It calls MTQ.getTerm() which is deprecated. The getTerm() method is moved downto the sub classes, so MTQ.getTerm() will be removed in 3.0. Because of this there was no intention to implement it in NumericRQ.",
+            "date": "2009-09-27T17:02:16.732+0000",
+            "id": 2
+        },
+        {
+            "author": "Mark Miller",
+            "body": "Yeah - eventually (as in when getTerm() is removed), the Highlighter was going to have to deal with that anyway. Deprecated methods should still work though - so whether return null from getTerm is right or wrong, I dunno.\n\nBut thats the issue - except for TermRangeQuery, the Highlighter looks for the Field by calling getTerm and asking for the field - made the exception for TermRangeQuery, but not NumericRangeQuery - so it throw a nullpointer exception. Easy to sidestep in Lucene, more of a pain in Solr (as the plan is to release with 2.9.0)",
+            "date": "2009-09-27T17:08:13.982+0000",
+            "id": 3
+        },
+        {
+            "author": "Mark Miller",
+            "body": "bq. so whether return null from getTerm is right or wrong, I dunno.\n\nIn fact, its probably wrong - but at this point its a moot point.",
+            "date": "2009-09-27T17:20:36.089+0000",
+            "id": 4
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "bq. In fact, its probably wrong - but at this point its a moot point.\n\nIt can only return a \"pattern term\" if there is one. What is the pattern term for TermRangeQuery or NumericRangeQuery. Both return null and that is fine (and not a backwards break, as both classes are new in 2.9). That was exactly the discussion behind removing the getTerm() stuff from MTQ.\n\nSolr could maybe remove the NRQ from the highligter query.",
+            "date": "2009-09-27T17:36:28.275+0000",
+            "id": 5
+        },
+        {
+            "author": "Mark Miller",
+            "body": "I realize the difficulties - I wasn't blaming you for the problem - but it is/was a problem.\n\nWe deprecated getTerm() because of the problem (I think I did it? Don't remember though).\n\nHowever, unless it was documented to return null, just deprecating it doesn't really fix things. Code thats trying to use it on the base MultiTermQuery isn't going\nto be checking if its null unless its documented as such.\n\nI agree its screwed and it will be nice when its gone.\n\nLike I said, its a moot point. But I'll argue any point, moot or not ;)",
+            "date": "2009-09-27T17:41:11.323+0000",
+            "id": 6
+        },
+        {
+            "author": "Mark Miller",
+            "body": "bq. and not a backwards break, as both classes are new in 2.9\n\nI didn't claim its back compat break - but any method on a base class than can return null really needs to be documented as such. I should have caught that and done a better doc job on MulitTermQuery. I'm not claiming back compat issues, I'm claiming its wrong.\n\nOn a side note, its a bummer we seem to have lost the history on RangeQuery.",
+            "date": "2009-09-27T17:45:05.650+0000",
+            "id": 7
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "bq. On a side note, its a bummer we seem to have lost the history on RangeQuery.\n\nNo we didn't. As RangeQuery is just a wrapper and will be removed in 3.0, I renamed the old RangeQuery to the new TermRangeQuery (so the history is there) and created a new class RangeQuery for the BW compatibility. This is better than loosing the history in 3.0.",
+            "date": "2009-09-27T17:49:05.952+0000",
+            "id": 8
+        },
+        {
+            "author": "Mark Miller",
+            "body": "Ah, thanks - didn't catch that. Wondered how it could happen - looked weird. Faint memory of the whole thing returning though.",
+            "date": "2009-09-27T17:50:33.636+0000",
+            "id": 9
+        },
+        {
+            "author": "Mark Miller",
+            "body": "bq. I wasn't blaming you for the problem\n\nIn fact, now that I can see the history to remember, if you go back and look, I am completely to blame :)",
+            "date": "2009-09-27T17:54:49.517+0000",
+            "id": 10
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "Another option to fix Solr's highlighter is to fix this in lucene and release solr with 2.9.0, but an updated highlighter package. As it is contrib, that shouldn't be a problem?\n\nIn my opinion, the whole highlighter stuff should somehow be implemented without tons of instanceof checks (thats really wired). Maybe we extend Query by some highligther addons in future. I think we had an issue about that?",
+            "date": "2009-09-27T17:58:55.081+0000",
+            "id": 11
+        },
+        {
+            "author": "Mark Miller",
+            "body": "bq. Another option to fix Solr's highlighter is to fix this in lucene and release solr with 2.9.0, but an updated highlighter package. As it is contrib, that shouldn't be a problem?\n\nThats a good point and prob the way to go.\n\nbq. In my opinion, the whole highlighter stuff should somehow be implemented without tons of instanceof checks (thats really wired). Maybe we extend Query by some highligther addons in future. I think we had an issue about that?\n\nYes - would be wonderful to lose all of the instanceOf - its just kind of legacy - how its worked in the past. Getting away from it would be *fantastic*.",
+            "date": "2009-09-27T18:04:12.898+0000",
+            "id": 12
+        },
+        {
+            "author": "Mark Miller",
+            "body": "The 2.9.1 fix",
+            "date": "2009-10-04T17:48:26.133+0000",
+            "id": 13
+        },
+        {
+            "author": "Uwe Schindler",
+            "body": "This is fixed also in trunk, but different where MTQ.getTerm() is not available (LUCENE-1977)",
+            "date": "2009-10-13T14:10:49.674+0000",
+            "id": 14
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Mark is this one reading to go into 2.9.1?",
+            "date": "2009-10-19T17:26:33.497+0000",
+            "id": 15
+        },
+        {
+            "author": "Mark Miller",
+            "body": "Yeah - sorry - has been for some time. I can commit it shortly.",
+            "date": "2009-10-19T17:29:28.312+0000",
+            "id": 16
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Bulk close all 2.9.1 issues.",
+            "date": "2009-11-07T14:57:30.007+0000",
+            "id": 17
+        }
+    ],
+    "component": "modules/highlighter",
+    "description": "Sucks. Will throw a NullPointer exception. \n\nOnly NumericRangeQuery will throw the exception.\nRangeQuery just won't highlight.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-1929",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "Highlighter doesn't support NumericRangeQuery or deprecated RangeQuery",
+    "systemSpecification": true,
+    "version": "2.9"
+}

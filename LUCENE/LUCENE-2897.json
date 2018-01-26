@@ -1,0 +1,71 @@
+{
+    "comments": [
+        {
+            "author": "Michael McCandless",
+            "body": "Initial patch.\n\nThe approach is nice and simple ;)  All tests pass, but I put a bunch of nocommits in there, and I stopped short of the stuff I'll have to redo after committing ooo merges.",
+            "date": "2011-01-29T16:16:34.122+0000",
+            "id": 0
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "bq. I had to read this a few times, yes it's very elegant as we're skipping the postings that otherwise would be deleted immediately after flush, and we're reusing the terms map already in DWPT.\n\nWell... I think we can't [easily] skip writing the postings, because could result in non-deterministic behavior (I put a comment on this in the patch).\n\nIf we did the flush w/ 2 passes (first pass to mark all del docs and 2nd to flush) then we could skip writing postings of docs that were deleted.  But I suspect that's too much cost on flush.\n\nWith a single pass, we'd end up writing some postings for the doc, but not all, depending on the order in which its terms arrived vs its deleted terms.\n\nI mean, in practice, an app is gonna delete against ID field (typically) so if we \"knew\" that down deep here in Luceneland we could do the first pass only against that one field...\n\nAlso, merge is still going to have to apply del docs, since eg stored fields have written the deleted docs.",
+            "date": "2011-01-29T16:19:57.708+0000",
+            "id": 1
+        },
+        {
+            "author": "Jason Rutherglen",
+            "body": "bq. Well... I think we can't [easily] skip writing the postings, because could result in non-deterministic behavior (I put a comment on this in the patch).\n\nInstead we're building the deleted docs BV as we're flushing.",
+            "date": "2011-01-29T16:33:28.964+0000",
+            "id": 2
+        },
+        {
+            "author": "Michael Busch",
+            "body": "Yeah this is nice.  I was thinking we'd switch to live deletes with RT, because then we can also handle delete-by-query like this.\n\nSo the deleted queries we still have to buffer per DWPT, but this solves the updateDocument() problem.",
+            "date": "2011-01-29T16:40:47.569+0000",
+            "id": 3
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "bq. Instead we're building the deleted docs BV as we're flushing.\n\nRight, that's what the patch does.  Seems to work great :)\n\nbq. I was thinking we'd switch to live deletes with RT, because then we can also handle delete-by-query like this.\n\nRight, though for RT we need to apply the delete immediately (vs this patch which applies on flush).\n\nAnd delete-by-Query is still buffered...",
+            "date": "2011-01-29T17:17:15.975+0000",
+            "id": 4
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Patch -- I think it's ready to commit!",
+            "date": "2011-01-30T00:26:22.334+0000",
+            "id": 5
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "I think we can do this for 3.1.",
+            "date": "2011-02-03T15:26:01.469+0000",
+            "id": 6
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "I changed my mind!  Pushing this to 3.2 now.",
+            "date": "2011-02-04T12:05:25.616+0000",
+            "id": 7
+        },
+        {
+            "author": "Robert Muir",
+            "body": "Bulk closing for 3.2",
+            "date": "2011-06-03T16:37:12.755+0000",
+            "id": 8
+        }
+    ],
+    "component": "",
+    "description": "Spinoff from LUCENE-2324.\n\nWhen we flush deletes today, we keep them as buffered Term/Query/docIDs that need to be deleted.  But, for a newly flushed segment (ie fresh out of the DWPT), this is silly, because during flush we visit all terms and we know their docIDs.  So it's more efficient to apply the deletes (for this one segment) at that time.\n\nWe still must buffer deletes for all prior segments, but these deletes don't need to map to a docIDUpto anymore; ie we just need a Set.\n\nThis issue should wait until LUCENE-1076 is in since that issue cuts over buffered deletes to a transactional stream.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-2897",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Major",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "apply delete-by-Term and docID immediately to newly flushed segments",
+    "systemSpecification": true,
+    "version": ""
+}

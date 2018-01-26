@@ -1,0 +1,185 @@
+{
+    "comments": [
+        {
+            "author": "jeremi Joslin",
+            "body": "i have a problem with the versionning. I attach the code and the diff of class I modify. The code is not really clean right now.\n\nThe versionning is well done (i think), but I have a problem to access to the content of a version, it's not working. I try with Dav Explorer to download a version, but the file contain html :\n\n<html><head><title>Jackrabbit 1.0-dev /jcr:system/jcr:versionStorage/95/eb/1c/95\neb1c99-2545-4ce4-bdd6-219e5e488929/1.2</title></head><body><h2>/jcr:system/jcr:v\nersionStorage/95/eb/1c/95eb1c99-2545-4ce4-bdd6-219e5e488929/1.2</h2><ul><li><a h\nref=\"..\">..</a></li></ul><hr size=\"1\"><em>Powered by <a href=\"http://www.apache.\norg/\">Jackrabbit</a> version 1.0-dev</em></body></html>\n\n\nAnd with cadaver, i try to look the version report, and all the size are at 0. So maybe I do something wrong.\n\nI try to use the child node jcr:frozen instead of the version node, but it's the same problem.\n\nCan someone take a look at the code?\n\nThanks,\nJ\u00e9r\u00e9mi",
+            "date": "2006-04-06T11:52:21.000+0000",
+            "id": 0
+        },
+        {
+            "author": "angela",
+            "body": "copied from dev-list (conversation while jira was not accessible):\n\n>a)   access to the content of a version\n>>\n>>     i assume, that you are getting the 'dirlisting' export\n>>     for the version. probably it would be wise to create\n>>     a separate IOHandler for the versions.\n\ntrue, I just take a look, I get a DirListingExportHandler I will\ncreate one for the version.\n\n>> b)  i try to look the version report\n>>\n>>     maybe a bug in the report... i would start looking there.\n",
+            "date": "2006-04-12T01:40:49.000+0000",
+            "id": 1
+        },
+        {
+            "author": "angela",
+            "body": "while reviewing the patch i looked for reason the missing size in the version-report as well.\ni'd say this caused by again the missing handler for versions: the DirListingExportHandler  is lazy and does not calculate the resulting size.\n\nregarding the review: i' ll try to write down the findings (mostly minor improvements and things i think are not solved gracefully in the original code of the 'jcr-server') and will upload my suggestions in a separate patch as soon as i'm done and performed some minimal tests.\n\nsince i would like to take advantage of your patch to think about a better structure and how we can package things ('simple' is probably not an appropiate package name), i would suggest that to have this solved before we commit the extensions.\nhope that's fine.\n",
+            "date": "2006-04-12T18:02:04.000+0000",
+            "id": 2
+        },
+        {
+            "author": "jeremi Joslin",
+            "body": "> while reviewing the patch i looked for reason the missing size in the version-report as well.\n> i'd say this caused by again the missing handler for versions: the DirListingExportHandler is lazy and does not calculate the resulting size.\n:-) Ok\n\n\n\n> regarding the review: i' ll try to write down the findings (mostly minor improvements and things i think are not solved gracefully in the original\n> code of the 'jcr-server') and will upload my suggestions in a separate patch as soon as i'm done and performed some minimal tests.\n\n> since i would like to take advantage of your patch to think about a better structure and how we can package things ('simple' is probably not an\n> appropiate package name), i would suggest that to have this solved before we commit the extensions.\n> hope that's fine. \nSure. what kind of changes you want to do? \nSimple, yes, it will not be a good name, with the acl, dav...\n\nHow can I help you?\nI was not here at the beginning of the week, but i will finish the IOhandler for the version maybe tomorrow.",
+            "date": "2006-04-13T15:06:03.000+0000",
+            "id": 3
+        },
+        {
+            "author": "jeremi Joslin",
+            "body": "hi Angela,\nthis is my patch for this task. it replace the previous one.\n\nCan you take a look?",
+            "date": "2006-04-19T17:57:03.000+0000",
+            "id": 4
+        },
+        {
+            "author": "angela",
+            "body": "hi jeremi\n\nthanks for the second patch.\nplease find attached some remarks related to the patch. since i only applied the first one so far, there might be some issues that are already fixed. i realized that you improved the resource-factory and remove the commented code). generally, most of  the things i would change are actually copied from the 'jcr' package... :))\n\nkind regards\nangela",
+            "date": "2006-04-24T22:56:15.000+0000",
+            "id": 5
+        },
+        {
+            "author": "jeremi Joslin",
+            "body": "Hi,\nthanks for all your comments. I will fix everything. I'm going on holidays on friday for 2 or 3 weeks, and have things to do before, so i'm not sure to have time to fix it before leaving. If not i will do it when i will be back.\n\nYes some are fixed in the new patch, but it steel needs a lot of works.\n\nThanks,\nJ\u00e9r\u00e9mi",
+            "date": "2006-04-25T10:35:41.000+0000",
+            "id": 6
+        },
+        {
+            "author": "jeremi Joslin",
+            "body": "Hi,\ni've started again to work on the deltav.\nSome things I don't understand in your comments :\nResourceFactoryImpl:\n-------------------------------------------------------------------------------\n>- createResource(DavResourceLocator, DavServletRequest request, DavServletResponse)\n> always builds a DavResourceImpl. However it should be\n>  possible to access a Version, VersionHistory as resource\n>  from a request -> missing impl.\n>  Note that DavResourceFactory#createResource(DavResourceLocator, DavSession)\n>  is mainly used from within the resources to build the collection\n>  and members.\n\n  I don't think so because i call createResource(DavResourceLocator locator, DavSession session) after.\n\n\nDeltaVResourceImpl\n-------------------------------------------------------------------------------                        \n\n>- addHrefProperty(DavPropertyName, Node[], boolean)\n> > i think, it would be better to replace this by \n>    'getHrefProperty(DavPropertyName, Node[], boolean)' which returns\n>    the property instead of adding it directely to the prop-set.\n>    \n>  > there seems to be an error while building the href.\n>    it's a speciality of the original code, that Nodes are\n>    represented as collections and javax.jcr.Property objects aren't.\n>    in the 'simple' server this is different -> needs to check if the\n>    given node represents a collection or not.\n\nI don't understand what you want i do.\n\n\nVersionControlledResourceImpl\n-------------------------------------------------------------------------------                       \n\n> - getVersionHistory:\n>   added check if factory really created a vh-resource\nWhy we don't trust the factory?\n\nThanks,\nJ\u00e9r\u00e9mi",
+            "date": "2006-06-17T10:31:07.000+0000",
+            "id": 7
+        },
+        {
+            "author": "angela",
+            "body": "regarding your questions:\n\na) the factory should take care of building the proper resource instances.\n     thus: version, versionhistory specific object if the request points to such\n    a resource.\n\nb) instead of 'addHrefProperty' i would create a method that simply builds\n     such an HrefProperty. adding it to the property-set would be left to\n     the caller.\n\nc) you have an error in the code while building the href.\n    you only copied the code from the jcr-server without understanding that the\n    simple server works differently.\n    in jcr-server a jcr-node represents a webdav collection, which does not apply\n    to the simple server.\n\nd) the factory is an interface that returns 'DavResource' upon a call to the create\n    methods. since its an interface one could replace it by a different   \n    implementation.\n\nhope that helps.",
+            "date": "2006-06-19T18:27:59.000+0000",
+            "id": 8
+        },
+        {
+            "author": "Ed Burnette",
+            "body": "What's the status of this patch?",
+            "date": "2007-05-29T22:27:24.814+0000",
+            "id": 9
+        },
+        {
+            "author": "angela",
+            "body": "i reviewed the second patch jeremi uploaded and had a couple of comments. as far as i know there is no additional patch available that would address those issues.\n\nregards\nangela",
+            "date": "2007-05-30T06:45:07.048+0000",
+            "id": 10
+        },
+        {
+            "author": "jeremi Joslin",
+            "body": "no sorry i haven't updated the patch.",
+            "date": "2007-05-30T15:27:37.780+0000",
+            "id": 11
+        },
+        {
+            "author": "Rob Owen",
+            "body": "Updated patch attached which hopefully addresses all Angela's comments.",
+            "date": "2007-07-16T14:23:29.777+0000",
+            "id": 12
+        },
+        {
+            "author": "angela",
+            "body": "thanks for the contrib. i will take a look at it as soon as possible.\nkind regards\nangela",
+            "date": "2007-07-17T08:06:07.839+0000",
+            "id": 13
+        },
+        {
+            "author": "angela",
+            "body": "rob, how did you create the patch? i don't manage to apply it using tortoiseSVN...",
+            "date": "2007-07-17T08:45:22.813+0000",
+            "id": 14
+        },
+        {
+            "author": "Ed Burnette",
+            "body": "(Rob and I work together) I believe he created it with Eclipse Team > Create Patch, in unified diff format. I was able to apply it with Eclipse by telling it to ignore one or two of the initial path components.\n\nIf you need it in some other format let us know.\n",
+            "date": "2007-07-17T12:08:02.690+0000",
+            "id": 15
+        },
+        {
+            "author": "angela",
+            "body": "hm... i don't use eclipse... can you simply create it from svn?\nthanks angela",
+            "date": "2007-07-17T12:55:46.433+0000",
+            "id": 16
+        },
+        {
+            "author": "Bertrand Delacretaz",
+            "body": "The patch has some extra path components that must be ignored, this works for me:\n\n  cd jackrabbit-jcr-server\n  curl -s https://issues.apache.org/jira/secure/attachment/12361904/patch_16JUL07.txt | patch -p4\n\nThere's probably an option in tortoiseSVN to ignore a given number of path components\n\n",
+            "date": "2007-07-17T13:01:40.845+0000",
+            "id": 17
+        },
+        {
+            "author": "angela",
+            "body": "? bertrand? what do you want to state here????\n\ni already stated in the issue in which format i expect the patch. that should be sufficient.",
+            "date": "2007-07-17T13:10:56.172+0000",
+            "id": 18
+        },
+        {
+            "author": "Rob Owen",
+            "body": "Patch created using svn diff (+new files) in zip file",
+            "date": "2007-07-17T13:20:23.889+0000",
+            "id": 19
+        },
+        {
+            "author": "Bertrand Delacretaz",
+            "body": "I'm just saying that the patch is indeed in SVN format, the only slight problem is that the pathnames are not relative to the jackrabbit root, for example:\n\n--- C:/jprojects/eclipse/version_patch/src/main/java/org/apache/jackrabbit/server/io/DefaultIOManager.java\t(revision 556115)\n+++ C:/jprojects/eclipse/version_patch/src/main/java/org/apache/jackrabbit/server/io/DefaultIOManager.java\t(working copy)\n\nwhich should ideally be \n\n  jackrabbit-jcr-server/src/main/java/org/apache/jackrabbit/server/io/DefaultIOManager.java\n\nThis happens frequently depending on people's environments, and SVN clients (I assume tortoise does this as well) have an option to ignore a certain number of path elements when appliying patches.\n\nSo in my example, \"patch -p4\" means \"ignore C:/jprojects/eclipse/version_patch from the pathnames in the patch\".\n\nBut apart from that the patch is IMHO fine.\n",
+            "date": "2007-07-17T13:29:44.775+0000",
+            "id": 20
+        },
+        {
+            "author": "angela",
+            "body": "rob, thanks for the new patch. i commit the changes or provide feedback in case of a problem latest by end of this week.\nkind regards\nangela",
+            "date": "2007-07-17T13:41:41.615+0000",
+            "id": 21
+        },
+        {
+            "author": "angela",
+            "body": "so... had a look at the changes and i found the following things. i already started modifying the patch a bit, so there is no need for a new one. just for the record:\n\n- DeltaVResourceImpl: compliance class should from my point of view also mention the Label feature\n- VersionableResourceImpl: the supported method set lists MERGE, UPDATE although the implementation is\n  missing\n- VersionableResourceImpl: the DAV:predecessor-set property is missing \n- if upon retrieving version-history and version the returned resource does not implement the proper interface\n  i would rather throw than returning null.\n- DavResourceFactoryImpl: since the simple server should work on top of any JCR repository i added a check\n  if versioning is supported by the repository and act accordingly.\n\nall new resources extending from DavResourceImpl:\n- the DavResourceImpl checks if the properties have been initialized before. this check is missing.\n\nSince the time jeremi originally copied code from the jcr-server the simple server has been modified (see JCR-416): no exporting custom properties is delegated to the PropertyHandler. However, from my point of view\nit doesn't make sense to additionally export all the specific properties defined by nt:version and nt:versionhistory\nand mix:versionable. most of them are already covered by predefined DAV properties. Therefore:\n\n- VersionHandler should implements its own exportProperties method.\n- perhaps it makes sense to define a VersionHistoryHandler. otherwise they would be exported/imported by\n  the DefaultHandler which probably doesn't make to much sense.\n- the DefaultHandler should skip the version specific properties.\n\nin addition:\n- the VersionHandler assumes that the nt:frozenNode contains a jcr:content node. That might be the case\n  if nt:file nodes are put under version control. But since there might be other versionable nodes in the repository\n  the handler should at least check if the jcr:content node exists.\n\nso far my changes. i would like to test them (and maybe find others), then provide another patch, so you can \nalso verify that the changes still fit your needs before they get commited.\n\none thing i didn't have time to look at (maybe rob or ed?):\nthe DavResourceImpl uses the configuration to determine which items should be filtered out and should\nnot appear in the webdav-view to the repository. by default the 'jcr' prefix is filtered. i wondered whether this could cause inconsistencies with the planned changes.\n\nfinally, there is yet another thing that has not been taken into consideration by none of the patches so\nfar (and for which i don't have a quick solution at hand):\n\nRFC 3253 defines a separate behaviour for version-controlled collections. However the current approach \ndoes not take into account whether a resource represents a collection or not. As soon as the corresponding\nrepository node is of type mix:versionable the resource is exposed to be versionable as well. If we want\nto make the simple server to be compliant to RFC 3253 this should be addressed. \n\ni wouldn't mind if this would be done in a second step, but we should take a look at it.\n\nregards\nangela",
+            "date": "2007-07-18T10:24:47.922+0000",
+            "id": 22
+        },
+        {
+            "author": "angela",
+            "body": "i will attach my patch, where i (hopefully) integrated all comments (see jira). during\nsome quick testing in found a couple of additional things:\n\n- compliance class: version-history was missing as well\n- DAV:predecessor-set missing with checked-out vc-resource\n- in response to the discussion with julian i disabled \n  the version-control feature for collections.\n  -> versions are always non-collection resources\n  -> versions never expose any member resources\n  -> isCollection() always returns false\n  -> the locator for versions has to be build accordingly\n  -> collections may never put under DAV version control.\n- VersionResources are read-only -> override addMember, removeMember and all methods related \n  to PROPPATCH.\n- VersionHistoryResource are read-only except for remove of versions (i'm not sure, whether this is \n  allowed with deltaV. it is optional in JCR).\n- VersionHistoryResource did only specify version-history resource type. it should\n  also include 'collection'.\n- there were some more comments that were copied from jcr-server without making sense in the new context.\n- VersionHandler: i change the behaviour in order not to export all jcr properties present with the content-node \n  such as the DefaultHandler does.\n\n\n\n",
+            "date": "2007-07-19T13:59:27.532+0000",
+            "id": 23
+        },
+        {
+            "author": "angela",
+            "body": "patch addressing my additional comments.\nrob/ed, can you check if everything still works as you expect it?\n\nunless someone finds a problem i will commit the patch by Tuesday next week.\nkind regards\nangela",
+            "date": "2007-07-19T14:03:35.168+0000",
+            "id": 24
+        },
+        {
+            "author": "Ed Burnette",
+            "body": "I did a smoke test on it and it seems to work for me.",
+            "date": "2007-07-19T17:11:51.972+0000",
+            "id": 25
+        },
+        {
+            "author": "angela",
+            "body": "committed changes with rev. 559335  \n",
+            "date": "2007-07-25T06:46:59.261+0000",
+            "id": 26
+        },
+        {
+            "author": "Ed Burnette",
+            "body": "Thanks!",
+            "date": "2007-07-25T12:06:18.680+0000",
+            "id": 27
+        }
+    ],
+    "component": "jackrabbit-webdav",
+    "description": "http://www.ietf.org/rfc/rfc3253.txt",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "JCR-388",
+    "issuetypeClassified": "RFE",
+    "issuetypeTracker": "RFE",
+    "priority": "Minor",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "add support for RFC 3253 to the simple server",
+    "systemSpecification": true,
+    "version": ""
+}

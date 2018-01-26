@@ -1,0 +1,77 @@
+{
+    "comments": [
+        {
+            "author": "pcbeard@mac.com",
+            "body": "Created attachment 191627\nPatch to Main.java to execute compiled script .class files.",
+            "date": "20050804T21:33:38",
+            "id": 0
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "(In reply to comment #1)\n> Created an attachment (id=191627) [edit]\n> Patch to Main.java to execute compiled script .class files.\n> \n\n3 problems:\n\n1. The patch ignore requested security restrictions: Use\nSecurityController.createLoader(cx.getApplicationClassLoader(), securityDomain),\nnot new DefiningClassLoader()!\n\n2. The does not report errors properly. That has to be done in the same way as\nevaluateScript does. \n\n3. The patch does not handle urls which shell allows to use for scripts.",
+            "date": "20050805T10:01:28",
+            "id": 1
+        },
+        {
+            "author": "pcbeard@mac.com",
+            "body": "Created attachment 191748\nPatch to Main.java to execute compiled script .class files. v2\n\nUpdated the patch to address your requirements. Added a new method,\nevaluateCompiledScript(), which maps errors in a similar way to\nevaluateScript(), and also supports URLs. We might want to revisit\nprocessFileSecure() to always map filenames to URLs, rather than going through\na code path that almost always generates a MalformedURLException.",
+            "date": "20050805T22:25:34",
+            "id": 2
+        },
+        {
+            "author": "pcbeard@mac.com",
+            "body": "Created attachment 191750\nPatch to Main.java to execute compiled script .class files. v3\n\nThis version correctly computes the name of the class using the leaf name of\nthe URL path.",
+            "date": "20050805T22:44:24",
+            "id": 3
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 191875\nPatch version with uniform treatment of file/url guessing\n\nI changed the patch to treat file-or-url arguments uniformly both for *.js and\n.class. The new version assumes that the argument is URL if it includes ':' or\nfilename if it does not.",
+            "date": "20050807T10:13:14",
+            "id": 4
+        },
+        {
+            "author": "pcbeard@mac.com",
+            "body": "My only concern was that on DOS/Windows, absolute path names will always include a ':' character, and \nwill thus take the exception when failing to convert to a URL...",
+            "date": "20050807T14:55:30",
+            "id": 5
+        },
+        {
+            "author": "pcbeard@mac.com",
+            "body": "Perhaps ensuring that there's at least 2 or more characters in the string in front of the ':' character would \nbe better. Or comparing against a list of known URL schemes. What was wrong with my approach of \nassuming path, then validating with File.exists()?",
+            "date": "20050807T22:12:00",
+            "id": 6
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "(In reply to comment #7)\n> Perhaps ensuring that there's at least 2 or more characters in the string in\nfront of the ':' character would \n> be better.\n\nRight, I forgot about Windows paths. It is enough to assume that protocol should\nbe at least 2 chars IMO as with one-letter protocols c:yyy would be inherently\nambiguous.\n\n> What was wrong with my approach of \n> assuming path, then validating with File.exists()?\n\nWhen security manager prevents accessing file system calling File.exist would\nthrough sn exception even if the URL can be accessed.\n",
+            "date": "20050814T14:21:08",
+            "id": 7
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 192672\nWindows paths are paths and execution cleanup.\n\n1. The patch assume that path is URL if protocol is at least 2 letter long.\n\n2. The patch uses shared code to read both source and compiled scripts and for\nscript execution using explicit Context.compileString to get Script from the\nsource.",
+            "date": "20050814T14:32:12",
+            "id": 8
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "I committed the last patch. It would be nice to extend it to extract script\nclass name from the bytecode itself to allow package names in the compiled\nscripts and to detected class/source based on the file context, not name, but\nthat is for a separated bug.",
+            "date": "20050814T14:38:52",
+            "id": 9
+        }
+    ],
+    "component": "Core",
+    "description": "User-Agent:       Mozilla/5.0 (Macintosh; U; PPC Mac OS X; en) AppleWebKit/412.6 (KHTML, like Gecko) Safari/412.2\nBuild Identifier: \n\nRhino provides an ahead of time compiler that creates a .class file that encapsulates a compiled \nJavaScript. Currently the only EASY way to run these directly from the command line is like this:\n\njsc script.js\njava script\n\nIt would be nice to be able to load multiple scripts into the same shell like this:\n\njsc script1.js script2.js script3.js\njs script1.class script2.class script3.class\n\nThis would let you use a mixture of interpreted and compiled scripts.\n\nReproducible: Always\n\nSteps to Reproduce:",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "303460",
+    "issuetypeClassified": "RFE",
+    "issuetypeTracker": "BUG",
+    "priority": "-- normal",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "Enhance Rhino's shell to execute compiled script .class files from command line",
+    "systemSpecification": false,
+    "version": "other"
+}

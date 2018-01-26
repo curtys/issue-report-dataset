@@ -1,0 +1,53 @@
+{
+    "comments": [
+        {
+            "author": "pschwartau@meer.net",
+            "body": "cc'ing Igor -",
+            "date": "20030626T01:07:23",
+            "id": 0
+        },
+        {
+            "author": "briang@tonic.com",
+            "body": "My code changes for TokenStream.java are:\n\n    public final int peekTokenSameLine() throws IOException {\n        flags |= TSF_NEWLINES;          // SCAN_NEWLINES from jsscan.h\n        int result = getToken();\n        this.pushbackToken = result;    // BG: Removed check for EOL\n        tokenno--;\n        flags &= ~TSF_NEWLINES;         // HIDE_NEWLINES from jsscan.h\n        return result;\n    }\n\nand\n\n   public final int getToken() throws IOException {\n        int c;\n        tokenno++;\n\n        // Check for pushed-back token\n        if (this.pushbackToken != EOF) {\n            // If this isn't an EOL or it's an EOL and we are tokenizing EOL,\nreturn it.  Otherwise\n            // fall through.\n            if (this.pushbackToken != EOL || (this.pushbackToken == EOL &&\n(flags & TSF_NEWLINES) != 0)) {\n                int result = this.pushbackToken;\n                this.pushbackToken = EOF;\n                return result;\n            }\n        }\n        ....\n",
+            "date": "20030627T14:29:37",
+            "id": 1
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Created attachment 126720\nfix as a patch\n\nIn the patch I made sure that pushbackToken is always set to EOF after its\nvalue is consumed even if it would contain EOL pushed there by\npeekTokenSameLine.",
+            "date": "20030629T22:28:24",
+            "id": 2
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "I committed the patch",
+            "date": "20030630T19:19:05",
+            "id": 3
+        },
+        {
+            "author": "pschwartau@meer.net",
+            "body": "Testcase added to JS testsuite:\n\n      mozilla/js/tests/js1_5/Regress/regress-210682.js",
+            "date": "20030702T23:45:53",
+            "id": 4
+        },
+        {
+            "author": "igor@mir2.org",
+            "body": "Targeting as resolved against 1.5R5",
+            "date": "20040213T11:41:56",
+            "id": 5
+        }
+    ],
+    "component": "Core",
+    "description": "User-Agent:       Mozilla/5.0 (Windows; U; Windows NT 5.0; en-US; rv:1.4) Gecko/20030529\nBuild Identifier: Mozilla/5.0 (Windows; U; Windows NT 5.0; en-US; rv:1.4) Gecko/20030529\n\nif you have the following code snippet:\n\nfor (i = 0; i < 100; i++) {\n   if (i % 2 == 0) continue\n   this.lasti = i;\n}\n\nyou get the following error: \"SyntaxError: missing ; before statement\"\n\n\nReproducible: Always\n\nSteps to Reproduce:\n1.\n2.\n3.\n\n\n\nExpected Results:  \nIt above code example is valid JS syntax.  The problem lies in TokenStream. \nWhen the continue keyword is processed, Rhino checks for the optional label. \nSince there isn't one, it pushes back the EOL token.  However,\nTokenStream.peekTokenSameLine changes the token from EOL to EOF when it pushes\nback the token (member variable pushbackToken).  Finally, when Rhino calls\ncheckWellTerminated, the TokenStream sees the EOF, continues processing the\nstream and 'forgets' it saw an EOL.\n\nI fixed this by not converting the EOL to EOF in\nTokenStream.peekTokenSameLine().  TokenStream.getToken() then checks if the\npushbackToken was EOL, and if so, validates for the TSF_NEWLINES flag.  If that\nis set, it returns the EOL, otherwise it drops through and continues processing\nthe stream.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "210682",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "-- normal",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "if a line ends with 'continue' and is only terminated by a CR causes a 'SyntaxError: missing ; before statement'",
+    "systemSpecification": true,
+    "version": "other"
+}

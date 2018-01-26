@@ -1,0 +1,113 @@
+{
+    "comments": [
+        {
+            "author": "matthieu.riou@gmail.com",
+            "body": "Created attachment 299377\nAdds defineGSetter functionality to array indexes\n\nLet me know if there's anything wrong with the patch. I haven't found any problem after some testing but I'm not 100% familiar with the Rhino codebase yet.",
+            "date": "20080126T06:03:36",
+            "id": 0
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "(In reply to comment #1)\n> Created an attachment (id=299377) [details]\n> Adds defineGSetter functionality to array indexes\n> \n> Let me know if there's anything wrong with the patch. I haven't found any\n> problem after some testing but I'm not 100% familiar with the Rhino codebase\n> yet.\n> \n\nThere are a set of optimizations I put in a couple of months ago for direct access to a dense representation of an array by many Array \"methods\". Look at js_reverse for a simple example. Note that if \"denseOnly\" is set, the method assumes that it can operate only against a Object[], resulting in huge speedups. \n\nI tried calling reverse on an array with a getter:\n\njs> a = [1,2,3]\n1,2,3\njs> a.reverse()\n3,2,1\njs> a\n3,2,1\njs> a.__defineGetter__(1, function() { print(\"masked!\"); });\njs> a[1]\nmasked!\njs> a.reverse()\nException in thread \"main\" java.lang.IllegalStateException\n        at org.mozilla.javascript.ScriptRuntime.getTopCallScope(ScriptRuntime.java:2968)\n...\n\nI didn't try to track down the cause of the exception. I think it makes sense to set \"denseOnly\" to false if a getter or setter is defined on the array, causing Rhino to drop back to using getters and setters for access to all array values.\n\n",
+            "date": "20080128T14:56:13",
+            "id": 1
+        },
+        {
+            "author": "matthieu.riou@gmail.com",
+            "body": "Sorry for the late reply, I haven't received any notification from Bugzilla so I saw your comment only recently.\n\nFirst, I've tried to set denseOnly to false as soon as __defineGetter__ or __defineSetter__ was called but that didn't fix the error. But it did improve the situation (more on that later).\n\nThe error is caused by a bug in ScriptableObject on line 1982 and 2065 where a call to the topCallScope is made where, I think, the function parent scope should be used. Like this:\n\n  Function f = (Function)getterObj;\n  Context cx = Context.getContext();\n  return f.call(cx, f.getParentScope(), start, \n                ScriptRuntime.emptyArgs);\n\nWith this modification, the error doesn't occur anymore and everything looks fine.\n\nHowever after more testing functions like pop() started behaving strangely, with the underlying property value being used instead of the getter value. Like this:\n\njs> a=[1,2,3];\njs> a.__defineGetter__(1, function() { return 55; });\njs> a.pop()\n3\njs> a.pop()\n2\n\nThe last pop should logically have returned 55. But setting denseOnly to false when __define[GS]etter__ in the way you mentioned fixed this.\n\nSo with these two additional fixes I've been able to run sessions like the following:\n\njs> a=[1,2,3];\n1,2,3\njs> var foo = 44;\njs> a.__defineGetter__(1, function() { return foo + 10; });\njs> a\n1,54,3\njs> a.reverse();\n3,54,1\njs> a.forEach(function(e) { print(e); });\n3\n54\n1\njs> a.join(' - ');\n3 - 54 - 1\njs> a.sort();\n1,54,54\njs> a[2]=3;\n3\njs> a\n1,54,3\njs> a.pop();\n3\njs> a.pop();\n54\n\nThe result to sort() can seem strange at first but it's actually logic and consistent with what SM produces.\n\nI'm going to attach the new patch to this issue. Let me know if you notice any other problem.\n\nThanks!",
+            "date": "20080202T06:40:04",
+            "id": 2
+        },
+        {
+            "author": "matthieu.riou@gmail.com",
+            "body": "Created attachment 300984\nSupport for __define[GS]etter__ on array (take 2)\n\nAdds a fix on the context used to call a getter/setter function and sets denseOnly to false.",
+            "date": "20080202T06:45:23",
+            "id": 3
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "Created attachment 301533\nregress-414098.js\n\nProposed test case",
+            "date": "20080205T18:29:10",
+            "id": 4
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "Created attachment 301535\nregress-414098.js\n\nOops, here's the correct version of the file",
+            "date": "20080205T18:35:25",
+            "id": 5
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "Bob, can you review the regression test?",
+            "date": "20080205T18:36:33",
+            "id": 6
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "Fixed in both cvs trunk and 1.7R1 branch.",
+            "date": "20080205T18:41:54",
+            "id": 7
+        },
+        {
+            "author": "bob@bclary.com",
+            "body": "Comment on attachment 301535\nregress-414098.js\n\nr+, please put in js1_6/extensions/ since it uses __defineGetter__\n\nThanks!",
+            "date": "20080205T18:45:42",
+            "id": 8
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "Test committed, thanks!",
+            "date": "20080205T18:53:30",
+            "id": 9
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "Matthieu, I added some additional checks on !denseOnly before calling isGetterOrSetter because I was worried about performance impact. Can you take a look at what's in CVS to see if it looks good? It passes the test case I created based on this bug.",
+            "date": "20080205T22:11:56",
+            "id": 10
+        },
+        {
+            "author": "matthieu.riou@gmail.com",
+            "body": "The changes look good. I actually hesitated adding the condition but thought you'd have a better idea of the balance you're looking for in terms of performance.\n\nThanks!",
+            "date": "20080206T01:08:17",
+            "id": 11
+        },
+        {
+            "author": "bob@bclary.com",
+            "body": "Created attachment 362051\nchanges to s1_5/extensions/regress-452178.js, s1_6/extensions/regress-414098.js\n\nNorris: bug 478047 is changing the behavior on Spidermonkey when trying to set a property that only has a getter defined. This is the change to the affected tests to match the new behavior. How would you like to deal with this? File a bug on Rhino or special case Rhino?",
+            "date": "20090212T19:33:22",
+            "id": 12
+        },
+        {
+            "author": "norrisboyd@gmail.com",
+            "body": "Bug 478047 was actually filed as a result of work I've been doing on Rhino, so Rhino already has been changed to match the new behavior from bug 478047. No need to do anything additionally on your side.\n\nWhen I ran the tests against it I did get a failure on js1_5/extensions/regress-341956-01.js. Did you not get a failure on that test?",
+            "date": "20090212T19:45:10",
+            "id": 13
+        },
+        {
+            "author": "bob@bclary.com",
+            "body": "No, I didn't. Was the failure you saw on the unshift? It might be related to the lack of failure with pop in Spidermonkey as well. Blake?",
+            "date": "20090212T20:47:37",
+            "id": 14
+        },
+        {
+            "author": "mrbkap@mozilla.com",
+            "body": "(In reply to comment #15)\n> No, I didn't. Was the failure you saw on the unshift? It might be related to\n> the lack of failure with pop in Spidermonkey as well. Blake?\n\npop doesn't fail because it uses 'delete' to delete elements, it doesn't set them.",
+            "date": "20090212T23:15:22",
+            "id": 15
+        }
+    ],
+    "component": "Core",
+    "description": "User-Agent:       Mozilla/5.0 (X11; U; Linux i686; en-US; rv:1.9a8) Gecko/2007100620 GranParadiso/3.0a8\nBuild Identifier: rhino1_7R1\n\nAs discussed on the Rhino mailing-list with Norris Boyd:\n\nOn Jan 25, 10:02 am, Norris Boyd <norrisb...@gmail.com> wrote:\n> On Jan 25, 12:34 am, Matthieu Riou <matthieu.r...@gmail.com> wrote:\n> \n> > Rhino supports the __define[GS]etter__ as in SpiderMonkey, which is\n> > great! However, it doesn't work on arrays (even though it does work on\n> > SM):\n> \n> > js> a = [1,2,3]\n> > js> a.__defineGetter__(1, function() { print(\"masked!\"); });\n> > js> a[1]\n> > 2\n> \n> > This is somewhat understandable as arrays indexing has a few more\n> > specificities when compared to regular properties. However I think\n> > this is still an interesting feature.\n> \n> Agreed. If SpiderMonkey implements it, then Rhino not implementing it\n> was just an oversight.\n\nPatch to come as an attachment.\n\nReproducible: Always\n\nSteps to Reproduce:\n1.\n2.\n3.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "414098",
+    "issuetypeClassified": "RFE",
+    "issuetypeTracker": "BUG",
+    "priority": "-- normal",
+    "product": "Rhino",
+    "project": "RHINO",
+    "summary": "[PATCH] Support for __define[GS]etter__ on array indexes",
+    "systemSpecification": true,
+    "version": "other"
+}

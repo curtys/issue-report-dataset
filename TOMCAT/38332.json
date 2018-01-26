@@ -1,0 +1,53 @@
+{
+    "comments": [
+        {
+            "author": null,
+            "body": "Are you sure you were using the AJP connector class?  Looking at the current\ncode (which may have changed since you reported this issue), backlog is the\nright parameter, acceptCount is outdated, so the documentation seems OK.",
+            "date": "20061224T18:03:44",
+            "id": 0
+        },
+        {
+            "author": null,
+            "body": "I have the same problem with Tomcat 5.5.20.\n\nIt looks like the JK handler ignores both backlog and acceptCount parameters, \nand always uses the default value (50) for the socket listen queue size:\n\n<Connector address=\"10.225.96.83\" port=\"11001\"\n           maxThreads=\"800\" minSpareThreads=\"10\" maxSpareThreads=\"100\" \n           connectionTimeout=\"30000\" backlog=\"100\" acceptCount=\"100\" \n           enableLookups=\"false\" redirectPort=\"8443\" protocol=\"AJP/1.3\" />\n\nstrace:\nsocket(PF_INET6, SOCK_STREAM, IPPROTO_IP) = 29\nbind(29, {sa_family=AF_INET6, sin6_port=htons(11001), inet_pton\n(AF_INET6, \"::ffff:10.225.96.83\", &sin6_addr), sin6_flowinfo=0, \nsin6_scope_id=0}, 28) = 0\nlisten(29, 50)                          = 0\n\n\nThe HTTP handler uses acceptCount value, as expected:\n\n<Connector address=\"10.225.96.83\" port=\"11000\" maxHttpHeaderSize=\"8192\"\n           maxThreads=\"800\" minSpareThreads=\"10\" maxSpareThreads=\"100\"\n           connectionTimeout=\"30000\" acceptCount=\"100\"\n           enableLookups=\"false\" redirectPort=\"8443\" \ndisableUploadTimeout=\"true\" />\n\nstrace:\nsocket(PF_INET6, SOCK_STREAM, IPPROTO_IP) = 10\nbind(10, {sa_family=AF_INET6, sin6_port=htons(11000), inet_pton\n(AF_INET6, \"::ffff:10.225.96.83\", &sin6_addr), sin6_flowinfo=0, \nsin6_scope_id=0}, 28) = 0\nlisten(10, 100)                         = 0\n",
+            "date": "20061229T13:13:55",
+            "id": 1
+        },
+        {
+            "author": null,
+            "body": "\"acceptCount\" will be replaced with \"backlog\" by \norg.apache.catalina.connector.Connector class. Those attributes are same.\n\n(In reply to comment #2)\n> I have the same problem with Tomcat 5.5.20.\n> \n> It looks like the JK handler ignores both backlog and acceptCount parameters, \n> and always uses the default value (50) for the socket listen queue size:\n\nI have confirmed this behavior. It is org.apache.jk.common.ChannelSocket\nclass, a part of Pure Java (Non-APR) AJP Connector.\nThe class has empty setBacklog(int i) method and always uses 0 for \nServerSocket backlog (0 means to use OS default value).",
+            "date": "20070105T00:22:04",
+            "id": 2
+        },
+        {
+            "author": null,
+            "body": "Created attachment 19365\nPatch against svn tomcat/connectors/trunk",
+            "date": "20070105T00:24:47",
+            "id": 3
+        },
+        {
+            "author": null,
+            "body": "Those documents say the default value of backlog (acceptCount) is 10, but\nthe actual default value is 100(see *Endpoint.java). \nI think it seems documentation errors. If 100 is correct value, please \ndon't forget to change the default backlog value included my patch.\n\nhttp://tomcat.apache.org/tomcat-5.5-doc/config/ajp.html\nhttp://tomcat.apache.org/tomcat-5.5-doc/config/http.html\n",
+            "date": "20070105T00:36:31",
+            "id": 4
+        },
+        {
+            "author": null,
+            "body": "Done - Committed revision 493480.\n\nMany thanks\nPeter",
+            "date": "20070106T06:39:07",
+            "id": 5
+        }
+    ],
+    "component": "Connector:AJP",
+    "description": "In configuring my AJP13 connector between Tomcat 5.5.9 and Apache2 (on Red Hat \nEnterprise 3 with Java 1.5) I am finding that the attribute named \"backlog\" \nseems to have no affect, while the attribute named \"acceptCount\" does.\n\nIn my original load/configuration testing for deployment I had copied existing \nConnector configuration in the server.xml file from other defined Connectors.  \nThese use the \"acceptCount\" attribute name to manipulate the size of the \npending request queue size.  However, the documentation for this same \nconfiguation specifies the use of \"backlog\", which does not appear to have an \neffect on performance.\n\nI have inquired the users group about this topic, but have had no reply.  \nSince I am seeing a performance change using \"acceptCount\", I can only assume \nat this time that the documentation is in error.\n\nSee http://tomcat.apache.org/tomcat-5.5-doc/config/ajp.html",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "38332",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "P2 normal",
+    "product": "Tomcat 5",
+    "project": "TOMCAT",
+    "summary": "Documented AJP Connector configuration for pending request queue size in error",
+    "systemSpecification": true,
+    "version": "5.5.9"
+}

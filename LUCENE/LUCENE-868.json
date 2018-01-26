@@ -1,0 +1,113 @@
+{
+    "comments": [
+        {
+            "author": "Grant Ingersoll",
+            "body": "TermVectorMapper should have been:\nvoid map(String field, String term, int frequency, TermVectorOffsetInfo [] offsets, int [] positions);\n",
+            "date": "2007-04-23T01:12:18.447+0000",
+            "id": 0
+        },
+        {
+            "author": "Grant Ingersoll",
+            "body": "First pass at a patch on providing a callback mechanism for term vectors.  The big benefit to this is the ability to control how to store the TV info, instead of being stuck with parallel arrays.  Two sample implementations are provided, as FieldSortedTermVectorMapper and SortedTermVectorMapper.\n\nOne thing I am not completely sure on and would appreciate a review of, is the interface definition of TermVectorMapper, in particular the interplay of the setExpectations method with the actual map method (see the TermVectorsReader).  It is not thread-safe (although I am not so sure the current way is either)\n\nThe existing access methods for TVs still works just the same, even though the underlying implementation is different.  \n\nI don't know if this is any faster in the Lucene core, but it should speed up those applications that have to reformat the TV info for their needs.\n\n",
+            "date": "2007-07-01T02:04:49.344+0000",
+            "id": 1
+        },
+        {
+            "author": "Grant Ingersoll",
+            "body": "Anyone have any comments on this approach for Term Vectors?\n\nI'm not sure if the patch still applies to trunk, but I will update it and commit on Wednesday or Thursday unless I hear other comments.",
+            "date": "2007-07-09T21:05:59.100+0000",
+            "id": 2
+        },
+        {
+            "author": "Yonik Seeley",
+            "body": "I haven't really used the term vector APIs, but I like the goal of allowing the app to handle things.\nWhat about dropping down a level lower, and not constructing the arrays or TermVectorOffsetInfo either?\nPerhaps something like:\n\npublic interface TermVectorMapper {\n  void setExpectations(String field, int numTerms, boolean hasOffsets, boolean hasPositions);\n  void mapTerm(String term, int frequency)\n  void mapTermPos(int startOffset, int endOffset, int position)\n}\n\nOne could have an implementation of TermVectorMapper that collected the offsets and positions into an array as your patch does now.  I'm not sure if there would be a noticable performance impact to a method call per term instance or not.\n\nOh, wait...  I just went and looked at the readTermVector() code, and positions and offsets aren't stored interleaved, so one would have to do a sequence of mapTermPos() followed by a sequence of mapTerm Offset(), which makes less sense than what you have now.\n\nMight also consider using an abstract class instead of an interface in case you want to make backward-compatible tweaks later.",
+            "date": "2007-07-09T21:50:29.087+0000",
+            "id": 3
+        },
+        {
+            "author": "Karl Wettin",
+            "body": "Grant Ingersoll - [09/Jul/07 02:05 PM ]\n> Anyone have any comments on this approach for Term Vectors?\n>\n> I'm not sure if the patch still applies to trunk, but I will update it \n> and commit on Wednesday or Thursday unless I hear other comments.\n\nI can give the code an overview in the weekend if you want. I'll defintely be using this stuff when I get back from vacation.\n",
+            "date": "2007-07-10T13:43:28.894+0000",
+            "id": 4
+        },
+        {
+            "author": "Grant Ingersoll",
+            "body": "I will have to add a new patch, it MemoryIndexReader does not implement the new methods",
+            "date": "2007-07-12T01:43:35.920+0000",
+            "id": 5
+        },
+        {
+            "author": "Grant Ingersoll",
+            "body": "New patch that passes all tests (and compiles against the memory contrib)",
+            "date": "2007-07-16T01:22:21.726+0000",
+            "id": 6
+        },
+        {
+            "author": "Grant Ingersoll",
+            "body": "I also switched TermVectorMapper to be an abstract class per Yonik's suggestion.",
+            "date": "2007-07-16T01:30:15.718+0000",
+            "id": 7
+        },
+        {
+            "author": "Grant Ingersoll",
+            "body": "Added the start of a Position based Mapper.  This would allow indexing directly (almost) into the vector by position.  Still needs a little more testing, but wanted to put it out there for others to see.",
+            "date": "2007-07-19T01:24:36.343+0000",
+            "id": 8
+        },
+        {
+            "author": "Karl Wettin",
+            "body": "Sorry for the delay, vacation time.\n\nIn short I think this is a really nice improvment to the API. I also agree with Yonik about the array[]s constructed and passed down to the mapper. Perhaps your current implementation could be moved one layer further up? Another thought is to reuse array(s) and pass on the data length, but that might just complicate things.\n\nI'll try to introduce these things next week and see how well it works. \n\nI use the term vectors for text classification. For each new classifier introduced (occurs quite a lot) I iterate the corpus and classify the documents. Potentially it could save me quite a bit of ticks and bits to not create all them array[]s, however my gut tells me there might be some JVM settings that does the same trick. I'll have to look in to that.\n\n",
+            "date": "2007-07-19T19:43:15.918+0000",
+            "id": 9
+        },
+        {
+            "author": "Grant Ingersoll",
+            "body": "The TermVectorOffsetInfo and Position arrays are only created if storeOffsets and storePositions are turned on.  But, we could also add mapperMethods like:\nboolean isIgnoringOffsets()\nand\nboolean isIgnoringPositions()\n\nThen, in TermVectorsReader, it could become:\n\nif (storePositions && mapper.isIgnoringPositions() == false)\n\nand likewise for isIgnoringOffsets.  This way a mapper could express whether it wants these arrays to be constructed even if they are turned on.  Then we just need to skip ahead by the appropriate amount.\n",
+            "date": "2007-07-19T20:39:29.960+0000",
+            "id": 10
+        },
+        {
+            "author": "Grant Ingersoll",
+            "body": "Based on Yonik's and Karl's comments on avoiding loading the offset and position arrays, this patch has two new methods on the TermVectorMapper which tell the TermVectorsReader whether the Mapper is interested in positions or not, regardless of whether they are stored or not.",
+            "date": "2007-07-20T00:57:29.792+0000",
+            "id": 11
+        },
+        {
+            "author": "Grant Ingersoll",
+            "body": "Committed.  Did not include the PositionBasedTermVectorMapper stuff as it was not ready to go.",
+            "date": "2007-07-23T12:30:03.620+0000",
+            "id": 12
+        },
+        {
+            "author": "Paul Elschot",
+            "body": "I just got this warning from ant javadocs-internal:\nsrc/java/org/apache/lucene/index/TermVectorsReader.java:448: @return tag has no arguments.\nThis could well be from the materializeVector method of the v4 patch.\n\n",
+            "date": "2007-07-24T13:20:51.849+0000",
+            "id": 13
+        },
+        {
+            "author": "Grant Ingersoll",
+            "body": "Thanks, Paul, I have added a comment.",
+            "date": "2007-07-24T15:31:23.873+0000",
+            "id": 14
+        },
+        {
+            "author": "Paul Elschot",
+            "body": "[ https://issues.apache.org/jira/browse/LUCENE-868?page=com.atlassian.jira.plugin.system.issuetabpanels:comment-tabpanel#action_12515004 ] \n\nMy pleasure,\n\nPaul Elschot\n\nLUCENE-868-v4.patch\nloaded into parallel arrays as it is loaded, which are then often times \nmanipulated again to use in the application (for instance, they are sorted by \nfrequency).\nby the application would make this a lot more efficient.\nTermVectorMapper mapper) throws IOException;\nThe existing getTermFreqVectors will be reimplemented to use an \nimplementation of TermVectorMapper that creates the parallel arrays.  \nAdditionally, some simple implementations that automatically sort vectors \nwill also be created.\nhave a patch soon.\nhttp://www.gossamer-threads.com/lists/lucene/java-user/48003?search_string=get%20the%20total%20term%20frequency;#48003 \nfor related information.\n",
+            "date": "2007-07-24T16:45:32.559+0000",
+            "id": 15
+        }
+    ],
+    "component": "core/store",
+    "description": "One of the big issues with term vector usage is that the information is loaded into parallel arrays as it is loaded, which are then often times manipulated again to use in the application (for instance, they are sorted by frequency).\n\nAdding a callback mechanism that allows the vector loading to be handled by the application would make this a lot more efficient.\n\nI propose to add to IndexReader:\nabstract public void getTermFreqVector(int docNumber, String field, TermVectorMapper mapper) throws IOException;\nand a similar one for the all fields version\n\nWhere TermVectorMapper is an interface with a single method:\nvoid map(String term, int frequency, int offset, int position);\n\nThe TermVectorReader will be modified to just call the TermVectorMapper.  The existing getTermFreqVectors will be reimplemented to use an implementation of TermVectorMapper that creates the parallel arrays.  Additionally, some simple implementations that automatically sort vectors will also be created.\n\nThis is my first draft of this API and is subject to change.  I hope to have a patch soon.\n\nSee http://www.gossamer-threads.com/lists/lucene/java-user/48003?search_string=get%20the%20total%20term%20frequency;#48003 for related information.",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-868",
+    "issuetypeClassified": "RFE",
+    "issuetypeTracker": "RFE",
+    "priority": "Minor",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "Making Term Vectors more accessible",
+    "systemSpecification": true,
+    "version": ""
+}

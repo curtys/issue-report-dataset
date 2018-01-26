@@ -1,0 +1,47 @@
+{
+    "comments": [
+        {
+            "author": "Stefan Guggisberg",
+            "body": "a patch for o.a.jackrabbit.spi.commons.conversion,NameParser \nthat includes a simple static check of the name in order to \navoid unneccessary server-roundtrips \n\nthe following names are always considered being qualified jcr names since the would be illegal expanded form: \n- \"{foo}\" => empty local name is not allowed \n- \"{foo} bar\" => leading space in local name is not allowed \n\nhowever, the patch causes 2 failures in o.a.jackrabbit.spi.commons.conversion,NameParser; \nIMO the failing test cases are questionable and could be fixed.",
+            "date": "2009-08-26T09:47:16.900+0000",
+            "id": 0
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Instead of custom rules like this, I'd rather use the expanded form rule that the URI part always contains a colon. Thus the following test will always detect whether a name is in expanded form:\n\n   name.startsWtih(\"{\") &&  name.indexOf(':\") != -1\n\nThe only problem is the \"internal\" namespace used with the \"rep:\" prefix. For now we can treat that as a special case:\n\n   name.startsWtih(\"{\") &&  (name.indexOf(':\") != -1 || name.startsWith(\"{internal}\"))\n\nI would also recommend that we migrate from \"internal\" to using a proper namespace URI like \"http://jackrabbit.apache.org/ns/2009/internal\".",
+            "date": "2009-08-26T10:08:31.207+0000",
+            "id": 1
+        },
+        {
+            "author": "Tobias Bocanegra",
+            "body": "I agree with jukka, that we should only allow proper uris in expanded form. and yes, we should probably change the internal namespace.",
+            "date": "2009-08-26T11:35:25.716+0000",
+            "id": 2
+        },
+        {
+            "author": "Stefan Guggisberg",
+            "body": "> Instead of custom rules like this, I'd rather use the expanded form rule that the URI part always contains a colon. Thus the following test will always detect whether a name is in expanded form:\n>\n>   name.startsWtih(\"{\") &&  name.indexOf(':\") != -1\n>\n> The only problem is the \"internal\" namespace used with the \"rep:\" prefix. For now we can treat that as a special case:\n>\n>   name.startsWtih(\"{\") &&  (name.indexOf(':\") != -1 || name.startsWith(\"{internal}\"))\n\ni was considering this as well, but then it felt somehow strange to cover a special jackrabbit-core case in the generic spi-commons module...\n\n>\n> I would also recommend that we migrate from \"internal\" to using a proper namespace URI like \"http://jackrabbit.apache.org/ns/2009/internal\".\n\nagreed, +1 \n\naccording to the spec, the namespace has to be a proper uri as defined in setion 3 of rfc 3986, i.e. it always must contain a scheme part delimited by a colon.\n\ntest cases will need to be adapted as well.\n\n",
+            "date": "2009-08-26T12:23:37.389+0000",
+            "id": 3
+        },
+        {
+            "author": "Jukka Zitting",
+            "body": "Resolved as a part of JCR-2288 in revision 815745.",
+            "date": "2009-09-16T12:58:15.548+0000",
+            "id": 4
+        }
+    ],
+    "component": "jackrabbit-jcr2spi",
+    "description": "assume the following legal qualified jcr names:\n\n\"{foo}\"\n\"{foo} bar\"\n\nwhen items with such names are read from the spi layer, they are first interpreted as expanded form names.\na prefix lookup for namespace 'foo' fails and the name is treated as qualified jcr name.\n\n=> depending on the spi implementation, a server-roundtrip is required in order to determine that 'foo' is not a\nregistered namespace. ",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "JCR-2275",
+    "issuetypeClassified": "IMPROVEMENT",
+    "issuetypeTracker": "IMPROVEMENT",
+    "priority": "Major",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "some legal jcr names cause unneccessary server-roundtrips ",
+    "systemSpecification": true,
+    "version": ""
+}

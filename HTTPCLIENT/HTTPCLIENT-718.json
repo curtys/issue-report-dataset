@@ -1,0 +1,35 @@
+{
+    "comments": [
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Apparently we have a bigger problem here. SSL host verification is completely messed up at the moment. It is not executed at all when creating detached sockets (which is what HttpClient does per default). SSL host verification needs to be moved from the socket factory to an upper level (connection operator or connection manager).  \n\nOleg",
+            "date": "2007-12-15T17:36:23.566+0000",
+            "id": 0
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "My bad. Of course, host verification takes place in the #connectSocket() method, as intended. Please disregard my previous comment.\n\nOleg",
+            "date": "2007-12-15T17:45:17.201+0000",
+            "id": 1
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Peter,\n\nI applied a fix for the problem to the SVN trunk. Please verify. \n\nMany thanks for reporting the problem.\n\nOleg",
+            "date": "2007-12-15T17:48:35.480+0000",
+            "id": 2
+        }
+    ],
+    "component": "HttpClient (classic)",
+    "description": "partial thread dump:\n\n       at java.net.SocketInputStream.socketRead0(Native Method)\n       at java.net.SocketInputStream.read(SocketInputStream.java:129)\n       at com.sun.net.ssl.internal.ssl.InputRecord.readFully(InputRecord.java:293)\n       at com.sun.net.ssl.internal.ssl.InputRecord.read(InputRecord.java:331)\n       at com.sun.net.ssl.internal.ssl.SSLSocketImpl.readRecord(SSLSocketImpl.java:723)\n       - locked <0x00002aaab87d9de0> (a java.lang.Object)\n       at com.sun.net.ssl.internal.ssl.SSLSocketImpl.performInitialHandshake(SSLSocketImpl.java:1030)\n       - locked <0x00002aaab87d9dc0> (a java.lang.Object)\n       at com.sun.net.ssl.internal.ssl.SSLSocketImpl.startHandshake(SSLSocketImpl.java:1057)\n       at com.sun.net.ssl.internal.ssl.SSLSocketImpl.getSession(SSLSocketImpl.java:1757)\n       at org.apache.http.conn.ssl.AbstractVerifier.verify(AbstractVerifier.java:87)\n       at org.apache.http.conn.ssl.SSLSocketFactory.connectSocket(SSLSocketFactory.java:295)\n       at org.apache.http.impl.conn.DefaultClientConnectionOperator.openConnection(DefaultClientConnectionOperator.java:131)\n       at org.apache.http.impl.conn.AbstractPoolEntry.open(AbstractPoolEntry.java:143)\n       at org.apache.http.impl.conn.AbstractPooledConnAdapter.open(AbstractPooledConnAdapter.java:120)\n       at org.apache.http.impl.client.DefaultClientRequestDirector.execute(DefaultClientRequestDirector.java:286)\n       at org.apache.http.impl.client.AbstractHttpClient.execute(AbstractHttpClient.java:452)\n       at org.apache.http.impl.client.AbstractHttpClient.execute(AbstractHttpClient.java:406)\n       at org.apache.http.impl.client.AbstractHttpClient.execute(AbstractHttpClient.java:365)\n\n\n... this is because in DefaultClientConnectionOperator, prepareSocket (which sets any configured timeouts) isn't called until after SocketFactory.connectSocket. When using SSLSocketFactory, the default behavior is to verify the hostname, which opens a connection, and can block indefinitely.\n\nSimple workaround is to use the AllowAllHostnameVerifier which doesn't do any verification.",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "HTTPCLIENT-718",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "HTTPCLIENT",
+    "project": "HTTPCLIENT",
+    "summary": "SSL verification occurs before setSoTimeout, which can lead to hangs",
+    "systemSpecification": true,
+    "version": "4.0 Alpha 2"
+}

@@ -1,0 +1,53 @@
+{
+    "comments": [
+        {
+            "author": "Michael McCandless",
+            "body": "Attaching patch.  All tests pass and I think this is ready for\ncommit.  I'll wait a few days.\n\nWhat's always tricky about debugging this kind of issue is figuring\nout if it's a locking problem (two writers are incorrectly getting the\nwrite lock at the same time), or if it's a IO \"stale cache\" issue.\n\nTo help with this, I created some basic instrumentation to \"verify\"\nthat locking is functioning correctly:\n\n  * A new LockFactory called VerifyingLockFactory, which just wraps a\n    pre-existing LockFactory and every time a lock is obtained or\n    released, contacts the LockVerifyServer (over a socket) to verify\n    the lock is not held by another process.  If it is held by another\n    process, meaning the LockFactory is broken, an exception is\n    thrown.\n\n  * LockVerifyServer.java (main) which just runs forever, accepting &\n    verifying these socket connections.\n\n  * A standalone (main) LockStressTest.java, whose sole purpose is to\n    obtain/release a specified lock file, very frequently.  You run\n    this on multiple machines, pointing to the same lock file, to\n    verify your LockFactory is working correctly.\n\nUsing these additions, one can stress test their locking in their\nparticular environment to determine whether their LockFactory is\nworking properly.\n\nI plan on committing these three source files so that others can\ndiagnose locking issues using the Lucene core jar.\n",
+            "date": "2007-09-30T11:08:30.581+0000",
+            "id": 0
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Using the lock verifier above, I discovered something shocking (to\nme): NativeFSLockFactory is in general NOT RELIABLE for locking over\nNFS, while SimpleFSLockFactory is reliable modulo the \"fails to delete\non exit/crash\" minor issue.\n\nThis is unexpected because the whole reason we originally created\nNativeFSLockFactory was to improve locking over \"challenging\"\nfilesystems like NFS.  The spooky comment in Sun's javadocs on using\nFile.createNewFile for locking (which is what SimpleFSLockFactory\nuses) drove this:\n\n  http://java.sun.com/j2se/1.4.2/docs/api/java/io/File.html#createNewFile()\n\nBut then I remembered Marvin's comment about this:\n\n  http://issues.apache.org/jira/browse/LUCENE-710#action_12466911\n\nAnd on following that lead, indeed, that comment \"Note: this method\nshould not be used for file-locking, as the resulting protocol cannot\nbe made to work reliably\" is only referring to the fact that you\ncannot reliably guarantee this lock file will be properly removed.\n\nIn testing in my NFS area (mix of Linux & OS X), I see\nNativeFSLockFactory sometimes (rarely) allowing a lock to be\ndouble-acquired.  Whereas after stress testing SimpleFSLockFactory for\na looong time, it never allows that.\n\nSo the NFS challenge/saga continues: now, you should in fact use\nSimpleFSLockFactory, and work around the fact that you will sometimes\nhave to manually remove lock files (it is the lesser of evils).\n\n",
+            "date": "2007-09-30T11:09:22.838+0000",
+            "id": 1
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Once I got through the locking issue (switched Patrick's test to use\nSimpleFSLockFactory), I could no longer reproduce his issue, but he\ncould in his environment.  So I worked out a simple change to how the\nsegments_N file is located: instead of first trying the directory\nlisting and then second falling back to reading segments.gen, always\ntry both and then use whichever generation is larger.  This way we can\ntolerate a stale directory cache, or a stale file contents cache\n(though not both at the same time).  In Patrick's testing this looks\nto have resolved the issue.\n\nI also fixed IndexFileDeleter to try specifically loading the current\ncommit point if this point was not seen in the directory listing\n(which would happen if directory listing cache was stale), and,\nimproved messaging in IndexWriter (when you call setInfoStream(...))\nto print more details about the configuration of the writer, to aid in\nfuture remote debugging.\n",
+            "date": "2007-09-30T11:09:50.441+0000",
+            "id": 2
+        },
+        {
+            "author": "Hoss Man",
+            "body": ": In testing in my NFS area (mix of Linux & OS X), I see\n: NativeFSLockFactory sometimes (rarely) allowing a lock to be\n: double-acquired.  Whereas after stress testing SimpleFSLockFactory for\n: a looong time, it never allows that.\n: \n: So the NFS challenge/saga continues: now, you should in fact use\n: SimpleFSLockFactory, and work around the fact that you will sometimes\n: have to manually remove lock files (it is the lesser of evils).\n\ni'm not an expert on file Locking (either in Lucene, or in the JVM, or any OSes) but i have to wonder if the problems you are seeing are inherent in the Java FileLock APIs, or if they only manifest in specific implementations (ie: certain JVM impls, certain filesystems, certain combinations of NFS client/server, etc...)\n\nif we can say \"NativeFSLockFactory uses the Java FileLock API to provide locking.  FileLock known to be buggy in the following situations: .... \" then we've done all we can do, correct?",
+            "date": "2007-09-30T19:01:58.810+0000",
+            "id": 3
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "> i'm not an expert on file Locking (either in Lucene, or in the JVM,\n> or any OSes) but i have to wonder if the problems you are seeing are\n> inherent in the Java FileLock APIs, or if they only manifest in\n> specific implementations (ie: certain JVM impls, certain\n> filesystems, certain combinations of NFS client/server, etc...)\n\nI'm no expert either, and I continue to be rather shocked each time I\nlearn more!\n\n> if we can say \"NativeFSLockFactory uses the Java FileLock API to\n> provide locking. FileLock known to be buggy in the following\n> situations: .... \" then we've done all we can do, correct?\n\nI agree, I think this is exactly what we should do.  I'll update the\njavadoc for NativeFSLockFactory with this statement.",
+            "date": "2007-10-01T07:40:51.229+0000",
+            "id": 4
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "I just committed this.  Thanks Patrick!",
+            "date": "2007-10-03T15:25:55.689+0000",
+            "id": 5
+        }
+    ],
+    "component": "core/index",
+    "description": "When an index is used over NFS, and, more than one machine can be a\nwriter such that they swap roles quickly, it's possible for the index\nto become corrupt if the NFS client directory cache is stale.\n\nNot all NFS clients will show this.  Very recent versions of Linux's\nNFS client do not seem to show the issue, yet, slightly older ones do,\nand the latest Mac OS X one does as well.\n\nI've been working with Patrick Kimber, who provided a standalone test\nshowing the problem (thank you Patrick!).  This came out of this\nthread:\n\n  http://www.gossamer-threads.com/lists/engine?do=post_view_flat;post=50680;page=1;sb=post_latest_reply;so=ASC;mh=25;list=lucene\n\nNote that the first issue in that discussion has been resolved\n(LUCENE-948).  This is a new issue.\n",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-1011",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Minor",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "Two or more writers over NFS can cause index corruption",
+    "systemSpecification": true,
+    "version": "1.9, 2.0.0, 2.1, 2.2, 2.3, 2.4, 2.9"
+}

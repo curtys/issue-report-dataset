@@ -1,0 +1,59 @@
+{
+    "comments": [
+        {
+            "author": "Greg Bowyer",
+            "body": "Made the caching policy use longs instead of ints for content sizes",
+            "date": "2011-08-12T20:43:31.911+0000",
+            "id": 0
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Greg,\nThere is certainly a way to fix the problem without breaking API compatibility at all, which would be preferred.\n\nOleg",
+            "date": "2011-08-13T11:06:56.506+0000",
+            "id": 1
+        },
+        {
+            "author": "Greg Bowyer",
+            "body": "I might be dumb here, but the return type of CacheConfig.getMaxObjectSizeBytes currently returns an int, I cant see how to change that without breaking the API (a little)\n\nEverything else should be fine, but that method poses a problem",
+            "date": "2011-08-14T19:03:50.561+0000",
+            "id": 2
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Change internal representation of maxObjectSizeBytes from int to long, deprecate CacheConfig.getMaxObjectSizeBytes make it return maxObjectSizeBytes value cast to int, add another method with a similar name (say CacheConfig#getMaxObjectSize) that returns maxObjectSizeBytes as long, do the same for setters, make sure HttpClient cache classes use new methods only.\n\nI think this should do the trick.\n\nOleg",
+            "date": "2011-08-14T19:18:49.728+0000",
+            "id": 3
+        },
+        {
+            "author": "Greg Bowyer",
+            "body": "Ah check, I thought that might add confusion as the API does not appear to have many deprecated methods. I will try to get the done by Monday\n\nIf I cast getMaxObjectSizeBytes to an int, whhich is the desirable behaviour if maxObjectSizeBytes > Integer.MAX_VALUE\n\n    - throw an exception\n    - return (maxObjectSizeBytes >= Integer.MAX_VALUE) ? Integer.MAX_VALUE : (int) maxObjectSizeBytes\n    - allow the thing to miscast and overflow into negative numbers\n\nI think the exception would be the preferred idea, but then that breaks the API at runtime :S\n    ",
+            "date": "2011-08-14T19:51:39.214+0000",
+            "id": 4
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "As far as I can tell the second option should be good enough.\n\nOleg",
+            "date": "2011-08-14T21:28:52.675+0000",
+            "id": 5
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Patch checked in with minor tweaks to preserve binary compatibility with 4.1\n\nOleg",
+            "date": "2011-09-18T16:33:48.213+0000",
+            "id": 6
+        }
+    ],
+    "component": "HttpCache",
+    "description": "ResponseCachingPolicy currently uses integers for interpreting the size of Content-Length, as well internally.\n\nThis causes issues in attempting to use the module for caching entities that are over 2GB in size, the module does not fail gracefully, but throws a NumberFormatException\n\nI have a patch that fixes this, by promoting the int -> long, which should allow for larger entities to be cached, it also updates the public facing API where possible, I don't think that the promotion should break compatibility massively\n\nThe changes can also be seen here:\nhttps://github.com/GregBowyer/httpclient/commit/1197d3f94bd2eedcec32646cd6146748ca2e6fa1",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "HTTPCLIENT-1116",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "HTTPCLIENT",
+    "project": "HTTPCLIENT",
+    "summary": "ResponseCachingPolicy uses integers for sizes",
+    "systemSpecification": true,
+    "version": "4.1.1"
+}

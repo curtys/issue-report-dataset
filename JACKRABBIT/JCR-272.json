@@ -1,0 +1,29 @@
+{
+    "comments": [
+        {
+            "author": "Jukka Zitting",
+            "body": "Tagged for 1.0",
+            "date": "2006-01-11T18:04:17.000+0000",
+            "id": 0
+        },
+        {
+            "author": "Tobias Bocanegra",
+            "body": "created new testcases:\n\nRemoveVersionTest\n\n    /**\n     * Checks if all versions but the base and root one can be removed.\n     */\n    public void testRemoveAllBut2();\n\n    /**\n     * Checks if all versions by the base and root one can be removed.\n     */\n    public void testRemoveRootVersion();\n\n    /**\n     * Checks if all versions by the base and root one can be removed.\n     */\n    public void testRemoveBaseVersion();\n\n\nand all succeed. i reckon this was fixed along the lines of some other versioning bugs.",
+            "date": "2006-07-20T10:25:22.000+0000",
+            "id": 1
+        }
+    ],
+    "component": "versioning",
+    "description": "From the following thread : http://www.mail-archive.com/jackrabbit-dev%40incubator.apache.org/msg03483.html\n\nWhen trying to remove a version of a Node  the VersionHistory.removeVersion() method throws : \"javax.jcr.ReferentialIntegrityException: Unable to remove version. At least once referenced.\".\n\nSecton 8.2.2.10 (Removal of Versions) of the specification indicates that the version graph should be automatically repaired upon removal. Then, VersionHistory.removeVersion() should take care of references. (In fact, a user cannot alter the references (jcr:predecessors and jcr:successors), since they are protected properties.)\n\nHere's the example (*updated) :\n\nNode root1 = session.getRootNode() ;\nNode test1 = root1.addNode(\"test\") ;\ntest1.addMixin(\"mix:versionable\");\ntest1.setProperty(\"test\", \"1\");\nsession.save();\ntest1.checkin();\n\ntest1.checkout();\ntest1.setProperty(\"test\", \"2\");\nsession.save();\ntest1.checkin();\n\ntest1.checkout();\ntest1.setProperty(\"test\", \"3\");\nsession.save();\ntest1.checkin();\n\nString baseVersion = test1.getBaseVersion().getName();\nSystem.out.println(\"Base version name: \" + baseVersion);\n\nVersionHistory vh = test1.getVersionHistory();\nfor (VersionIterator vi = vh.getAllVersions(); vi.hasNext(); ) {\n    Version currenVersion = vi.nextVersion();\n    String versionName = currenVersion.getName();\n    if (!versionName.equals(\"jcr:rootVersion\") && !versionName.equals(baseVersion)) { \n        String propertyValue = currenVersion.getNode(\"jcr:frozenNode\").getProperty(\"test\").getString();\n        System.out.println(\"Removing version : \" + versionName + \" with value: \" + propertyValue);\n        vh.removeVersion(versionName);\n    }\n}\n\nRegards, \n\nNicolas",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "JCR-272",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "JACKRABBIT",
+    "project": "JACKRABBIT",
+    "summary": "Removal of versions throws javax.jcr.ReferentialIntegrityException",
+    "systemSpecification": true,
+    "version": "0.9, 1.0"
+}

@@ -1,0 +1,47 @@
+{
+    "comments": [
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Jeff,\nI suspect authentication fails because the server also sends a SPNEGO/kerberos challenge, which takes precedence over NTLM. If the SPNEGO auth scheme fails NTLM authentication is not attempted due to HTTPCLIENT-1107.\n\nAnyway, please attach wire / context logs of both sessions (successful with 4.0.3 and unsuccessful with 4.1.2).\n\nOleg",
+            "date": "2011-10-24T17:14:58.714+0000",
+            "id": 0
+        },
+        {
+            "author": "Jeff Nadler",
+            "body": "That may well be the cause.   I'll generate a wire log.   \n\nAlso I should note that with 4.1.2, use of a HTTP proxy that requires NTLM auth is also broken.   Reverting to 4.0.3 fixed that problem as well.",
+            "date": "2011-10-24T17:20:17.186+0000",
+            "id": 1
+        },
+        {
+            "author": "Jeff Nadler",
+            "body": "I've attached the logs you requested.   ",
+            "date": "2011-10-24T19:17:57.266+0000",
+            "id": 2
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "As I suspected \n\n---\nDEBUG[pool-1-thread-1] (AbstractAuthenticationHandler.java:151) - Authentication schemes in the order of preference: [negotiate, NTLM, Digest, Basic]\nDEBUG[pool-1-thread-1] (AbstractAuthenticationHandler.java:161) - negotiate authentication scheme selected\nDEBUG[pool-1-thread-1] (NegotiateScheme.java:316) - Received challenge '' from the auth server\nDEBUG[pool-1-thread-1] (DefaultRequestDirector.java:1196) - Authorization challenge processed\nDEBUG[pool-1-thread-1] (DefaultRequestDirector.java:1224) - Authentication scope: NEGOTIATE <any realm>@192.168.3.44:80\nDEBUG[pool-1-thread-1] (DefaultRequestDirector.java:1231) - Found credentials\nDEBUG[pool-1-thread-1] (NegotiateScheme.java:179) - init 192.168.3.44\nERROR[pool-1-thread-1] (RequestTargetAuthentication.java:113) - Authentication error: Invalid name provided (Mechanism level: Could not load configuration file C:\\Windows\\krb5.ini (The system cannot find the file specified))\n---\n\nHttpClient 4.1.2 picks the SPNEGO/Kerberos auth scheme over NTLM, which apparently has not been properly set up. You basically have three options here\n(1) Setup SPNEGO/Kerberos\n(2) Unregister the Negotiate scheme altogether\n(3) Modify auth scheme order of preference to make HttpClient pick NTLM over SPNEGO/Kerberos.\n\nOleg\n\n\n \n",
+            "date": "2011-10-24T19:42:47.946+0000",
+            "id": 3
+        },
+        {
+            "author": "Oleg Kalnichevski",
+            "body": "Duplicate of HTTPCLIENT-1107",
+            "date": "2011-10-24T19:43:32.990+0000",
+            "id": 4
+        }
+    ],
+    "component": "HttpClient (classic)",
+    "description": "Our application has been working fine using NTLM auth with HttpClient for 3 years.   We were most recently on 4.0.3.    Upon upgrading to 4.1.2, NTLM stopped working.\n\nI tried both the new for 4.1 built-in NTLM and the \"old way\" of using JCIFS: client.getAuthSchemes().register(\"ntlm\", new NTLMSchemeFactory()); \n\nUsing wireshark I can see that NTLM auth is not even attempted using 4.1.2.    Rolling back to 4.0.3 immediately resolved this problem.",
+    "hasPatch": false,
+    "hasScreenshot": false,
+    "id": "HTTPCLIENT-1139",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "HTTPCLIENT",
+    "project": "HTTPCLIENT",
+    "summary": "NTLM Authentication No Longer Working In Latest Release",
+    "systemSpecification": true,
+    "version": "4.1.2"
+}

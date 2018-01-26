@@ -1,0 +1,77 @@
+{
+    "comments": [
+        {
+            "author": "Yonik Seeley",
+            "body": "OK, not much info to reproduce at this point, except to put the iteratons to 1000000 on testMultiConfig and let it run for a while.  Here is an example exception:\n\n{code}\nException in thread \"Lucene Merge Thread #1\" org.apache.lucene.index.MergePolicy$MergeException: java.io.FileNotFoundException: _5_1.del\n\tat org.apache.lucene.index.ConcurrentMergeScheduler.handleMergeException(ConcurrentMergeScheduler.java:320)\n\tat org.apache.lucene.index.ConcurrentMergeScheduler$MergeThread.run(ConcurrentMergeScheduler.java:297)\nCaused by: java.io.FileNotFoundException: _5_1.del\n\tat org.apache.lucene.store.RAMDirectory.fileLength(RAMDirectory.java:167)\n\tat org.apache.lucene.index.SegmentInfo.sizeInBytes(SegmentInfo.java:216)\n\tat org.apache.lucene.index.IndexWriter.mergeMiddle(IndexWriter.java:3750)\n\tat org.apache.lucene.index.IndexWriter.merge(IndexWriter.java:3354)\n\tat org.apache.lucene.index.ConcurrentMergeScheduler.doMerge(ConcurrentMergeScheduler.java:211)\n\tat org.apache.lucene.index.ConcurrentMergeScheduler$MergeThread.run(ConcurrentMergeScheduler.java:266)\n{code}\n\nIt could potentially either be a problem in indexing, or in RAMDirectory.\n",
+            "date": "2008-02-11T23:55:42.126+0000",
+            "id": 0
+        },
+        {
+            "author": "Yonik Seeley",
+            "body": "Another exception, this time during IndexReader.open() after an indexing run.\n{code}\njava.io.FileNotFoundException: _a.fdt\n\tat org.apache.lucene.store.RAMDirectory.openInput(RAMDirectory.java:234)\n\tat org.apache.lucene.store.Directory.openInput(Directory.java:104)\n\tat org.apache.lucene.index.FieldsReader.<init>(FieldsReader.java:75)\n\tat org.apache.lucene.index.SegmentReader.initialize(SegmentReader.java:308)\n\tat org.apache.lucene.index.SegmentReader.get(SegmentReader.java:262)\n\tat org.apache.lucene.index.SegmentReader.get(SegmentReader.java:197)\n\tat org.apache.lucene.index.MultiSegmentReader.<init>(MultiSegmentReader.java:55)\n\tat org.apache.lucene.index.DirectoryIndexReader$1.doBody(DirectoryIndexReader.java:91)\n\tat org.apache.lucene.index.SegmentInfos$FindSegmentsFile.run(SegmentInfos.java:651)\n\tat org.apache.lucene.index.DirectoryIndexReader.open(DirectoryIndexReader.java:79)\n\tat org.apache.lucene.index.IndexReader.open(IndexReader.java:209)\n\tat org.apache.lucene.index.IndexReader.open(IndexReader.java:192)\n\tat org.apache.lucene.index.TestStressIndexing2.verifyEquals(TestStressIndexing2.java:161)\n\tat org.apache.lucene.index.TestStressIndexing2.testMultiConfig(TestStressIndexing2.java:72)\n{code}\n",
+            "date": "2008-02-12T00:47:41.696+0000",
+            "id": 1
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Yonik, are you able to repro this on 2.3?  I can't.\n\nAnd on trunk, I can only repro your first exception.  The issue with that one is missing synchronization from the changes from LUCENE-1044.  I'm attaching the patch that fixes the first exception in my testing.\n\nAny ideas on how to get that 2nd exception to happen would be most welcome!",
+            "date": "2008-02-12T13:26:01.126+0000",
+            "id": 2
+        },
+        {
+            "author": "Yonik Seeley",
+            "body": "I'll try on Lucene 2.3 soon.\nI had assumed that the second exception had the same root cause as the first.\n\nI also switched to fsdirectory and let it run overnight... no exceptions with that.",
+            "date": "2008-02-12T14:33:49.242+0000",
+            "id": 3
+        },
+        {
+            "author": "Yonik Seeley",
+            "body": "FYI, I wasn't able to reproduce on the 2.3 branch.",
+            "date": "2008-02-12T20:16:51.887+0000",
+            "id": 4
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "{quote}\nFYI, I wasn't able to reproduce on the 2.3 branch.\n{quote}\nOK that's good :) I can't either.",
+            "date": "2008-02-12T21:17:41.705+0000",
+            "id": 5
+        },
+        {
+            "author": "Yonik Seeley",
+            "body": "Things looking good Mike, I haven't been able to produce an exception after this patch!",
+            "date": "2008-02-13T14:54:24.610+0000",
+            "id": 6
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "Super, me neither :)  I'll resolve this.\n\nThank you for such an awesome test Yonik!  In uncovered some sneaky cases...",
+            "date": "2008-02-13T15:00:15.862+0000",
+            "id": 7
+        },
+        {
+            "author": "Mark Lassau",
+            "body": "From reading this issue, it is unclear whether this bug exists in any released version of Lucene or not.\nCould someone clear this up for me please?\n\nIf this bug exists in released versions, then I would also like to know if the problem only existed for RAMDirectory, or if FSDirectory is potentially affected as well?",
+            "date": "2008-08-26T06:19:11.747+0000",
+            "id": 8
+        },
+        {
+            "author": "Michael McCandless",
+            "body": "This bug never appeared in a released version; it was only in trunk, after 2.3 was released.\n\nThe bug would happen on any Directory implementation.",
+            "date": "2008-08-26T08:34:17.512+0000",
+            "id": 9
+        }
+    ],
+    "component": "",
+    "description": "TestStressIndexing2.testMultiConfig occasionally hits merge exceptions",
+    "hasPatch": true,
+    "hasScreenshot": false,
+    "id": "LUCENE-1175",
+    "issuetypeClassified": "BUG",
+    "issuetypeTracker": "BUG",
+    "priority": "Major",
+    "product": "LUCENE",
+    "project": "LUCENE",
+    "summary": "occasional MergeException while indexing",
+    "systemSpecification": true,
+    "version": "2.3"
+}
